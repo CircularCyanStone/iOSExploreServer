@@ -15,6 +15,7 @@ final class ViewController: UIViewController {
     private let startButton = UIButton(type: .system)
     private let stopButton = UIButton(type: .system)
     private let tableView = UITableView()
+    private nonisolated(unsafe) var eventsTask: Task<Void, Never>?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -24,13 +25,15 @@ final class ViewController: UIViewController {
         updateStatus(running: false)
 
         // 演示自定义命令 + UIKit 信息注入
-        Task {
+        let server = self.server
+        Task { [weak self] in
+            guard self != nil else { return }
             await server.register(action: "greet") { req in
                 let name = req.data["name"]?.stringValue ?? "world"
                 return .success(["message": .string("Hello, \(name)")])
             }
             await server.register(action: "device") { _ in
-                await MainActor.run {
+                return await MainActor.run {
                     .success(["model": .string(UIDevice.current.model),
                               "name": .string(UIDevice.current.name)])
                 }
@@ -38,12 +41,17 @@ final class ViewController: UIViewController {
         }
 
         // 订阅事件 → 日志面板
-        Task { @MainActor in
+        eventsTask = Task { @MainActor [weak self] in
             for await event in server.events() {
-                appendLog(Self.describe(event))
-                updateStatus(running: event.isRunning)
+                guard let self else { return }
+                self.appendLog(Self.describe(event))
+                self.updateStatus(running: event.isRunning)
             }
         }
+    }
+
+    deinit {
+        eventsTask?.cancel()
     }
 
     private func setupLayout() {

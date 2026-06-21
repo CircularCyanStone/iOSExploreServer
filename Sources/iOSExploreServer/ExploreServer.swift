@@ -16,6 +16,7 @@ public final class ExploreServer: @unchecked Sendable {
     private var listener: HTTPListener?
     private let eventContinuation: AsyncStream<ServerEvent>.Continuation
     private let eventStream: AsyncStream<ServerEvent>
+    private var registeredBuiltins = false
 
     /// 预留鉴权令牌：设置后未来版本会校验请求头 `X-Auth-Token`（MVP 不校验）。
     public let authToken: String?
@@ -35,7 +36,10 @@ public final class ExploreServer: @unchecked Sendable {
     }
 
     public func start() async throws {
-        await BuiltinHandlers.registerAll(into: router)
+        if !registeredBuiltins {
+            await BuiltinHandlers.registerAll(into: router)
+            registeredBuiltins = true
+        }
         let l = try HTTPListener(port: port, router: router) { [eventContinuation] event in
             eventContinuation.yield(event)
         }
