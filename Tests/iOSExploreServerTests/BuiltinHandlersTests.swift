@@ -32,7 +32,7 @@ func infoReturns() {
 @Test("registerAll 注册三个命令")
 func registerAllRegisters() async {
     let router = Router()
-    await BuiltinHandlers.registerAll(into: router)
+    BuiltinHandlers.registerAll(into: router)
     for action in ["ping", "echo", "info"] {
         let r = await router.route(ExploreRequest(action: action))
         if case .failure = r { Issue.record("\(action) should be registered") }

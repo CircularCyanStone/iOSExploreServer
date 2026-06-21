@@ -47,7 +47,7 @@ func endToEndUnknown() async throws {
 @Test("自定义注册命令经 HTTP 可达")
 func endToEndCustom() async throws {
     let server = ExploreServer(port: testPort)
-    await server.register(action: "greet") { req in
+    server.register(action: "greet") { req in
         let name = req.data["name"]?.stringValue ?? "world"
         return .success(["message": .string("Hello, \(name)")])
     }

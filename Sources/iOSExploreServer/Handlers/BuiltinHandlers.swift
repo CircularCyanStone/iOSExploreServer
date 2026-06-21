@@ -21,10 +21,10 @@ enum BuiltinHandlers {
         return .success(info)
     }
 
-    /// 把三个内置命令注册进 router。
-    static func registerAll(into router: Router) async {
-        await router.register(action: "ping") { ping($0) }
-        await router.register(action: "echo") { echo($0) }
-        await router.register(action: "info") { info($0) }
+    /// 把三个内置命令注册进 router(同步)。
+    static func registerAll(into router: Router) {
+        router.register(action: "ping", description: "健康检查,返回 pong") { ping($0) }
+        router.register(action: "echo", description: "原样回显 data") { echo($0) }
+        router.register(action: "info", description: "返回系统/应用/Bundle 信息") { info($0) }
     }
 }
