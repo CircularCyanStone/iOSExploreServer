@@ -45,7 +45,7 @@ public final class ExploreServer: @unchecked Sendable {
         let l = try HTTPListener(port: port, router: router) { [eventContinuation] event in
             eventContinuation.yield(event)
         }
-        l.start()
+        try await l.start()
         self.listener = l
     }
 
