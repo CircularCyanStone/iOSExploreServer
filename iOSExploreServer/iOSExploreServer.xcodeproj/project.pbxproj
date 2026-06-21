@@ -28,12 +28,12 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		FBBA96F32FE8056B009FFEC3 /* iOSExploreServer */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = iOSExploreServer;
+			path = "../Sources/iOSExploreServer";
 			sourceTree = "<group>";
 		};
 		FBBA97002FE8056B009FFEC3 /* iOSExploreServerTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = iOSExploreServerTests;
+			path = "../Tests/iOSExploreServerTests";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
