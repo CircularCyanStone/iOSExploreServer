@@ -10,10 +10,10 @@ public enum ServerEvent: Sendable {
 }
 
 /// 对外门面：组合 Router + HTTPListener + 内置命令，暴露最简 API 与事件流。
-public final class ExploreServer: @unchecked Sendable {
+public final class ExploreServer: Sendable {
     private let port: UInt16
     private let router: Router
-    private var listener: HTTPListener?
+    private let listener = Mutex<HTTPListener?>(nil)
     private let eventContinuation: AsyncStream<ServerEvent>.Continuation
     private let eventStream: AsyncStream<ServerEvent>
 
@@ -46,15 +46,19 @@ public final class ExploreServer: @unchecked Sendable {
             eventContinuation.yield(event)
         }
         try await l.start()
-        self.listener = l
+        listener.withLock { $0 = l }
     }
 
     public func stop() {
-        listener?.stop()
-        listener = nil
+        listener.withLock { $0?.stop(); $0 = nil }
     }
 
     public func events() -> AsyncStream<ServerEvent> {
         eventStream
+    }
+
+    /// 测试辅助:不经网络直接路由,验证命令注册状态。
+    func routerSnapshotRoute(_ request: ExploreRequest) async -> ExploreResult {
+        await router.route(request)
     }
 }

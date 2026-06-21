@@ -58,6 +58,14 @@ func endToEndCustom() async throws {
     #expect(text.contains(#""message":"Hello, Claude""#))
 }
 
+@Test("init 后内置命令即已注册,无需 start")
+func builtinRegisteredAfterInit() async {
+    let server = ExploreServer(port: testPort)
+    // 不 start,直接经 router 验证 ping 已注册
+    let r = await server.routerSnapshotRoute(ExploreRequest(action: "ping"))
+    if case .failure = r { Issue.record("ping should be registered at init") }
+}
+
 }
 
 /// 发送一条命令并返回响应文本。
