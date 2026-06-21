@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3380D24E99B51C5F73E18474 /* iOSExploreServer in Frameworks */ = {isa = PBXBuildFile; productRef = 9EB49219D493AEC683ED12AF /* iOSExploreServer */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		FBBA972B2FE80598009FFEC3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -50,11 +54,15 @@
 		};
 		FBBA972D2FE80598009FFEC3 /* SPMExampleTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = SPMExampleTests;
 			sourceTree = "<group>";
 		};
 		FBBA97372FE80598009FFEC3 /* SPMExampleUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = SPMExampleUITests;
 			sourceTree = "<group>";
 		};
@@ -65,6 +73,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3380D24E99B51C5F73E18474 /* iOSExploreServer in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,6 +134,7 @@
 			);
 			name = SPMExample;
 			packageProductDependencies = (
+				9EB49219D493AEC683ED12AF /* iOSExploreServer */,
 			);
 			productName = SPMExample;
 			productReference = FBBA97142FE80597009FFEC3 /* SPMExample.app */;
@@ -147,8 +157,6 @@
 				FBBA972D2FE80598009FFEC3 /* SPMExampleTests */,
 			);
 			name = SPMExampleTests;
-			packageProductDependencies = (
-			);
 			productName = SPMExampleTests;
 			productReference = FBBA972A2FE80598009FFEC3 /* SPMExampleTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -170,8 +178,6 @@
 				FBBA97372FE80598009FFEC3 /* SPMExampleUITests */,
 			);
 			name = SPMExampleUITests;
-			packageProductDependencies = (
-			);
 			productName = SPMExampleUITests;
 			productReference = FBBA97342FE80598009FFEC3 /* SPMExampleUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -208,6 +214,9 @@
 			);
 			mainGroup = FBBA970B2FE80597009FFEC3;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference ".." */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FBBA97152FE80597009FFEC3 /* Products */;
 			projectDirPath = "";
@@ -591,6 +600,21 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference ".." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9EB49219D493AEC683ED12AF /* iOSExploreServer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference ".." */;
+			productName = iOSExploreServer;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = FBBA970C2FE80597009FFEC3 /* Project object */;
 }
