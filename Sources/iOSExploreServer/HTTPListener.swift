@@ -1,15 +1,6 @@
 import Foundation
 import Network
 
-// Task 7 将把 ServerEvent 移到 ExploreServer.swift。
-public enum ServerEvent: Sendable {
-    case started(port: UInt16)
-    case stopped
-    case received(method: String, path: String, action: String?)
-    case responded(status: Int, ok: Bool)
-    case error(String)
-}
-
 /// NWListener 封装：接连接 → 解析 HTTP → 路由 → 回写响应。
 /// start/stop 由调用方串行调用（App 主线程按钮），不保证并发安全启停。
 final class HTTPListener: @unchecked Sendable {
