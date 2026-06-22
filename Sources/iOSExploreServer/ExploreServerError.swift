@@ -220,6 +220,96 @@ struct ExploreServerError: Error, Sendable, Equatable {
                            logMessage: "invalid data action=\(action) message=\(message)")
     }
 
+    /// UIKit 层级采集所需的窗口、控制器或根 view 不可用。
+    static func uiHierarchyUnavailable(action: String, reason: String) -> ExploreServerError {
+        ExploreServerError(category: .command,
+                           httpStatus: 200,
+                           httpReason: "OK",
+                           code: .internalError,
+                           message: "UI hierarchy unavailable: \(reason)",
+                           logMessage: "ui hierarchy unavailable action=\(action) reason=\(reason)")
+    }
+
+    /// UIControl sendAction 目标没有找到。
+    static func uiControlTargetNotFound(action: String, target: String) -> ExploreServerError {
+        ExploreServerError(category: .command,
+                           httpStatus: 200,
+                           httpReason: "OK",
+                           code: .invalidData,
+                           message: "UIControl target not found",
+                           logMessage: "ui control target not found action=\(action) target=\(target)")
+    }
+
+    /// UIControl sendAction 目标匹配到多个视图，可能误触发。
+    static func uiControlTargetAmbiguous(action: String, target: String, count: Int) -> ExploreServerError {
+        ExploreServerError(category: .command,
+                           httpStatus: 200,
+                           httpReason: "OK",
+                           code: .invalidData,
+                           message: "UIControl target is ambiguous",
+                           logMessage: "ui control target ambiguous action=\(action) target=\(target) count=\(count)")
+    }
+
+    /// UIControl sendAction 目标存在但不是 UIControl。
+    static func uiControlTargetNotControl(action: String, target: String, type: String) -> ExploreServerError {
+        ExploreServerError(category: .command,
+                           httpStatus: 200,
+                           httpReason: "OK",
+                           code: .invalidData,
+                           message: "target view is not UIControl",
+                           logMessage: "ui control target not control action=\(action) target=\(target) type=\(type)")
+    }
+
+    /// ui.tap 没有找到目标 view。
+    static func uiTapTargetNotFound(action: String, target: String) -> ExploreServerError {
+        ExploreServerError(category: .command,
+                           httpStatus: 200,
+                           httpReason: "OK",
+                           code: .invalidData,
+                           message: "tap target not found",
+                           logMessage: "ui tap target not found action=\(action) target=\(target)")
+    }
+
+    /// ui.tap 目标匹配到多个 view。
+    static func uiTapTargetAmbiguous(action: String, target: String, count: Int) -> ExploreServerError {
+        ExploreServerError(category: .command,
+                           httpStatus: 200,
+                           httpReason: "OK",
+                           code: .invalidData,
+                           message: "tap target is ambiguous",
+                           logMessage: "ui tap target ambiguous action=\(action) target=\(target) count=\(count)")
+    }
+
+    /// ui.tap 的目标点没有命中任何 view。
+    static func uiTapHitTestFailed(action: String, target: String, x: Double, y: Double) -> ExploreServerError {
+        ExploreServerError(category: .command,
+                           httpStatus: 200,
+                           httpReason: "OK",
+                           code: .invalidData,
+                           message: "tap point did not hit any view",
+                           logMessage: "ui tap hit test failed action=\(action) target=\(target) x=\(x) y=\(y)")
+    }
+
+    /// ui.tap 按 view 定位时，中心点被其他 view 命中。
+    static func uiTapHitMismatch(action: String, target: String, hitType: String) -> ExploreServerError {
+        ExploreServerError(category: .command,
+                           httpStatus: 200,
+                           httpReason: "OK",
+                           code: .invalidData,
+                           message: "tap point hit a different view",
+                           logMessage: "ui tap hit mismatch action=\(action) target=\(target) hitType=\(hitType)")
+    }
+
+    /// ui.tap 找到了 view，但第一版无法派发非 UIControl 的真实 tap。
+    static func uiTapUnsupportedTarget(action: String, target: String, type: String) -> ExploreServerError {
+        ExploreServerError(category: .command,
+                           httpStatus: 200,
+                           httpReason: "OK",
+                           code: .invalidData,
+                           message: "tap dispatch is only supported for UIControl in this version",
+                           logMessage: "ui tap unsupported target action=\(action) target=\(target) type=\(type)")
+    }
+
     /// 鉴权失败（预留，当前 USB 物理隔离未启用校验）。
     static func unauthorized() -> ExploreServerError {
         ExploreServerError(category: .auth,

@@ -28,6 +28,76 @@
 | `ping` | 忽略 | `{ "pong": true }` |
 | `echo` | 任意对象 | 原样回显入参 `data` |
 | `info` | 忽略 | `{ "system":..., "app":..., "bundle":... }`（来自 `ProcessInfo`/`Bundle`） |
+| `ui.topViewHierarchy` | 可选筛选参数 | 当前顶部控制器 view 层级或匹配节点列表（UIKit 平台） |
+| `ui.control.sendAction` | `accessibilityIdentifier` 或 `path` + `event` | 向指定 UIControl 发送 target-action 事件（UIKit 平台） |
+| `ui.tap` | `accessibilityIdentifier`、`path` 或 window 坐标 | 命中测试后执行点击语义（第一版 UIControl fallback） |
+
+## UIKit 命令
+
+### `ui.topViewHierarchy`
+
+返回当前前台 window 的顶部控制器 view 及其全部子视图的结构化快照。常用请求：
+
+```bash
+curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy"}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":{"maxDepth":2}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":{"accessibilityIdentifierPrefix":"mine."}}'
+```
+
+可选参数：
+
+- `detailLevel`: `basic` / `appearance` / `full`，默认 `appearance`。
+- `maxDepth`: 最大递归深度，`0` 表示只返回根 view。
+- `includeHidden`: 是否包含隐藏 view，默认 `false`。
+- `accessibilityIdentifier`: 按 identifier 精确筛选。
+- `accessibilityIdentifierPrefix`: 按 identifier 前缀筛选。
+
+无筛选时响应 `data.root` 是完整树；带 identifier 筛选时响应 `data.matches` 是匹配节点列表。每个节点包含 `path`、`type`、accessibility 字段、`frame`、`bounds`、`state`、`text`、`appearance`、`control`、`image`、`scroll` 和 `subviews`。
+
+### `ui.control.sendAction`
+
+向当前顶部控制器 view 层级中的指定 `UIControl` 发送 target-action 事件。常用请求：
+
+```bash
+curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data":{"accessibilityIdentifier":"mine.header.avatar","event":"touchUpInside"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data":{"path":"root/0/2/1","event":"valueChanged"}}'
+```
+
+定位参数二选一：
+
+- `accessibilityIdentifier`: 按业务层设置的 identifier 精确定位。若匹配多个 view，会返回 `invalid_data`，避免误触发。
+- `path`: 使用 `ui.topViewHierarchy` 返回的只读路径，例如 `root/0/2/1`。
+
+事件名：
+
+- `touchDown`
+- `touchUpInside`
+- `valueChanged`
+- `editingChanged`
+- `editingDidBegin`
+- `editingDidEnd`
+
+成功响应包含 `sent`、`event`、`path`、`type`、`accessibilityIdentifier`、`isEnabled`、`isSelected`、`isHighlighted`。该命令只调用 `UIControl.sendActions(for:)`，不模拟真实触摸坐标、命中测试或控件高亮过程；需要真实点击时应使用后续独立的 `ui.tap`。
+
+### `ui.tap`
+
+执行更接近用户点击语义的操作。第一版会先做 `window.hitTest` 校验，再对命中的 `UIControl` 使用 `.touchUpInside` fallback：
+
+```bash
+curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"accessibilityIdentifier":"mine.header.avatar"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"path":"root/0/2/1"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"x":120,"y":300,"coordinateSpace":"window"}}'
+```
+
+定位方式三选一：
+
+- `accessibilityIdentifier`: 按业务 identifier 精确定位 view。
+- `path`: 按 `ui.topViewHierarchy` 返回的只读路径定位 view。
+- `x` + `y`: 直接使用 window 坐标；`coordinateSpace` 第一版仅支持 `window`。
+
+按 view 定位时，命令取目标 view 中心点转换到 window 坐标，并校验 `hitTest` 命中的 view 是目标或其子孙/祖先关系中的相关 view。如果中心点被其他 view 遮挡，会返回 `invalid_data`。
+
+成功响应包含 `tapped`、`dispatchMode`、`event`、`x`、`y`、`target`、`hitType`、`hitPath`、`controlType`、`controlPath`、`accessibilityIdentifier`。第一版 `dispatchMode` 为 `controlActionFallback`，表示内部调用 `UIControl.sendActions(for: .touchUpInside)`；非 UIControl 暂不伪造系统触摸事件，会返回明确不支持。
 
 ## 注册自定义命令
 
@@ -52,6 +122,9 @@ await server.register(action: "greet") { req in
 curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 curl -X POST http://localhost:38321/ -d '{"action":"info"}'
 curl -X POST http://localhost:38321/ -d '{"action":"greet","data":{"name":"Claude"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":{"maxDepth":2}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data":{"accessibilityIdentifier":"mine.header.avatar","event":"touchUpInside"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"accessibilityIdentifier":"mine.header.avatar"}}'
 ```
 
 - 模拟器无需 iproxy：Mac 与模拟器共享网络栈，直接 `curl http://127.0.0.1:38321/` 即可（前提模拟器 App 已启动 Server）。

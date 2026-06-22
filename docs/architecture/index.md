@@ -36,12 +36,14 @@ curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ :38321 ──
 | `HTTPListener.swift` | `NWListener` 封装 | 串行 network queue；session map；连接上限；ready 后继续观测 listener 状态 |
 | `ExploreServer.swift` | 对外门面 + `ServerEvent` 事件流 | `start()/stop()/register()/events()`；内置命令只注册一次 |
 | `Handlers/BuiltinHandlers.swift` | ping/echo/info | 库内只用 `ProcessInfo`/`Bundle`，**不用 UIDevice** |
+| `Handlers/UIKit/` | 可选 UIKit 内置命令包 | `#if canImport(UIKit)` 隔离；当前提供 `ui.topViewHierarchy`、`ui.control.sendAction`、`ui.tap` |
 
 ## 模块边界与共享源码
 
 - **SPM 包**（根 `Package.swift` + `Sources/` + `Tests/`）是主交付物，`swift test` 跑这里。
 - **framework 工程**（`iOSExploreServer/iOSExploreServer.xcodeproj`）的 `PBXFileSystemSynchronizedRootGroup` 指向 `../Sources/iOSExploreServer/`——与 SPM **共享同一份源码**，零漂移。改源码只改一处。
 - **SPMExample**（`Examples/`）是 UIKit App，通过本地 SPM 依赖消费库；它才允许 `import UIKit`，并在 App 层注册需要 UIKit 的 handler（如 `device`）。
+- **UIKit 内置命令包**位于共享源码内，但所有直接 UIKit 访问都用条件编译隔离。Foundation-only 的层级模型和筛选逻辑可在 macOS `swift test` 中覆盖；真实 `UIView` 采集只在 UIKit 平台编译执行。
 
 ## 并发模型
 
@@ -69,3 +71,21 @@ curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ :38321 ──
 - 新增错误出口必须先在 `ExploreServerError` 增加工厂方法，再由该对象生成 HTTP response、业务 failure 和日志。
 - `ExploreServerError` 同时持有 `httpStatus`、`httpReason`、`ExploreError code`、对外 `message` 和内部 `logMessage`，避免调用点分别拼接导致语义漂移。
 - `HTTPParser.parseRequestResult` 的 `.invalid`、`ClientSession` 的超时/请求校验、`HTTPListener` 的端口/连接上限、`Router` 的 unknown/invalid/throw 都应统一使用该类型。
+
+## UIKit 层级快照
+
+`ui.topViewHierarchy` 是首个 UIKit 内置命令，用于返回当前 foreground window 顶部控制器 view 及其子视图信息。命令在 `MainActor` 上读取 UIKit 状态，输出结构化节点：
+
+- 定位：`path`，例如 `root/0/2/1`，只读且不写回业务 UI。
+- 语义：`accessibilityIdentifier`、`accessibilityLabel`、`accessibilityValue`、`accessibilityHint`。
+- 布局：`frame`、`bounds`。
+- 状态：hidden、alpha、opaque、userInteractionEnabled。
+- 验收：文本、字体、文本色、背景色、tint、圆角、边框、控件状态、图片尺寸、滚动信息。
+
+优先用业务层设置的 `accessibilityIdentifier` 做稳定语义锚点；缺失时用 `path` 描述快照内位置。命令不主动设置 identifier。
+
+`Handlers/UIKit/Utils/` 集中保存 UIKit view 定位能力：当前前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、命中 view 与目标 view 的祖先关系判断。后续 UIKit 命令应复用该目录，不要各自重新实现路径解析和遍历。
+
+`ui.control.sendAction` 复用同一套顶部控制器根 view 和 `path` 规则，按 `accessibilityIdentifier` 或 `path` 定位目标，校验目标是 `UIControl` 后在 `MainActor` 调用 `sendActions(for:)`。该命令触发 target-action，不模拟真实触摸坐标、命中测试或高亮过程。
+
+`ui.tap` 表达更接近用户点击的语义：按 `accessibilityIdentifier` / `path` 定位 view 后取中心点，或直接使用 window 坐标，先用 `window.hitTest` 校验实际命中。第一版对 UIControl 使用 `.touchUpInside` fallback，并在响应中标记 `dispatchMode=controlActionFallback`；非 UIControl 会返回明确不支持，避免伪造不稳定的私有触摸事件。

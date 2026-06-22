@@ -54,15 +54,11 @@
 		};
 		FBBA972D2FE80598009FFEC3 /* SPMExampleTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = SPMExampleTests;
 			sourceTree = "<group>";
 		};
 		FBBA97372FE80598009FFEC3 /* SPMExampleUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = SPMExampleUITests;
 			sourceTree = "<group>";
 		};
@@ -215,7 +211,7 @@
 			mainGroup = FBBA970B2FE80597009FFEC3;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference ".." */,
+				197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference "../../" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FBBA97152FE80597009FFEC3 /* Products */;
@@ -602,7 +598,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference ".." */ = {
+		197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference "../../" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../;
 		};
@@ -611,7 +607,7 @@
 /* Begin XCSwiftPackageProductDependency section */
 		9EB49219D493AEC683ED12AF /* iOSExploreServer */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference ".." */;
+			package = 197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference "../../" */;
 			productName = iOSExploreServer;
 		};
 /* End XCSwiftPackageProductDependency section */

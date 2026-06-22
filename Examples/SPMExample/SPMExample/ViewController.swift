@@ -24,6 +24,14 @@ final class ViewController: UIViewController {
         setupLayout()
         updateStatus(running: false)
 
+        // 顶部导航入口：进入 UIControl 测试页（供 ui.control.sendAction 命令压测）
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            title: "控件测试",
+            style: .plain,
+            target: self,
+            action: #selector(openControlTest)
+        )
+
         // 演示自定义命令 + UIKit 信息注入(register 同步,无需 Task)
         server.register(action: "greet", description: "按 name 打招呼") { req in
             let name = req.data["name"]?.stringValue ?? "world"
@@ -41,7 +49,13 @@ final class ViewController: UIViewController {
             for await event in server.events() {
                 guard let self else { return }
                 self.appendLog(Self.describe(event))
-                self.updateStatus(running: event.isRunning)
+                // 只有生命周期事件改变运行状态；请求/响应事件只记日志，
+                // 否则每来一个 curl 都会把 UI 误显示为「已停止」（server 其实仍在监听）。
+                switch event {
+                case .started: self.updateStatus(running: true)
+                case .stopped, .error: self.updateStatus(running: false)
+                case .received, .responded: break
+                }
             }
         }
     }
@@ -94,6 +108,11 @@ final class ViewController: UIViewController {
         server.stop()
     }
 
+    /// push 进入 UIControl 测试页（载体页供 ui.control.sendAction 远程触发）。
+    @objc private func openControlTest() {
+        navigationController?.pushViewController(ControlTestViewController(), animated: true)
+    }
+
     @MainActor
     private func updateStatus(running: Bool) {
         statusLabel.text = running ? "● 监听中 :\(serverPort)" : "○ 已停止"
@@ -117,13 +136,6 @@ final class ViewController: UIViewController {
         case .responded(let status, let ok): return "→ \(status) ok=\(ok)"
         case .error(let msg): return "error \(msg)"
         }
-    }
-}
-
-private extension ServerEvent {
-    var isRunning: Bool {
-        if case .started = self { return true }
-        return false
     }
 }
 
