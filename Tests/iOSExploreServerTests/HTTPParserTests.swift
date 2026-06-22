@@ -19,6 +19,14 @@ func parseIncomplete() {
     #expect(HTTPParser.parseRequest(from: raw) == nil)
 }
 
+@Test("非法 Content-Length 返回 nil")
+func parseInvalidContentLength() {
+    let nonNumeric = Data("POST / HTTP/1.1\r\nContent-Length: abc\r\n\r\n{}".utf8)
+    let negative = Data("POST / HTTP/1.1\r\nContent-Length: -1\r\n\r\n{}".utf8)
+    #expect(HTTPParser.parseRequest(from: nonNumeric) == nil)
+    #expect(HTTPParser.parseRequest(from: negative) == nil)
+}
+
 @Test("从 body 提取 ExploreRequest")
 func exploreRequestFromBody() throws {
     let body = Data(#"{"action":"echo","data":{"x":1}}"#.utf8)
