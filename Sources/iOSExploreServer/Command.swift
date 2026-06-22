@@ -1,6 +1,6 @@
 import Foundation
 
-/// 参数类型,与 JSONValue 同构:使 schema 与 data 载荷类型系统统一演进。
+/// 参数类型,覆盖 JSONValue 的非 null 类型(string/number/boolean/object/array)。
 public enum ParameterKind: String, Sendable {
     case string, number, boolean, object, array
 }

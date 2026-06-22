@@ -15,8 +15,8 @@
 ## Common commands
 
 - 构建 SPM 库：`swift build`
-- 测试（含真实 TCP 端到端）：`swift test`（22 个；集成测试用端口 38399）
-- 覆盖率：`swift test --enable-code-coverage`（当前 89.91%）
+- 测试（含真实 TCP 端到端）：`swift test`（33 个；集成测试用端口 38399）
+- 覆盖率：`swift test --enable-code-coverage`（当前 91.19%）
 - 构建 framework 工程：`xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator build`
 - 构建/运行测试 App：Xcode 打开 `Examples/SPMExample/SPMExample.xcodeproj`，选真机或模拟器 → Run
 - 起 USB 转发：`./scripts/proxy.sh`（前台运行，Ctrl-C 停）

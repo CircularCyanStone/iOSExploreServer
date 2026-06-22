@@ -50,7 +50,8 @@ public final class ExploreServer: Sendable {
     }
 
     public func stop() {
-        listener.withLock { $0?.stop(); $0 = nil }
+        let previous = listener.withLock { let prev = $0; $0 = nil; return prev }
+        previous?.stop()
     }
 
     public func events() -> AsyncStream<ServerEvent> {
