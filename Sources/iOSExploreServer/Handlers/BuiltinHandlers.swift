@@ -12,7 +12,8 @@ struct PingCommand: Command {
 
     /// 返回 `{ "pong": true }`。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
-        .success(["pong": .bool(true)])
+        ExploreLogger.debug(.command, "command ping handled")
+        return .success(["pong": .bool(true)])
     }
 }
 
@@ -28,7 +29,8 @@ struct EchoCommand: Command {
 
     /// 原样返回请求中的 `data`。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
-        .success(request.data)
+        ExploreLogger.debug(.command, "command echo handled keys=\(request.data.storage.count)")
+        return .success(request.data)
     }
 }
 
@@ -45,6 +47,7 @@ struct InfoCommand: Command {
 
     /// 返回 `ProcessInfo` 和 `Bundle.main` 可取得的基础信息。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
+        ExploreLogger.debug(.command, "command info handled")
         let processInfo = ProcessInfo.processInfo
         let bundle = Bundle.main
         let info: JSON = [
@@ -75,6 +78,7 @@ struct HelpCommand: Command {
 
     /// 读取当前命令元数据并转换为 JSON 数组。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
+        ExploreLogger.debug(.command, "command help handled")
         let entries: [JSONValue] = router.commandMetadata().map { entry in
             let params: [JSONValue] = entry.parameters.map { p in
                 .object(JSON([
@@ -100,6 +104,7 @@ struct HelpCommand: Command {
 enum BuiltinHandlers {
     /// 把内置命令注册进 router（同步）。
     static func registerAll(into router: Router) {
+        ExploreLogger.info(.command, "builtin handlers register all")
         router.register(PingCommand())
         router.register(EchoCommand())
         router.register(InfoCommand())

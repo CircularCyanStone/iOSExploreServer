@@ -26,7 +26,7 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 请求：`POST /`，body `{"action":"<name>","data":{...}}`。
 响应：`{"ok":true,"data":{...}}` 或 `{"ok":false,"error":{"code":"...","message":"..."}}`。
 
-内置命令：`ping`、`echo`、`info`。
+内置命令：`ping`、`echo`、`info`、`help`。
 
 ### 注册自定义命令
 
@@ -36,6 +36,19 @@ await server.register(action: "greet") { req in
     return .success(["message": .string("Hello, \(name)")])
 }
 ```
+
+## 调试日志
+
+组件默认不输出内部日志。调试时在 App 启动阶段开启：
+
+```swift
+ExploreLogging.setEnabled(true)
+ExploreLogging.setMinimumLevel(.debug)
+```
+
+日志走 Apple Unified Logging，subsystem 为 `iOSExploreServer`，category 包括
+`server`、`listener`、`http`、`router`、`command`。可在 Xcode 控制台或 macOS
+Console 中按 subsystem/category 过滤查看。
 
 ## 开发
 

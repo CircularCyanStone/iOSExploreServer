@@ -27,6 +27,48 @@ func parseInvalidContentLength() {
     #expect(HTTPParser.parseRequest(from: negative) == nil)
 }
 
+@Test("非法 Content-Length 在三态解析中返回 invalid")
+func parseInvalidContentLengthResult() {
+    let raw = Data("POST / HTTP/1.1\r\nContent-Length: abc\r\n\r\n{}".utf8)
+    let result = HTTPParser.parseRequestResult(from: raw)
+    if case .invalid(let error) = result {
+        #expect(error.code == .badRequest)
+        #expect(error.message.contains("Content-Length"))
+    } else {
+        Issue.record("expected invalid parse result")
+    }
+}
+
+@Test("header 超过上限时返回 invalid 而不是继续等待")
+func parseHeaderTooLargeResult() {
+    let raw = Data("POST / HTTP/1.1\r\nX-Fill: \(String(repeating: "x", count: 128))".utf8)
+    let result = HTTPParser.parseRequestResult(from: raw,
+                                               limits: HTTPParseLimits(maxHeaderBytes: 32,
+                                                                       maxBodyBytes: 1024,
+                                                                       maxRequestBytes: 2048))
+    if case .invalid(let error) = result {
+        #expect(error.code == .badRequest)
+        #expect(error.message.contains("header"))
+    } else {
+        Issue.record("expected invalid parse result")
+    }
+}
+
+@Test("Content-Length 超过 body 上限时返回 invalid")
+func parseBodyTooLargeResult() {
+    let raw = Data("POST / HTTP/1.1\r\nContent-Length: 2048\r\n\r\n{}".utf8)
+    let result = HTTPParser.parseRequestResult(from: raw,
+                                               limits: HTTPParseLimits(maxHeaderBytes: 1024,
+                                                                       maxBodyBytes: 64,
+                                                                       maxRequestBytes: 4096))
+    if case .invalid(let error) = result {
+        #expect(error.code == .badRequest)
+        #expect(error.message.contains("body"))
+    } else {
+        Issue.record("expected invalid parse result")
+    }
+}
+
 @Test("从 body 提取 ExploreRequest")
 func exploreRequestFromBody() throws {
     let body = Data(#"{"action":"echo","data":{"x":1}}"#.utf8)

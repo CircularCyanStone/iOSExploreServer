@@ -37,7 +37,7 @@ final class ViewController: UIViewController {
         }
 
         // 订阅事件 → 日志面板
-        eventsTask = Task { @MainActor [weak self] in
+        eventsTask = Task { @MainActor [weak self, server] in
             for await event in server.events() {
                 guard let self else { return }
                 self.appendLog(Self.describe(event))

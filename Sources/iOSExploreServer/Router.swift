@@ -19,6 +19,7 @@ public final class Router: Sendable {
     /// 如果同名 action 已存在，新命令会覆盖旧命令。注册过程同步完成，不会触发 handler。
     public func register(_ command: any Command) {
         handlers.withLock { $0[command.action] = command }
+        ExploreLogger.info(.router, "router registered action=\(command.action)")
     }
 
     /// 注册一个闭包命令。
@@ -45,18 +46,31 @@ public final class Router: Sendable {
     /// `ExploreResult.failure`，再由 `HTTPParser.response(for:)` 包装为 HTTP 200 的业务失败
     /// envelope。
     func route(_ request: ExploreRequest) async -> ExploreResult {
+        ExploreLogger.debug(.router, "router route start action=\(request.action)")
         let command = handlers.withLock { $0[request.action] }
         guard let command else {
-            return .failure(code: .unknownAction,
-                            message: "no handler for '\(request.action)'")
+            let error = ExploreServerError.unknownAction(request.action)
+            ExploreLogger.error(.router, "router route failed category=\(error.category.rawValue) message=\(error.logMessage)")
+            return .failure(code: error.code, message: error.message)
         }
         if let msg = Self.validate(request.data, against: command.parameters) {
-            return .failure(code: .invalidData, message: msg)
+            let error = ExploreServerError.invalidData(action: request.action, message: msg)
+            ExploreLogger.error(.router, "router route failed category=\(error.category.rawValue) message=\(error.logMessage)")
+            return .failure(code: error.code, message: error.message)
         }
         do {
-            return try await command.handle(request)
+            let result = try await command.handle(request)
+            switch result {
+            case .success:
+                ExploreLogger.info(.router, "router route success action=\(request.action)")
+            case .failure(let code, let message):
+                ExploreLogger.error(.router, "router route business failure action=\(request.action) code=\(code.rawValue) message=\(message)")
+            }
+            return result
         } catch {
-            return .failure(code: .internalError, message: error.localizedDescription)
+            let serverError = ExploreServerError.handlerThrown(action: request.action, error: error)
+            ExploreLogger.error(.router, "router route failed category=\(serverError.category.rawValue) message=\(serverError.logMessage)")
+            return .failure(code: serverError.code, message: serverError.message)
         }
     }
 
@@ -65,9 +79,11 @@ public final class Router: Sendable {
     /// `help` 命令用它生成工具列表。方法只在锁内读取字典并生成轻量元组，不执行任何
     /// handler，也不保证返回顺序稳定。
     func commandMetadata() -> [(action: String, description: String, parameters: [CommandParameter])] {
-        handlers.withLock { dict in
+        let metadata = handlers.withLock { dict in
             dict.values.map { ($0.action, $0.description, $0.parameters) }
         }
+        ExploreLogger.debug(.router, "router metadata snapshot count=\(metadata.count)")
+        return metadata
     }
 
     /// 根据命令声明的参数 schema 校验请求 data。

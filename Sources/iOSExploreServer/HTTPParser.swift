@@ -1,5 +1,27 @@
 import Foundation
 
+/// 从累积 buffer 解析 HTTP 请求时使用的大小限制。
+struct HTTPParseLimits: Sendable, Equatable {
+    let maxHeaderBytes: Int
+    let maxBodyBytes: Int
+    let maxRequestBytes: Int
+
+    init(maxHeaderBytes: Int = 16 * 1024,
+         maxBodyBytes: Int = 1024 * 1024,
+         maxRequestBytes: Int = 1024 * 1024) {
+        self.maxHeaderBytes = maxHeaderBytes
+        self.maxBodyBytes = maxBodyBytes
+        self.maxRequestBytes = maxRequestBytes
+    }
+}
+
+/// HTTP 请求解析三态：完整、未完成、明确非法。
+enum HTTPParseResult: Sendable, Equatable {
+    case complete(request: HTTPRequest, consumed: Int)
+    case incomplete
+    case invalid(ExploreServerError)
+}
+
 /// HTTP 报文和命令 envelope 的解析/组装工具。
 ///
 /// 该类型没有状态，只负责把字节层 HTTP 请求转换为库内部值类型，并把 `ExploreResult`
@@ -15,16 +37,42 @@ enum HTTPParser {
     /// 返回值中的 `consumed` 表示本次请求消耗的字节数，当前 listener 一连接只处理一个请求，
     /// 因此暂不使用剩余字节。
     static func parseRequest(from buffer: Data) -> (request: HTTPRequest, consumed: Int)? {
-        guard let sepRange = buffer.range(of: headerSeparator) else { return nil }
+        if case .complete(let request, let consumed) = parseRequestResult(from: buffer) {
+            return (request, consumed)
+        }
+        return nil
+    }
+
+    /// 从累积 buffer 解析一个完整 HTTP/1.1 请求，并区分未完成与明确非法。
+    static func parseRequestResult(from buffer: Data,
+                                   limits: HTTPParseLimits = HTTPParseLimits()) -> HTTPParseResult {
+        if buffer.count > limits.maxRequestBytes {
+            return .invalid(.requestTooLarge())
+        }
+        guard let sepRange = buffer.range(of: headerSeparator) else {
+            if buffer.count > limits.maxHeaderBytes {
+                return .invalid(.headerTooLarge())
+            }
+            return .incomplete
+        }
+        guard sepRange.lowerBound <= limits.maxHeaderBytes else {
+            return .invalid(.headerTooLarge())
+        }
         let headerData = buffer[..<sepRange.lowerBound]
-        guard let headerText = String(data: headerData, encoding: .utf8) else { return nil }
+        guard let headerText = String(data: headerData, encoding: .utf8) else {
+            return .invalid(.invalidHeaderEncoding())
+        }
 
         var lines = headerText.components(separatedBy: "\r\n")
-        guard let requestLine = lines.first else { return nil }
+        guard let requestLine = lines.first, !requestLine.isEmpty else {
+            return .invalid(.missingRequestLine())
+        }
         lines.removeFirst()
 
         let parts = requestLine.components(separatedBy: " ")
-        guard parts.count == 3 else { return nil }
+        guard parts.count == 3 else {
+            return .invalid(.invalidRequestLine())
+        }
         let method = parts[0]
         let path = parts[1]
 
@@ -38,17 +86,22 @@ enum HTTPParser {
 
         let contentLength: Int
         if let rawContentLength = headers["content-length"] {
-            guard let parsedLength = Int(rawContentLength), parsedLength >= 0 else { return nil }
+            guard let parsedLength = Int(rawContentLength), parsedLength >= 0 else {
+                return .invalid(.invalidContentLength(rawContentLength))
+            }
+            guard parsedLength <= limits.maxBodyBytes else {
+                return .invalid(.bodyTooLarge())
+            }
             contentLength = parsedLength
         } else {
             contentLength = 0
         }
         let bodyStart = sepRange.upperBound
-        guard buffer.count - bodyStart >= contentLength else { return nil }
+        guard buffer.count - bodyStart >= contentLength else { return .incomplete }
         let body = buffer[bodyStart..<(bodyStart + contentLength)]
 
-        return (HTTPRequest(method: method, path: path, headers: headers, body: Data(body)),
-                bodyStart + contentLength)
+        return .complete(request: HTTPRequest(method: method, path: path, headers: headers, body: Data(body)),
+                         consumed: bodyStart + contentLength)
     }
 
     /// 从 HTTP body 解析出命令请求。
@@ -85,10 +138,18 @@ enum HTTPParser {
     ///
     /// 非 `POST /`、非法 JSON、缺少 action 等问题无法进入业务路由，因此用非 200 HTTP
     /// 状态码配合同样的 envelope 结构返回。
-    static func errorResponse(status: Int, reason: String,
-                              code: ExploreError, message: String) -> HTTPResponse {
+    private static func errorResponse(status: Int, reason: String,
+                                      code: ExploreError, message: String) -> HTTPResponse {
         let error: JSON = ["code": .string(code.rawValue), "message": .string(message)]
         let body: JSON = ["ok": .bool(false), "error": .object(error)]
         return HTTPResponse(status: status, reason: reason, body: JSONCoder.encode(body))
+    }
+
+    /// 用统一错误对象构造通信层错误响应。
+    static func errorResponse(for error: ExploreServerError) -> HTTPResponse {
+        errorResponse(status: error.httpStatus,
+                      reason: error.httpReason,
+                      code: error.code,
+                      message: error.message)
     }
 }

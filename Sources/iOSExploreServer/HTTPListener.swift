@@ -10,14 +10,56 @@ import Network
 /// `start`/`stop` 约定由调用方串行调用（通常是 App 主线程按钮），因此该类以
 /// `@unchecked Sendable` 标注。共享可变状态不会跨模块暴露。
 final class HTTPListener: @unchecked Sendable {
+    struct Configuration: Sendable, Equatable {
+        let maxConnections: Int
+        let session: ClientSession.Configuration
+
+        init(maxConnections: Int = 4,
+             session: ClientSession.Configuration = ClientSession.Configuration()) {
+            self.maxConnections = maxConnections
+            self.session = session
+        }
+
+        static let `default` = Configuration()
+
+        static func testing(maxConnections: Int = 4,
+                            maxHeaderBytes: Int = 16 * 1024,
+                            maxBodyBytes: Int = 1024 * 1024,
+                            maxRequestBytes: Int = 1024 * 1024,
+                            readTimeoutNanoseconds: UInt64 = 10_000_000_000,
+                            commandTimeoutNanoseconds: UInt64 = 10_000_000_000) -> Configuration {
+            Configuration(maxConnections: maxConnections,
+                          session: ClientSession.Configuration(
+                            parseLimits: HTTPParseLimits(maxHeaderBytes: maxHeaderBytes,
+                                                         maxBodyBytes: maxBodyBytes,
+                                                         maxRequestBytes: maxRequestBytes),
+                            readTimeoutNanoseconds: readTimeoutNanoseconds,
+                            commandTimeoutNanoseconds: commandTimeoutNanoseconds))
+        }
+    }
+
+    private struct ListenerState {
+        var nextSessionNumber = 0
+        var sessions: [String: ClientSession] = [:]
+    }
+
     /// TCP 监听端口。
     private let port: UInt16
 
     /// 命令路由器。连接处理任务只捕获该引用，不捕获 `self`。
     private let router: Router
 
+    /// listener/session 资源限制配置。
+    private let configuration: Configuration
+
     /// 事件回调。由 `ExploreServer` 转发到 `AsyncStream`。
     private let onEvent: @Sendable (ServerEvent) -> Void
+
+    /// Network.framework 回调使用的串行队列。
+    private let networkQueue = DispatchQueue(label: "iOSExploreServer.network")
+
+    /// 当前活跃 session。所有访问必须通过锁。
+    private let state = Mutex(ListenerState())
 
     /// Network.framework listener 实例。
     private var listener: NWListener?
@@ -30,15 +72,20 @@ final class HTTPListener: @unchecked Sendable {
     ///   - onEvent: 服务事件回调。
     /// - Throws: 端口非法或 `NWListener` 创建失败时抛错。
     init(port: UInt16, router: Router,
+         configuration: Configuration = .default,
          onEvent: @escaping @Sendable (ServerEvent) -> Void) throws {
         self.port = port
         self.router = router
+        self.configuration = configuration
         self.onEvent = onEvent
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
-            throw NSError(domain: "HTTPListener", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "invalid port \(port)"])
+            let error = ExploreServerError.invalidPort(port)
+            ExploreLogger.error(.listener, error.logMessage)
+            throw error.nsError
         }
         self.listener = try NWListener(using: .tcp, on: nwPort)
+        self.listener?.newConnectionLimit = max(configuration.maxConnections + 1, 2)
+        ExploreLogger.debug(.listener, "listener initialized port=\(port)")
     }
 
     /// 启动监听并等待端口 ready。
@@ -47,11 +94,13 @@ final class HTTPListener: @unchecked Sendable {
     /// 调用方抛错。
     func start() async throws {
         guard let listener else { return }
+        ExploreLogger.info(.listener, "listener start requested port=\(port)")
         listener.newConnectionHandler = { [weak self] conn in
             self?.handle(conn)
         }
-        try await Self.startAndWaitUntilReady(listener)
+        try await startAndWaitUntilReady(listener)
         onEvent(.started(port: port))
+        ExploreLogger.info(.listener, "listener ready port=\(port)")
     }
 
     /// 启动 `NWListener` 并等待它从 setup 进入 ready 状态。
@@ -59,33 +108,65 @@ final class HTTPListener: @unchecked Sendable {
     /// `NWListener.start(queue:)` 本身立即返回，不能表示端口已经可用。这里先绑定
     /// `stateUpdateHandler` 再启动 listener，避免 ready/failed 状态在 handler 安装前发生，
     /// 导致 `start()` 永远等不到 continuation 回调。
-    private static func startAndWaitUntilReady(_ listener: NWListener) async throws {
+    private func startAndWaitUntilReady(_ listener: NWListener) async throws {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            let didResume = Mutex(false)
             listener.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
-                    listener.stateUpdateHandler = nil   // 防 continuation 重入
-                    cont.resume()
+                    ExploreLogger.info(.listener, "listener state ready")
+                    if didResume.withLock({ value in
+                        if value { return false }
+                        value = true
+                        return true
+                    }) {
+                        cont.resume()
+                    }
                 case .failed(let err):
-                    listener.stateUpdateHandler = nil
-                    cont.resume(throwing: err)
+                    ExploreLogger.error(.listener, "listener state failed error=\(err)")
+                    if didResume.withLock({ value in
+                        if value { return false }
+                        value = true
+                        return true
+                    }) {
+                        cont.resume(throwing: err)
+                    } else {
+                        self.onEvent(.error("listener failed: \(err)"))
+                    }
                 case .cancelled:
-                    listener.stateUpdateHandler = nil
-                    cont.resume(throwing: NSError(domain: "HTTPListener", code: 2,
-                        userInfo: [NSLocalizedDescriptionKey: "listener cancelled"]))
+                    ExploreLogger.error(.listener, "listener state cancelled before ready")
+                    if didResume.withLock({ value in
+                        if value { return false }
+                        value = true
+                        return true
+                    }) {
+                        cont.resume(throwing: ExploreServerError.listenerCancelled().nsError)
+                    }
+                case .waiting(let err):
+                    ExploreLogger.error(.listener, "listener state waiting error=\(err)")
                 default:
                     break   // .setup 等中间态忽略
                 }
             }
-            listener.start(queue: .global())
+            listener.start(queue: networkQueue)
         }
     }
 
     /// 停止监听并发送 stopped 事件。
     func stop() {
+        ExploreLogger.info(.listener, "listener stop requested")
+        let sessions = state.withLock { state -> [ClientSession] in
+            let sessions = Array(state.sessions.values)
+            state.sessions.removeAll()
+            return sessions
+        }
+        for session in sessions {
+            session.close(reason: "listener_stop")
+        }
         listener?.cancel()
         listener = nil
         onEvent(.stopped)
+        ExploreLogger.info(.listener, "listener stopped")
     }
 
     /// 处理单条 TCP 连接。
@@ -93,67 +174,46 @@ final class HTTPListener: @unchecked Sendable {
     /// 当前协议是一请求一响应：读取到完整 HTTP 请求后立即处理并关闭连接，不支持 keep-alive、
     /// pipelining 或 chunked transfer encoding。
     private func handle(_ conn: NWConnection) {
-        conn.start(queue: .global())
-        Task { [router, onEvent] in
-            var buffer = Data()
-            var request: HTTPRequest?
-            while request == nil {
-                guard let chunk = await Self.receive(conn) else { conn.cancel(); return }
-                buffer.append(chunk)
-                if buffer.count > 1_000_000 { conn.cancel(); return } // 上限保护
-                request = HTTPParser.parseRequest(from: buffer)?.request
-            }
-            await Self.process(request: request!, on: conn, router: router, onEvent: onEvent)
+        ExploreLogger.debug(.listener, "connection accepted")
+        let sessionID = state.withLock { state -> String? in
+            guard state.sessions.count < configuration.maxConnections else { return nil }
+            state.nextSessionNumber += 1
+            return "s\(state.nextSessionNumber)"
         }
-    }
-
-    /// 执行单条已解析 HTTP 请求。
-    ///
-    /// 通信层错误直接生成非 200 响应；成功解析出的命令请求交给 `Router`，业务失败仍以
-    /// HTTP 200 + `ok:false` envelope 返回。
-    private static func process(request: HTTPRequest, on conn: NWConnection,
-                                router: Router,
-                                onEvent: @Sendable (ServerEvent) -> Void) async {
-        // 非法方法/路径
-        guard request.method == "POST", request.path == "/" else {
-            send(HTTPParser.errorResponse(status: 400, reason: "Bad Request",
-                                          code: .badRequest,
-                                          message: "only POST / is supported"), on: conn)
-            onEvent(.responded(status: 400, ok: false))
+        guard let sessionID else {
+            let error = ExploreServerError.tooManyConnections(limit: configuration.maxConnections)
+            ExploreLogger.error(.listener, error.logMessage)
+            Self.reject(conn, queue: networkQueue, error: error)
             return
         }
-        // 解析 action
-        guard let exploreReq = HTTPParser.exploreRequest(from: request.body) else {
-            send(HTTPParser.errorResponse(status: 400, reason: "Bad Request",
-                                          code: .badRequest,
-                                          message: "invalid JSON or missing 'action'"), on: conn)
-            onEvent(.responded(status: 400, ok: false))
-            return
+        let session = ClientSession(sessionID: sessionID,
+                                    connection: conn,
+                                    router: router,
+                                    configuration: configuration.session,
+                                    networkQueue: networkQueue,
+                                    onEvent: onEvent) { [weak self] closedID in
+            self?.removeSession(closedID)
         }
-        onEvent(.received(method: request.method, path: request.path, action: exploreReq.action))
-        let result = await router.route(exploreReq)
-        send(HTTPParser.response(for: result), on: conn)
-        let ok: Bool
-        if case .success = result { ok = true } else { ok = false }
-        onEvent(.responded(status: 200, ok: ok))
+        state.withLock { $0.sessions[sessionID] = session }
+        session.start()
     }
 
-    /// 从连接中异步读取一段数据。
-    ///
-    /// 返回 `nil` 表示读取失败或连接错误；调用方会直接关闭连接。
-    private static func receive(_ conn: NWConnection) async -> Data? {
-        await withCheckedContinuation { (cont: CheckedContinuation<Data?, Never>) in
-            conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, _, error in
-                if error != nil { cont.resume(returning: nil) }
-                else { cont.resume(returning: data) }
+    private func removeSession(_ sessionID: String) {
+        let remaining = state.withLock { state -> Int in
+            state.sessions.removeValue(forKey: sessionID)
+            return state.sessions.count
+        }
+        ExploreLogger.debug(.listener, "session removed id=\(sessionID) active=\(remaining)")
+    }
+
+    private static func reject(_ conn: NWConnection, queue: DispatchQueue, error: ExploreServerError) {
+        let response = HTTPParser.errorResponse(for: error)
+        conn.start(queue: queue)
+        conn.send(content: response.serialized(), completion: .contentProcessed { error in
+            if let error {
+                ExploreLogger.error(.http, "http reject send error=\(error)")
             }
-        }
-    }
-
-    /// 序列化并发送 HTTP 响应，发送完成后主动关闭连接。
-    private static func send(_ response: HTTPResponse, on conn: NWConnection) {
-        conn.send(content: response.serialized(), completion: .contentProcessed { _ in
-            conn.cancel()   // Connection: close：发完响应即关闭连接
+            conn.cancel()
         })
     }
 }

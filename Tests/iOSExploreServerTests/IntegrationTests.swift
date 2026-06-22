@@ -91,6 +91,44 @@ func endToEndHelp() async throws {
     #expect(text.contains(#""action":"help""#))
 }
 
+@Test("命令超过配置超时时返回 internal_error 并关闭连接")
+func commandTimeoutReturnsErrorEnvelope() async throws {
+    let server = ExploreServer(port: testPort,
+                               listenerConfiguration: .testing(commandTimeoutNanoseconds: 50_000_000))
+    server.register(action: "slow") { _ in
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        return .success(["done": true])
+    }
+    try await server.start()
+    defer { server.stop() }
+
+    let text = try await send(action: "slow")
+    #expect(text.contains(#""ok":false"#))
+    #expect(text.contains(#""code":"internal_error""#))
+    #expect(text.contains("timed out"))
+}
+
+@Test("超过连接上限时拒绝新连接并返回 503")
+func connectionLimitRejectsAdditionalConnection() async throws {
+    let server = ExploreServer(port: testPort,
+                               listenerConfiguration: .testing(maxConnections: 1,
+                                                              commandTimeoutNanoseconds: 1_000_000_000))
+    server.register(action: "hold") { _ in
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        return .success(["done": true])
+    }
+    try await server.start()
+    defer { server.stop() }
+
+    async let first = send(action: "hold")
+    try await Task.sleep(nanoseconds: 30_000_000)
+    let second = try await send(action: "ping")
+
+    #expect(second.contains("503 Service Unavailable"))
+    #expect(second.contains(#""ok":false"#))
+    _ = try await first
+}
+
 }
 
 /// 发送一条命令并返回响应文本。

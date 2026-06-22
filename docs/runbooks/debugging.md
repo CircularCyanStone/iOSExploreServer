@@ -26,6 +26,28 @@ lsof -iTCP:38321 -sTCP:LISTEN -n -P # 应看到 iproxy 在监听 *:38321
 - `{"ok":false,"error":{"code":"unknown_action",...}}` → action 名拼错或没注册。检查 `register(action:)` 拼写。
 - `{"ok":false,"error":{"code":"bad_request",...}}` → body 非合法 JSON 或缺 `action` 字段。检查 curl 的 `-d` JSON。
 - `{"ok":false,"error":{"code":"internal_error",...}}` → handler 抛异常。看 App 控制台日志定位。
+- `HTTP/1.1 503 Service Unavailable` → 活跃连接数达到 server 上限。确认 Mac 侧没有悬挂的 curl/MCP 连接，或等待已有请求结束后重试。
+- `message` 包含 `command timed out` → handler 执行超过命令超时。检查是否在 handler 内做了截图、UI tree 遍历或其他耗时操作；这类能力后续应做限频/分页/缓存。
+
+## 打开组件内部日志
+
+库默认不输出内部日志。调试时在 App 启动阶段开启：
+
+```swift
+ExploreLogging.setEnabled(true)
+ExploreLogging.setMinimumLevel(.debug)
+```
+
+日志使用 Apple Unified Logging，subsystem 为 `iOSExploreServer`。常用 category：
+
+- `server`：`ExploreServer` 初始化、启动、停止、命令注册。
+- `listener`：`NWListener` ready/waiting/failed/cancelled、session 接入/关闭、读取失败、请求过大。
+- `http`：HTTP 方法/路径校验、body 解析失败、action 收到、响应状态。
+- `router`：action 注册、路由命中、参数校验失败、handler 抛错。
+- `command`：内置命令执行。
+
+查看方式：Xcode 控制台或 macOS Console 选择设备进程后，按 `subsystem:iOSExploreServer`
+过滤；需要更细时再加 category。
 
 ## `info` 的 device 字段为什么没有具体机型
 

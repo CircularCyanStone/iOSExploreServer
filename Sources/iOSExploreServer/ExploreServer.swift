@@ -39,6 +39,9 @@ public final class ExploreServer: Sendable {
     /// 命令注册表与分发器。
     private let router: Router
 
+    /// listener/session 资源限制配置。
+    private let listenerConfiguration: HTTPListener.Configuration
+
     /// 当前 listener 实例。
     ///
     /// `HTTPListener` 本身有可变状态；这里用 `Mutex` 保护引用替换，使 `start`/`stop`
@@ -65,17 +68,35 @@ public final class ExploreServer: Sendable {
     public init(port: UInt16 = 38321, authToken: String? = nil) {
         self.port = port
         self.authToken = authToken
+        self.listenerConfiguration = .default
         self.router = Router()
         var continuation: AsyncStream<ServerEvent>.Continuation!
         self.eventStream = AsyncStream { continuation = $0 }
         self.eventContinuation = continuation
         BuiltinHandlers.registerAll(into: router)
+        ExploreLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil)")
+    }
+
+    /// 测试/内部入口：允许注入 listener 资源限制配置。
+    init(port: UInt16,
+         authToken: String? = nil,
+         listenerConfiguration: HTTPListener.Configuration) {
+        self.port = port
+        self.authToken = authToken
+        self.listenerConfiguration = listenerConfiguration
+        self.router = Router()
+        var continuation: AsyncStream<ServerEvent>.Continuation!
+        self.eventStream = AsyncStream { continuation = $0 }
+        self.eventContinuation = continuation
+        BuiltinHandlers.registerAll(into: router)
+        ExploreLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil)")
     }
 
     /// 注册一个协议命令对象。
     ///
     /// 适合把能力封装成独立 `Command` struct，便于复用、测试和被 `help` 自省。
     public func register(_ command: any Command) {
+        ExploreLogger.info(.server, "server register command action=\(command.action)")
         router.register(command)
     }
 
@@ -88,6 +109,7 @@ public final class ExploreServer: Sendable {
                          description: String = "",
                          parameters: [CommandParameter] = [],
                          _ handler: @escaping @Sendable (ExploreRequest) async throws -> ExploreResult) {
+        ExploreLogger.info(.server, "server register closure action=\(action) parameters=\(parameters.count)")
         router.register(action: action, description: description, parameters: parameters, handler)
     }
 
@@ -97,19 +119,25 @@ public final class ExploreServer: Sendable {
     /// Network 错误。调用方应避免并发调用 `start()`/`stop()`，常见用法是在 App 主线程
     /// 按钮事件中串行触发。
     public func start() async throws {
-        let l = try HTTPListener(port: port, router: router) { [eventContinuation] event in
+        ExploreLogger.info(.server, "server start requested port=\(port)")
+        let l = try HTTPListener(port: port,
+                                 router: router,
+                                 configuration: listenerConfiguration) { [eventContinuation] event in
             eventContinuation.yield(event)
         }
         try await l.start()
         listener.withLock { $0 = l }
+        ExploreLogger.info(.server, "server start completed port=\(port)")
     }
 
     /// 停止 TCP HTTP server。
     ///
     /// 方法是幂等的：如果当前没有 listener，调用也不会报错。
     public func stop() {
+        ExploreLogger.info(.server, "server stop requested")
         let previous = listener.withLock { let prev = $0; $0 = nil; return prev }
         previous?.stop()
+        ExploreLogger.info(.server, "server stop completed hadListener=\(previous != nil)")
     }
 
     /// 获取服务事件流。
@@ -122,6 +150,7 @@ public final class ExploreServer: Sendable {
 
     /// 测试辅助：不经网络直接路由，验证命令注册状态。
     func routerSnapshotRoute(_ request: ExploreRequest) async -> ExploreResult {
-        await router.route(request)
+        ExploreLogger.debug(.server, "server snapshot route action=\(request.action)")
+        return await router.route(request)
     }
 }
