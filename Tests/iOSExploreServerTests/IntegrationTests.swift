@@ -66,6 +66,31 @@ func builtinRegisteredAfterInit() async {
     if case .failure = r { Issue.record("ping should be registered at init") }
 }
 
+@Test("端口被占用时 start 抛错")
+func startThrowsOnPortInUse() async throws {
+    let server1 = ExploreServer(port: testPort)
+    try await server1.start()
+    defer { server1.stop() }
+
+    let server2 = ExploreServer(port: testPort)
+    await #expect(throws: (any Error).self) {
+        try await server2.start()
+    }
+    server2.stop()   // start 失败后 listener 未赋值,stop 无害
+}
+
+@Test("help 端到端返回全部命令")
+func endToEndHelp() async throws {
+    let server = ExploreServer(port: testPort)
+    try await server.start()
+    defer { server.stop() }
+
+    let text = try await send(action: "help")
+    #expect(text.contains(#""ok":true"#))
+    #expect(text.contains(#""action":"ping""#))
+    #expect(text.contains(#""action":"help""#))
+}
+
 }
 
 /// 发送一条命令并返回响应文本。
