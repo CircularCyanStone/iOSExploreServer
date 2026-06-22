@@ -5,7 +5,7 @@
 ## Always follow（硬规则）
 
 - 库 `iOSExploreServer` **只依赖 `Foundation` + `Network`，不依赖 UIKit**；需要 UIKit 的信息（如设备机型）由集成方 App 注册额外 handler 注入，不进库。
-- Swift 6.2 严格并发：跨边界模型 `Sendable`，共享状态用 `actor`，闭包 `@Sendable`。
+- Swift 6.2 严格并发：跨边界模型 `Sendable`，共享状态用 `Mutex`（全库唯一 `@unchecked` 边界，锁内禁 `await`），闭包 `@Sendable`。
 - 唯一命令端点 `POST /`，body `{"action":"...","data":{...}}`，响应统一 envelope `{"ok":bool,"data"?,"error"?}`。**新增能力 = 注册新 action，不改协议**。
 - 默认端口 **38321**（构造可配）。MVP 不强制鉴权（USB 物理连接隔离），`ExploreServer(authToken:)` 是预留钩子，当前不校验。
 - SPM 包（根 `Sources/`）与 framework 工程（`iOSExploreServer/iOSExploreServer.xcodeproj`）**共享同一份 `Sources/iOSExploreServer/`**，不要维护两份源码。
