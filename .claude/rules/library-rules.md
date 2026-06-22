@@ -6,7 +6,7 @@ paths:
 # iOSExploreServer 库源码规则
 
 - **只 `import Foundation` / `Network`，禁止 `import UIKit`。** 需要 UIKit 的能力（UIDevice 等）由 App 层注册额外 handler 注入，不进库。
-- **Swift 6.2 严格并发**：跨边界模型 `Sendable`；共享可变状态用 `actor`；闭包 `@Sendable`；连接处理 `Task` 捕获 actor/@Sendable 闭包，不捕获 `self`。
+- **Swift 6.2 严格并发**：跨边界模型 `Sendable`；共享可变状态用 `Mutex`（库内自封装的 `os_unfair_lock`，全库唯一 `@unchecked` 边界）；闭包 `@Sendable`。**`Mutex` 锁内禁止 `await`**——临界区只放纯同步访问，async 工作在锁外。
 - **唯一命令端点 `POST /` + JSON envelope**。新增能力 = 注册新 `action`，不改协议/传输/envelope 格式。
 - 改完**先跑 `swift test`** 再说完成（含 `IntegrationTests`，端口 38399，`@Suite(.serialized)` 串行）。
 - 新增 `.swift` 文件会被 SPM target 与 framework 同步组**自动收录**，无需改 `Package.swift`/`project.pbxproj`。

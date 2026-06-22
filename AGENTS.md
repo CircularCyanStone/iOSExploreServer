@@ -24,7 +24,7 @@
 
 ## 模块边界
 
-- `Sources/iOSExploreServer/` — SPM 库（主交付物）。门面 `ExploreServer`；传输 `HTTPListener`（NWListener）；解析 `HTTPParser`；分发 `Router`（actor）；模型 `Models`/`JSONCoder`；HTTP 值类型 `HTTPRequest`/`HTTPResponse`；内置命令 `Handlers/BuiltinHandlers`（ping/echo/info）。
+- `Sources/iOSExploreServer/` — SPM 库（主交付物）。门面 `ExploreServer`（`Sendable`）；传输 `HTTPListener`（NWListener，`start` await 端口就绪）；解析 `HTTPParser`；分发 `Router`（`Mutex` 保护的 `final class`，同步 register、route 锁外校验+await）；同步原语 `Mutex`；命令协议 `Command`（action/description/parameters）；模型 `Models`/`JSONCoder`；HTTP 值类型 `HTTPRequest`/`HTTPResponse`；内置命令 `Handlers/BuiltinHandlers`（ping/echo/info/help，均为 `Command` struct）。
 - `iOSExploreServer/iOSExploreServer.xcodeproj/` — framework 工程，`PBXFileSystemSynchronizedRootGroup` 指向根 `Sources/iOSExploreServer/`，手动编 `.framework`。`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`（Swift 6.2 工具链要求，详见 runbooks）。
 - `Examples/SPMExample/` — UIKit 测试 App，本地 SPM 依赖集成库；启动/停止按钮 + 请求日志面板 + `greet`/`device` 自定义命令演示。
 - `scripts/proxy.sh` — iproxy 一键转发（`iproxy 38321 38321`）。
@@ -47,3 +47,4 @@
 - 改完代码先 `swift test` 再说完成；集成测试串行（`@Suite(.serialized)`，端口 38399 不能并行）。
 - `ExploreServer.start()` 只注册一次内置命令（flag guard）；不要在每次 start 重注册。
 - 通信失败用 HTTP 状态码（400/500），业务失败用 envelope `ok:false`，二者要区分。
+- `Router` 是锁保护的 `final class`（非 actor）：`register` 同步、`route` 锁内取命令+锁外校验/`await handle`（锁内禁 await）；`ExploreServer` 是真 `Sendable`，`@unchecked` 只在 `Mutex` 一处。
