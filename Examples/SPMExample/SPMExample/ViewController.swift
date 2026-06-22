@@ -24,19 +24,15 @@ final class ViewController: UIViewController {
         setupLayout()
         updateStatus(running: false)
 
-        // 演示自定义命令 + UIKit 信息注入
-        let server = self.server
-        Task { [weak self] in
-            guard self != nil else { return }
-            await server.register(action: "greet") { req in
-                let name = req.data["name"]?.stringValue ?? "world"
-                return .success(["message": .string("Hello, \(name)")])
-            }
-            await server.register(action: "device") { _ in
-                return await MainActor.run {
-                    .success(["model": .string(UIDevice.current.model),
-                              "name": .string(UIDevice.current.name)])
-                }
+        // 演示自定义命令 + UIKit 信息注入(register 同步,无需 Task)
+        server.register(action: "greet", description: "按 name 打招呼") { req in
+            let name = req.data["name"]?.stringValue ?? "world"
+            return .success(["message": .string("Hello, \(name)")])
+        }
+        server.register(action: "device", description: "返回设备机型与名称(UIKit 注入)") { _ in
+            return await MainActor.run {
+                .success(["model": .string(UIDevice.current.model),
+                          "name": .string(UIDevice.current.name)])
             }
         }
 
