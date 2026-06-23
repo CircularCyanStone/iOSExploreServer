@@ -12,6 +12,7 @@ enum UIKitHandlers {
     static func registerAll(into router: Router) {
         ExploreLogger.info(.command, "uikit handlers register all")
         router.register(TopViewHierarchyCommand())
+        router.register(ViewTargetsCommand())
         router.register(UIControlSendActionCommand())
         router.register(UITapCommand())
     }
