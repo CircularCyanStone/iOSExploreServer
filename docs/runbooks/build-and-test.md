@@ -3,26 +3,44 @@
 ## SPM 库（主）
 
 ```bash
-swift build                              # 构建
-swift test                               # 全量测试（当前 60 个，含端到端、UI 层级模型、control action 和 tap 参数解析）
-swift test --enable-code-coverage        # 带覆盖率（当前 89.91%）
+swift build                              # 构建（core + iOSExploreUIKit）
+swift test                               # 全量测试（当前 98 个，含端到端、UIKit 模型/解析/snapshot store）
+swift test --enable-code-coverage        # 带覆盖率（当前行覆盖 86.62%）
 swift test --filter Integration          # 只跑端到端集成测试
 ```
 
 - 集成测试在测试进程内起真实 `ExploreServer` + 用 `NWConnection` 走 loopback 验证往返，**模拟器/CI/本机都能跑**，无需真机。
-- 集成测试用端口 **38399**，且用 `@Suite(.serialized)` 串行（4 个测试共用端口，不能并行）。
-- UIKit 层级模型、筛选逻辑、control action 和 tap 参数解析是 Foundation-only，可由 macOS `swift test --filter UIKitViewHierarchyTests` / `swift test --filter UIKitControlActionTests` / `swift test --filter UIKitTapTests` 覆盖；真实 UIKit 采集器、`sendActions(for:)` 和 `hitTest` 点击流程需要 framework/iOS 构建或 App 运行验证。
+- 集成测试用端口 **38399**，且用 `@Suite(.serialized)` 串行（多个测试共用端口，不能并行）。iOS 模拟器上 `NWListener.cancel()` 释放端口是异步的，串行用例间偶发 `Address already in use`；测试用 `startWithPortRetry` 在端口占用时退避重试，macOS 下首次即成功。
+- UIKit 层级模型、筛选逻辑、control/tap 参数解析、snapshot store 是 Foundation-only，可由 macOS `swift test` 覆盖；真实 UIKit 采集器、`sendActions(for:)` 和 `hitTest` 点击流程需要 framework/iOS 构建或 App 运行验证。UIKit 命令的"显式注册正向断言"（`#if canImport(UIKit)`）只在 framework iOS 测试下编译运行。
 
 ## framework 工程（手动编 `.framework`）
 
+framework 工程有两个 target，与 SPM 共享同一份 `Sources/` 源码：
+
 ```bash
+# 构建两个 framework（iOSExploreServer + iOSExploreUIKit）
 xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj \
            -scheme iOSExploreServer \
            -sdk iphonesimulator \
            -destination 'generic/platform=iOS Simulator' build
+
+# 单独构建 UIKit framework
+xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj \
+           -scheme iOSExploreUIKit \
+           -sdk iphonesimulator \
+           -destination 'generic/platform=iOS Simulator' build
+
+# framework 测试（含 iOS 正向注册断言，需具体模拟器设备）
+xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj \
+           -scheme iOSExploreServer \
+           -sdk iphonesimulator \
+           -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-- 该工程的 `PBXFileSystemSynchronizedRootGroup` 指向根 `Sources/iOSExploreServer/`，与 SPM 共享源码。
+- `iOSExploreServer.framework`：`PBXFileSystemSynchronizedRootGroup` 指向 `../Sources/iOSExploreServer/`。
+- `iOSExploreUIKit.framework`：指向 `../Sources/iOSExploreUIKit/`，链接并依赖 core framework。测试 target 同时链接两个 framework。
+- **core/UIKit 边界**：core framework 不得 `import UIKit`；UIKit framework 只用 core 的 public 缝。
+- Debug/Release 均 `SWIFT_VERSION=5.0`、`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`。
 - `BUILD_LIBRARY_FOR_DISTRIBUTION=NO`：Swift 6.2 工具链下，library-evolution 的 `.swiftinterface` 会因 `nonisolated(nonsending)` 在 `SwiftVerifyEmittedModuleInterface` 失败，故关闭。代价：不再生成跨 Xcode 版本的稳定 interface，对"手动编译嵌入同版本 Xcode 项目"无影响。
 
 ## SPMExample 测试 App

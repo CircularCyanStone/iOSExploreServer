@@ -15,7 +15,7 @@ struct IntegrationTests {
 @Test("端到端 ping 经真实 TCP 往返")
 func endToEndPing() async throws {
     let server = ExploreServer(port: testPort)
-    try await server.start()
+    try await startWithPortRetry(server)
     defer { server.stop() }
 
     let text = try await send(action: "ping")
@@ -26,7 +26,7 @@ func endToEndPing() async throws {
 @Test("端到端 echo 回显")
 func endToEndEcho() async throws {
     let server = ExploreServer(port: testPort)
-    try await server.start()
+    try await startWithPortRetry(server)
     defer { server.stop() }
 
     let text = try await send(action: "echo", data: ["hi": "claude"])
@@ -36,7 +36,7 @@ func endToEndEcho() async throws {
 @Test("未知 action 返回 unknown_action envelope")
 func endToEndUnknown() async throws {
     let server = ExploreServer(port: testPort)
-    try await server.start()
+    try await startWithPortRetry(server)
     defer { server.stop() }
 
     let text = try await send(action: "nope")
@@ -51,7 +51,7 @@ func endToEndCustom() async throws {
         let name = req.data["name"]?.stringValue ?? "world"
         return .success(["message": .string("Hello, \(name)")])
     }
-    try await server.start()
+    try await startWithPortRetry(server)
     defer { server.stop() }
 
     let text = try await send(action: "greet", data: ["name": "Claude"])
@@ -69,7 +69,7 @@ func builtinRegisteredAfterInit() async {
 @Test("端口被占用时 start 抛错")
 func startThrowsOnPortInUse() async throws {
     let server1 = ExploreServer(port: testPort)
-    try await server1.start()
+    try await startWithPortRetry(server1)
     defer { server1.stop() }
 
     let server2 = ExploreServer(port: testPort)
@@ -82,7 +82,7 @@ func startThrowsOnPortInUse() async throws {
 @Test("help 端到端返回全部命令")
 func endToEndHelp() async throws {
     let server = ExploreServer(port: testPort)
-    try await server.start()
+    try await startWithPortRetry(server)
     defer { server.stop() }
 
     let text = try await send(action: "help")
@@ -99,7 +99,7 @@ func commandTimeoutReturnsErrorEnvelope() async throws {
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         return .success(["done": true])
     }
-    try await server.start()
+    try await startWithPortRetry(server)
     defer { server.stop() }
 
     let text = try await send(action: "slow")
@@ -117,7 +117,7 @@ func connectionLimitRejectsAdditionalConnection() async throws {
         try? await Task.sleep(nanoseconds: 200_000_000)
         return .success(["done": true])
     }
-    try await server.start()
+    try await startWithPortRetry(server)
     defer { server.stop() }
 
     async let first = send(action: "hold")
@@ -166,6 +166,46 @@ private func waitUntilReady(_ conn: NWConnection) async throws {
             default:
                 break
             }
+        }
+    }
+}
+
+/// 启动 server，遇到端口占用时短暂重试。
+///
+/// `@Suite(.serialized)` 保证串行用例不并发 bind 同一端口，但 `HTTPListener.stop()` 内的
+/// `NWListener.cancel()` 是异步的：返回时底层 socket 尚未关闭。在 **iOS 模拟器** 上，下一个
+/// 用例的 `start()` 偶尔会在端口释放前 bind，抛 `Address already in use`（用例间竞态，与本
+/// 任务改动无关，macOS SPM 下因时序宽松从未暴露）。这里在端口占用时退避重试几秒，让模拟器
+/// 有时间真正释放端口；macOS 下首次即成功，行为不变。
+///
+/// - Parameters:
+///   - server: 待启动的 server。
+///   - attempts: 最大重试次数（含首次）。
+private func startWithPortRetry(_ server: ExploreServer, attempts: Int = 40) async throws {
+    var lastError: (any Error)?
+    for _ in 0..<attempts {
+        do {
+            try await server.start()
+            return
+        } catch let error as NWError where error.isAddressInUse {
+            // 端口尚未释放：退避后重试。
+            lastError = error
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            continue
+        } catch {
+            // 非端口占用错误：立即抛出，不掩盖真实失败。
+            throw error
+        }
+    }
+    throw lastError ?? POSIXError(.EADDRINUSE)
+}
+
+private extension NWError {
+    /// 判断是否为端口占用（bind EADDRINUSE）。
+    var isAddressInUse: Bool {
+        switch self {
+        case .posix(let code): return code == .EADDRINUSE
+        default: return false
         }
     }
 }

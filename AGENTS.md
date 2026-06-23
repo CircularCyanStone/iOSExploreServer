@@ -16,18 +16,28 @@
 ## Common commands
 
 - 构建 SPM 库：`swift build`
-- 测试（含真实 TCP 端到端）：`swift test`（当前 46 个；集成测试用端口 38399）
-- 覆盖率：`swift test --enable-code-coverage`（当前 91.19%）
-- 构建 framework 工程：`xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator build`
+- 测试（含真实 TCP 端到端）：`swift test`（当前 98 个；集成测试用端口 38399；iOS 正向注册断言在 framework `xcodebuild ... test` 下运行）
+- 覆盖率：`swift test --enable-code-coverage`（当前行覆盖 86.62%）
+- 构建 framework 工程（core + UIKit 两个 framework）：`xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator build`
+- framework 测试（含 iOS 正向注册断言）：`xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17' test`
 - 构建/运行测试 App：Xcode 打开 `Examples/SPMExample/SPMExample.xcodeproj`，选真机或模拟器 → Run
 - 起 USB 转发：`./scripts/proxy.sh`（前台运行，Ctrl-C 停）
 - 发命令：`curl -X POST http://localhost:38321/ -d '{"action":"ping"}'`
 
 ## 模块边界
 
-- `Sources/iOSExploreServer/` — SPM 库（主交付物）。门面 `ExploreServer`（`Sendable`）；传输 `HTTPListener`（NWListener，`start` await 端口就绪、串行 network queue、session map）；单连接 `ClientSession`（session id、receive buffer、读/命令超时、统一 close）；解析 `HTTPParser`（三态 complete/incomplete/invalid）；统一错误 `ExploreServerError`（HTTP status/reason、envelope code/message、logMessage 单一来源）；分发 `Router`（`Mutex` 保护的 `final class`，同步 register、route 锁外校验+await）；同步原语 `Mutex`；命令协议 `Command`（action/description/parameters）；模型 `Models`/`JSONCoder`；HTTP 值类型 `HTTPRequest`/`HTTPResponse`；日志 `ExploreLogging`；内置命令 `Handlers/BuiltinHandlers`（ping/echo/info/help，均为 `Command` struct）。
-- `iOSExploreServer/iOSExploreServer.xcodeproj/` — framework 工程，`PBXFileSystemSynchronizedRootGroup` 指向根 `Sources/iOSExploreServer/`，手动编 `.framework`。`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`（Swift 6.2 工具链要求，详见 runbooks）。
-- `Examples/SPMExample/` — UIKit 测试 App，本地 SPM 依赖集成库；启动/停止按钮 + 请求日志面板 + `greet`/`device` 自定义命令演示。
+- `Sources/iOSExploreServer/` — SPM 库 core（主交付物，**不依赖 UIKit**）。门面 `ExploreServer`（`Sendable`）；传输 `HTTPListener`（NWListener，`start` await 端口就绪、串行 network queue、session map）；单连接 `ClientSession`（session id、receive buffer、读/命令超时、统一 close）；解析 `HTTPParser`（三态 complete/incomplete/invalid）；统一错误 `ExploreServerError`（HTTP status/reason、envelope code/message、logMessage 单一来源）；分发 `Router`（`Mutex` 保护的 `final class`，同步 register、route 锁外校验+await）；同步原语 `Mutex`；命令协议 `Command`（action/description/parameters）；命令扩展缝 `ExploreCommandSupport`（`register(_:)` 接收 `Command`、`ExploreLogging.emitExtension` 给扩展模块复用日志）；模型 `Models`/`JSONCoder`；HTTP 值类型 `HTTPRequest`/`HTTPResponse`；日志 `ExploreLogging`；内置命令 `Handlers/BuiltinHandlers`（ping/echo/info/help，均为 `Command` struct）。
+- `Sources/iOSExploreUIKit/` — UIKit 扩展模块（依赖 core，源码整体 `#if canImport(UIKit)`；macOS 编译为空壳，iOS 提供 `ui.*` 实现）。**typed factory 规则**：入参先用 Foundation-only typed query（如 `UITapQuery`）解析校验，通过后才进 `@MainActor` 的 resolver/executor，UIKit 类型绝不穿过 public 边界回非隔离域。子结构：
+  - `UIKitCommandRegistrar.swift` — 显式注册入口 `server.registerUIKitCommands()`；注册前后打 `uikit.registrar` 日志（started/completed count）。**core 初始化不自动注册 UIKit 命令**，宿主必须显式调用。
+  - `Context/UIKitContextProvider.swift` — `@MainActor` 上下文（前台 window/顶部控制器/根 view）；记录 MainActor hop 日志。
+  - `Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` — 定位模型（query→identifier/path/snapshotID 的 Foundation-only 值）与仅 iOS 的真实 `UIView` 解析。
+  - `Action/UIKitActionExecutor.swift` + `UIKitActionCapabilityResolver.swift` — `@MainActor` 动作执行（tap/control 路由）；解析失败/定位失败/能力不支持各记 error 日志。
+  - `Snapshot/UIKitSnapshotStore.swift` + `UIKitFingerprintCollector.swift` — 快照与陈旧检测（容量 512、TTL、LRU）；path+snapshotID 页面变动返回 `invalid_data` + 固定陈旧消息。
+  - `UIKitCommandLogging.swift` — 日志入口，复用 core `ExploreLogging.emitExtension`，category 统一 `command`。
+  - `UIKitCommandError.swift` — UIKit 错误工厂。
+  - `ViewHierarchy/`、`ViewTargets/`、`Tap/`、`ControlAction/` — 四个 `ui.*` 命令及其 typed query 模型。
+- `iOSExploreServer/iOSExploreServer.xcodeproj/` — framework 工程，两个 target：`iOSExploreServer.framework`（`PBXFileSystemSynchronizedRootGroup` 指向 `../Sources/iOSExploreServer/`）与 `iOSExploreUIKit.framework`（指向 `../Sources/iOSExploreUIKit/`，链接并依赖 core framework）；测试 target 同时链接两个 framework。Debug/Release 均 `SWIFT_VERSION=5.0`、`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`（Swift 6.2 工具链要求，详见 runbooks）。
+- `Examples/SPMExample/` — UIKit 测试 App，本地 SPM 依赖同时选 core 与 `iOSExploreUIKit` product；`ViewController` 显式 `server.registerUIKitCommands()` 开放 UIKit 命令；启动/停止按钮 + 请求日志面板 + `greet`/`device` 自定义命令演示。
 - `scripts/proxy.sh` — iproxy 一键转发（`iproxy 38321 38321`）。
 
 ## Read when relevant（文档路由表）
@@ -45,11 +55,12 @@
 
 ## 关键约束速记
 
-- 改完代码先 `swift test` 再说完成；集成测试串行（`@Suite(.serialized)`，端口 38399 不能并行）。
-- 内置命令在 `ExploreServer.init` 同步注册一次；不要在每次 `start()` 重注册。
+- 改完代码先 `swift test` 再说完成；集成测试串行（`@Suite(.serialized)`，端口 38399 不能并行）；iOS 模拟器 framework 测试用 `startWithPortRetry` 规避 cancel 异步释放端口的竞态。
+- 内置命令在 `ExploreServer.init` 同步注册一次；不要在每次 `start()` 重注册。**UIKit 命令不在此列**——core 不自动注册任何 `ui.*`，宿主必须显式 `server.registerUIKitCommands()`。
 - 通信失败用 HTTP 状态码（400/500），业务失败用 envelope `ok:false`，二者要区分。
-- 所有新增错误出口必须先建 `ExploreServerError` 工厂，再由该对象生成 HTTP response /业务 failure /日志，不要在调用点散写 status、reason、code、message。
+- 所有新增错误出口必须先建 `ExploreServerError`（core）/ `UIKitCommandError`（UIKit）工厂，再由该对象生成 HTTP response /业务 failure /日志，不要在调用点散写 status、reason、code、message。
 - `Router` 是锁保护的 `final class`（非 actor）：`register` 同步、`route` 锁内取命令+锁外校验/`await handle`（锁内禁 await）；`ExploreServer` 是真 `Sendable`，`@unchecked` 只在 `Mutex` 一处。
+- **typed factory**：UIKit 命令入参先经 Foundation-only typed query 解析校验，UIKit 类型不穿 public 边界；定位统一 `identifier` 精确（不截断）→ `path` 只读 → 可选 `snapshotID` 陈旧防护。
 
 ## 日志要求（必须执行）
 
@@ -57,6 +68,7 @@
 - 所有命令路径必须有日志：action 注册、请求收到、参数校验失败、命令开始/完成/超时/抛错、响应发送。日志至少包含能关联问题的 `sessionID`、`action`、payload 大小、HTTP 状态或 error code。
 - 所有资源限制必须有日志：连接数上限、header/body/request 超限、read timeout、command timeout、send/receive error。
 - 涉及 UIKit/Accessibility/截图/手势/日志流等 App 侧能力时，handler 内必须记录进入/退出、MainActor 切换、高成本耗时、失败原因；不要在 network queue 上静默执行重任务。
+- UIKit 扩展模块（`iOSExploreUIKit`）日志走 `UIKitCommandLogging`（复用 core `ExploreLogging.emitExtension`，category `command`），必须覆盖：registrar 进入/完成（`uikit.registrar`，含注册数量）、每次命令 start/complete/failed（含 action、payloadKeys、dispatchMode、error code）、Context Provider 的 MainActor hop、query 解析与 resolver 定位结果、executor 各失败分支（解析失败/定位失败/能力不支持）、snapshot store 的 insert/evict/expired/mismatch/stale。
 - 新增设计文档或改架构文档时，要写清楚新增文件、关键属性、关键方法各自负责哪些日志点；如果刻意不加日志，必须在文档和最终回复里说明原因。
 - 日志不能泄露 auth token、完整截图、大块 payload 或用户输入全文；记录大小、摘要、错误码和必要上下文即可。
 

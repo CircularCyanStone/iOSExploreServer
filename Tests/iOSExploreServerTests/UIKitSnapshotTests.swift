@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import iOSExploreServer
 @testable import iOSExploreUIKit
 
 // MARK: - Snapshot store 陈旧检测测试（macOS 可编译）

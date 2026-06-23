@@ -7,6 +7,7 @@
 
 import UIKit
 import iOSExploreServer
+import iOSExploreUIKit
 
 final class ViewController: UIViewController {
     private let server = ExploreServer()
@@ -43,6 +44,10 @@ final class ViewController: UIViewController {
                           "name": .string(UIDevice.current.name)])
             }
         }
+
+        // 显式开放 UIKit 命令（ui.topViewHierarchy / ui.viewTargets /
+        // ui.control.sendAction / ui.tap）。core 不自动注册，由宿主决定是否启用。
+        server.registerUIKitCommands()
 
         // 订阅事件 → 日志面板
         eventsTask = Task { @MainActor [weak self, server] in

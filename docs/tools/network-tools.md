@@ -35,6 +35,16 @@
 
 ## UIKit 命令
 
+> UIKit 命令由独立模块 `iOSExploreUIKit` 提供，core **不会自动注册**。宿主 App 必须在创建 `ExploreServer` 后显式调用 `server.registerUIKitCommands()` 才开放下列四个 action；未注册时 `help` 不含任何 `ui.*`。SPMExample 已在 `ViewController` 调用该方法。
+
+### 定位语义（所有 `ui.*` 交互命令通用）
+
+定位参数按优先级解析：**`identifier` 精确 → `path` 只读 → 可选 `snapshotID` 陈旧防护**。
+
+- `accessibilityIdentifier`（优先）：按业务层 identifier **精确匹配，不截断、不做 prefix 匹配**。匹配多个 view 返回 `invalid_data`，避免误触发。
+- `path`：来自 `ui.viewTargets` / `ui.topViewHierarchy` 的只读路径（`root/0/2`），仅描述快照内位置，不写回业务 UI。
+- `snapshotID`（可选，配合 `path`）：携带 `ui.viewTargets` 返回的 `snapshotID` 时，命令会重新采集当前 view 树指纹并逐字段比对（context 类型、path、view 类型、identifier 哈希、role、状态）。页面已变动即判陈旧，返回 **HTTP 200 + `ok:false` + `invalid_data` + 固定陈旧消息**（不泄露具体哪个字段变化）。不带 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
+
 ### `ui.topViewHierarchy`
 
 返回当前前台 window 的顶部控制器 view 及其全部子视图的结构化快照。常用请求：
@@ -72,10 +82,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data
 curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data":{"path":"root/0/2/1","event":"valueChanged"}}'
 ```
 
-定位参数二选一：
-
-- `accessibilityIdentifier`: 按业务层设置的 identifier 精确定位。若匹配多个 view，会返回 `invalid_data`，避免误触发。
-- `path`: 使用 `ui.viewTargets` 或 `ui.topViewHierarchy` 返回的只读路径，例如 `root/0/2/1`。
+定位参数与上文「定位语义」一致：`accessibilityIdentifier`（精确，不截断，匹配多个返回 `invalid_data`）或 `path`（来自 `ui.viewTargets`/`ui.topViewHierarchy`）；可附带 `snapshotID` 做陈旧防护。
 
 事件名：
 
@@ -98,9 +105,9 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"path":"root
 curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"x":120,"y":300,"coordinateSpace":"window"}}'
 ```
 
-定位方式三选一：
+定位方式三选一（同样支持可选 `snapshotID` 陈旧防护）：
 
-- `accessibilityIdentifier`: 按业务 identifier 精确定位 view。
+- `accessibilityIdentifier`: 按业务 identifier **精确**定位 view，不截断。
 - `path`: 按 `ui.viewTargets` 或 `ui.topViewHierarchy` 返回的只读路径定位 view。
 - `x` + `y`: 直接使用 window 坐标；`coordinateSpace` 第一版仅支持 `window`。
 

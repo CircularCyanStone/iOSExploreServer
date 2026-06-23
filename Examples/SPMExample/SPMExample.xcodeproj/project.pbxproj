@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		3380D24E99B51C5F73E18474 /* iOSExploreServer in Frameworks */ = {isa = PBXBuildFile; productRef = 9EB49219D493AEC683ED12AF /* iOSExploreServer */; };
+		3380D24E99B51C5F73E18475 /* iOSExploreUIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9EB49219D493AEC683ED12B0 /* iOSExploreUIKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +71,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3380D24E99B51C5F73E18474 /* iOSExploreServer in Frameworks */,
+				3380D24E99B51C5F73E18475 /* iOSExploreUIKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -131,6 +133,7 @@
 			name = SPMExample;
 			packageProductDependencies = (
 				9EB49219D493AEC683ED12AF /* iOSExploreServer */,
+				9EB49219D493AEC683ED12B0 /* iOSExploreUIKit */,
 			);
 			productName = SPMExample;
 			productReference = FBBA97142FE80597009FFEC3 /* SPMExample.app */;
@@ -609,6 +612,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference "../../" */;
 			productName = iOSExploreServer;
+		};
+		9EB49219D493AEC683ED12B0 /* iOSExploreUIKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference "../../" */;
+			productName = iOSExploreUIKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
