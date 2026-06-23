@@ -25,7 +25,7 @@ struct UITapCommand: Command {
         CommandParameter(name: "path",
                          kind: .string,
                          required: false,
-                         description: "按 ui.topViewHierarchy 返回的 root/0/1 路径定位目标 view, 与 accessibilityIdentifier/x/y 互斥"),
+                         description: "按 ui.viewTargets 或 ui.topViewHierarchy 返回的 root/0/1 路径定位目标 view, 与 accessibilityIdentifier/x/y 互斥"),
         CommandParameter(name: "x",
                          kind: .number,
                          required: false,

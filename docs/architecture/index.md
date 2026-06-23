@@ -84,6 +84,8 @@ curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ :38321 ──
 
 优先用业务层设置的 `accessibilityIdentifier` 做稳定语义锚点；缺失时用 `path` 描述快照内位置。命令不主动设置 identifier。
 
+`ui.viewTargets` 是事件下发前的轻量目标发现命令，返回扁平 targets 列表，不返回完整 `subviews` 树，也不承担视觉验收职责。每个 target 包含 `path`、运行时类型、轻量 role、`accessibilityIdentifier`、短文本、window 坐标 frame 和基础交互状态；agent 应优先调用它来找到 `ui.tap`、`ui.control.sendAction` 以及后续事件命令所需的目标。
+
 `Handlers/UIKit/Utils/` 集中保存 UIKit view 定位能力：当前前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、命中 view 与目标 view 的祖先关系判断。后续 UIKit 命令应复用该目录，不要各自重新实现路径解析和遍历。
 
 `ui.control.sendAction` 复用同一套顶部控制器根 view 和 `path` 规则，按 `accessibilityIdentifier` 或 `path` 定位目标，校验目标是 `UIControl` 后在 `MainActor` 调用 `sendActions(for:)`。该命令触发 target-action，不模拟真实触摸坐标、命中测试或高亮过程。

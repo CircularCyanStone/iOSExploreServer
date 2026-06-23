@@ -26,7 +26,7 @@ struct UIControlSendActionCommand: Command {
         CommandParameter(name: "path",
                          kind: .string,
                          required: false,
-                         description: "按 ui.topViewHierarchy 返回的 root/0/1 路径定位目标控件, 与 accessibilityIdentifier 二选一"),
+                         description: "按 ui.viewTargets 或 ui.topViewHierarchy 返回的 root/0/1 路径定位目标控件, 与 accessibilityIdentifier 二选一"),
         CommandParameter(name: "event",
                          kind: .string,
                          required: true,

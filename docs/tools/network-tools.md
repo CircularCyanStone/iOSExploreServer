@@ -54,6 +54,14 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":
 
 无筛选时响应 `data.root` 是完整树；带 identifier 筛选时响应 `data.matches` 是匹配节点列表。每个节点包含 `path`、`type`、accessibility 字段、`frame`、`bounds`、`state`、`text`、`appearance`、`control`、`image`、`scroll` 和 `subviews`。
 
+事件下发前可先用轻量目标发现命令获取扁平 targets 列表：
+
+```bash
+curl -X POST http://localhost:38321/ \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"ui.viewTargets","data":{"includeStaticText":true,"textLimit":80}}'
+```
+
 ### `ui.control.sendAction`
 
 向当前顶部控制器 view 层级中的指定 `UIControl` 发送 target-action 事件。常用请求：
