@@ -8,9 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		FBBA96FD2FE8056B009FFEC3 /* iOSExploreServer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FBBA96F12FE8056B009FFEC3 /* iOSExploreServer.framework */; };
-		FBBA971A2FE81001009FFEC3 /* iOSExploreUIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FBBA97102FE81001009FFEC3 /* iOSExploreUIKit.framework */; };
 		FBBA971B2FE81001009FFEC3 /* iOSExploreServer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FBBA96F12FE8056B009FFEC3 /* iOSExploreServer.framework */; };
-		FBBA971C2FE81001009FFEC3 /* iOSExploreServer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FBBA96F12FE8056B009FFEC3 /* iOSExploreServer.framework */; };
 		FBBA971D2FE81001009FFEC3 /* iOSExploreUIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FBBA97102FE81001009FFEC3 /* iOSExploreUIKit.framework */; };
 /* End PBXBuildFile section */
 

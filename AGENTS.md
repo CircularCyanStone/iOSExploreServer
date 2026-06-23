@@ -16,7 +16,7 @@
 ## Common commands
 
 - 构建 SPM 库：`swift build`
-- 测试（含真实 TCP 端到端）：`swift test`（当前 98 个；集成测试用端口 38399；iOS 正向注册断言在 framework `xcodebuild ... test` 下运行）
+- 测试（含真实 TCP 端到端）：`swift test`（macOS SPM 当前 98 个；iOS framework `xcodebuild ... test` 为 99 个，多出的 1 个是 `#if canImport(UIKit)` 守卫的 UIKit 正向注册断言；集成测试用端口 38399）
 - 覆盖率：`swift test --enable-code-coverage`（当前行覆盖 86.62%）
 - 构建 framework 工程（core + UIKit 两个 framework）：`xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator build`
 - framework 测试（含 iOS 正向注册断言）：`xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17' test`
