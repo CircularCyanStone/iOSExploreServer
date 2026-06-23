@@ -53,7 +53,7 @@ struct UITapCommand: Command {
         UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
         switch UITapQuery.parse(from: request.data) {
         case .success(let query):
-            let plan = UIKitActionPlan.tap(locator: query.target.locator)
+            let plan = UIKitActionPlan.tap(locator: query.target.locator, snapshotID: query.snapshotID)
             let result = await UIKitActionExecutor.execute(plan)
             switch result {
             case .success(let data):

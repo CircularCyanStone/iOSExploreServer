@@ -10,21 +10,21 @@ import Testing
 @Test("ActionPlan 保留 tap 的坐标定位")
 func tapActionPlanPreservesWindowPoint() {
     let plan = UIKitActionPlan.tap(locator: .windowPoint(x: 20, y: 30))
-    guard case .tap(let locator) = plan else { Issue.record("expected tap plan"); return }
+    guard case .tap(let locator, _) = plan else { Issue.record("expected tap plan"); return }
     #expect(locator == .windowPoint(x: 20, y: 30))
 }
 
 @Test("ActionPlan 保留 control event")
 func controlActionPlanPreservesEvent() {
     let plan = UIKitActionPlan.controlEvent(locator: .path([0]), event: .touchUpInside)
-    guard case .controlEvent(_, let event) = plan else { Issue.record("expected control plan"); return }
+    guard case .controlEvent(_, let event, _) = plan else { Issue.record("expected control plan"); return }
     #expect(event == .touchUpInside)
 }
 
 @Test("ActionPlan tap 保留 accessibilityIdentifier 定位")
 func tapActionPlanPreservesIdentifier() {
     let plan = UIKitActionPlan.tap(locator: .accessibilityIdentifier("mine.header.avatar"))
-    guard case .tap(let locator) = plan else { Issue.record("expected tap plan"); return }
+    guard case .tap(let locator, _) = plan else { Issue.record("expected tap plan"); return }
     #expect(locator == .accessibilityIdentifier("mine.header.avatar"))
 }
 
@@ -32,7 +32,7 @@ func tapActionPlanPreservesIdentifier() {
 func controlActionPlanPreservesLocatorAndEvent() {
     let plan = UIKitActionPlan.controlEvent(locator: .accessibilityIdentifier("switch"),
                                             event: .valueChanged)
-    guard case .controlEvent(let locator, let event) = plan else {
+    guard case .controlEvent(let locator, let event, _) = plan else {
         Issue.record("expected control plan")
         return
     }
@@ -45,4 +45,18 @@ func actionPlanTapAndControlEventAreDistinct() {
     let tap = UIKitActionPlan.tap(locator: .path([0]))
     let control = UIKitActionPlan.controlEvent(locator: .path([0]), event: .touchUpInside)
     #expect(tap != control)
+}
+
+@Test("ActionPlan 保留 tap 的 snapshotID")
+func tapActionPlanPreservesSnapshotID() {
+    let plan = UIKitActionPlan.tap(locator: .path([0]), snapshotID: "snap-1")
+    guard case .tap(_, let snapshotID) = plan else { Issue.record("expected tap plan"); return }
+    #expect(snapshotID == "snap-1")
+}
+
+@Test("ActionPlan 保留 controlEvent 的 snapshotID")
+func controlActionPlanPreservesSnapshotID() {
+    let plan = UIKitActionPlan.controlEvent(locator: .path([0]), event: .touchUpInside, snapshotID: "snap-2")
+    guard case .controlEvent(_, _, let snapshotID) = plan else { Issue.record("expected control plan"); return }
+    #expect(snapshotID == "snap-2")
 }

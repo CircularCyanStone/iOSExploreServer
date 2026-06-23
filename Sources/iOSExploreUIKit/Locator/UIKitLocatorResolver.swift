@@ -88,6 +88,16 @@ enum UIKitLocatorResolver {
         return locatedDescendant(for: target, in: root, path: [])
     }
 
+    /// 按 path 下标链取出对应的 view（仅用于陈旧指纹重采，不关心完整结构）。
+    ///
+    /// - Parameters:
+    ///   - indexes: 从根 view 开始的 subviews 下标链。
+    ///   - rootView: 顶部控制器根 view。
+    /// - Returns: 命中的 view；下标越界或路径不存在时返回 nil。
+    static func view(at indexes: [Int], in rootView: UIView) -> UIView? {
+        findView(at: indexes, in: rootView)?.view
+    }
+
     /// 按 path 下标定位 view。
     private static func findView(at indexes: [Int], in root: UIView) -> LocatedView? {
         var current = root

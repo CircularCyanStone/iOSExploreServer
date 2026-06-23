@@ -45,7 +45,9 @@ struct UIControlSendActionCommand: Command {
         UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
         switch UIControlSendActionQuery.parse(from: request.data) {
         case .success(let query):
-            let plan = UIKitActionPlan.controlEvent(locator: query.target.locator, event: query.event)
+            let plan = UIKitActionPlan.controlEvent(locator: query.target.locator,
+                                                    event: query.event,
+                                                    snapshotID: query.snapshotID)
             let result = await UIKitActionExecutor.execute(plan)
             switch result {
             case .success(let data):

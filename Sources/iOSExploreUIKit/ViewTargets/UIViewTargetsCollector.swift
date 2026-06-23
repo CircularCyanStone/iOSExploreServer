@@ -37,7 +37,13 @@ enum UIViewTargetsCollector {
                 visitedNodeCount: &visitedNodeCount,
                 targets: &targets)
 
-        let data: JSON = [
+        let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
+        let fingerprints = UIKitFingerprintCollector.fingerprints(in: context.rootView,
+                                                                  includeHidden: query.includeHidden,
+                                                                  digest: digest)
+        let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitSnapshotContext(digest: digest),
+                                                          targets: fingerprints)
+        var data: JSON = [
             "screen": .object(screenJSON(window: context.window,
                                          rootViewController: context.rootViewController,
                                          topViewController: context.topViewController)),
@@ -45,6 +51,11 @@ enum UIViewTargetsCollector {
             "visitedNodeCount": .double(Double(visitedNodeCount)),
             "targets": .array(targets.map { .object($0.toJSON()) }),
         ]
+        if let snapshotID {
+            data["snapshotID"] = .string(snapshotID)
+        } else {
+            data["snapshotID"] = .null
+        }
         UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(targets.count) topViewController=\(String(describing: type(of: context.topViewController)))")
         return .success(data)
     }
@@ -154,7 +165,9 @@ enum UIViewTargetsCollector {
     }
 
     /// 识别轻量目标角色，用于给 agent 返回建议动作。
-    private static func role(for view: UIView) -> UIViewTargetRole {
+    ///
+    /// 对 executor 上的陈旧指纹重采也可见（fingerprint 需要 role 字段），故为模块内可见。
+    static func role(for view: UIView) -> UIViewTargetRole {
         if view is UIButton { return .button }
         if view is UISwitch { return .switch }
         if view is UISlider { return .slider }

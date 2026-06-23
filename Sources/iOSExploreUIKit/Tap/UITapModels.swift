@@ -43,6 +43,16 @@ public enum UITapQueryParseResult: Sendable, Equatable {
     case success(UITapQuery)
     /// 参数非法。
     case failure(String)
+
+    /// 成功时返回解析出的 snapshotID；失败时返回 nil。
+    public var snapshotID: String? {
+        switch self {
+        case .success(let query):
+            return query.snapshotID
+        case .failure:
+            return nil
+        }
+    }
 }
 
 /// `ui.tap` 的命令参数。
@@ -52,12 +62,17 @@ public enum UITapQueryParseResult: Sendable, Equatable {
 public struct UITapQuery: Sendable, Equatable {
     /// 点击目标。
     public let target: UITapTarget
+    /// 可选的快照标识，用于对 `.path` 定位做陈旧校验；查询类命令返回，交互命令回传。
+    public let snapshotID: String?
 
     /// 创建 tap 查询。
     ///
-    /// - Parameter target: 点击目标。
-    public init(target: UITapTarget) {
+    /// - Parameters:
+    ///   - target: 点击目标。
+    ///   - snapshotID: 可选 snapshotID，默认 nil。
+    public init(target: UITapTarget, snapshotID: String? = nil) {
         self.target = target
+        self.snapshotID = snapshotID
     }
 
     /// 从命令 `data` 解析查询参数。
@@ -65,6 +80,7 @@ public struct UITapQuery: Sendable, Equatable {
     /// - Parameter data: `ExploreRequest.data`。
     /// - Returns: 成功时返回查询对象；失败时返回可直接放入 `invalid_data` 的说明。
     public static func parse(from data: JSON) -> UITapQueryParseResult {
+        let snapshotID = data["snapshotID"]?.stringValue
         let hasViewTarget = data["accessibilityIdentifier"]?.stringValue != nil || data["path"]?.stringValue != nil
         let hasX = data["x"]?.doubleValue != nil
         let hasY = data["y"]?.doubleValue != nil
@@ -81,13 +97,13 @@ public struct UITapQuery: Sendable, Equatable {
             guard coordinateSpace == "window" else {
                 return .failure("coordinateSpace must be window")
             }
-            return .success(UITapQuery(target: .windowPoint(x: x, y: y)))
+            return .success(UITapQuery(target: .windowPoint(x: x, y: y), snapshotID: snapshotID))
         }
 
         switch UIKitViewLookupTarget.parse(identifier: data["accessibilityIdentifier"]?.stringValue,
                                            rawPath: data["path"]?.stringValue) {
         case .success(let target):
-            return .success(UITapQuery(target: .view(target)))
+            return .success(UITapQuery(target: .view(target), snapshotID: snapshotID))
         case .failure(let message):
             return .failure(message)
         }

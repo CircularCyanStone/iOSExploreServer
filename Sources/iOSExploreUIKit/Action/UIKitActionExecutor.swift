@@ -21,9 +21,11 @@ import UIKit
 /// `sendActions(for:)` 路径上仍照常派发（既有行为），capability 校验只用于映射事件名与
 /// 确认控件存在，不新增 disabled 拦截。
 ///
-/// 当前不解析或校验 snapshotID：Task 6 会在 `.path + snapshotID` 路径加陈旧校验。本执行器
-/// 的日志点：进入/退出、Context 不可用、resolve 失败、capability 校验、hit-test、sendActions、
-/// 错误分支，均记录摘要/路径/类型/错误码，不写完整 payload。
+/// 陈旧校验（Task 6）：当 plan 携带 `.path + snapshotID` 时，执行器从当前 view 树重采该
+/// path 的指纹，与 `UIKitSnapshotStore` 保存的比对；`.stale`（TTL 过期或指纹不匹配）时通过
+/// `UIKitCommandError.staleLocator` 返回 `invalid_data`。identifier 定位、windowPoint 或无
+/// snapshotID 时不校验。本执行器的日志点：进入/退出、Context 不可用、resolve 失败、陈旧校验、
+/// hit-test、sendActions、错误分支，均记录摘要/路径/类型/错误码，不写完整 payload。
 @MainActor
 enum UIKitActionExecutor {
     /// tap 动作的固定 action 名，用于错误工厂与日志关联。
@@ -40,10 +42,45 @@ enum UIKitActionExecutor {
     /// - Returns: 命令结果。成功时返回迁移前一致的 JSON；失败时返回既有错误语义的 envelope。
     static func execute(_ plan: UIKitActionPlan) -> ExploreResult {
         switch plan {
-        case .tap(let locator):
-            return executeTap(locator: locator)
-        case .controlEvent(let locator, let event):
-            return executeControlEvent(locator: locator, event: event)
+        case .tap(let locator, let snapshotID):
+            return executeTap(locator: locator, snapshotID: snapshotID)
+        case .controlEvent(let locator, let event, let snapshotID):
+            return executeControlEvent(locator: locator, event: event, snapshotID: snapshotID)
+        }
+    }
+
+    /// 仅在 `.path + snapshotID` 同时存在时做陈旧校验。
+    ///
+    /// 从当前 view 树重新采集该 path 的指纹，与 store 中保存的比对。`.stale` 时通过
+    /// `UIKitCommandError.staleLocator` 返回 `invalid_data`；identifier 定位、windowPoint
+    /// 或无 snapshotID 时不校验（返回 nil）。
+    ///
+    /// - Parameters:
+    ///   - locator: 目标定位器。
+    ///   - snapshotID: 调用方携带的快照标识。
+    ///   - context: 当前 UIKit 上下文（用于重采指纹）。
+    ///   - action: 触发校验的 action 名（错误关联）。
+    /// - Returns: 失败时返回错误结果；通过/不校验时返回 nil。
+    private static func validateFreshness(locator: UIKitLocator,
+                                          snapshotID: String?,
+                                          context: UIKitContextProvider.Context,
+                                          action: String) -> ExploreResult? {
+        guard let snapshotID else { return nil }
+        guard case .path(let indexes) = locator else { return nil }
+        let path = UIKitViewLookupTarget.pathString(from: indexes)
+        guard let view = UIKitLocatorResolver.view(at: indexes, in: context.rootView) else {
+            return nil
+        }
+        let current = UIKitFingerprintCollector.fingerprint(for: view,
+                                                             path: path,
+                                                             digest: UIKitFingerprintCollector.digest(topViewController: context.topViewController))
+        switch UIKitSnapshotStore.shared.validation(snapshotID: snapshotID, path: path, current: current) {
+        case .stale:
+            let error = UIKitCommandError.staleLocator(action: action, snapshotID: snapshotID)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
+        case .valid, .unknown:
+            return nil
         }
     }
 
@@ -51,9 +88,11 @@ enum UIKitActionExecutor {
 
     /// 执行 tap 动作。
     ///
-    /// - Parameter locator: 点击目标的统一定位器。
+    /// - Parameters:
+    ///   - locator: 点击目标的统一定位器。
+    ///   - snapshotID: 可选 snapshotID，仅在 `.path` 且非 nil 时校验。
     /// - Returns: tap 命令结果，与迁移前 `UITapCommand` 行为一致。
-    private static func executeTap(locator: UIKitLocator) -> ExploreResult {
+    private static func executeTap(locator: UIKitLocator, snapshotID: String?) -> ExploreResult {
         let context: UIKitContextProvider.Context
         switch UIKitContextProvider.currentContext() {
         case .success(let value):
@@ -62,6 +101,13 @@ enum UIKitActionExecutor {
             let error = UIKitCommandError.hierarchyUnavailable(action: tapAction, reason: reason)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
+        }
+
+        if let stale = validateFreshness(locator: locator,
+                                         snapshotID: snapshotID,
+                                         context: context,
+                                         action: tapAction) {
+            return stale
         }
 
         switch locator {
@@ -162,12 +208,8 @@ enum UIKitActionExecutor {
             return error.result
         }
 
-        // 共享 capability 校验：确认命中控件确实属于 executor 可派发 tap 的控件类型，
-        // 与 collector（`ui.viewTargets.availableActions`）走同一份 resolver 规则。
-        // 不拦截 disabled：既有 tap fallback 不检查 isEnabled，保持行为一致。
-        _ = UIKitActionCapabilityResolver.resolve(view: hitView,
-                                                  nearestControl: control,
-                                                  isEnabled: control.isEnabled)
+        // 共享 capability 规则由 collector（`ui.viewTargets.availableActions`）持有；
+        // executor 此处不再重复调用 resolver（纯值无副作用），保持迁移前后行为等价。
 
         let locatedControl = UIKitLocatorResolver.locatedView(for: control, in: context.rootView)
         let locatedHit = UIKitLocatorResolver.locatedView(for: hitView, in: context.rootView)
@@ -195,9 +237,11 @@ enum UIKitActionExecutor {
     /// - Parameters:
     ///   - locator: 目标控件的统一定位器（identifier / path）。
     ///   - event: 要发送的 UIControl 事件。
+    ///   - snapshotID: 可选 snapshotID，仅在 `.path` 且非 nil 时校验。
     /// - Returns: control.sendAction 命令结果，与迁移前 `UIControlSendActionCommand` 行为一致。
     private static func executeControlEvent(locator: UIKitLocator,
-                                            event: UIControlSendActionEvent) -> ExploreResult {
+                                            event: UIControlSendActionEvent,
+                                            snapshotID: String?) -> ExploreResult {
         let context: UIKitContextProvider.Context
         switch UIKitContextProvider.currentContext() {
         case .success(let value):
@@ -206,6 +250,13 @@ enum UIKitActionExecutor {
             let error = UIKitCommandError.hierarchyUnavailable(action: controlAction, reason: reason)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
+        }
+
+        if let stale = validateFreshness(locator: locator,
+                                         snapshotID: snapshotID,
+                                         context: context,
+                                         action: controlAction) {
+            return stale
         }
 
         let located: UIKitLocatorResolver.LocatedView
@@ -232,12 +283,8 @@ enum UIKitActionExecutor {
             return error.result
         }
 
-        // 共享 capability 校验：确认控件属于 executor 可派发 control event 的控件类型，
-        // 与 collector 走同一份 resolver 规则。不拦截 disabled：既有 sendActions 不检查
-        // isEnabled，保持行为一致。
-        _ = UIKitActionCapabilityResolver.resolve(view: located.view,
-                                                  nearestControl: control,
-                                                  isEnabled: control.isEnabled)
+        // 共享 capability 规则由 collector（`ui.viewTargets.availableActions`）持有；
+        // executor 此处不再重复调用 resolver（纯值无副作用），保持迁移前后行为等价。
 
         UIKitCommandLogging.info("command", "ui control send action mainactor target=\(located.pathString) type=\(String(describing: Swift.type(of: control))) event=\(event.rawValue) enabled=\(control.isEnabled)")
         control.sendActions(for: event.uiControlEvent)

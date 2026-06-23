@@ -27,6 +27,16 @@ public enum UIControlSendActionQueryParseResult: Sendable, Equatable {
     case success(UIControlSendActionQuery)
     /// 参数非法。
     case failure(String)
+
+    /// 成功时返回解析出的 snapshotID；失败时返回 nil。
+    public var snapshotID: String? {
+        switch self {
+        case .success(let query):
+            return query.snapshotID
+        case .failure:
+            return nil
+        }
+    }
 }
 
 /// `ui.control.sendAction` 的命令参数。
@@ -38,15 +48,19 @@ public struct UIControlSendActionQuery: Sendable, Equatable {
     public let target: UIControlSendActionTarget
     /// 要发送的 UIControl 事件。
     public let event: UIControlSendActionEvent
+    /// 可选的快照标识，用于对 `.path` 定位做陈旧校验。
+    public let snapshotID: String?
 
     /// 创建 sendAction 查询。
     ///
     /// - Parameters:
     ///   - target: 目标控件定位方式。
     ///   - event: 要发送的 UIControl 事件。
-    public init(target: UIControlSendActionTarget, event: UIControlSendActionEvent) {
+    ///   - snapshotID: 可选 snapshotID，默认 nil。
+    public init(target: UIControlSendActionTarget, event: UIControlSendActionEvent, snapshotID: String? = nil) {
         self.target = target
         self.event = event
+        self.snapshotID = snapshotID
     }
 
     /// 从命令 `data` 解析查询参数。
@@ -54,6 +68,7 @@ public struct UIControlSendActionQuery: Sendable, Equatable {
     /// - Parameter data: `ExploreRequest.data`。
     /// - Returns: 成功时返回查询对象；失败时返回可直接放入 `invalid_data` 的说明。
     public static func parse(from data: JSON) -> UIControlSendActionQueryParseResult {
+        let snapshotID = data["snapshotID"]?.stringValue
         guard let rawEvent = data["event"]?.stringValue else {
             return .failure("missing required parameter 'event'")
         }
@@ -64,7 +79,7 @@ public struct UIControlSendActionQuery: Sendable, Equatable {
         switch UIKitViewLookupTarget.parse(identifier: data["accessibilityIdentifier"]?.stringValue,
                                            rawPath: data["path"]?.stringValue) {
         case .success(let target):
-            return .success(UIControlSendActionQuery(target: target, event: event))
+            return .success(UIControlSendActionQuery(target: target, event: event, snapshotID: snapshotID))
         case .failure(let message):
             return .failure(message)
         }

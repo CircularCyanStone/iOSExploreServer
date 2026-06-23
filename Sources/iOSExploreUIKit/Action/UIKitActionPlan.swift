@@ -12,19 +12,24 @@ import Foundation
 /// 行为（hit-test、sendActions）由 executor 在 UIKit 隔离域执行，由 Task 7 的 iOS framework
 /// 测试覆盖。
 ///
-/// 当前不携带 snapshotID：Task 6 会为 `.path` 变体加 snapshotID，并在 executor 内对陈旧
-/// path 做校验。本任务专注把既有 tap/control 执行逻辑正确迁入 executor，保留迁移前行为。
+/// 当前携带可选 snapshotID：adapter 从查询解析出 snapshotID 后随 plan 传入，executor 在
+/// `.path + snapshotID` 同时存在时校验指纹是否陈旧（`UIKitSnapshotStore.validation`），
+/// 失败通过 `UIKitCommandError.staleLocator` 返回 `invalid_data`。identifier 定位或无
+/// snapshotID 时不校验。
 public enum UIKitActionPlan: Sendable, Equatable {
     /// 点击动作。executor 会按 locator 取得目标（坐标则直接 hit-test），命中校验后对
     /// `UIControl` 派发第一版 `touchUpInside` fallback。
     ///
-    /// - Parameter locator: 点击目标的统一定位器（identifier / path / windowPoint）。
-    case tap(locator: UIKitLocator)
+    /// - Parameters:
+    ///   - locator: 点击目标的统一定位器（identifier / path / windowPoint）。
+    ///   - snapshotID: 可选 snapshotID；仅在 `.path` 定位且非 nil 时做陈旧校验。
+    case tap(locator: UIKitLocator, snapshotID: String? = nil)
     /// 向 `UIControl` 发送 target-action 事件。executor 会 resolve locator 成 view，校验其
     /// 为 `UIControl`，再 `sendActions(for:)`。
     ///
     /// - Parameters:
     ///   - locator: 目标控件的统一定位器（identifier / path）。
     ///   - event: 要发送的 UIControl 事件。
-    case controlEvent(locator: UIKitLocator, event: UIControlSendActionEvent)
+    ///   - snapshotID: 可选 snapshotID；仅在 `.path` 定位且非 nil 时做陈旧校验。
+    case controlEvent(locator: UIKitLocator, event: UIControlSendActionEvent, snapshotID: String? = nil)
 }
