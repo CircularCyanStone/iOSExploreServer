@@ -74,7 +74,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data
 定位参数二选一：
 
 - `accessibilityIdentifier`: 按业务层设置的 identifier 精确定位。若匹配多个 view，会返回 `invalid_data`，避免误触发。
-- `path`: 使用 `ui.topViewHierarchy` 返回的只读路径，例如 `root/0/2/1`。
+- `path`: 使用 `ui.viewTargets` 或 `ui.topViewHierarchy` 返回的只读路径，例如 `root/0/2/1`。
 
 事件名：
 
@@ -100,7 +100,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"x":120,"y":
 定位方式三选一：
 
 - `accessibilityIdentifier`: 按业务 identifier 精确定位 view。
-- `path`: 按 `ui.topViewHierarchy` 返回的只读路径定位 view。
+- `path`: 按 `ui.viewTargets` 或 `ui.topViewHierarchy` 返回的只读路径定位 view。
 - `x` + `y`: 直接使用 window 坐标；`coordinateSpace` 第一版仅支持 `window`。
 
 按 view 定位时，命令取目标 view 中心点转换到 window 坐标，并校验 `hitTest` 命中的 view 是目标或其子孙/祖先关系中的相关 view。如果中心点被其他 view 遮挡，会返回 `invalid_data`。
