@@ -96,6 +96,8 @@ server.registerUIKitCommands()
 
 它返回只在当前调用内有效的内部 `UIKitContext`。其中的 `UIView`、`UIWindow`、`UIViewController` 不得进入 `Sendable` 模型、snapshot 缓存或 HTTP 响应。Context 同时生成 scene 标识、window 类型、root/top controller 类型等无敏感诊断摘要。未来多窗口支持通过可选 context selector 增加，默认 active-window 行为保持不变。
 
+`UIKitQueryService`、`UIKitLocatorResolver` 的真实 view resolve 路径和 `UIKitActionExecutor` 均由 `@MainActor` 隔离；Command adapter 在 Router 的异步任务中通过 `await` 调用它们。adapter 负责记录进入 MainActor 前后的 action、耗时与失败码，不能把 UIKit 对象带回非隔离域。`UIKitSnapshotStore` 也归属 MainActor，避免为 UIKit 查询版本引入第二个共享锁或 `@unchecked Sendable` 边界。
+
 ### Locator
 
 统一使用 `UIKitLocator`，由现有 `UIKitViewLookupTarget` 演进而来：
@@ -110,14 +112,20 @@ server.registerUIKitCommands()
 
 `UIKitQueryService` 承载 `ui.topViewHierarchy` 和 `ui.viewTargets`。两者的职责保持：前者用于完整结构和视觉验收，后者用于低 payload 的交互目标发现。采集器读取 UIKit 后立即转换为值类型，Foundation builder 继续负责 JSON、过滤和文本裁剪。
 
+Query 与 Action 不得分别按 role 推断动作。两者共享 `UIKitActionCapabilityResolver`：它接收已提取的目标值描述和当前状态，输出真实可用的 `UIKitActionAvailability`。Query 把它序列化为 `availableActions`；Executor 在派发前用同一规则复核，避免 label、普通 view 或 gesture view 被错误宣传为可 tap。
+
 `ui.viewTargets` 保持既有 `screen`、`targetCount`、`targets` 等字段，并追加：
 
 - `snapshotID`：不透明、短 TTL 的查询版本标识。
 - `availableActions`：当前 executor 实际能执行的动作，而不是仅凭 role 推断的建议。
 
+`ui.topViewHierarchy` 也返回 `snapshotID`，使其已返回的 `path` 可进入同一陈旧检测流程；它不返回 `availableActions`。`availableActions` 只属于 `ui.viewTargets.targets`。
+
 `accessibilityIdentifier` 是 locator，必须完整返回，不能受 `textLimit` 截断。title、label、placeholder、value 等展示文本继续裁剪；日志仅记录长度、数量和必要摘要。
 
-`UIKitSnapshotStore` 只保存有数量上限和 TTL 的值类型记录：context fingerprint 与 `path -> target fingerprint`（类型、完整 identifier 的不可逆摘要、role 与必要状态）。绝不保存 `UIView`。当执行命令携带 `snapshotID + path` 时，resolver 比较实时上下文与目标指纹；不匹配则返回可机器识别的 `stale_locator`，调用方重新查询。未带 `snapshotID` 时保留现有 path 行为。identifier 始终实时解析，snapshot 只参与诊断。
+`UIKitSnapshotStore` 只保存值类型记录：context fingerprint 与 `path -> target fingerprint`（类型、完整 identifier 的不可逆摘要、role 与必要状态）。绝不保存 `UIView`。默认最多保留 8 个快照、每个快照最多 512 个目标指纹、TTL 为 10 秒；先清理过期条目，再按最近最少使用淘汰。超过单快照指纹上限时查询仍成功，但 `snapshotID` 返回 `null`，调用方只能使用 identifier 或原有的即时 path 行为。
+
+当执行命令携带 `snapshotID + path` 时，resolver 比较实时上下文与目标指纹；不匹配时保持既有 envelope 协议，返回 `invalid_data` 和固定语义消息“locator is stale; re-query”。未带 `snapshotID` 时保留现有 path 行为。identifier 始终实时解析，snapshot 只参与诊断。该校验只验证结构身份，不保证 frame、z-order 或 hit-test 结果；`ui.tap` 仍必须做实时 hit-test。
 
 快照校验是尽力避免陈旧结构误操作，不承诺把动态 UIKit 树变成事务；调用方始终优先 identifier。
 
@@ -151,7 +159,7 @@ server.registerUIKitCommands()
 - 一个通用、值类型、可 `Sendable` 的 `ExploreCommandFailure`，承载 envelope code、对外 message 和内部 log message；它是扩展 command 失败的唯一 core 映射入口。
 - 一个受控的扩展日志 API，允许扩展以字符串 category（如 `uikit.query`、`uikit.locator`、`uikit.action`）向现有 `ExploreLogging` sink 写入记录。
 
-UIKit target 自己定义 `UIKitCommandError` factory，集中构造“上下文不可用、未找到、歧义、目标不支持、命中不一致、陈旧 locator”等语义，再映射为 `ExploreCommandFailure`。这样每个错误出口仍先经 typed factory，HTTP/envelope 保持统一，而 core 不持有 UIKit 失败细节。实施时应同步把现有“所有错误必须由 `ExploreServerError` 工厂创建”的项目规则改为“每个模块必须有唯一 typed error factory，并映射为 core command failure”，避免规则与模块边界冲突。
+UIKit target 自己定义 `UIKitCommandError` factory，集中构造“上下文不可用、未找到、歧义、目标不支持、命中不一致、陈旧 locator”等语义，再映射为 `ExploreCommandFailure`。这样每个错误出口仍先经 typed factory，HTTP/envelope 保持统一，而 core 不持有 UIKit 失败细节。实施时应同步把现有“所有错误必须由 `ExploreServerError` 工厂创建”的项目规则改为“每个模块必须有唯一 typed error factory，并映射为 core command failure”，避免规则与模块边界冲突。由于当前 `ExploreError` 没有 `stale_locator`，本次不扩展 error-code 枚举，避免在模块拆分时改变既有 envelope code 契约。
 
 各层的必需日志点：
 
@@ -167,18 +175,18 @@ UIKit target 自己定义 `UIKitCommandError` factory，集中构造“上下文
 ## 迁移顺序
 
 1. 建立两个 SPM products/targets 与两个 framework targets；移动 UIKit 文件；移除 core 的 UIKit 自动注册。
-2. 引入显式 `registerUIKitCommands()`；更新 SPMExample、framework 链接、测试 import 与所有架构/运行文档。
+2. 引入显式 `registerUIKitCommands()`；更新 SPMExample、framework 链接、测试 import，以及 `docs/architecture/index.md`、`docs/tools/network-tools.md`、`docs/runbooks/build-and-test.md` 和根 `AGENTS.md` 的模块/构建说明。
 3. 将 Context、Locator、Query、Action 目录和内部服务落位；先以现有实现迁移，确保四个 action 行为不变。
 4. 抽出 core 扩展日志/通用 command failure，以及 UIKit typed error factory；删除 core 中 UIKit 专用错误工厂。
 5. 修正 identifier 截断；将 role 推断的 `suggestedActions` 迁为真实 `availableActions`。为兼容可暂时保留旧字段，并明确它不是执行保证。
-6. 加入可选 snapshotID、有限缓存和陈旧 path 检测；旧调用方不传 snapshotID 时不改变行为。
+6. 将 snapshotID、有限缓存和陈旧 path 检测作为独立子阶段实现；先验证 Context/Locator/Executor 迁移不改变既有动作，再加入这一正确性增强。旧调用方不传 snapshotID 时不改变行为。
 7. 完成验证和文档更新后，再单独规划第一个新命令；不在本次重构里混入输入、滚动或截图实现。
 
 ## 测试与验证
 
 macOS `swift test` 必须继续覆盖所有 Foundation-only 的 UIKit 领域模型：locator/path 解析、query 过滤、文本裁剪、target JSON、action-plan 解析、snapshot fingerprint 与过期判断、`availableActions` 映射。
 
-iOS/Xcode 测试必须新增真实 UIKit 覆盖：多 scene/window 选择、collector、identifier/path resolve、snapshot 失效、hit-test、UIControl target-action、显式注册以及核心与 UIKit framework 链接。SPMExample 真机/模拟器验证至少覆盖“未注册时 help 无 UIKit action；注册后四个 action 可用；查询后按 identifier 与 path 执行；陈旧 snapshot path 被拒绝”。
+iOS/Xcode 测试必须新增真实 UIKit 覆盖：多 scene/window 选择、collector、identifier/path resolve、snapshot 失效、hit-test、UIControl target-action、显式注册以及核心与 UIKit framework 链接。SPMExample 真机/模拟器验证至少覆盖“未注册时 help 无 UIKit action；注册后四个 action 可用；查询后按 identifier 与 path 执行；陈旧 snapshot path 以 `invalid_data` 被拒绝”。
 
 每一步保持现有 `swift test` 通过，并额外构建 framework 工程和 SPMExample。迁移前后用 action-level contract tests 对比现有请求的响应字段与 dispatch mode，避免只因目录调整造成协议漂移。
 
@@ -200,3 +208,5 @@ iOS/Xcode 测试必须新增真实 UIKit 覆盖：多 scene/window 选择、coll
 - 不缓存或跨请求持有 UIKit 对象。
 - 不改变现有 action 名、必填字段或把 `ui.tap` 伪装成真实系统触摸。
 - 不在重构中顺便增加新的业务命令。
+
+如果部署方式从 USB 转发的本机调试扩展到非受控局域网、远程网络或第三方调用方，必须先重新评估监听绑定范围、鉴权和命令授权边界；在完成该评估前，不得把 UI 突变命令作为通用网络服务开放。
