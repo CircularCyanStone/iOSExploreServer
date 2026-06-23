@@ -58,6 +58,24 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
         accessibilityIdentifier != nil || accessibilityIdentifierPrefix != nil
     }
 
+    /// 判断轻量目标候选是否应该进入 `ui.viewTargets` 输出。
+    ///
+    /// 该方法只依赖 Foundation-only 的候选摘要，便于在非 UIKit 测试中覆盖采集器的包含策略。
+    ///
+    /// - Parameter candidate: 从真实 view 或测试用例抽取出的候选摘要。
+    /// - Returns: 当前查询参数下是否应输出该候选。
+    public func shouldInclude(candidate: UIViewTargetCandidate) -> Bool {
+        if !includeHidden, candidate.isHidden { return false }
+        if candidate.isControl, !includeDisabled, !candidate.isEnabled { return false }
+        if candidate.isControl { return true }
+        if candidate.hasGestureRecognizers, candidate.isUserInteractionEnabled { return true }
+        if candidate.hasAccessibilityIdentifier { return true }
+        if candidate.hasAccessibilityLabel { return true }
+        if includeStaticText, candidate.hasStaticText { return true }
+        if includeContainers, candidate.hasSubviews { return true }
+        return false
+    }
+
     /// 从命令 data 解析查询参数。
     ///
     /// - Parameter data: `ExploreRequest.data`。
@@ -104,6 +122,63 @@ public enum UIViewTargetsQueryParseResult: Sendable, Equatable {
     case success(UIViewTargetsQuery)
     /// 参数非法。
     case failure(String)
+}
+
+/// `ui.viewTargets` 输出策略使用的 Foundation-only 候选摘要。
+///
+/// UIKit 采集器负责把真实 `UIView` 转成该摘要，模型层只根据这些布尔状态执行纯决策，
+/// 避免把 UIKit 类型带入可在 macOS `swift test` 覆盖的策略测试。
+public struct UIViewTargetCandidate: Sendable, Equatable {
+    /// 是否隐藏。
+    public let isHidden: Bool
+    /// 是否为 UIControl 或等价控件候选。
+    public let isControl: Bool
+    /// 控件是否可用；仅在 `isControl=true` 时参与 `includeDisabled` 策略。
+    public let isEnabled: Bool
+    /// 是否允许用户交互。
+    public let isUserInteractionEnabled: Bool
+    /// 是否挂有 gesture recognizer。
+    public let hasGestureRecognizers: Bool
+    /// 是否存在非空 accessibilityIdentifier。
+    public let hasAccessibilityIdentifier: Bool
+    /// 是否存在非空 accessibilityLabel。
+    public let hasAccessibilityLabel: Bool
+    /// 是否存在非空静态文本。
+    public let hasStaticText: Bool
+    /// 是否存在子 view。
+    public let hasSubviews: Bool
+
+    /// 创建轻量目标候选摘要。
+    ///
+    /// - Parameters:
+    ///   - isHidden: 是否隐藏。
+    ///   - isControl: 是否为 UIControl 或等价控件候选。
+    ///   - isEnabled: 控件是否可用；仅在 `isControl=true` 时参与 `includeDisabled` 策略。
+    ///   - isUserInteractionEnabled: 是否允许用户交互。
+    ///   - hasGestureRecognizers: 是否挂有 gesture recognizer。
+    ///   - hasAccessibilityIdentifier: 是否存在非空 accessibilityIdentifier。
+    ///   - hasAccessibilityLabel: 是否存在非空 accessibilityLabel。
+    ///   - hasStaticText: 是否存在非空静态文本。
+    ///   - hasSubviews: 是否存在子 view。
+    public init(isHidden: Bool,
+                isControl: Bool,
+                isEnabled: Bool,
+                isUserInteractionEnabled: Bool,
+                hasGestureRecognizers: Bool,
+                hasAccessibilityIdentifier: Bool,
+                hasAccessibilityLabel: Bool,
+                hasStaticText: Bool,
+                hasSubviews: Bool) {
+        self.isHidden = isHidden
+        self.isControl = isControl
+        self.isEnabled = isEnabled
+        self.isUserInteractionEnabled = isUserInteractionEnabled
+        self.hasGestureRecognizers = hasGestureRecognizers
+        self.hasAccessibilityIdentifier = hasAccessibilityIdentifier
+        self.hasAccessibilityLabel = hasAccessibilityLabel
+        self.hasStaticText = hasStaticText
+        self.hasSubviews = hasSubviews
+    }
 }
 
 /// 轻量 UI 目标角色。

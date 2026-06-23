@@ -29,6 +29,7 @@
 | `echo` | 任意对象 | 原样回显入参 `data` |
 | `info` | 忽略 | `{ "system":..., "app":..., "bundle":... }`（来自 `ProcessInfo`/`Bundle`） |
 | `ui.topViewHierarchy` | 可选筛选参数 | 当前顶部控制器 view 层级或匹配节点列表（UIKit 平台） |
+| `ui.viewTargets` | 可选筛选参数 | 按可选筛选参数返回扁平 targets 列表（UIKit 平台） |
 | `ui.control.sendAction` | `accessibilityIdentifier` 或 `path` + `event` | 向指定 UIControl 发送 target-action 事件（UIKit 平台） |
 | `ui.tap` | `accessibilityIdentifier`、`path` 或 window 坐标 | 命中测试后执行点击语义（第一版 UIControl fallback） |
 

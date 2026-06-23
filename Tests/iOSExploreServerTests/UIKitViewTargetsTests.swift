@@ -43,6 +43,21 @@ func viewTargetsQueryRejectsInvalidNumbers() {
     }
 }
 
+@Test("UIViewTargetsQuery include 策略覆盖可交互和可选节点")
+func viewTargetsQueryShouldIncludeCandidates() {
+    let defaultQuery = UIViewTargetsQuery.default
+
+    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isControl: true)) == true)
+    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isControl: true, isEnabled: false)) == true)
+    #expect(UIViewTargetsQuery(includeDisabled: false).shouldInclude(candidate: .testCandidate(isControl: true, isEnabled: false)) == false)
+    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isHidden: true, isControl: true)) == false)
+    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(hasStaticText: true)) == false)
+    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(hasSubviews: true)) == false)
+    #expect(UIViewTargetsQuery(includeStaticText: true).shouldInclude(candidate: .testCandidate(hasStaticText: true)) == true)
+    #expect(UIViewTargetsQuery(includeContainers: true).shouldInclude(candidate: .testCandidate(hasSubviews: true)) == true)
+    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isUserInteractionEnabled: true, hasGestureRecognizers: true)) == true)
+}
+
 @Test("UIViewTargetRole 生成建议动作")
 func viewTargetRoleSuggestedActions() {
     #expect(UIViewTargetRole.button.suggestedActions == ["tap", "control.touchUpInside"])
@@ -92,4 +107,26 @@ func viewTargetTextTruncatesLongValues() {
     #expect(UIViewTargetText.limited("提交", limit: 80) == "提交")
     #expect(UIViewTargetText.limited("1234567890", limit: 4) == "1234")
     #expect(UIViewTargetText.limited(nil, limit: 4) == nil)
+}
+
+private extension UIViewTargetCandidate {
+    static func testCandidate(isHidden: Bool = false,
+                              isControl: Bool = false,
+                              isEnabled: Bool = true,
+                              isUserInteractionEnabled: Bool = false,
+                              hasGestureRecognizers: Bool = false,
+                              hasAccessibilityIdentifier: Bool = false,
+                              hasAccessibilityLabel: Bool = false,
+                              hasStaticText: Bool = false,
+                              hasSubviews: Bool = false) -> UIViewTargetCandidate {
+        UIViewTargetCandidate(isHidden: isHidden,
+                              isControl: isControl,
+                              isEnabled: isEnabled,
+                              isUserInteractionEnabled: isUserInteractionEnabled,
+                              hasGestureRecognizers: hasGestureRecognizers,
+                              hasAccessibilityIdentifier: hasAccessibilityIdentifier,
+                              hasAccessibilityLabel: hasAccessibilityLabel,
+                              hasStaticText: hasStaticText,
+                              hasSubviews: hasSubviews)
+    }
 }

@@ -36,7 +36,7 @@ curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ :38321 ──
 | `HTTPListener.swift` | `NWListener` 封装 | 串行 network queue；session map；连接上限；ready 后继续观测 listener 状态 |
 | `ExploreServer.swift` | 对外门面 + `ServerEvent` 事件流 | `start()/stop()/register()/events()`；内置命令只注册一次 |
 | `Handlers/BuiltinHandlers.swift` | ping/echo/info | 库内只用 `ProcessInfo`/`Bundle`，**不用 UIDevice** |
-| `Handlers/UIKit/` | 可选 UIKit 内置命令包 | `#if canImport(UIKit)` 隔离；当前提供 `ui.topViewHierarchy`、`ui.control.sendAction`、`ui.tap` |
+| `Handlers/UIKit/` | 可选 UIKit 内置命令包 | `#if canImport(UIKit)` 隔离；当前提供 `ui.topViewHierarchy`、`ui.viewTargets`、`ui.control.sendAction`、`ui.tap` |
 
 ## 模块边界与共享源码
 

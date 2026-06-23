@@ -86,15 +86,19 @@ enum UIViewTargetsCollector {
 
     /// 判断 view 是否符合默认或可选输出策略。
     private static func shouldInclude(view: UIView, query: UIViewTargetsQuery) -> Bool {
-        if !query.includeHidden, view.isHidden { return false }
-        if let control = view as? UIControl, !query.includeDisabled, !control.isEnabled { return false }
-        if view is UIControl { return true }
-        if view.gestureRecognizers?.isEmpty == false, view.isUserInteractionEnabled { return true }
-        if view.accessibilityIdentifier?.isEmpty == false { return true }
-        if view.accessibilityLabel?.isEmpty == false { return true }
-        if query.includeStaticText, textualValue(from: view)?.isEmpty == false { return true }
-        if query.includeContainers, !view.subviews.isEmpty { return true }
-        return false
+        let control = view as? UIControl
+        let candidate = UIViewTargetCandidate(
+            isHidden: view.isHidden,
+            isControl: control != nil,
+            isEnabled: control?.isEnabled ?? true,
+            isUserInteractionEnabled: view.isUserInteractionEnabled,
+            hasGestureRecognizers: view.gestureRecognizers?.isEmpty == false,
+            hasAccessibilityIdentifier: view.accessibilityIdentifier?.isEmpty == false,
+            hasAccessibilityLabel: view.accessibilityLabel?.isEmpty == false,
+            hasStaticText: textualValue(from: view)?.isEmpty == false,
+            hasSubviews: !view.subviews.isEmpty
+        )
+        return query.shouldInclude(candidate: candidate)
     }
 
     /// 判断当前 view 是否通过 identifier 输出筛选。
