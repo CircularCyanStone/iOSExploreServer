@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import iOSExploreServer
 
 /// UIKit 内置命令注册入口。
 ///

@@ -1,5 +1,6 @@
 import Testing
 @testable import iOSExploreServer
+@testable import iOSExploreUIKit
 
 @Test("UIKitViewLookupTarget 解析 path 并生成一致路径描述")
 func viewLookupTargetParsesPath() {

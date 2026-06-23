@@ -1,5 +1,6 @@
 import Testing
 @testable import iOSExploreServer
+@testable import iOSExploreUIKit
 
 @Test("UIViewHierarchyNode 转 JSON 保留结构、语义、文本和外观字段")
 func viewHierarchyNodeJSONIncludesCoreAndAcceptanceFields() {

@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import iOSExploreServer
 import UIKit
 
 /// UIKit view 定位工具。

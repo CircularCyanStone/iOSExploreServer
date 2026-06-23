@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import iOSExploreServer
 import UIKit
 
 /// UIKit 视图层级采集器。

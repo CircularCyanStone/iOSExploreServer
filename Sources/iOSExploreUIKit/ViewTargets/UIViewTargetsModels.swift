@@ -1,4 +1,5 @@
 import Foundation
+import iOSExploreServer
 
 /// 轻量 UI 目标查询参数。
 ///

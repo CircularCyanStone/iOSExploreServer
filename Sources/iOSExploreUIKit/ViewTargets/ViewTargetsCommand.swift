@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import iOSExploreServer
 import UIKit
 
 /// 当前顶部控制器轻量交互目标查询命令。

@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import iOSExploreServer
 import UIKit
 
 /// 向指定 UIControl 发送 target-action 事件的命令。

@@ -1,5 +1,6 @@
 import Testing
 @testable import iOSExploreServer
+@testable import iOSExploreUIKit
 
 @Test("UIViewTargetsQuery 解析默认值和筛选参数")
 func viewTargetsQueryParsesDefaultsAndFilters() {

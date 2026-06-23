@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import iOSExploreServer
 import UIKit
 
 /// UIKit 轻量目标采集器。

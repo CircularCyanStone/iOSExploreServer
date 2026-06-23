@@ -1,5 +1,6 @@
 import Testing
 @testable import iOSExploreServer
+@testable import iOSExploreUIKit
 
 @Test("UIControlSendActionQuery 从 accessibilityIdentifier 解析目标和事件")
 func controlSendActionQueryParsesIdentifierTarget() {

@@ -74,9 +74,6 @@ public final class ExploreServer: Sendable {
         self.eventStream = AsyncStream { continuation = $0 }
         self.eventContinuation = continuation
         BuiltinHandlers.registerAll(into: router)
-        #if canImport(UIKit)
-        UIKitHandlers.registerAll(into: router)
-        #endif
         ExploreLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil)")
     }
 
@@ -92,9 +89,6 @@ public final class ExploreServer: Sendable {
         self.eventStream = AsyncStream { continuation = $0 }
         self.eventContinuation = continuation
         BuiltinHandlers.registerAll(into: router)
-        #if canImport(UIKit)
-        UIKitHandlers.registerAll(into: router)
-        #endif
         ExploreLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil)")
     }
 
