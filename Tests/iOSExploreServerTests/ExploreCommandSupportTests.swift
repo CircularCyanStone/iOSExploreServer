@@ -13,11 +13,11 @@ struct ExploreCommandSupportTests {
 
     @Test("扩展日志进入既有 sink")
     func extensionLogUsesCoreSink() {
+        defer { ExploreLogging.resetForTesting() }
         let records = Mutex<[ExploreLogRecord]>([])
         ExploreLogging.setEnabled(true)
         ExploreLogging.setSinkForTesting { record in records.withLock { $0.append(record) } }
         ExploreLogging.emitExtension(level: .info, category: "uikit.action", message: "tap completed")
         #expect(records.withLock { $0.map(\.category) } == ["uikit.action"])
-        ExploreLogging.resetForTesting()
     }
 }
