@@ -51,6 +51,7 @@ enum UIViewTargetsCollector {
     /// 递归遍历 view 树，并把符合输出策略和筛选条件的节点加入 targets。
     ///
     /// identifier 筛选只影响当前节点是否输出，不会提前剪枝子树，避免漏掉深层控件。
+    /// 隐藏节点在 `includeHidden=false` 时会剪枝整棵子树，避免隐藏容器下的控件被误返回。
     private static func collect(view: UIView,
                                 window: UIWindow,
                                 path: [Int],
@@ -59,6 +60,10 @@ enum UIViewTargetsCollector {
                                 visitedNodeCount: inout Int,
                                 targets: inout [UIViewTargetSummary]) {
         visitedNodeCount += 1
+        if !query.includeHidden, view.isHidden {
+            return
+        }
+
         if shouldInclude(view: view, query: query),
            matchesIdentifier(view: view, query: query) {
             targets.append(summary(for: view, window: window, path: path, query: query))
@@ -158,11 +163,11 @@ enum UIViewTargetsCollector {
         return nil
     }
 
-    /// 提取可见文本，调用方负责按 query 裁剪。
+    /// 提取非编辑型可见文本，调用方负责按 query 裁剪。
+    ///
+    /// `UITextField` 与 `UITextView` 可能承载密码或用户输入，默认目标发现不返回其内容。
     private static func textualValue(from view: UIView) -> String? {
         if let label = view as? UILabel { return label.text }
-        if let textField = view as? UITextField { return textField.text }
-        if let textView = view as? UITextView { return textView.text }
         return nil
     }
 
@@ -171,8 +176,9 @@ enum UIViewTargetsCollector {
         (view as? UITextField)?.placeholder
     }
 
-    /// 提取控件当前值，避免返回大块用户输入。
+    /// 提取控件当前值，避免返回可编辑输入内容或大块用户输入。
     private static func value(from view: UIView) -> String? {
+        if view is UITextField || view is UITextView { return nil }
         if let switchView = view as? UISwitch { return switchView.isOn ? "on" : "off" }
         if let slider = view as? UISlider { return String(Double(slider.value)) }
         if let segmented = view as? UISegmentedControl { return String(segmented.selectedSegmentIndex) }
