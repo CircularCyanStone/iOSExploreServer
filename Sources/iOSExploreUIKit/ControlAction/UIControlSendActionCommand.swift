@@ -39,61 +39,61 @@ struct UIControlSendActionCommand: Command {
     /// - Parameter request: 已通过顶层类型校验的命令请求。
     /// - Returns: 成功时返回目标摘要；失败时返回 `invalid_data` 或 UI 不可用错误。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
-        ExploreLogger.info(.command, "command \(action) start payloadKeys=\(request.data.storage.count)")
+        UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
         switch UIControlSendActionQuery.parse(from: request.data) {
         case .success(let query):
             let result = await send(query: query)
             switch result {
             case .success(let data):
-                ExploreLogger.info(.command, "command \(action) completed target=\(query.target.description) event=\(query.event.rawValue) type=\(data["type"]?.stringValue ?? "unknown")")
+                UIKitCommandLogging.info("command", "command \(action) completed target=\(query.target.description) event=\(query.event.rawValue) type=\(data["type"]?.stringValue ?? "unknown")")
             case .failure(let code, let message):
-                ExploreLogger.error(.command, "command \(action) failed code=\(code.rawValue) message=\(message)")
+                UIKitCommandLogging.error("command", "command \(action) failed code=\(code.rawValue) message=\(message)")
             }
             return result
         case .failure(let message):
-            let error = ExploreServerError.invalidData(action: action, message: message)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.invalidData(action: action, message: message)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
     }
 
     /// 在 MainActor 中定位控件并发送事件。
     @MainActor
     private func send(query: UIControlSendActionQuery) -> ExploreResult {
-        let context: UIKitViewLookup.Context
-        switch UIKitViewLookup.currentContext() {
+        let context: UIKitContextProvider.Context
+        switch UIKitContextProvider.currentContext() {
         case .success(let value):
             context = value
         case .failure(let reason):
-            let error = ExploreServerError.uiHierarchyUnavailable(action: action, reason: reason)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.hierarchyUnavailable(action: action, reason: reason)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
 
-        let located: UIKitViewLookup.LocatedView
-        switch UIKitViewLookup.locate(target: query.target, in: context.rootView) {
+        let located: UIKitLocatorResolver.LocatedView
+        switch UIKitLocatorResolver.locate(locator: query.target.locator, in: context.rootView) {
         case .found(let value):
             located = value
         case .notFound:
-            let error = ExploreServerError.uiControlTargetNotFound(action: action, target: query.target.description)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.controlTargetNotFound(action: action, targetDescription: query.target.description)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         case .ambiguous(let count):
-            let error = ExploreServerError.uiControlTargetAmbiguous(action: action,
-                                                                    target: query.target.description,
-                                                                    count: count)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.controlTargetAmbiguous(action: action,
+                                                                 targetDescription: query.target.description,
+                                                                 count: count)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
         guard let control = located.view as? UIControl else {
-            let error = ExploreServerError.uiControlTargetNotControl(action: action,
-                                                                     target: located.pathString,
-                                                                     type: String(describing: Swift.type(of: located.view)))
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.controlTargetNotControl(action: action,
+                                                                  targetDescription: located.pathString,
+                                                                  type: String(describing: Swift.type(of: located.view)))
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
 
-        ExploreLogger.info(.command, "ui control send action mainactor target=\(located.pathString) type=\(String(describing: Swift.type(of: control))) event=\(query.event.rawValue) enabled=\(control.isEnabled)")
+        UIKitCommandLogging.info("command", "ui control send action mainactor target=\(located.pathString) type=\(String(describing: Swift.type(of: control))) event=\(query.event.rawValue) enabled=\(control.isEnabled)")
         control.sendActions(for: query.event.uiControlEvent)
         return .success([
             "sent": .bool(true),

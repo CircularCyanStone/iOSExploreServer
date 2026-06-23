@@ -3,24 +3,16 @@ import Foundation
 import iOSExploreServer
 import UIKit
 
-/// UIKit view 定位工具。
+/// UIKit locator 解析器。
 ///
-/// 所有方法都在 `MainActor` 上读取 UIKit 状态。工具只负责查找和描述 view，不触发事件、
-/// 不修改业务 UI，供 `ui.control.sendAction`、`ui.tap` 等命令复用。
+/// 在 `MainActor` 上把 `UIKitLocator` 的 `accessibilityIdentifier`/`path` 变体解析为
+/// 真实 `UIView`，并提供祖先判断与 nearest-control 查找。`windowPoint` 变体**不**在此
+/// 解析（它交给 executor 用坐标 hit-test），本类型只负责 view 定位。
+///
+/// 该类型是 MainActor 隔离域的一部分：调用方（adapter）只能 `await` 其入口，不能把
+/// 解析出的 `UIView` 返回到非隔离域——跨边界只传 Sendable 摘要（路径、类型名）。
 @MainActor
-enum UIKitViewLookup {
-    /// 当前顶部控制器 view 查询上下文。
-    struct Context {
-        /// 当前前台 window。
-        let window: UIWindow
-        /// window 的根控制器。
-        let rootViewController: UIViewController
-        /// 当前实际展示的顶部控制器。
-        let topViewController: UIViewController
-        /// 顶部控制器根 view。
-        let rootView: UIView
-    }
-
+enum UIKitLocatorResolver {
     /// 已定位到的 UIKit view 及其路径。
     struct LocatedView {
         /// 目标 view。
@@ -44,42 +36,16 @@ enum UIKitViewLookup {
         case ambiguous(count: Int)
     }
 
-    /// 当前上下文查询结果。
-    enum ContextResult {
-        /// 查询成功。
-        case success(Context)
-        /// UIKit 上下文不可用，附带原因。
-        case failure(String)
-    }
-
-    /// 获取当前顶部控制器 view 查询上下文。
-    ///
-    /// - Returns: 成功时返回上下文；失败时返回不可用原因。
-    static func currentContext() -> ContextResult {
-        guard let window = activeWindow() else {
-            return .failure("active window not found")
-        }
-        guard let rootViewController = window.rootViewController else {
-            return .failure("root view controller not found")
-        }
-        let topViewController = topViewController(from: rootViewController)
-        guard let rootView = topViewController.view else {
-            return .failure("top view controller view not found")
-        }
-        return .success(Context(window: window,
-                                rootViewController: rootViewController,
-                                topViewController: topViewController,
-                                rootView: rootView))
-    }
-
     /// 按通用目标定位 view。
     ///
+    /// 仅解析 `accessibilityIdentifier` 与 `path` 变体；`windowPoint` 不应传入本方法。
+    ///
     /// - Parameters:
-    ///   - target: 通用定位目标。
+    ///   - locator: 统一定位器。
     ///   - rootView: 顶部控制器根 view。
     /// - Returns: 定位结果。
-    static func locate(target: UIKitViewLookupTarget, in rootView: UIView) -> LocateResult {
-        switch target {
+    static func locate(locator: UIKitLocator, in rootView: UIView) -> LocateResult {
+        switch locator {
         case .accessibilityIdentifier(let identifier):
             let matches = findViews(withAccessibilityIdentifier: identifier, in: rootView, path: [])
             if matches.isEmpty { return .notFound }
@@ -88,6 +54,8 @@ enum UIKitViewLookup {
         case .path(let indexes):
             guard let located = findView(at: indexes, in: rootView) else { return .notFound }
             return .found(located)
+        case .windowPoint:
+            return .notFound
         }
     }
 
@@ -118,41 +86,6 @@ enum UIKitViewLookup {
             return LocatedView(view: root, indexes: [])
         }
         return locatedDescendant(for: target, in: root, path: [])
-    }
-
-    /// 查找当前前台 scene 中可用的 window。
-    private static func activeWindow() -> UIWindow? {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let foregroundScenes = scenes.filter {
-            $0.activationState == .foregroundActive || $0.activationState == .foregroundInactive
-        }
-        let candidateScenes = foregroundScenes.isEmpty ? scenes : foregroundScenes
-        for scene in candidateScenes {
-            if let key = scene.windows.first(where: { $0.isKeyWindow }) {
-                return key
-            }
-            if let visible = scene.windows.first(where: { !$0.isHidden && $0.alpha > 0 }) {
-                return visible
-            }
-        }
-        return nil
-    }
-
-    /// 从 root 控制器向下找到当前实际展示的顶部控制器。
-    private static func topViewController(from controller: UIViewController) -> UIViewController {
-        if let presented = controller.presentedViewController {
-            return topViewController(from: presented)
-        }
-        if let navigation = controller as? UINavigationController, let visible = navigation.visibleViewController {
-            return topViewController(from: visible)
-        }
-        if let tab = controller as? UITabBarController, let selected = tab.selectedViewController {
-            return topViewController(from: selected)
-        }
-        if let split = controller as? UISplitViewController, let last = split.viewControllers.last {
-            return topViewController(from: last)
-        }
-        return controller
     }
 
     /// 按 path 下标定位 view。

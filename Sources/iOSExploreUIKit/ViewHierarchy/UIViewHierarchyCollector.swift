@@ -14,16 +14,16 @@ enum UIViewHierarchyCollector {
     /// - Parameter query: 采集和筛选参数。
     /// - Returns: 成功时返回层级 JSON；失败时返回业务失败 envelope。
     static func collectTopViewHierarchy(query: UIViewHierarchyQuery) -> ExploreResult {
-        ExploreLogger.info(.command, "ui hierarchy collect mainactor start detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
-        let context: UIKitViewLookup.Context
-        switch UIKitViewLookup.currentContext() {
+        UIKitCommandLogging.info("command", "ui hierarchy collect mainactor start detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
+        let context: UIKitContextProvider.Context
+        switch UIKitContextProvider.currentContext() {
         case .success(let value):
             context = value
         case .failure(let reason):
-            let error = ExploreServerError.uiHierarchyUnavailable(action: TopViewHierarchyCommand.actionName,
-                                                                  reason: reason)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.hierarchyUnavailable(action: TopViewHierarchyCommand.actionName,
+                                                               reason: reason)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
         let element = UIKitViewElement(view: context.rootView)
         let root = UIViewHierarchyBuilder.build(from: element, query: query)
@@ -39,10 +39,10 @@ enum UIViewHierarchyCollector {
             let matches = UIViewHierarchyBuilder.matches(in: element, query: query)
             data["matches"] = .array(matches.map { .object($0.toJSON()) })
             data["matchCount"] = .double(Double(matches.count))
-            ExploreLogger.info(.command, "ui hierarchy collect completed mode=matches nodeCount=\(root.nodeCount) matchCount=\(matches.count)")
+            UIKitCommandLogging.info("command", "ui hierarchy collect completed mode=matches nodeCount=\(root.nodeCount) matchCount=\(matches.count)")
         } else {
             data["root"] = .object(root.toJSON())
-            ExploreLogger.info(.command, "ui hierarchy collect completed mode=root nodeCount=\(root.nodeCount) rootType=\(root.type)")
+            UIKitCommandLogging.info("command", "ui hierarchy collect completed mode=root nodeCount=\(root.nodeCount) rootType=\(root.type)")
         }
         return .success(data)
     }

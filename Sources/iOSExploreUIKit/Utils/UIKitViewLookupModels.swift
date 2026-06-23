@@ -29,6 +29,20 @@ public enum UIKitViewLookupTarget: Sendable, Equatable {
         "root" + indexes.map { "/\($0)" }.joined()
     }
 
+    /// 转换为统一定位器 `UIKitLocator`。
+    ///
+    /// 本类型仅保留 identifier/path 两种语义，作为 path 文法的 compatibility wrapper；
+    /// 新代码应直接使用 `UIKitLocator`。既有模型（`UITapQuery`/`UIControlSendActionQuery`）
+    /// 仍持有本类型，交给 resolver 前通过本属性桥接为 `UIKitLocator`。
+    public var locator: UIKitLocator {
+        switch self {
+        case .accessibilityIdentifier(let value):
+            return .accessibilityIdentifier(value)
+        case .path(let value):
+            return .path(value)
+        }
+    }
+
     /// 从 identifier/path 字段解析通用目标。
     ///
     /// - Parameters:

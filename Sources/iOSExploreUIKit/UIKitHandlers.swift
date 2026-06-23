@@ -11,7 +11,7 @@ enum UIKitHandlers {
     ///
     /// - Parameter router: 命令路由器。
     static func registerAll(into router: Router) {
-        ExploreLogger.info(.command, "uikit handlers register all")
+        UIKitCommandLogging.info("command", "uikit handlers register all")
         router.register(TopViewHierarchyCommand())
         router.register(ViewTargetsCommand())
         router.register(UIControlSendActionCommand())

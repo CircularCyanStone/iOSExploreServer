@@ -58,7 +58,7 @@ struct ViewTargetsCommand: Command {
     /// - Parameter request: 已通过顶层类型校验的命令请求。
     /// - Returns: 成功时返回 targets 列表；参数非法或 UIKit 上下文不可用时返回业务失败 envelope。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
-        ExploreLogger.info(.command, "command \(action) start payloadKeys=\(request.data.storage.count)")
+        UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
         switch UIViewTargetsQuery.parse(from: request.data) {
         case .success(let query):
             let result = await UIViewTargetsCollector.collect(query: query)
@@ -66,15 +66,15 @@ struct ViewTargetsCommand: Command {
             case .success(let data):
                 let targetCount = data["targetCount"]?.doubleValue ?? 0
                 let visitedCount = data["visitedNodeCount"]?.doubleValue ?? 0
-                ExploreLogger.info(.command, "command \(action) completed targetCount=\(targetCount) visitedNodeCount=\(visitedCount)")
+                UIKitCommandLogging.info("command", "command \(action) completed targetCount=\(targetCount) visitedNodeCount=\(visitedCount)")
             case .failure(let code, let message):
-                ExploreLogger.error(.command, "command \(action) failed code=\(code.rawValue) message=\(message)")
+                UIKitCommandLogging.error("command", "command \(action) failed code=\(code.rawValue) message=\(message)")
             }
             return result
         case .failure(let message):
-            let error = ExploreServerError.invalidData(action: action, message: message)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.invalidData(action: action, message: message)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
     }
 }

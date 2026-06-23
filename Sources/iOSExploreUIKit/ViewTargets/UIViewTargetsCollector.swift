@@ -14,17 +14,17 @@ enum UIViewTargetsCollector {
     /// - Parameter query: 查询参数，控制包含策略、递归深度、identifier 筛选和文本长度。
     /// - Returns: 成功时返回 screen、targetCount、visitedNodeCount 与 targets；失败时返回业务失败 envelope。
     static func collect(query: UIViewTargetsQuery) -> ExploreResult {
-        ExploreLogger.info(.command, "ui view targets collect mainactor start includeHidden=\(query.includeHidden) includeDisabled=\(query.includeDisabled) includeStaticText=\(query.includeStaticText) includeContainers=\(query.includeContainers) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit)")
+        UIKitCommandLogging.info("command", "ui view targets collect mainactor start includeHidden=\(query.includeHidden) includeDisabled=\(query.includeDisabled) includeStaticText=\(query.includeStaticText) includeContainers=\(query.includeContainers) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit)")
 
-        let context: UIKitViewLookup.Context
-        switch UIKitViewLookup.currentContext() {
+        let context: UIKitContextProvider.Context
+        switch UIKitContextProvider.currentContext() {
         case .success(let value):
             context = value
         case .failure(let reason):
-            let error = ExploreServerError.uiHierarchyUnavailable(action: ViewTargetsCommand.actionName,
-                                                                  reason: reason)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.hierarchyUnavailable(action: ViewTargetsCommand.actionName,
+                                                               reason: reason)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
 
         var visitedNodeCount = 0
@@ -45,7 +45,7 @@ enum UIViewTargetsCollector {
             "visitedNodeCount": .double(Double(visitedNodeCount)),
             "targets": .array(targets.map { .object($0.toJSON()) }),
         ]
-        ExploreLogger.info(.command, "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(targets.count) topViewController=\(String(describing: type(of: context.topViewController)))")
+        UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(targets.count) topViewController=\(String(describing: type(of: context.topViewController)))")
         return .success(data)
     }
 

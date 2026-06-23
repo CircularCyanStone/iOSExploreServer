@@ -46,7 +46,7 @@ struct TopViewHierarchyCommand: Command {
     /// - Parameter request: 已通过顶层类型校验的命令请求。
     /// - Returns: 成功时返回 root 树或 matches 列表；参数非法时返回 `invalid_data`。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
-        ExploreLogger.info(.command, "command \(action) start payloadKeys=\(request.data.storage.count)")
+        UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
         switch UIViewHierarchyQuery.parse(from: request.data) {
         case .success(let query):
             let result = await UIViewHierarchyCollector.collectTopViewHierarchy(query: query)
@@ -54,15 +54,15 @@ struct TopViewHierarchyCommand: Command {
             case .success(let data):
                 let nodeCount = data["nodeCount"]?.doubleValue ?? 0
                 let matchCount = data["matchCount"]?.doubleValue
-                ExploreLogger.info(.command, "command \(action) completed nodeCount=\(nodeCount) matchCount=\(matchCount.map { String($0) } ?? "none")")
+                UIKitCommandLogging.info("command", "command \(action) completed nodeCount=\(nodeCount) matchCount=\(matchCount.map { String($0) } ?? "none")")
             case .failure(let code, let message):
-                ExploreLogger.error(.command, "command \(action) failed code=\(code.rawValue) message=\(message)")
+                UIKitCommandLogging.error("command", "command \(action) failed code=\(code.rawValue) message=\(message)")
             }
             return result
         case .failure(let message):
-            let error = ExploreServerError.invalidData(action: action, message: message)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.invalidData(action: action, message: message)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
     }
 }

@@ -46,35 +46,35 @@ struct UITapCommand: Command {
     /// - Parameter request: 已通过顶层类型校验的命令请求。
     /// - Returns: 成功时返回命中目标与派发方式；失败时返回明确原因。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
-        ExploreLogger.info(.command, "command \(action) start payloadKeys=\(request.data.storage.count)")
+        UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
         switch UITapQuery.parse(from: request.data) {
         case .success(let query):
             let result = await tap(query: query)
             switch result {
             case .success(let data):
-                ExploreLogger.info(.command, "command \(action) completed target=\(query.target.description) dispatchMode=\(data["dispatchMode"]?.stringValue ?? "unknown")")
+                UIKitCommandLogging.info("command", "command \(action) completed target=\(query.target.description) dispatchMode=\(data["dispatchMode"]?.stringValue ?? "unknown")")
             case .failure(let code, let message):
-                ExploreLogger.error(.command, "command \(action) failed code=\(code.rawValue) message=\(message)")
+                UIKitCommandLogging.error("command", "command \(action) failed code=\(code.rawValue) message=\(message)")
             }
             return result
         case .failure(let message):
-            let error = ExploreServerError.invalidData(action: action, message: message)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.invalidData(action: action, message: message)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
     }
 
     /// 在 MainActor 上定位、命中测试并派发点击。
     @MainActor
     private func tap(query: UITapQuery) -> ExploreResult {
-        let context: UIKitViewLookup.Context
-        switch UIKitViewLookup.currentContext() {
+        let context: UIKitContextProvider.Context
+        switch UIKitContextProvider.currentContext() {
         case .success(let value):
             context = value
         case .failure(let reason):
-            let error = ExploreServerError.uiHierarchyUnavailable(action: action, reason: reason)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.hierarchyUnavailable(action: action, reason: reason)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
 
         switch query.target {
@@ -88,45 +88,45 @@ struct UITapCommand: Command {
     /// 点击按 view 定位的目标。
     @MainActor
     private func tapViewTarget(_ target: UIKitViewLookupTarget,
-                               context: UIKitViewLookup.Context) -> ExploreResult {
-        let located: UIKitViewLookup.LocatedView
-        switch UIKitViewLookup.locate(target: target, in: context.rootView) {
+                               context: UIKitContextProvider.Context) -> ExploreResult {
+        let located: UIKitLocatorResolver.LocatedView
+        switch UIKitLocatorResolver.locate(locator: target.locator, in: context.rootView) {
         case .found(let value):
             located = value
         case .notFound:
-            let error = ExploreServerError.uiTapTargetNotFound(action: action, target: target.description)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.targetNotFound(action: action, targetDescription: target.description)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         case .ambiguous(let count):
-            let error = ExploreServerError.uiTapTargetAmbiguous(action: action,
-                                                               target: target.description,
-                                                               count: count)
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.targetAmbiguous(action: action,
+                                                          targetDescription: target.description,
+                                                          count: count)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
 
         let point = located.view.convert(CGPoint(x: located.view.bounds.midX,
                                                  y: located.view.bounds.midY),
                                          to: context.window)
         guard let hitView = context.window.hitTest(point, with: nil) else {
-            let error = ExploreServerError.uiTapHitTestFailed(action: action,
-                                                             target: located.pathString,
-                                                             x: Double(point.x),
-                                                             y: Double(point.y))
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.hitTestFailed(action: action,
+                                                       targetDescription: located.pathString,
+                                                       x: Double(point.x),
+                                                       y: Double(point.y))
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
-        guard UIKitViewLookup.view(hitView, isDescendantOfOrSameAs: located.view) ||
-              UIKitViewLookup.view(located.view, isDescendantOfOrSameAs: hitView) else {
-            let error = ExploreServerError.uiTapHitMismatch(action: action,
-                                                           target: located.pathString,
-                                                           hitType: String(describing: Swift.type(of: hitView)))
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+        guard UIKitLocatorResolver.view(hitView, isDescendantOfOrSameAs: located.view) ||
+              UIKitLocatorResolver.view(located.view, isDescendantOfOrSameAs: hitView) else {
+            let error = UIKitCommandError.hitMismatch(action: action,
+                                                      targetDescription: located.pathString,
+                                                      hitType: String(describing: Swift.type(of: hitView)))
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
 
         let control = (located.view as? UIControl) ??
-            UIKitViewLookup.nearestControl(from: hitView, stoppingAt: located.view.superview)
+            UIKitLocatorResolver.nearestControl(from: hitView, stoppingAt: located.view.superview)
         return dispatchTap(to: control,
                            hitView: hitView,
                            point: point,
@@ -138,16 +138,16 @@ struct UITapCommand: Command {
     @MainActor
     private func tapWindowPoint(_ point: CGPoint,
                                 targetDescription: String,
-                                context: UIKitViewLookup.Context) -> ExploreResult {
+                                context: UIKitContextProvider.Context) -> ExploreResult {
         guard let hitView = context.window.hitTest(point, with: nil) else {
-            let error = ExploreServerError.uiTapHitTestFailed(action: action,
-                                                             target: targetDescription,
-                                                             x: Double(point.x),
-                                                             y: Double(point.y))
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.hitTestFailed(action: action,
+                                                       targetDescription: targetDescription,
+                                                       x: Double(point.x),
+                                                       y: Double(point.y))
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
-        let control = UIKitViewLookup.nearestControl(from: hitView, stoppingAt: nil)
+        let control = UIKitLocatorResolver.nearestControl(from: hitView, stoppingAt: nil)
         return dispatchTap(to: control,
                            hitView: hitView,
                            point: point,
@@ -161,18 +161,18 @@ struct UITapCommand: Command {
                              hitView: UIView,
                              point: CGPoint,
                              targetDescription: String,
-                             context: UIKitViewLookup.Context) -> ExploreResult {
+                             context: UIKitContextProvider.Context) -> ExploreResult {
         guard let control else {
-            let error = ExploreServerError.uiTapUnsupportedTarget(action: action,
-                                                                 target: targetDescription,
-                                                                 type: String(describing: Swift.type(of: hitView)))
-            ExploreLogger.error(.command, error.logMessage)
-            return .failure(code: error.code, message: error.message)
+            let error = UIKitCommandError.unsupportedTarget(action: action,
+                                                            targetDescription: targetDescription,
+                                                            type: String(describing: Swift.type(of: hitView)))
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         }
 
-        let locatedControl = UIKitViewLookup.locatedView(for: control, in: context.rootView)
-        let locatedHit = UIKitViewLookup.locatedView(for: hitView, in: context.rootView)
-        ExploreLogger.info(.command, "ui tap dispatch controlActionFallback target=\(targetDescription) controlType=\(String(describing: Swift.type(of: control))) hitType=\(String(describing: Swift.type(of: hitView))) x=\(Double(point.x)) y=\(Double(point.y))")
+        let locatedControl = UIKitLocatorResolver.locatedView(for: control, in: context.rootView)
+        let locatedHit = UIKitLocatorResolver.locatedView(for: hitView, in: context.rootView)
+        UIKitCommandLogging.info("command", "ui tap dispatch controlActionFallback target=\(targetDescription) controlType=\(String(describing: Swift.type(of: control))) hitType=\(String(describing: Swift.type(of: hitView))) x=\(Double(point.x)) y=\(Double(point.y))")
         control.sendActions(for: .touchUpInside)
         return .success([
             "tapped": .bool(true),
