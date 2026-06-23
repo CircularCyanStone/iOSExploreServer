@@ -87,6 +87,10 @@ public enum ExploreLogging {
     /// 派发一条日志到 sink。
     ///
     /// 在锁内只做等级过滤并取出 sink，真正写日志（`os_log`）放到锁外，避免临界区阻塞。
+    /// 该方法是库内唯一落盘入口：`ExploreLogger` 与扩展入口 `emitExtension` 都汇聚于此，
+    /// 保证开关、最小等级过滤和 sink 替换对所有日志来源统一生效。
+    ///
+    /// - Parameter record: 待派发的日志记录。
     static func emit(_ record: ExploreLogRecord) {
         let sink: (@Sendable (ExploreLogRecord) -> Void)? = state.withLock { state in
             guard state.isEnabled, record.level >= state.minimumLevel else { return nil }
