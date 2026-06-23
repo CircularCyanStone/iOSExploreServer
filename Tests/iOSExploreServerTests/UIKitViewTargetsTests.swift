@@ -101,6 +101,42 @@ func viewTargetSummaryJSONIncludesLightweightFields() {
         return
     }
     #expect(actions.map(\.stringValue) == ["tap", "control.touchUpInside"])
+    // availableActions 默认为空：模型层不按 role 推断，真实能力由 resolver 在 UIKit 域生成
+    guard case .array(let available)? = json["availableActions"] else {
+        Issue.record("availableActions not array")
+        return
+    }
+    #expect(available.isEmpty)
+}
+
+@Test("UIViewTargetSummary 携带 resolver 生成的 availableActions")
+func viewTargetSummaryCarriesResolverAvailability() {
+    let summary = UIViewTargetSummary(
+        path: "root/0/1",
+        type: "UISwitch",
+        role: .switch,
+        accessibilityIdentifier: "settings.notify",
+        accessibilityLabel: nil,
+        title: nil,
+        text: nil,
+        placeholder: nil,
+        value: nil,
+        frame: UIViewHierarchyRect(x: 0, y: 0, width: 51, height: 31),
+        state: UIViewTargetState(isHidden: false,
+                                 alpha: 1,
+                                 isUserInteractionEnabled: true,
+                                 isEnabled: true,
+                                 isSelected: false,
+                                 isHighlighted: false,
+                                 hasGestureRecognizers: false),
+        availableActions: UIKitActionAvailability(actions: [.tap, .controlValueChanged])
+    )
+
+    guard case .array(let available)? = summary.toJSON()["availableActions"] else {
+        Issue.record("availableActions not array")
+        return
+    }
+    #expect(available.map(\.stringValue) == ["tap", "control.valueChanged"])
 }
 
 @Test("UIViewTargetText 截断长文本并保留短文本")

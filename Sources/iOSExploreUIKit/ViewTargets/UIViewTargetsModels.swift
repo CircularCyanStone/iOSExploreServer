@@ -290,6 +290,9 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     /// 目标角色。
     public let role: UIViewTargetRole
     /// 业务层设置的稳定标识符。
+    ///
+    /// 完整保留，不按 `textLimit` 裁剪——identifier 是事件下发的稳定定位键，截断会导致
+    /// 后续 `ui.tap`/`ui.control.sendAction` 无法精确定位。`textLimit` 只约束展示型文本字段。
     public let accessibilityIdentifier: String?
     /// 辅助功能标签。
     public let accessibilityLabel: String?
@@ -305,6 +308,11 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     public let frame: UIViewHierarchyRect
     /// 目标状态。
     public let state: UIViewTargetState
+    /// executor 实际可派发的动作（来自 `UIKitActionCapabilityResolver`）。
+    ///
+    /// 与 `role` 无关，按真实 view 类型、nearest control、enabled 状态生成。非控件或 disabled
+    /// 时为空，避免把静态节点标成可 tap。
+    public let availableActions: UIKitActionAvailability
 
     /// 创建目标摘要。
     ///
@@ -312,7 +320,7 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     ///   - path: 当前快照内路径。
     ///   - type: 运行时类型名。
     ///   - role: 目标角色。
-    ///   - accessibilityIdentifier: 业务层设置的稳定标识符。
+    ///   - accessibilityIdentifier: 业务层设置的稳定标识符（完整保留，不裁剪）。
     ///   - accessibilityLabel: 辅助功能标签。
     ///   - title: 控件标题。
     ///   - text: 可见文本。
@@ -320,6 +328,7 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     ///   - value: 当前值。
     ///   - frame: window 坐标系 frame。
     ///   - state: 目标状态。
+    ///   - availableActions: executor 实际可派发的动作集合。
     public init(path: String,
                 type: String,
                 role: UIViewTargetRole,
@@ -330,7 +339,8 @@ public struct UIViewTargetSummary: Sendable, Equatable {
                 placeholder: String?,
                 value: String?,
                 frame: UIViewHierarchyRect,
-                state: UIViewTargetState) {
+                state: UIViewTargetState,
+                availableActions: UIKitActionAvailability = UIKitActionAvailability(actions: [])) {
         self.path = path
         self.type = type
         self.role = role
@@ -342,11 +352,12 @@ public struct UIViewTargetSummary: Sendable, Equatable {
         self.value = value
         self.frame = frame
         self.state = state
+        self.availableActions = availableActions
     }
 
     /// 转为命令响应 JSON。
     ///
-    /// - Returns: 只包含轻量定位、语义、状态和建议动作字段的 JSON 对象。
+    /// - Returns: 包含轻量定位、语义、状态、建议动作和可执行动作字段的 JSON 对象。
     public func toJSON() -> JSON {
         [
             "path": .string(path),
@@ -367,6 +378,7 @@ public struct UIViewTargetSummary: Sendable, Equatable {
             "isHighlighted": state.isHighlighted.map(JSONValue.bool) ?? .null,
             "hasGestureRecognizers": .bool(state.hasGestureRecognizers),
             "suggestedActions": .array(role.suggestedActions.map(JSONValue.string)),
+            "availableActions": .array(availableActions.rawValues.map(JSONValue.string)),
         ]
     }
 }

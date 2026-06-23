@@ -122,11 +122,20 @@ enum UIViewTargetsCollector {
                                 query: UIViewTargetsQuery) -> UIViewTargetSummary {
         let control = view as? UIControl
         let frame = view.convert(view.bounds, to: window)
+        // identifier 完整保留：它是事件下发的稳定定位键，裁断会让后续 tap/sendAction 失配。
+        // 仅 title/label/text/placeholder/value 这些展示型文本按 textLimit 裁剪。
+        let nearestControl = control ?? UIKitLocatorResolver.nearestControl(from: view, stoppingAt: nil)
+        let availability = UIKitActionCapabilityResolver.resolve(view: view,
+                                                                 nearestControl: nearestControl,
+                                                                 isEnabled: control?.isEnabled)
+        if !availability.actions.isEmpty {
+            UIKitCommandLogging.info("command", "ui view targets availableActions type=\(String(describing: Swift.type(of: view))) actionCount=\(availability.actions.count) enabled=\(control?.isEnabled ?? false)")
+        }
         return UIViewTargetSummary(
             path: UIKitViewLookupTarget.pathString(from: path),
             type: String(describing: Swift.type(of: view)),
             role: role(for: view),
-            accessibilityIdentifier: UIViewTargetText.limited(view.accessibilityIdentifier, limit: query.textLimit),
+            accessibilityIdentifier: view.accessibilityIdentifier,
             accessibilityLabel: UIViewTargetText.limited(view.accessibilityLabel, limit: query.textLimit),
             title: UIViewTargetText.limited(title(from: view), limit: query.textLimit),
             text: UIViewTargetText.limited(textualValue(from: view), limit: query.textLimit),
@@ -139,7 +148,8 @@ enum UIViewTargetsCollector {
                                      isEnabled: control?.isEnabled,
                                      isSelected: control?.isSelected,
                                      isHighlighted: control?.isHighlighted,
-                                     hasGestureRecognizers: view.gestureRecognizers?.isEmpty == false)
+                                     hasGestureRecognizers: view.gestureRecognizers?.isEmpty == false),
+            availableActions: availability
         )
     }
 
