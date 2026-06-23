@@ -5,9 +5,10 @@ import UIKit
 
 /// 向指定 UIControl 发送 target-action 事件的命令。
 ///
-/// action 为 `ui.control.sendAction`。命令会在当前顶部控制器 view 层级中定位目标，校验它
-/// 是 `UIControl`，然后在 `MainActor` 上调用 `sendActions(for:)`。该命令触发的是
-/// target-action，不模拟真实触摸坐标和命中测试。
+/// action 为 `ui.control.sendAction`。命令只负责解析请求并构造
+/// `UIKitActionPlan.controlEvent`，再 `await UIKitActionExecutor.execute(plan)`。执行语义
+/// （取 Context、resolve locator、校验 `UIControl`、`sendActions(for:)`）全部收敛在
+/// `UIKitActionExecutor` 中，本命令不再内联执行逻辑。
 struct UIControlSendActionCommand: Command {
     /// 固定 action 名。
     static let actionName = "ui.control.sendAction"
@@ -36,13 +37,16 @@ struct UIControlSendActionCommand: Command {
 
     /// 执行 sendAction。
     ///
+    /// 解析请求构造 `UIKitActionPlan.controlEvent`，在 MainActor 上 `await` executor。
+    ///
     /// - Parameter request: 已通过顶层类型校验的命令请求。
     /// - Returns: 成功时返回目标摘要；失败时返回 `invalid_data` 或 UI 不可用错误。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
         UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
         switch UIControlSendActionQuery.parse(from: request.data) {
         case .success(let query):
-            let result = await send(query: query)
+            let plan = UIKitActionPlan.controlEvent(locator: query.target.locator, event: query.event)
+            let result = await UIKitActionExecutor.execute(plan)
             switch result {
             case .success(let data):
                 UIKitCommandLogging.info("command", "command \(action) completed target=\(query.target.description) event=\(query.event.rawValue) type=\(data["type"]?.stringValue ?? "unknown")")
@@ -54,76 +58,6 @@ struct UIControlSendActionCommand: Command {
             let error = UIKitCommandError.invalidData(action: action, message: message)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
-        }
-    }
-
-    /// 在 MainActor 中定位控件并发送事件。
-    @MainActor
-    private func send(query: UIControlSendActionQuery) -> ExploreResult {
-        let context: UIKitContextProvider.Context
-        switch UIKitContextProvider.currentContext() {
-        case .success(let value):
-            context = value
-        case .failure(let reason):
-            let error = UIKitCommandError.hierarchyUnavailable(action: action, reason: reason)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        }
-
-        let located: UIKitLocatorResolver.LocatedView
-        switch UIKitLocatorResolver.locate(locator: query.target.locator, in: context.rootView) {
-        case .found(let value):
-            located = value
-        case .notFound:
-            let error = UIKitCommandError.controlTargetNotFound(action: action, targetDescription: query.target.description)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        case .ambiguous(let count):
-            let error = UIKitCommandError.controlTargetAmbiguous(action: action,
-                                                                 targetDescription: query.target.description,
-                                                                 count: count)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        }
-        guard let control = located.view as? UIControl else {
-            let error = UIKitCommandError.controlTargetNotControl(action: action,
-                                                                  targetDescription: located.pathString,
-                                                                  type: String(describing: Swift.type(of: located.view)))
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        }
-
-        UIKitCommandLogging.info("command", "ui control send action mainactor target=\(located.pathString) type=\(String(describing: Swift.type(of: control))) event=\(query.event.rawValue) enabled=\(control.isEnabled)")
-        control.sendActions(for: query.event.uiControlEvent)
-        return .success([
-            "sent": .bool(true),
-            "event": .string(query.event.rawValue),
-            "path": .string(located.pathString),
-            "type": .string(String(describing: Swift.type(of: control))),
-            "accessibilityIdentifier": control.accessibilityIdentifier.map(JSONValue.string) ?? .null,
-            "isEnabled": .bool(control.isEnabled),
-            "isSelected": .bool(control.isSelected),
-            "isHighlighted": .bool(control.isHighlighted),
-        ])
-    }
-}
-
-private extension UIControlSendActionEvent {
-    /// 映射为 UIKit 的 `UIControl.Event`。
-    var uiControlEvent: UIControl.Event {
-        switch self {
-        case .touchDown:
-            return .touchDown
-        case .touchUpInside:
-            return .touchUpInside
-        case .valueChanged:
-            return .valueChanged
-        case .editingChanged:
-            return .editingChanged
-        case .editingDidBegin:
-            return .editingDidBegin
-        case .editingDidEnd:
-            return .editingDidEnd
         }
     }
 }

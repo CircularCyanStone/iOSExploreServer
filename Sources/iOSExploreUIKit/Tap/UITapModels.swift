@@ -19,6 +19,20 @@ public enum UITapTarget: Sendable, Equatable {
             return "windowPoint=(\(x),\(y))"
         }
     }
+
+    /// 转换为 `UIKitActionPlan.tap` 所需的统一定位器。
+    ///
+    /// 既有 `UITapQuery` 持有 `UIKitViewLookupTarget`（identifier/path 兼容文法），构造
+    /// `UIKitActionPlan` 前经本属性桥接为 `UIKitLocator`，交由 executor 解析。windowPoint
+    /// 直接透传坐标。
+    public var locator: UIKitLocator {
+        switch self {
+        case .view(let target):
+            return target.locator
+        case .windowPoint(let x, let y):
+            return .windowPoint(x: x, y: y)
+        }
+    }
 }
 
 /// `ui.tap` 参数解析结果。
