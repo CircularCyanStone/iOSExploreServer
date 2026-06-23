@@ -84,8 +84,7 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
     public static func parse(from data: JSON) -> UIViewTargetsQueryParseResult {
         let maxDepth: Int?
         if let rawDepth = data["maxDepth"]?.doubleValue {
-            let intDepth = Int(rawDepth)
-            guard rawDepth >= 0, Double(intDepth) == rawDepth else {
+            guard let intDepth = UIKitQueryNumber.nonNegativeInteger(rawDepth) else {
                 return .failure("maxDepth must be a non-negative integer")
             }
             maxDepth = intDepth
@@ -95,8 +94,7 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
 
         let textLimit: Int
         if let rawLimit = data["textLimit"]?.doubleValue {
-            let intLimit = Int(rawLimit)
-            guard rawLimit >= 1, rawLimit <= 200, Double(intLimit) == rawLimit else {
+            guard let intLimit = UIKitQueryNumber.integer(rawLimit, in: 1...200) else {
                 return .failure("textLimit must be an integer between 1 and 200")
             }
             textLimit = intLimit

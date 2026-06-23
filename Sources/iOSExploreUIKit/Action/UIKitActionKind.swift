@@ -4,8 +4,8 @@ import Foundation
 ///
 /// 该枚举是 Foundation-only 值类型，rawValue 与既有 executor 实际支持的行为一一对应：
 /// - `tap` 对应 `UITapCommand` 对 `UIControl` 的 `touchUpInside` fallback 派发；
-/// - `control.touchUpInside` / `control.valueChanged` 对应 `UIControlSendActionCommand`
-///   接受的事件名（`touchUpInside` / `valueChanged`）。
+/// - 所有 `control.*` case 都对应 `UIControlSendActionCommand` 接受的 event 名；resolver
+///   决定具体控件在当前状态下可以使用其中哪些值。
 ///
 /// 它与 `UIViewTargetRole.suggestedActions` 的字面量有意保持一致，但二者来源不同：
 /// `suggestedActions` 按 role 粗略推断，仅作为 agent 提示；`UIKitActionKind` 描述的是
@@ -15,8 +15,16 @@ public enum UIKitActionKind: String, Sendable, Equatable {
     case tap
     /// UIControl 的 `touchUpInside` 事件，适用于按钮等触发型控件。
     case controlTouchUpInside = "control.touchUpInside"
+    /// UIControl 的 `touchDown` 事件，适用于按下即触发的控件。
+    case controlTouchDown = "control.touchDown"
     /// UIControl 的 `valueChanged` 事件，适用于 switch、slider、segmented control 等值型控件。
     case controlValueChanged = "control.valueChanged"
+    /// 文本输入控件的编辑变化事件。
+    case controlEditingChanged = "control.editingChanged"
+    /// 文本输入控件开始编辑事件。
+    case controlEditingDidBegin = "control.editingDidBegin"
+    /// 文本输入控件结束编辑事件。
+    case controlEditingDidEnd = "control.editingDidEnd"
 }
 
 /// 某个 UI 目标当前可执行的 UIKit 动作集合。

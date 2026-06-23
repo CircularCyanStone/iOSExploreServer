@@ -43,7 +43,7 @@
 
 - `accessibilityIdentifier`（优先）：按业务层 identifier **精确匹配，不截断、不做 prefix 匹配**。匹配多个 view 返回 `invalid_data`，避免误触发。
 - `path`：来自 `ui.viewTargets` / `ui.topViewHierarchy` 的只读路径（`root/0/2`），仅描述快照内位置，不写回业务 UI。
-- `snapshotID`（可选，配合 `path`）：携带 `ui.viewTargets` 返回的 `snapshotID` 时，命令会重新采集当前 view 树指纹并逐字段比对（context 类型、path、view 类型、identifier 哈希、role、状态）。页面已变动即判陈旧，返回 **HTTP 200 + `ok:false` + `invalid_data` + 固定陈旧消息**（不泄露具体哪个字段变化）。不带 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
+- `snapshotID`（可选，配合 `path`）：携带 `ui.viewTargets` 返回的 `snapshotID` 时，命令会重新采集当前 view 树指纹并逐字段比对（context 类型、path、view 类型、identifier 哈希、role、enabled/selected、hidden、alpha、交互开关）。页面已变动，或 snapshot 已淘汰/过期而无法验证时，均返回 **HTTP 200 + `ok:false` + `invalid_data` + 固定陈旧消息**。不带 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
 
 ### `ui.topViewHierarchy`
 
@@ -93,7 +93,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data
 - `editingDidBegin`
 - `editingDidEnd`
 
-成功响应包含 `sent`、`event`、`path`、`type`、`accessibilityIdentifier`、`isEnabled`、`isSelected`、`isHighlighted`。该命令只调用 `UIControl.sendActions(for:)`，不模拟真实触摸坐标、命中测试或控件高亮过程；需要真实点击时应使用后续独立的 `ui.tap`。
+成功响应包含 `sent`、`event`、`path`、`type`、`accessibilityIdentifier`、`isEnabled`、`isSelected`、`isHighlighted`。请求 event 必须在目标的 `availableActions` 中以 `control.<event>` 形式出现；disabled 或不支持该 event 的控件返回 `invalid_data`。该命令只调用 `UIControl.sendActions(for:)`，不模拟真实触摸坐标、命中测试或控件高亮过程；需要真实点击时应使用后续独立的 `ui.tap`。
 
 ### `ui.tap`
 

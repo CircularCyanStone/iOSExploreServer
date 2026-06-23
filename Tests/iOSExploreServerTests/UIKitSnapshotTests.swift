@@ -3,6 +3,10 @@ import Testing
 import iOSExploreServer
 @testable import iOSExploreUIKit
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
 // MARK: - Snapshot store 陈旧检测测试（macOS 可编译）
 
 /// `UIKitSnapshotStore` 与 `UIKitTargetFingerprint` 是纯计算的 Foundation-only 类型（store
@@ -26,8 +30,60 @@ func oversizedSnapshotIsNotStored() {
     #expect(store.insert(context: .test, targets: targets) == nil)
 }
 
+#if !canImport(UIKit)
+@Test("未知 snapshotID 必须被判定为陈旧") @MainActor
+func unknownSnapshotIsStale() {
+    let store = UIKitSnapshotStore()
+    #expect(store.validation(snapshotID: "evicted-snapshot",
+                             path: "root/0",
+                             current: .test) == .stale)
+}
+#endif
+
 @Test("交互命令解析可选 snapshotID")
 func actionQueriesParseSnapshotID() {
     #expect(UITapQuery.parse(from: ["path": "root/0", "snapshotID": "s1"]).snapshotID == "s1")
     #expect(UIControlSendActionQuery.parse(from: ["path": "root/0", "event": "touchUpInside", "snapshotID": "s1"]).snapshotID == "s1")
 }
+
+#if canImport(UIKit)
+@Test("隐藏状态变化必须使目标指纹失效") @MainActor
+func hiddenStateChangesFingerprint() {
+    let button = UIButton(type: .system)
+    button.accessibilityIdentifier = "settings.save"
+    let visible = UIKitFingerprintCollector.fingerprint(for: button,
+                                                        path: "root/0",
+                                                        digest: "SettingsViewController")
+    button.isHidden = true
+    let hidden = UIKitFingerprintCollector.fingerprint(for: button,
+                                                       path: "root/0",
+                                                       digest: "SettingsViewController")
+    #expect(visible != hidden)
+}
+
+@Test("透明度变化必须使目标指纹失效") @MainActor
+func alphaChangesFingerprint() {
+    let button = UIButton(type: .system)
+    let original = UIKitFingerprintCollector.fingerprint(for: button,
+                                                         path: "root/0",
+                                                         digest: "SettingsViewController")
+    button.alpha = 0
+    let changed = UIKitFingerprintCollector.fingerprint(for: button,
+                                                        path: "root/0",
+                                                        digest: "SettingsViewController")
+    #expect(original != changed)
+}
+
+@Test("交互开关变化必须使目标指纹失效") @MainActor
+func interactionEnabledChangesFingerprint() {
+    let button = UIButton(type: .system)
+    let original = UIKitFingerprintCollector.fingerprint(for: button,
+                                                         path: "root/0",
+                                                         digest: "SettingsViewController")
+    button.isUserInteractionEnabled = false
+    let changed = UIKitFingerprintCollector.fingerprint(for: button,
+                                                        path: "root/0",
+                                                        digest: "SettingsViewController")
+    #expect(original != changed)
+}
+#endif

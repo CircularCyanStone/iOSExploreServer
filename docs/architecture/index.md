@@ -44,14 +44,13 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 | 文件/目录 | 职责 | 关键点 |
 |---|---|---|
 | `UIKitCommandRegistrar.swift` | 显式注册入口 | `public extension ExploreServer`；注册前后打 `uikit.registrar` 日志（started/completed count） |
-| `UIKitHandlers.swift` | 命令注册聚合 | 汇总四个命令的注册点 |
 | `UIKitCommandLogging.swift` | 日志入口 | 复用 core public 缝 `ExploreLogging.emitExtension`，category 统一 `command`；不暴露 core internal logger |
 | `UIKitCommandError.swift` | UIKit 错误工厂 | 生成 `invalid_data`/`internal_error`，单一来源 |
 | `Context/UIKitContextProvider.swift` | `@MainActor` 上下文 | 取当前前台 window / 顶部控制器 / 根 view；记录 MainActor hop 日志 |
 | `Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` | 目标定位 | `UIKitLocator` 是 Foundation-only 值类型（query→identifier/path/snapshotID），resolver 仅 iOS 编译把 locator 解析为真实 `UIView` |
 | `Action/UIKitActionExecutor.swift` | 动作执行 | `@MainActor`；按能力（tap/control）路由到具体执行；解析失败/定位失败/能力不支持各自记 error 日志 |
 | `Action/UIKitActionCapabilityResolver.swift` | 能力解析 | 判断目标 view 支持哪种动作 |
-| `Snapshot/UIKitSnapshotStore.swift` + `UIKitFingerprintCollector.swift` | 快照与陈旧检测 | 容量 512、TTL、LRU；path+snapshotID 页面变动返回 `invalid_data` + 固定陈旧消息 |
+| `Snapshot/UIKitSnapshotStore.swift` + `UIKitFingerprintCollector.swift` | 快照与陈旧检测 | 容量 512、TTL、LRU；path+snapshotID 仅在可验证时允许执行，未知/过期/状态变化均返回 `invalid_data` + 固定陈旧消息 |
 
 **typed factory 规则**：每个 UIKit 命令的入参先用 Foundation-only 的 typed query 模型（如 `UITapQuery`）解析并校验，校验通过后才进入 `@MainActor` 的 resolver/executor；UIKit 类型绝不穿过 public 边界回到非隔离域。这保证模型/解析逻辑可在 macOS `swift test` 覆盖，真实 `UIView` 采集只在 iOS 编译执行。
 
@@ -104,7 +103,7 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 
 优先用业务层设置的 `accessibilityIdentifier` 做稳定语义锚点；缺失时用 `path` 描述快照内位置。命令不主动设置 identifier。
 
-`ui.viewTargets` 是事件下发前的轻量目标发现命令，返回扁平 targets 列表，不返回完整 `subviews` 树，也不承担视觉验收职责。每个 target 包含 `path`、运行时类型、轻量 role、`accessibilityIdentifier`、短文本、window 坐标 frame 和基础交互状态；agent 应优先调用它来找到 `ui.tap`、`ui.control.sendAction` 以及后续事件命令所需的目标。
+`ui.viewTargets` 是事件下发前的轻量目标发现命令，返回扁平 targets 列表，不返回完整 `subviews` 树，也不承担视觉验收职责。每个 target 包含 `path`、运行时类型、轻量 role、`accessibilityIdentifier`、短文本、window 坐标 frame、基础交互状态和 `availableActions`；其中 `tap` 对应 `ui.tap`，`control.<event>` 对应 `ui.control.sendAction` 的 `<event>` 参数。agent 应优先按该能力表选择后续事件命令。
 
 `Utils/`（`iOSExploreUIKit` 内）集中保存 UIKit view 定位能力：当前前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、命中 view 与目标 view 的祖先关系判断。后续 UIKit 命令应复用该目录，不要各自重新实现路径解析和遍历。
 
@@ -114,8 +113,8 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 
 - `identifier`：按业务层设置的 `accessibilityIdentifier` 精确定位。**完整匹配、不截断**（历史 bug 曾截断 prefix）；匹配多个 view 返回 `invalid_data`。
 - `path`：来自 `ui.viewTargets`/`ui.topViewHierarchy` 的只读路径（如 `root/0/2`），仅描述快照内位置。
-- `snapshotID` + `path`：交互命令携带 `ui.viewTargets` 返回的 `snapshotID` 时，executor 会重新采集当前 view 树指纹并逐字段比对；页面已变动（类型/identifier/role/状态任一不同）即判陈旧，返回 HTTP 200 + `ok:false` + `invalid_data` + **固定陈旧消息**（不泄露具体哪个字段变了）。无 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
+- `snapshotID` + `path`：交互命令携带 `ui.viewTargets` 返回的 `snapshotID` 时，executor 会重新采集当前 view 树指纹并逐字段比对；类型、identifier、role、enabled/selected、hidden、alpha 或交互开关任一不同，或 snapshot 已淘汰/过期，都会判定陈旧，返回 HTTP 200 + `ok:false` + `invalid_data` + **固定陈旧消息**。无 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
 
-`ui.control.sendAction` 复用同一套顶部控制器根 view 和 `path` 规则，按 `accessibilityIdentifier` 或 `path` 定位目标，校验目标是 `UIControl` 后在 `MainActor` 调用 `sendActions(for:)`。该命令触发 target-action，不模拟真实触摸坐标、命中测试或高亮过程。
+`ui.control.sendAction` 复用同一套顶部控制器根 view 和 `path` 规则，按 `accessibilityIdentifier` 或 `path` 定位目标，校验目标是 `UIControl` 且请求 event 位于该目标 `availableActions` 后，才在 `MainActor` 调用 `sendActions(for:)`。该命令触发 target-action，不模拟真实触摸坐标、命中测试或高亮过程。
 
 `ui.tap` 表达更接近用户点击的语义：按 `accessibilityIdentifier` / `path` 定位 view 后取中心点，或直接使用 window 坐标，先用 `window.hitTest` 校验实际命中。第一版对 UIControl 使用 `.touchUpInside` fallback，并在响应中标记 `dispatchMode=controlActionFallback`；非 UIControl 会返回明确不支持，避免伪造不稳定的私有触摸事件。

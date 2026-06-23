@@ -412,8 +412,7 @@ public struct UIViewHierarchyQuery: Sendable, Equatable {
 
         let maxDepth: Int?
         if let rawDepth = data["maxDepth"]?.doubleValue {
-            let intDepth = Int(rawDepth)
-            guard rawDepth >= 0, Double(intDepth) == rawDepth else {
+            guard let intDepth = UIKitQueryNumber.nonNegativeInteger(rawDepth) else {
                 return .failure("maxDepth must be a non-negative integer")
             }
             maxDepth = intDepth

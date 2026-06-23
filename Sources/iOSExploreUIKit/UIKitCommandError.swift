@@ -116,6 +116,21 @@ struct UIKitCommandError: Sendable, Equatable {
                           logMessage: "ui tap unsupported target action=\(action) target=\(targetDescription) type=\(type)")
     }
 
+    /// 已定位的控件不支持请求动作，或控件当前不可用。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - targetDescription: 目标路径或定位摘要。
+    ///   - requestedAction: 调用方请求的动作或事件名。
+    /// - Returns: `invalid_data` 失败描述，避免在能力表为空时仍派发事件。
+    static func unsupportedAction(action: String,
+                                  targetDescription: String,
+                                  requestedAction: String) -> UIKitCommandError {
+        UIKitCommandError(code: .invalidData,
+                          message: "requested action is not supported for target",
+                          logMessage: "ui action unsupported action=\(action) target=\(targetDescription) requestedAction=\(requestedAction)")
+    }
+
     /// UIControl sendAction 目标没有找到。
     ///
     /// - Parameters:

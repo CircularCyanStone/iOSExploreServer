@@ -29,6 +29,12 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
     public let isEnabled: Bool
     /// 控件是否选中（UIControl.isSelected，非控件视为 false）。
     public let isSelected: Bool
+    /// view 是否隐藏；隐藏后不应继续把旧 path 视为可操作目标。
+    public let isHidden: Bool
+    /// view 透明度；低透明度会影响 hit-test，必须参与陈旧校验。
+    public let alpha: Double
+    /// 是否允许用户交互；关闭后不能沿用查询时的动作能力。
+    public let isUserInteractionEnabled: Bool
 
     /// 创建一个目标指纹。
     ///
@@ -40,13 +46,19 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
     ///   - role: 目标角色。
     ///   - isEnabled: 是否可用。
     ///   - isSelected: 是否选中。
+    ///   - isHidden: 是否隐藏。
+    ///   - alpha: 透明度。
+    ///   - isUserInteractionEnabled: 是否允许用户交互。
     public init(contextDigest: String,
                 path: String,
                 viewType: String,
                 identifierHash: UInt64,
                 role: String,
                 isEnabled: Bool,
-                isSelected: Bool) {
+                isSelected: Bool,
+                isHidden: Bool = false,
+                alpha: Double = 1,
+                isUserInteractionEnabled: Bool = true) {
         self.contextDigest = contextDigest
         self.path = path
         self.viewType = viewType
@@ -54,6 +66,9 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
         self.role = role
         self.isEnabled = isEnabled
         self.isSelected = isSelected
+        self.isHidden = isHidden
+        self.alpha = alpha
+        self.isUserInteractionEnabled = isUserInteractionEnabled
     }
 
     /// 仅供测试的固定指纹 fixture。
@@ -66,7 +81,10 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
                                                     identifierHash: Self.stableHash("test-id"),
                                                     role: "button",
                                                     isEnabled: true,
-                                                    isSelected: false)
+                                                    isSelected: false,
+                                                    isHidden: false,
+                                                    alpha: 1,
+                                                    isUserInteractionEnabled: true)
 
     /// 字符串的稳定哈希（FNV-1a，64 位）。
     ///
@@ -205,14 +223,13 @@ public final class UIKitSnapshotStore {
     ///   - current: 当前重新采集的该 path 指纹。
     /// - Returns:
     ///   - `.valid`：snapshot 存在、未过期且指纹一致；
-    ///   - `.stale`：TTL 过期或指纹不匹配（需重新查询）；
-    ///   - `.unknown`：snapshotID 不存在（不应阻断交互，仅记录）。
+    ///   - `.stale`：snapshotID 不存在、已过期、path 缺失或指纹不匹配（需重新查询）。
     public func validation(snapshotID: String,
                            path: String,
                            current: UIKitTargetFingerprint) -> UIKitSnapshotValidation {
         guard var entry = entries[snapshotID] else {
             UIKitCommandLogging.info("command", "ui snapshot unknown id=\(snapshotID) path=\(path)")
-            return .unknown
+            return .stale
         }
         if isExpired(entry: entry) {
             entries.removeValue(forKey: snapshotID)
@@ -256,13 +273,11 @@ public final class UIKitSnapshotStore {
 
 /// snapshot 校验结果。
 ///
-/// executor 仅在 `.stale` 时通过 `UIKitCommandError.staleLocator` 返回 `invalid_data`；
-/// `.unknown` 不阻断（snapshotID 可能因容量淘汰消失，按无 snapshotID 处理）。
+/// executor 对携带 snapshotID 的交互仅接受 `.valid`；所有无法验证的情况均为 `.stale`，
+/// 防止 LRU 淘汰后的旧 path 静默退化为无防护执行。
 public enum UIKitSnapshotValidation: Sendable, Equatable {
     /// snapshot 存在、未过期且指纹一致。
     case valid
-    /// TTL 过期或指纹不匹配，需重新查询。
+    /// snapshot 不存在、TTL 过期、path 缺失或指纹不匹配，需重新查询。
     case stale
-    /// snapshotID 未知（已淘汰或从未签发）。
-    case unknown
 }

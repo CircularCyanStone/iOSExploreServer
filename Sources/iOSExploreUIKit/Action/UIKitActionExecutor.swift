@@ -16,10 +16,9 @@ import UIKit
 /// `ExploreResult`（含 JSON 摘要、路径、类型名）。
 ///
 /// 与 `UIKitActionCapabilityResolver` 共用同一份"什么 view 能派发动作"规则：执行器解析出
-/// 命中的控件后，通过 resolver 的动作列表确认目标支持当前动作（tap/control event），避免
-/// executor 与 collector 对"可执行"判断漂移。但本任务严格保留迁移前行为：disabled 控件在
-/// `sendActions(for:)` 路径上仍照常派发（既有行为），capability 校验只用于映射事件名与
-/// 确认控件存在，不新增 disabled 拦截。
+/// 命中的控件后，必须用 resolver 的动作列表确认目标支持当前动作（tap/control event），避免
+/// collector 宣告的 `availableActions` 与实际派发分叉。disabled 控件会被统一拒绝，调用方需
+/// 重新查询或选择可用目标。
 ///
 /// 陈旧校验（Task 6）：当 plan 携带 `.path + snapshotID` 时，执行器从当前 view 树重采该
 /// path 的指纹，与 `UIKitSnapshotStore` 保存的比对；`.stale`（TTL 过期或指纹不匹配）时通过
@@ -76,7 +75,7 @@ enum UIKitActionExecutor {
             let error = UIKitCommandError.staleLocator(action: action, snapshotID: snapshotID)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
-        case .valid, .unknown:
+        case .valid:
             return nil
         }
     }
@@ -198,9 +197,8 @@ enum UIKitActionExecutor {
     /// 对 UIControl 派发第一版 tap fallback（`touchUpInside`）。
     ///
     /// capability 校验：通过 `UIKitActionCapabilityResolver` 确认命中控件支持 `tap` 动作
-    /// （与 collector 的 `availableActions` 共用同一份规则）。该校验只用于与 collector 对齐，
-    /// 不新增 disabled 拦截——disabled 控件在既有 `UITapCommand` 行为下仍会派发
-    /// `touchUpInside`，迁移后保持一致。
+    /// （与 collector 的 `availableActions` 共用同一份规则）。不可用控件会返回
+    /// `invalid_data`，不会绕过 discovery 声明直接派发 `touchUpInside`。
     private static func dispatchTap(to control: UIControl?,
                                     hitView: UIView,
                                     point: CGPoint,
@@ -214,8 +212,16 @@ enum UIKitActionExecutor {
             return error.result
         }
 
-        // 共享 capability 规则由 collector（`ui.viewTargets.availableActions`）持有；
-        // executor 此处不再重复调用 resolver（纯值无副作用），保持迁移前后行为等价。
+        let availability = UIKitActionCapabilityResolver.resolve(view: control,
+                                                                  nearestControl: control,
+                                                                  isEnabled: control.isEnabled)
+        guard availability.actions.contains(.tap) else {
+            let error = UIKitCommandError.unsupportedAction(action: tapAction,
+                                                            targetDescription: targetDescription,
+                                                            requestedAction: UIKitActionKind.tap.rawValue)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
+        }
 
         let locatedControl = UIKitLocatorResolver.locatedView(for: control, in: context.rootView)
         let locatedHit = UIKitLocatorResolver.locatedView(for: hitView, in: context.rootView)
@@ -292,8 +298,17 @@ enum UIKitActionExecutor {
             return error.result
         }
 
-        // 共享 capability 规则由 collector（`ui.viewTargets.availableActions`）持有；
-        // executor 此处不再重复调用 resolver（纯值无副作用），保持迁移前后行为等价。
+        let requestedAction = UIKitActionCapabilityResolver.actionKind(for: event)
+        let availability = UIKitActionCapabilityResolver.resolve(view: control,
+                                                                  nearestControl: control,
+                                                                  isEnabled: control.isEnabled)
+        guard availability.actions.contains(requestedAction) else {
+            let error = UIKitCommandError.unsupportedAction(action: controlAction,
+                                                            targetDescription: located.pathString,
+                                                            requestedAction: requestedAction.rawValue)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
+        }
 
         UIKitCommandLogging.info("command", "ui control send action mainactor target=\(located.pathString) type=\(String(describing: Swift.type(of: control))) event=\(event.rawValue) enabled=\(control.isEnabled)")
         control.sendActions(for: event.uiControlEvent)

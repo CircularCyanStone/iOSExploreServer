@@ -140,7 +140,7 @@ enum UIViewTargetsCollector {
                                                                  nearestControl: nearestControl,
                                                                  isEnabled: control?.isEnabled)
         if !availability.actions.isEmpty {
-            UIKitCommandLogging.info("command", "ui view targets availableActions type=\(String(describing: Swift.type(of: view))) actionCount=\(availability.actions.count) enabled=\(control?.isEnabled ?? false)")
+            UIKitCommandLogging.info("command", "ui view targets availableActions type=\(String(describing: Swift.type(of: view))) actionCount=\(availability.actions.count) enabled=\(nearestControl?.isEnabled ?? false)")
         }
         return UIViewTargetSummary(
             path: UIKitViewLookupTarget.pathString(from: path),

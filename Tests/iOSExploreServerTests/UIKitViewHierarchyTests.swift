@@ -151,6 +151,18 @@ func viewHierarchyQueryParsesCommandData() {
     }
 }
 
+#if !canImport(UIKit)
+@Test("UIViewHierarchyQuery 拒绝无法安全转换为 Int 的 maxDepth")
+func viewHierarchyQueryRejectsOutOfRangeMaxDepth() {
+    guard case .failure = UIViewHierarchyQuery.parse(from: [
+        "maxDepth": .double(Double.greatestFiniteMagnitude),
+    ]) else {
+        Issue.record("out-of-range maxDepth must be rejected before Int conversion")
+        return
+    }
+}
+#endif
+
 private struct TestViewElement: UIViewHierarchyElement {
     let type: String
     var accessibility: UIViewHierarchyAccessibility

@@ -44,6 +44,21 @@ func viewTargetsQueryRejectsInvalidNumbers() {
     }
 }
 
+#if !canImport(UIKit)
+@Test("UIViewTargetsQuery 拒绝无法安全转换为 Int 的数值")
+func viewTargetsQueryRejectsOutOfRangeNumbers() {
+    for data: JSON in [
+        ["maxDepth": .double(Double.greatestFiniteMagnitude)],
+        ["textLimit": .double(Double.greatestFiniteMagnitude)],
+    ] {
+        guard case .failure = UIViewTargetsQuery.parse(from: data) else {
+            Issue.record("out-of-range number must be rejected before Int conversion")
+            return
+        }
+    }
+}
+#endif
+
 @Test("UIViewTargetsQuery include 策略覆盖可交互和可选节点")
 func viewTargetsQueryShouldIncludeCandidates() {
     let defaultQuery = UIViewTargetsQuery.default

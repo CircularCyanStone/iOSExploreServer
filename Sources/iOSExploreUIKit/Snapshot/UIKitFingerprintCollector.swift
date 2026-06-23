@@ -26,7 +26,10 @@ enum UIKitFingerprintCollector {
             identifierHash: UIKitTargetFingerprint.stableHash(view.accessibilityIdentifier ?? ""),
             role: UIViewTargetsCollector.role(for: view).rawValue,
             isEnabled: control?.isEnabled ?? true,
-            isSelected: control?.isSelected ?? false
+            isSelected: control?.isSelected ?? false,
+            isHidden: view.isHidden,
+            alpha: Double(view.alpha),
+            isUserInteractionEnabled: view.isUserInteractionEnabled
         )
     }
 

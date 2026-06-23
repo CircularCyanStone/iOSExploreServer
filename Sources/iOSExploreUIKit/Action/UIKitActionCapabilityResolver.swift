@@ -9,12 +9,10 @@ import UIKit
 /// `UIKitActionExecutor` 决定 tap/control 派发）共用本类型，确保“声明可执行”与“实际可派发”
 /// 走同一份规则，避免静态节点被标成可 tap，或给 disabled 控件虚假动作。
 ///
-/// 规则与既有命令的实际行为严格对齐：
-/// - `UITapCommand` 仅对 `UIControl` 派发 `touchUpInside` fallback（非 UIControl 返回
-///   `unsupportedTarget`）；因此 `tap` 要求命中点能解析到一个**已启用**的 `UIControl`。
-/// - `UIControlSendActionCommand` 对 `UIControl` 调用 `sendActions(for:)`，事件名取
-///   `touchUpInside`（按钮等触发型）或 `valueChanged`（switch/slider/segmented 等值型）。
-///   disabled 控件虽然能被 `sendActions` 调用，但语义上不可执行，故一律不声明可用动作。
+/// 规则由 collector 与 executor 同时调用：
+/// - `tap` 仅在命中可用 `UIControl` 时可执行；
+/// - `control.*` 按真实控件类型选择自然事件；
+/// - disabled 控件一律返回空集合，executor 同样拒绝派发，避免 discovery 与执行分叉。
 ///
 /// 该类型是 `@MainActor`，只能在 UIKit 隔离域调用；跨边界只传 `UIKitActionAvailability`
 /// 这个 Sendable 值类型。
@@ -46,17 +44,34 @@ enum UIKitActionCapabilityResolver {
         return UIKitActionAvailability(actions: actions(for: control))
     }
 
+    /// 将命令事件映射为 capability 中的动作值。
+    ///
+    /// - Parameter event: `ui.control.sendAction` 请求的事件。
+    /// - Returns: 与响应 `availableActions` 使用相同 rawValue 的动作类型。
+    static func actionKind(for event: UIControlSendActionEvent) -> UIKitActionKind {
+        switch event {
+        case .touchDown: return .controlTouchDown
+        case .touchUpInside: return .controlTouchUpInside
+        case .valueChanged: return .controlValueChanged
+        case .editingChanged: return .controlEditingChanged
+        case .editingDidBegin: return .controlEditingDidBegin
+        case .editingDidEnd: return .controlEditingDidEnd
+        }
+    }
+
     /// 按控件真实类型选择 executor 能派发的事件。
     ///
-    /// - 值型控件（`UISwitch`/`UISlider`/`UISegmentedControl`）以 `valueChanged` 为主事件，
-    ///   对应 `UIControlSendActionCommand` 对这类控件的自然用法；同时保留 `tap`，因为
-    ///   `UITapCommand` 对它们也会派发 `touchUpInside` fallback。
-    /// - 其余 `UIControl`（如 `UIButton`）以 `tap` + `control.touchUpInside` 表达按钮语义。
+    /// - `UITextField` 声明编辑开始、变化和结束事件；
+    /// - 值型控件（`UISwitch`/`UISlider`/`UISegmentedControl`）声明 `valueChanged`；
+    /// - 其余 `UIControl`（如 `UIButton`）声明按下和抬起事件。
     private static func actions(for control: UIControl) -> [UIKitActionKind] {
+        if control is UITextField {
+            return [.tap, .controlEditingChanged, .controlEditingDidBegin, .controlEditingDidEnd]
+        }
         if control is UISwitch || control is UISlider || control is UISegmentedControl {
             return [.tap, .controlValueChanged]
         }
-        return [.tap, .controlTouchUpInside]
+        return [.tap, .controlTouchDown, .controlTouchUpInside]
     }
 }
 #endif
