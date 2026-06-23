@@ -51,27 +51,24 @@ enum UIKitActionExecutor {
 
     /// 仅在 `.path + snapshotID` 同时存在时做陈旧校验。
     ///
-    /// 从当前 view 树重新采集该 path 的指纹，与 store 中保存的比对。`.stale` 时通过
-    /// `UIKitCommandError.staleLocator` 返回 `invalid_data`；identifier 定位、windowPoint
-    /// 或无 snapshotID 时不校验（返回 nil）。
+    /// 复用调用方已 locate 的 `LocatedView`（避免对同一 path 二次遍历），重新采集该 path 的
+    /// 指纹，与 store 中保存的比对。`.stale` 时通过 `UIKitCommandError.staleLocator` 返回
+    /// `invalid_data`；无 snapshotID 时不校验（返回 nil）。"仅对 `.path` 校验"由调用方
+    /// （`executeTap`/`executeControlEvent`）在调用前用 `if case .path` 把关。
     ///
     /// - Parameters:
-    ///   - locator: 目标定位器。
+    ///   - located: 调用方已 resolve 的定位视图（含 view 与 pathString）。
     ///   - snapshotID: 调用方携带的快照标识。
     ///   - context: 当前 UIKit 上下文（用于重采指纹）。
     ///   - action: 触发校验的 action 名（错误关联）。
     /// - Returns: 失败时返回错误结果；通过/不校验时返回 nil。
-    private static func validateFreshness(locator: UIKitLocator,
+    private static func validateFreshness(located: UIKitLocatorResolver.LocatedView,
                                           snapshotID: String?,
                                           context: UIKitContextProvider.Context,
                                           action: String) -> ExploreResult? {
         guard let snapshotID else { return nil }
-        guard case .path(let indexes) = locator else { return nil }
-        let path = UIKitViewLookupTarget.pathString(from: indexes)
-        guard let view = UIKitLocatorResolver.view(at: indexes, in: context.rootView) else {
-            return nil
-        }
-        let current = UIKitFingerprintCollector.fingerprint(for: view,
+        let path = located.pathString
+        let current = UIKitFingerprintCollector.fingerprint(for: located.view,
                                                              path: path,
                                                              digest: UIKitFingerprintCollector.digest(topViewController: context.topViewController))
         switch UIKitSnapshotStore.shared.validation(snapshotID: snapshotID, path: path, current: current) {
@@ -88,6 +85,9 @@ enum UIKitActionExecutor {
 
     /// 执行 tap 动作。
     ///
+    /// view 定位（identifier / path）先 `locate` 一次，陈旧校验与执行都复用该 `LocatedView`，
+    /// 避免对同一 path 二次遍历。windowPoint 走 hit-test 分支，不涉及 path 校验。
+    ///
     /// - Parameters:
     ///   - locator: 点击目标的统一定位器。
     ///   - snapshotID: 可选 snapshotID，仅在 `.path` 且非 nil 时校验。
@@ -103,16 +103,35 @@ enum UIKitActionExecutor {
             return error.result
         }
 
-        if let stale = validateFreshness(locator: locator,
-                                         snapshotID: snapshotID,
-                                         context: context,
-                                         action: tapAction) {
-            return stale
-        }
-
         switch locator {
         case .accessibilityIdentifier, .path:
-            return executeTapViewTarget(locator, context: context)
+            // 先 locate 一次，freshness 校验与执行都复用该 LocatedView（避免二次遍历同一 path）。
+            let located: UIKitLocatorResolver.LocatedView
+            switch UIKitLocatorResolver.locate(locator: locator, in: context.rootView) {
+            case .found(let value):
+                located = value
+            case .notFound:
+                let error = UIKitCommandError.targetNotFound(action: tapAction,
+                                                              targetDescription: locatorSummary(locator))
+                UIKitCommandLogging.error("command", error.failure.logMessage)
+                return error.result
+            case .ambiguous(let count):
+                let error = UIKitCommandError.targetAmbiguous(action: tapAction,
+                                                              targetDescription: locatorSummary(locator),
+                                                              count: count)
+                UIKitCommandLogging.error("command", error.failure.logMessage)
+                return error.result
+            }
+            // 陈旧校验仅对 .path + snapshotID，复用 located.view 重采指纹。
+            if case .path = locator, let snapshotID {
+                if let stale = validateFreshness(located: located,
+                                                 snapshotID: snapshotID,
+                                                 context: context,
+                                                 action: tapAction) {
+                    return stale
+                }
+            }
+            return executeTapViewTarget(located, context: context)
         case .windowPoint(let x, let y):
             return executeTapWindowPoint(CGPoint(x: x, y: y),
                                          targetDescription: locatorSummary(locator),
@@ -121,25 +140,12 @@ enum UIKitActionExecutor {
     }
 
     /// 点击按 view 定位的目标（identifier / path）。
-    private static func executeTapViewTarget(_ locator: UIKitLocator,
+    ///
+    /// - Parameters:
+    ///   - located: 调用方已 resolve 的定位视图（复用，不再二次 locate）。
+    ///   - context: 当前 UIKit 上下文。
+    private static func executeTapViewTarget(_ located: UIKitLocatorResolver.LocatedView,
                                              context: UIKitContextProvider.Context) -> ExploreResult {
-        let located: UIKitLocatorResolver.LocatedView
-        switch UIKitLocatorResolver.locate(locator: locator, in: context.rootView) {
-        case .found(let value):
-            located = value
-        case .notFound:
-            let error = UIKitCommandError.targetNotFound(action: tapAction,
-                                                          targetDescription: locatorSummary(locator))
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        case .ambiguous(let count):
-            let error = UIKitCommandError.targetAmbiguous(action: tapAction,
-                                                          targetDescription: locatorSummary(locator),
-                                                          count: count)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        }
-
         let point = located.view.convert(CGPoint(x: located.view.bounds.midX,
                                                  y: located.view.bounds.midY),
                                          to: context.window)
@@ -252,13 +258,7 @@ enum UIKitActionExecutor {
             return error.result
         }
 
-        if let stale = validateFreshness(locator: locator,
-                                         snapshotID: snapshotID,
-                                         context: context,
-                                         action: controlAction) {
-            return stale
-        }
-
+        // 先 locate，后续 freshness 校验与派发都复用 located（避免二次遍历同一 path）。
         let located: UIKitLocatorResolver.LocatedView
         switch UIKitLocatorResolver.locate(locator: locator, in: context.rootView) {
         case .found(let value):
@@ -274,6 +274,15 @@ enum UIKitActionExecutor {
                                                                  count: count)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
+        }
+        // 陈旧校验仅对 .path + snapshotID，复用 located.view 重采指纹。
+        if case .path = locator, let snapshotID {
+            if let stale = validateFreshness(located: located,
+                                             snapshotID: snapshotID,
+                                             context: context,
+                                             action: controlAction) {
+                return stale
+            }
         }
         guard let control = located.view as? UIControl else {
             let error = UIKitCommandError.controlTargetNotControl(action: controlAction,

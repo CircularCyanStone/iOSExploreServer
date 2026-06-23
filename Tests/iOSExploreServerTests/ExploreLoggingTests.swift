@@ -1,6 +1,12 @@
 import Testing
 @testable import iOSExploreServer
 
+/// 所有 touch `ExploreLogging` 全局 sink 的测试集中在本 suite 并标 `.serialized`。
+///
+/// `ExploreLogging` 的 sink / enable / level 是进程级全局可变状态。Swift Testing 默认跨
+/// suite 并行,若 touch-sink 的测试分散在多个 suite,会互相覆盖 sink 导致偶发失败(约 1/10)。
+/// `.serialized` 保证本 suite 内测试串行;把所有 touch-sink 测试(含原 `ExploreCommandSupportTests`
+/// 的 `extensionLogUsesCoreSink`)收拢到此,即可在不加全局锁的前提下彻底消除竞态。
 @Suite(.serialized)
 struct ExploreLoggingTests {
     @Test("日志默认关闭,不会输出到 sink")
@@ -82,5 +88,17 @@ struct ExploreLoggingTests {
         #expect(messages.contains("router route success action=ok"))
         #expect(messages.contains("router route failed category=command message=unknown action=missing"))
         #expect(messages.contains { $0.hasPrefix("router route failed category=command message=handler threw action=boom") })
+    }
+
+    @Test("扩展日志进入既有 sink")
+    func extensionLogUsesCoreSink() {
+        defer { ExploreLogging.resetForTesting() }
+        let records = Mutex<[ExploreLogRecord]>([])
+        ExploreLogging.setEnabled(true)
+        ExploreLogging.setSinkForTesting { record in
+            records.withLock { $0.append(record) }
+        }
+        ExploreLogging.emitExtension(level: .info, category: "uikit.action", message: "tap completed")
+        #expect(records.withLock { $0.map(\.category) } == ["uikit.action"])
     }
 }
