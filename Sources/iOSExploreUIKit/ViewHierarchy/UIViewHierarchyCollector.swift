@@ -15,16 +15,27 @@ enum UIViewHierarchyCollector {
     /// - Returns: 成功时返回层级 JSON；失败时返回业务失败 envelope。
     static func collectTopViewHierarchy(query: UIViewHierarchyQuery) -> ExploreResult {
         UIKitCommandLogging.info("command", "ui hierarchy collect mainactor start detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
-        let context: UIKitContextProvider.Context
         switch UIKitContextProvider.currentContext() {
         case .success(let value):
-            context = value
+            return collectTopViewHierarchy(query: query, context: value)
         case .failure(let reason):
             let error = UIKitCommandError.hierarchyUnavailable(action: TopViewHierarchyCommand.actionName,
                                                                reason: reason)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
         }
+    }
+
+    /// 采集顶部控制器 view 层级（注入入口：测试与内部复用）。
+    ///
+    /// 与 `collectTopViewHierarchy(query:)` 的唯一区别是上下文由调用方提供，使采集流程可在
+    /// 测试里用可控 view 树驱动。其余逻辑完全一致。
+    ///
+    /// - Parameters:
+    ///   - query: 采集和筛选参数。
+    ///   - context: 当前 UIKit 查询上下文。
+    /// - Returns: 成功时返回层级 JSON；失败时返回业务失败 envelope。
+    static func collectTopViewHierarchy(query: UIViewHierarchyQuery, context: UIKitContextProvider.Context) -> ExploreResult {
         let element = UIKitViewElement(view: context.rootView)
         let root = UIViewHierarchyBuilder.build(from: element, query: query)
         let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)

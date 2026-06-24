@@ -32,19 +32,52 @@ enum UIKitActionExecutor {
     /// control.sendAction 动作的固定 action 名。
     private static let controlAction = "ui.control.sendAction"
 
-    /// 执行一个 UIKit 动作计划。
+    /// 执行一个 UIKit 动作计划（生产入口：取真实 App 上下文后转调注入版本）。
     ///
-    /// 固定流程：取 Context → 按 plan 变体 resolve locator / hit-test → 共享 capability
-    /// 校验 → hit-test（tap）或 `sendActions(for:)`（control event）→ 生成既有 JSON。
+    /// 在 `MainActor` 上读取当前前台 window 与顶部控制器；上下文不可用时按 plan 对应的
+    /// action 返回 `hierarchyUnavailable`。取得上下文后转调 `execute(_:context:)`，使派发
+    /// 流程（locate / hit-test / capability / sendActions / 陈旧校验）可在测试里用可控
+    /// view 树驱动，而不依赖真实 UIApplication scene。
     ///
     /// - Parameter plan: 动作计划（tap 或 controlEvent）。
     /// - Returns: 命令结果。成功时返回迁移前一致的 JSON；失败时返回既有错误语义的 envelope。
     static func execute(_ plan: UIKitActionPlan) -> ExploreResult {
+        let context: UIKitContextProvider.Context
+        switch UIKitContextProvider.currentContext() {
+        case .success(let value):
+            context = value
+        case .failure(let reason):
+            let error = UIKitCommandError.hierarchyUnavailable(action: actionName(for: plan), reason: reason)
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
+        }
+        return execute(plan, context: context)
+    }
+
+    /// 执行一个 UIKit 动作计划（注入入口：测试与内部复用）。
+    ///
+    /// 与 `execute(_:)` 的唯一区别是上下文由调用方提供。固定流程：按 plan 变体 resolve
+    /// locator / hit-test → 共享 capability 校验 → hit-test（tap）或 `sendActions(for:)`
+    /// （control event）→ 生成既有 JSON。
+    ///
+    /// - Parameters:
+    ///   - plan: 动作计划（tap 或 controlEvent）。
+    ///   - context: 当前 UIKit 查询上下文（持有真实 window / rootView，可由测试构造）。
+    /// - Returns: 命令结果。成功时返回迁移前一致的 JSON；失败时返回既有错误语义的 envelope。
+    static func execute(_ plan: UIKitActionPlan, context: UIKitContextProvider.Context) -> ExploreResult {
         switch plan {
         case .tap(let locator, let snapshotID):
-            return executeTap(locator: locator, snapshotID: snapshotID)
+            return executeTap(locator: locator, snapshotID: snapshotID, context: context)
         case .controlEvent(let locator, let event, let snapshotID):
-            return executeControlEvent(locator: locator, event: event, snapshotID: snapshotID)
+            return executeControlEvent(locator: locator, event: event, snapshotID: snapshotID, context: context)
+        }
+    }
+
+    /// plan 变体对应的 action 名，供上下文不可用时的错误工厂与日志关联。
+    private static func actionName(for plan: UIKitActionPlan) -> String {
+        switch plan {
+        case .tap: return tapAction
+        case .controlEvent: return controlAction
         }
     }
 
@@ -94,18 +127,11 @@ enum UIKitActionExecutor {
     /// - Parameters:
     ///   - locator: 点击目标的统一定位器。
     ///   - snapshotID: 可选 snapshotID，仅在 `.path` 且非 nil 时校验。
+    ///   - context: 当前 UIKit 查询上下文（由 `execute(_:)` 注入）。
     /// - Returns: tap 命令结果，与迁移前 `UITapCommand` 行为一致。
-    private static func executeTap(locator: UIKitLocator, snapshotID: String?) -> ExploreResult {
-        let context: UIKitContextProvider.Context
-        switch UIKitContextProvider.currentContext() {
-        case .success(let value):
-            context = value
-        case .failure(let reason):
-            let error = UIKitCommandError.hierarchyUnavailable(action: tapAction, reason: reason)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        }
-
+    private static func executeTap(locator: UIKitLocator,
+                                   snapshotID: String?,
+                                   context: UIKitContextProvider.Context) -> ExploreResult {
         switch locator {
         case .accessibilityIdentifier, .path:
             // 先 locate 一次，freshness 校验与执行都复用该 LocatedView（避免二次遍历同一 path）。
@@ -254,20 +280,12 @@ enum UIKitActionExecutor {
     ///   - locator: 目标控件的统一定位器（identifier / path）。
     ///   - event: 要发送的 UIControl 事件。
     ///   - snapshotID: 可选 snapshotID，仅在 `.path` 且非 nil 时校验。
+    ///   - context: 当前 UIKit 查询上下文（由 `execute(_:)` 注入）。
     /// - Returns: control.sendAction 命令结果，与迁移前 `UIControlSendActionCommand` 行为一致。
     private static func executeControlEvent(locator: UIKitLocator,
                                             event: UIControlSendActionEvent,
-                                            snapshotID: String?) -> ExploreResult {
-        let context: UIKitContextProvider.Context
-        switch UIKitContextProvider.currentContext() {
-        case .success(let value):
-            context = value
-        case .failure(let reason):
-            let error = UIKitCommandError.hierarchyUnavailable(action: controlAction, reason: reason)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        }
-
+                                            snapshotID: String?,
+                                            context: UIKitContextProvider.Context) -> ExploreResult {
         // 先 locate，后续 freshness 校验与派发都复用 located（避免二次遍历同一 path）。
         let located: UIKitLocatorResolver.LocatedView
         switch UIKitLocatorResolver.locate(locator: locator, in: context.rootView) {

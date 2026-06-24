@@ -16,17 +16,27 @@ enum UIViewTargetsCollector {
     static func collect(query: UIViewTargetsQuery) -> ExploreResult {
         UIKitCommandLogging.info("command", "ui view targets collect mainactor start includeHidden=\(query.includeHidden) includeDisabled=\(query.includeDisabled) includeStaticText=\(query.includeStaticText) includeContainers=\(query.includeContainers) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit)")
 
-        let context: UIKitContextProvider.Context
         switch UIKitContextProvider.currentContext() {
         case .success(let value):
-            context = value
+            return collect(query: query, context: value)
         case .failure(let reason):
             let error = UIKitCommandError.hierarchyUnavailable(action: ViewTargetsCommand.actionName,
                                                                reason: reason)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
         }
+    }
 
+    /// 采集轻量目标列表（注入入口：测试与内部复用）。
+    ///
+    /// 与 `collect(query:)` 的唯一区别是上下文由调用方提供，使采集流程可在测试里用可控
+    /// view 树驱动。其余逻辑（遍历、筛选、签发 snapshot）完全一致。
+    ///
+    /// - Parameters:
+    ///   - query: 查询参数。
+    ///   - context: 当前 UIKit 查询上下文。
+    /// - Returns: 成功时返回 targets 列表；失败时返回业务失败 envelope。
+    static func collect(query: UIViewTargetsQuery, context: UIKitContextProvider.Context) -> ExploreResult {
         var visitedNodeCount = 0
         var targets: [UIViewTargetSummary] = []
         var fingerprints: [String: UIKitTargetFingerprint] = [:]
