@@ -69,8 +69,12 @@ enum UIKitActionExecutor {
         let path = located.pathString
         let current = UIKitFingerprintCollector.fingerprint(for: located.view,
                                                              path: path,
+                                                             rootView: context.rootView,
                                                              digest: UIKitFingerprintCollector.digest(topViewController: context.topViewController))
-        switch UIKitSnapshotStore.shared.validation(snapshotID: snapshotID, path: path, current: current) {
+        switch UIKitSnapshotStore.shared.validation(snapshotID: snapshotID,
+                                                    path: path,
+                                                    context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
+                                                    current: current) {
         case .stale:
             let error = UIKitCommandError.staleLocator(action: action, snapshotID: snapshotID)
             UIKitCommandLogging.error("command", error.failure.logMessage)

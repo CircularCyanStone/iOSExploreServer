@@ -29,20 +29,20 @@ enum UIViewTargetsCollector {
 
         var visitedNodeCount = 0
         var targets: [UIViewTargetSummary] = []
-        collect(view: context.rootView,
+        var fingerprints: [String: UIKitTargetFingerprint] = [:]
+        let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
+        let truncated = collect(view: context.rootView,
                 rootView: context.rootView,
                 window: context.window,
                 path: [],
                 depth: 0,
                 query: query,
                 visitedNodeCount: &visitedNodeCount,
-                targets: &targets)
+                targets: &targets,
+                fingerprints: &fingerprints,
+                digest: digest)
 
-        let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
-        let fingerprints = UIKitFingerprintCollector.fingerprints(in: context.rootView,
-                                                                  includeHidden: query.includeHidden,
-                                                                  digest: digest)
-        let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitSnapshotContext(digest: digest),
+        let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
                                                           targets: fingerprints)
         var data: JSON = [
             "screen": .object(screenJSON(window: context.window,
@@ -51,6 +51,10 @@ enum UIViewTargetsCollector {
             "targetCount": .double(Double(targets.count)),
             "visitedNodeCount": .double(Double(visitedNodeCount)),
             "targets": .array(targets.map { .object($0.toJSON()) }),
+            "maxTargets": .double(Double(query.maxTargets)),
+            "truncated": .bool(truncated),
+            "truncationReason": truncated ? .string("maxTargets") : .null,
+            "snapshotUnavailableReason": snapshotID == nil ? .string("fingerprintLimit") : .null,
         ]
         if let snapshotID {
             data["snapshotID"] = .string(snapshotID)
@@ -72,31 +76,39 @@ enum UIViewTargetsCollector {
                                 depth: Int,
                                 query: UIViewTargetsQuery,
                                 visitedNodeCount: inout Int,
-                                targets: inout [UIViewTargetSummary]) {
+                                targets: inout [UIViewTargetSummary],
+                                fingerprints: inout [String: UIKitTargetFingerprint],
+                                digest: String) -> Bool {
         visitedNodeCount += 1
         if !query.includeHidden, view.isHidden {
-            return
+            return false
         }
 
         if shouldInclude(view: view, query: query),
            matchesIdentifier(view: view, query: query) {
-            targets.append(summary(for: view, rootView: rootView, window: window, path: path, query: query))
+            let summary = summary(for: view, rootView: rootView, window: window, path: path, query: query)
+            targets.append(summary)
+            fingerprints[summary.path] = UIKitFingerprintCollector.fingerprint(for: view, path: summary.path, rootView: rootView, digest: digest)
+            if targets.count >= query.maxTargets { return true }
         }
 
         if let maxDepth = query.maxDepth, depth >= maxDepth {
-            return
+            return false
         }
 
         for (index, child) in view.subviews.enumerated() {
-            collect(view: child,
+            if collect(view: child,
                     rootView: rootView,
                     window: window,
                     path: path + [index],
                     depth: depth + 1,
                     query: query,
                     visitedNodeCount: &visitedNodeCount,
-                    targets: &targets)
+                    targets: &targets,
+                    fingerprints: &fingerprints,
+                    digest: digest) { return true }
         }
+        return false
     }
 
     /// 判断 view 是否符合默认或可选输出策略。
@@ -143,9 +155,6 @@ enum UIViewTargetsCollector {
         let availability = UIKitActionCapabilityResolver.resolve(view: view,
                                                                  rootView: rootView,
                                                                  nearestControl: nearestControl)
-        if !availability.actions.isEmpty {
-            UIKitCommandLogging.info("command", "ui view targets availableActions type=\(String(describing: Swift.type(of: view))) actionCount=\(availability.actions.count) enabled=\(nearestControl?.isEnabled ?? false)")
-        }
         return UIViewTargetSummary(
             path: UIKitViewLookupTarget.pathString(from: path),
             type: String(describing: Swift.type(of: view)),

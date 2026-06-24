@@ -31,7 +31,7 @@ enum UIViewHierarchyCollector {
         let fingerprints = UIKitFingerprintCollector.fingerprints(in: context.rootView,
                                                                   includeHidden: query.includeHidden,
                                                                   digest: digest)
-        let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitSnapshotContext(digest: digest),
+        let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
                                                           targets: fingerprints)
         var data: JSON = [
             "screen": .object(screenJSON(window: context.window,
