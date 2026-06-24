@@ -47,6 +47,8 @@ public final class ExploreServer: Sendable {
     /// `HTTPListener` 本身有可变状态；这里用 `Mutex` 保护引用替换，使 `start`/`stop`
     /// 的状态读写满足 `Sendable` 要求。
     private let listener = Mutex<HTTPListener?>(nil)
+    /// 已请求停止但尚未收到终态的 listener，必须强持有至 socket 释放。
+    private let stoppingListener = Mutex<HTTPListener?>(nil)
 
     /// 事件流写入端，由 listener 回调持有。
     private let eventContinuation: AsyncStream<ServerEvent>.Continuation
@@ -120,6 +122,13 @@ public final class ExploreServer: Sendable {
     /// 按钮事件中串行触发。
     public func start() async throws {
         ExploreLogger.info(.server, "server start requested port=\(port)")
+        if let stopping = stoppingListener.withLock({ value -> HTTPListener? in
+            let pending = value
+            value = nil
+            return pending
+        }) {
+            await stopping.stopAndWait()
+        }
         let l = try HTTPListener(port: port,
                                  router: router,
                                  configuration: listenerConfiguration) { [eventContinuation] event in
@@ -137,7 +146,20 @@ public final class ExploreServer: Sendable {
         ExploreLogger.info(.server, "server stop requested")
         let previous = listener.withLock { let prev = $0; $0 = nil; return prev }
         previous?.stop()
+        if let previous { stoppingListener.withLock { $0 = previous } }
         ExploreLogger.info(.server, "server stop completed hadListener=\(previous != nil)")
+    }
+
+    /// 测试内部停止屏障：等待底层 listener 终态后返回。
+    func stopAndWait() async {
+        stop()
+        if let stopping = stoppingListener.withLock({ value -> HTTPListener? in
+            let pending = value
+            value = nil
+            return pending
+        }) {
+            await stopping.stopAndWait()
+        }
     }
 
     /// 获取服务事件流。

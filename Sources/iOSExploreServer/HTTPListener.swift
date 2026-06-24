@@ -60,6 +60,8 @@ final class HTTPListener: @unchecked Sendable {
 
     /// 当前活跃 session。所有访问必须通过锁。
     private let state = Mutex(ListenerState())
+    /// listener 是否已进入终态；`stopAndWait` 用它等待底层 socket 真正释放。
+    private let isTerminated = Mutex(false)
 
     /// Network.framework listener 实例。
     private var listener: NWListener?
@@ -111,7 +113,7 @@ final class HTTPListener: @unchecked Sendable {
     private func startAndWaitUntilReady(_ listener: NWListener) async throws {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             let didResume = Mutex(false)
-            listener.stateUpdateHandler = { state in
+            listener.stateUpdateHandler = { [weak self] state in
                 switch state {
                 case .ready:
                     ExploreLogger.info(.listener, "listener state ready")
@@ -123,6 +125,7 @@ final class HTTPListener: @unchecked Sendable {
                         cont.resume()
                     }
                 case .failed(let err):
+                    self?.isTerminated.withLock { $0 = true }
                     ExploreLogger.error(.listener, "listener state failed error=\(err)")
                     if didResume.withLock({ value in
                         if value { return false }
@@ -131,9 +134,10 @@ final class HTTPListener: @unchecked Sendable {
                     }) {
                         cont.resume(throwing: err)
                     } else {
-                        self.onEvent(.error("listener failed: \(err)"))
+                        self?.onEvent(.error("listener failed: \(err)"))
                     }
                 case .cancelled:
+                    self?.isTerminated.withLock { $0 = true }
                     ExploreLogger.error(.listener, "listener state cancelled before ready")
                     if didResume.withLock({ value in
                         if value { return false }
@@ -164,9 +168,18 @@ final class HTTPListener: @unchecked Sendable {
             session.close(reason: "listener_stop")
         }
         listener?.cancel()
-        listener = nil
         onEvent(.stopped)
         ExploreLogger.info(.listener, "listener stopped")
+    }
+
+    /// 停止 listener 并等待 Network.framework 报告终态，确保端口可安全复用。
+    func stopAndWait() async {
+        stop()
+        while !isTerminated.withLock({ $0 }) {
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+        listener?.stateUpdateHandler = nil
+        listener = nil
     }
 
     /// 处理单条 TCP 连接。

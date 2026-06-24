@@ -12,6 +12,17 @@ private let testPort: UInt16 = 38399
 @Suite(.serialized)
 struct IntegrationTests {
 
+@Test("stopAndWait 后新 server 可立即复用端口")
+func stopAndWaitReleasesPort() async throws {
+    let first = ExploreServer(port: testPort)
+    try await first.start()
+    await first.stopAndWait()
+
+    let second = ExploreServer(port: testPort)
+    try await second.start()
+    await second.stopAndWait()
+}
+
 @Test("端到端 ping 经真实 TCP 往返")
 func endToEndPing() async throws {
     let server = ExploreServer(port: testPort)
