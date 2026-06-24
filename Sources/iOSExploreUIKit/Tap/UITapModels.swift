@@ -61,28 +61,37 @@ public struct UITapQuery: Sendable, Equatable {
     /// - Returns: 解析出的查询对象。
     /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
     public static func parse(from data: JSON) throws -> UITapQuery {
-        let snapshotID = data["snapshotID"]?.stringValue
-        let hasViewTarget = data["accessibilityIdentifier"]?.stringValue != nil || data["path"]?.stringValue != nil
-        let hasX = data["x"]?.doubleValue != nil
-        let hasY = data["y"]?.doubleValue != nil
-        let hasPointTarget = hasX || hasY
+        var d = QueryDecoder(data)
+        return try parse(decoding: &d)
+    }
+
+    /// snapshotID 走 builder；以下为领域逻辑（互斥/成对/coordinateSpace 单值校验），
+    /// 保留手写，经 `d.data` 访问原始 data，不进 `accessedKeys`。
+    static func parse(decoding d: inout QueryDecoder) throws -> UITapQuery {
+        let snapshotID = d.string("snapshotID")
+        let accessibilityIdentifier = d.data["accessibilityIdentifier"]?.stringValue
+        let rawPath = d.data["path"]?.stringValue
+        let x = d.data["x"]?.doubleValue
+        let y = d.data["y"]?.doubleValue
+        let coordinateSpace = d.data["coordinateSpace"]?.stringValue ?? "window"
+
+        let hasViewTarget = accessibilityIdentifier != nil || rawPath != nil
+        let hasPointTarget = x != nil || y != nil
 
         if hasViewTarget, hasPointTarget {
             throw QueryParseError("view target and coordinate target are mutually exclusive")
         }
         if hasPointTarget {
-            guard let x = data["x"]?.doubleValue, let y = data["y"]?.doubleValue else {
+            guard let x, let y else {
                 throw QueryParseError("x and y must be provided together")
             }
-            let coordinateSpace = data["coordinateSpace"]?.stringValue ?? "window"
             guard coordinateSpace == "window" else {
                 throw QueryParseError("coordinateSpace must be window")
             }
             return UITapQuery(target: .windowPoint(x: x, y: y), snapshotID: snapshotID)
         }
 
-        let target = try UIKitViewLookupTarget.parse(identifier: data["accessibilityIdentifier"]?.stringValue,
-                                                     rawPath: data["path"]?.stringValue)
+        let target = try UIKitViewLookupTarget.parse(identifier: accessibilityIdentifier, rawPath: rawPath)
         return UITapQuery(target: .view(target), snapshotID: snapshotID)
     }
 }

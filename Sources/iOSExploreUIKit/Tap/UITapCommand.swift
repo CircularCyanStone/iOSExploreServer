@@ -41,6 +41,10 @@ struct UITapCommand: Command {
                          kind: .string,
                          required: false,
                          description: "坐标空间, 第一版仅支持 window"),
+        CommandParameter(name: "snapshotID",
+                         kind: .string,
+                         required: false,
+                         description: "快照标识, 用于 path 定位的陈旧校验"),
     ]
 
     /// 执行 tap。

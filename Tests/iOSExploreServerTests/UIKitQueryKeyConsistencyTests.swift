@@ -26,4 +26,12 @@ func controlSendActionKeysCoveredByParameters() throws {
     let params = Set(UIControlSendActionCommand().parameters.map(\.name))
     #expect(d.accessedKeys.isSubset(of: params))
 }
+
+@Test("ui.tap parse 读取的 builder key 全部声明在 parameters")
+func tapKeysCoveredByParameters() throws {
+    var d = QueryDecoder(["path": "root"])
+    _ = try UITapQuery.parse(decoding: &d)
+    let params = Set(UITapCommand().parameters.map(\.name))
+    #expect(d.accessedKeys.isSubset(of: params))
+}
 #endif
