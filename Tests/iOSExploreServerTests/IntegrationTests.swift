@@ -15,7 +15,7 @@ struct IntegrationTests {
 @Test("stopAndWait 后新 server 可立即复用端口")
 func stopAndWaitReleasesPort() async throws {
     let first = ExploreServer(port: testPort)
-    try await first.start()
+    try await startWithPortRetry(first)
     await first.stopAndWait()
 
     let second = ExploreServer(port: testPort)

@@ -60,6 +60,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":
 - `detailLevel`: `basic` / `appearance` / `full`，默认 `appearance`。
 - `maxDepth`: 最大递归深度，`0` 表示只返回根 view。
 - `includeHidden`: 是否包含隐藏 view，默认 `false`。
+- `maxTargets`: 最多返回目标数，默认 `200`，范围 `1...512`；达到上限时响应 `truncated=true`，应缩小筛选范围后重新查询。
 - `accessibilityIdentifier`: 按 identifier 精确筛选。
 - `accessibilityIdentifierPrefix`: 按 identifier 前缀筛选。
 

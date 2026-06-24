@@ -64,8 +64,8 @@ ExploreLogging.setMinimumLevel(.debug)
 ## 集成测试端口冲突 / flaky
 
 症状：`IntegrationTests` 偶发 "no handler for ..." 或连接被拒。
-原因：Swift Testing 默认并行，4 个测试共用端口 38399 会争用。
-解决：已用 `@Suite(.serialized)` 串行（见 `Tests/iOSExploreServerTests/IntegrationTests.swift`）。若新增集成测试沿用同端口，保持在该 suite 内。
+原因：并行 bind 会争用端口；即使 suite 串行，`NWListener.cancel()` 也会异步释放 socket。
+解决：保持 `@Suite(.serialized)`，并在复用端口前调用测试内部 `await server.stopAndWait()`，不要只依赖退避重试。
 
 ## 后台不工作
 
