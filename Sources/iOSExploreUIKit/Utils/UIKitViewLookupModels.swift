@@ -21,6 +21,16 @@ public enum UIKitViewLookupTarget: Sendable, Equatable {
         }
     }
 
+    /// 仅供内部日志使用的脱敏定位摘要。
+    public var logSummary: String {
+        switch self {
+        case .accessibilityIdentifier(let identifier):
+            return "accessibilityIdentifierHash=\(UIKitTargetFingerprint.stableHash(identifier)) length=\(identifier.count)"
+        case .path(let indexes):
+            return "path=" + Self.pathString(from: indexes)
+        }
+    }
+
     /// 与 `ui.topViewHierarchy` 一致的路径字符串。
     ///
     /// - Parameter indexes: 从根 view 开始的 subviews 下标链。

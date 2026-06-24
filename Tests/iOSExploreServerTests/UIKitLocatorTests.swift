@@ -4,6 +4,14 @@ import Testing
 
 @Suite
 struct UIKitLocatorTests {
+
+    @Test("identifier 日志摘要不泄露原始值")
+    func identifierLogSummaryIsRedacted() {
+        let identifier = "secret.identifier.9F8E7D"
+        let summary = UIKitViewLookupTarget.accessibilityIdentifier(identifier).logSummary
+        #expect(summary.contains(identifier) == false)
+        #expect(summary.contains("length=24"))
+    }
     @Test("UIKitLocator 统一 identifier path 和坐标")
     func uikitLocatorParsesAllForms() {
         #expect(UIKitLocator.parse(identifier: "home.submit", path: nil, x: nil, y: nil) ==

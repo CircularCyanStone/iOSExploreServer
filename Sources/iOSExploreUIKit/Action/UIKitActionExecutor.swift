@@ -332,14 +332,7 @@ enum UIKitActionExecutor {
 
     /// locator 的日志/响应摘要，复用 `UIKitViewLookupTarget` 文案保持迁移前一致。
     private static func locatorSummary(_ locator: UIKitLocator) -> String {
-        switch locator {
-        case .accessibilityIdentifier(let identifier):
-            return "accessibilityIdentifier=\(identifier)"
-        case .path(let indexes):
-            return "path=" + UIKitViewLookupTarget.pathString(from: indexes)
-        case .windowPoint(let x, let y):
-            return "windowPoint=(\(x),\(y))"
-        }
+        locator.logSummary
     }
 }
 

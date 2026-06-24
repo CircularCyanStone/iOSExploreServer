@@ -28,6 +28,18 @@ public enum UIKitLocatorParseResult: Sendable, Equatable {
 }
 
 public extension UIKitLocator {
+    /// 仅供内部日志使用的脱敏定位摘要。
+    var logSummary: String {
+        switch self {
+        case .accessibilityIdentifier(let identifier):
+            return "accessibilityIdentifierHash=\(UIKitTargetFingerprint.stableHash(identifier)) length=\(identifier.count)"
+        case .path(let indexes):
+            return "path=" + UIKitViewLookupTarget.pathString(from: indexes)
+        case .windowPoint(let x, let y):
+            return "windowPoint=(\(x),\(y))"
+        }
+    }
+
     /// 从请求字段解析统一定位器。
     ///
     /// view 定位（identifier/path）与坐标定位（x/y）互斥；坐标必须成对提供。identifier/path
