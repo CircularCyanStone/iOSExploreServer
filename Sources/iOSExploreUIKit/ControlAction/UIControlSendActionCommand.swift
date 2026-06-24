@@ -43,24 +43,25 @@ struct UIControlSendActionCommand: Command {
     /// - Returns: 成功时返回目标摘要；失败时返回 `invalid_data` 或 UI 不可用错误。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
         UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
-        switch UIControlSendActionQuery.parse(from: request.data) {
-        case .success(let query):
-            let plan = UIKitActionPlan.controlEvent(locator: query.target.locator,
-                                                    event: query.event,
-                                                    snapshotID: query.snapshotID)
-            let result = await UIKitActionExecutor.execute(plan)
-            switch result {
-            case .success(let data):
-                UIKitCommandLogging.info("command", "command \(action) completed target=\(query.target.description) event=\(query.event.rawValue) type=\(data["type"]?.stringValue ?? "unknown")")
-            case .failure(let code, let message):
-                UIKitCommandLogging.error("command", "command \(action) failed code=\(code.rawValue) message=\(message)")
-            }
-            return result
-        case .failure(let message):
-            let error = UIKitCommandError.invalidData(action: action, message: message)
+        let query: UIControlSendActionQuery
+        do {
+            query = try UIControlSendActionQuery.parse(from: request.data)
+        } catch let parseError as QueryParseError {
+            let error = UIKitCommandError.invalidData(action: action, message: parseError.message)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
         }
+        let plan = UIKitActionPlan.controlEvent(locator: query.target.locator,
+                                                event: query.event,
+                                                snapshotID: query.snapshotID)
+        let result = await UIKitActionExecutor.execute(plan)
+        switch result {
+        case .success(let data):
+            UIKitCommandLogging.info("command", "command \(action) completed target=\(query.target.description) event=\(query.event.rawValue) type=\(data["type"]?.stringValue ?? "unknown")")
+        case .failure(let code, let message):
+            UIKitCommandLogging.error("command", "command \(action) failed code=\(code.rawValue) message=\(message)")
+        }
+        return result
     }
 }
 #endif

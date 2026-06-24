@@ -58,24 +58,25 @@ public enum UIKitViewLookupTarget: Sendable, Equatable {
     /// - Parameters:
     ///   - identifier: accessibilityIdentifier 字段。
     ///   - rawPath: path 字段。
-    /// - Returns: 成功时返回定位目标；失败时返回可放入 `invalid_data` 的说明。
-    public static func parse(identifier: String?, rawPath: String?) -> UIKitViewLookupTargetParseResult {
+    /// - Returns: 定位目标。
+    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
+    public static func parse(identifier: String?, rawPath: String?) throws -> UIKitViewLookupTarget {
         if identifier != nil, rawPath != nil {
-            return .failure("accessibilityIdentifier and path are mutually exclusive")
+            throw QueryParseError("accessibilityIdentifier and path are mutually exclusive")
         }
         if let identifier {
             if identifier.isEmpty {
-                return .failure("accessibilityIdentifier must not be empty")
+                throw QueryParseError("accessibilityIdentifier must not be empty")
             }
-            return .success(.accessibilityIdentifier(identifier))
+            return .accessibilityIdentifier(identifier)
         }
         if let rawPath {
             guard let indexes = parsePath(rawPath) else {
-                return .failure("path must be root or root/<non-negative-index>/...")
+                throw QueryParseError("path must be root or root/<non-negative-index>/...")
             }
-            return .success(.path(indexes))
+            return .path(indexes)
         }
-        return .failure("either accessibilityIdentifier or path is required")
+        throw QueryParseError("either accessibilityIdentifier or path is required")
     }
 
     /// 解析 `root/0/2/1` 路径为下标数组。
@@ -90,16 +91,6 @@ public enum UIKitViewLookupTarget: Sendable, Equatable {
         }
         return indexes
     }
-}
-
-/// UIKit view 定位目标解析结果。
-///
-/// 失败分支是可返回给调用方的 `invalid_data` 文案，不代表 Swift 异常。
-public enum UIKitViewLookupTargetParseResult: Sendable, Equatable {
-    /// 解析成功。
-    case success(UIKitViewLookupTarget)
-    /// 参数非法。
-    case failure(String)
 }
 
 /// 保留 `ui.control.sendAction` 既有模型名，实际复用通用定位目标。

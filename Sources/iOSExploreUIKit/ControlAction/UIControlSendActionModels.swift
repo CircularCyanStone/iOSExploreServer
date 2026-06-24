@@ -19,26 +19,6 @@ public enum UIControlSendActionEvent: String, Sendable, Equatable {
     case editingDidEnd
 }
 
-/// `ui.control.sendAction` 参数解析结果。
-///
-/// 失败分支是可返回给调用方的 `invalid_data` 文案，不代表 Swift 异常。
-public enum UIControlSendActionQueryParseResult: Sendable, Equatable {
-    /// 解析成功。
-    case success(UIControlSendActionQuery)
-    /// 参数非法。
-    case failure(String)
-
-    /// 成功时返回解析出的 snapshotID；失败时返回 nil。
-    public var snapshotID: String? {
-        switch self {
-        case .success(let query):
-            return query.snapshotID
-        case .failure:
-            return nil
-        }
-    }
-}
-
 /// `ui.control.sendAction` 的命令参数。
 ///
 /// 命令要求调用方明确提供一个定位条件和一个事件名。定位条件只能二选一，避免同一请求里
@@ -66,22 +46,19 @@ public struct UIControlSendActionQuery: Sendable, Equatable {
     /// 从命令 `data` 解析查询参数。
     ///
     /// - Parameter data: `ExploreRequest.data`。
-    /// - Returns: 成功时返回查询对象；失败时返回可直接放入 `invalid_data` 的说明。
-    public static func parse(from data: JSON) -> UIControlSendActionQueryParseResult {
+    /// - Returns: 解析出的查询对象。
+    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
+    public static func parse(from data: JSON) throws -> UIControlSendActionQuery {
         let snapshotID = data["snapshotID"]?.stringValue
         guard let rawEvent = data["event"]?.stringValue else {
-            return .failure("missing required parameter 'event'")
+            throw QueryParseError("missing required parameter 'event'")
         }
         guard let event = UIControlSendActionEvent(rawValue: rawEvent) else {
-            return .failure("event must be one of touchDown, touchUpInside, valueChanged, editingChanged, editingDidBegin, editingDidEnd")
+            throw QueryParseError("event must be one of touchDown, touchUpInside, valueChanged, editingChanged, editingDidBegin, editingDidEnd")
         }
 
-        switch UIKitViewLookupTarget.parse(identifier: data["accessibilityIdentifier"]?.stringValue,
-                                           rawPath: data["path"]?.stringValue) {
-        case .success(let target):
-            return .success(UIControlSendActionQuery(target: target, event: event, snapshotID: snapshotID))
-        case .failure(let message):
-            return .failure(message)
-        }
+        let target = try UIKitViewLookupTarget.parse(identifier: data["accessibilityIdentifier"]?.stringValue,
+                                                     rawPath: data["path"]?.stringValue)
+        return UIControlSendActionQuery(target: target, event: event, snapshotID: snapshotID)
     }
 }

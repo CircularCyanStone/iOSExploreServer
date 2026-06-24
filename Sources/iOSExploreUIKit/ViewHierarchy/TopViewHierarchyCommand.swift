@@ -47,23 +47,24 @@ struct TopViewHierarchyCommand: Command {
     /// - Returns: 成功时返回 root 树或 matches 列表；参数非法时返回 `invalid_data`。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
         UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
-        switch UIViewHierarchyQuery.parse(from: request.data) {
-        case .success(let query):
-            let result = await UIViewHierarchyCollector.collectTopViewHierarchy(query: query)
-            switch result {
-            case .success(let data):
-                let nodeCount = data["nodeCount"]?.doubleValue ?? 0
-                let matchCount = data["matchCount"]?.doubleValue
-                UIKitCommandLogging.info("command", "command \(action) completed nodeCount=\(nodeCount) matchCount=\(matchCount.map { String($0) } ?? "none")")
-            case .failure(let code, let message):
-                UIKitCommandLogging.error("command", "command \(action) failed code=\(code.rawValue) message=\(message)")
-            }
-            return result
-        case .failure(let message):
-            let error = UIKitCommandError.invalidData(action: action, message: message)
+        let query: UIViewHierarchyQuery
+        do {
+            query = try UIViewHierarchyQuery.parse(from: request.data)
+        } catch let parseError as QueryParseError {
+            let error = UIKitCommandError.invalidData(action: action, message: parseError.message)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
         }
+        let result = await UIViewHierarchyCollector.collectTopViewHierarchy(query: query)
+        switch result {
+        case .success(let data):
+            let nodeCount = data["nodeCount"]?.doubleValue ?? 0
+            let matchCount = data["matchCount"]?.doubleValue
+            UIKitCommandLogging.info("command", "command \(action) completed nodeCount=\(nodeCount) matchCount=\(matchCount.map { String($0) } ?? "none")")
+        case .failure(let code, let message):
+            UIKitCommandLogging.error("command", "command \(action) failed code=\(code.rawValue) message=\(message)")
+        }
+        return result
     }
 }
 #endif

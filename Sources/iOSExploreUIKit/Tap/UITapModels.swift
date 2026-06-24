@@ -35,26 +35,6 @@ public enum UITapTarget: Sendable, Equatable {
     }
 }
 
-/// `ui.tap` 参数解析结果。
-///
-/// 失败分支是可返回给调用方的 `invalid_data` 文案，不代表 Swift 异常。
-public enum UITapQueryParseResult: Sendable, Equatable {
-    /// 解析成功。
-    case success(UITapQuery)
-    /// 参数非法。
-    case failure(String)
-
-    /// 成功时返回解析出的 snapshotID；失败时返回 nil。
-    public var snapshotID: String? {
-        switch self {
-        case .success(let query):
-            return query.snapshotID
-        case .failure:
-            return nil
-        }
-    }
-}
-
 /// `ui.tap` 的命令参数。
 ///
 /// 第一版支持两类输入：`accessibilityIdentifier`/`path` 定位 view，或 `x`/`y` 指定 window
@@ -78,8 +58,9 @@ public struct UITapQuery: Sendable, Equatable {
     /// 从命令 `data` 解析查询参数。
     ///
     /// - Parameter data: `ExploreRequest.data`。
-    /// - Returns: 成功时返回查询对象；失败时返回可直接放入 `invalid_data` 的说明。
-    public static func parse(from data: JSON) -> UITapQueryParseResult {
+    /// - Returns: 解析出的查询对象。
+    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
+    public static func parse(from data: JSON) throws -> UITapQuery {
         let snapshotID = data["snapshotID"]?.stringValue
         let hasViewTarget = data["accessibilityIdentifier"]?.stringValue != nil || data["path"]?.stringValue != nil
         let hasX = data["x"]?.doubleValue != nil
@@ -87,25 +68,21 @@ public struct UITapQuery: Sendable, Equatable {
         let hasPointTarget = hasX || hasY
 
         if hasViewTarget, hasPointTarget {
-            return .failure("view target and coordinate target are mutually exclusive")
+            throw QueryParseError("view target and coordinate target are mutually exclusive")
         }
         if hasPointTarget {
             guard let x = data["x"]?.doubleValue, let y = data["y"]?.doubleValue else {
-                return .failure("x and y must be provided together")
+                throw QueryParseError("x and y must be provided together")
             }
             let coordinateSpace = data["coordinateSpace"]?.stringValue ?? "window"
             guard coordinateSpace == "window" else {
-                return .failure("coordinateSpace must be window")
+                throw QueryParseError("coordinateSpace must be window")
             }
-            return .success(UITapQuery(target: .windowPoint(x: x, y: y), snapshotID: snapshotID))
+            return UITapQuery(target: .windowPoint(x: x, y: y), snapshotID: snapshotID)
         }
 
-        switch UIKitViewLookupTarget.parse(identifier: data["accessibilityIdentifier"]?.stringValue,
-                                           rawPath: data["path"]?.stringValue) {
-        case .success(let target):
-            return .success(UITapQuery(target: .view(target), snapshotID: snapshotID))
-        case .failure(let message):
-            return .failure(message)
-        }
+        let target = try UIKitViewLookupTarget.parse(identifier: data["accessibilityIdentifier"]?.stringValue,
+                                                     rawPath: data["path"]?.stringValue)
+        return UITapQuery(target: .view(target), snapshotID: snapshotID)
     }
 }

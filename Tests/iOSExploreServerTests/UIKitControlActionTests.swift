@@ -3,52 +3,42 @@ import Testing
 @testable import iOSExploreUIKit
 
 @Test("UIControlSendActionQuery 从 accessibilityIdentifier 解析目标和事件")
-func controlSendActionQueryParsesIdentifierTarget() {
-    let result = UIControlSendActionQuery.parse(from: [
+func controlSendActionQueryParsesIdentifierTarget() throws {
+    let query = try UIControlSendActionQuery.parse(from: [
         "accessibilityIdentifier": "mine.header.avatar",
         "event": "touchUpInside",
     ])
 
-    switch result {
-    case .success(let query):
-        #expect(query.target == .accessibilityIdentifier("mine.header.avatar"))
-        #expect(query.event == .touchUpInside)
-    case .failure(let message):
-        Issue.record("unexpected failure: \(message)")
-    }
+    #expect(query.target == .accessibilityIdentifier("mine.header.avatar"))
+    #expect(query.event == .touchUpInside)
 }
 
 @Test("UIControlSendActionQuery 从 path 解析目标和事件")
-func controlSendActionQueryParsesPathTarget() {
-    let result = UIControlSendActionQuery.parse(from: [
+func controlSendActionQueryParsesPathTarget() throws {
+    let query = try UIControlSendActionQuery.parse(from: [
         "path": "root/0/2/1",
         "event": "valueChanged",
     ])
 
-    switch result {
-    case .success(let query):
-        #expect(query.target == .path([0, 2, 1]))
-        #expect(query.event == .valueChanged)
-    case .failure(let message):
-        Issue.record("unexpected failure: \(message)")
-    }
+    #expect(query.target == .path([0, 2, 1]))
+    #expect(query.event == .valueChanged)
 }
 
 @Test("UIControlSendActionQuery 拒绝歧义目标和非法 path")
 func controlSendActionQueryRejectsAmbiguousOrInvalidTarget() {
-    if case .success = UIControlSendActionQuery.parse(from: [
-        "accessibilityIdentifier": "mine.header.avatar",
-        "path": "root/0",
-        "event": "touchUpInside",
-    ]) {
-        Issue.record("identifier and path should be mutually exclusive")
+    #expect(throws: QueryParseError.self) {
+        try UIControlSendActionQuery.parse(from: [
+            "accessibilityIdentifier": "mine.header.avatar",
+            "path": "root/0",
+            "event": "touchUpInside",
+        ])
     }
 
-    if case .success = UIControlSendActionQuery.parse(from: [
-        "path": "root/a",
-        "event": "touchUpInside",
-    ]) {
-        Issue.record("invalid path should fail")
+    #expect(throws: QueryParseError.self) {
+        try UIControlSendActionQuery.parse(from: [
+            "path": "root/a",
+            "event": "touchUpInside",
+        ])
     }
 }
 

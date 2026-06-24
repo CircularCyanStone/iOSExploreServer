@@ -128,37 +128,31 @@ func viewHierarchyBuilderFiltersByAccessibilityIdentifier() {
 }
 
 @Test("UIViewHierarchyQuery 从命令 data 解析详情级别和筛选参数")
-func viewHierarchyQueryParsesCommandData() {
-    let query = UIViewHierarchyQuery.parse(from: [
+func viewHierarchyQueryParsesCommandData() throws {
+    let query = try UIViewHierarchyQuery.parse(from: [
         "detailLevel": "full",
         "maxDepth": 3,
         "includeHidden": true,
         "accessibilityIdentifierPrefix": "mine.",
     ])
 
-    switch query {
-    case .success(let parsed):
-        #expect(parsed.detailLevel == .full)
-        #expect(parsed.maxDepth == 3)
-        #expect(parsed.includeHidden == true)
-        #expect(parsed.accessibilityIdentifierPrefix == "mine.")
-    case .failure(let message):
-        Issue.record("unexpected parse failure: \(message)")
-    }
+    #expect(query.detailLevel == .full)
+    #expect(query.maxDepth == 3)
+    #expect(query.includeHidden == true)
+    #expect(query.accessibilityIdentifierPrefix == "mine.")
 
-    if case .success = UIViewHierarchyQuery.parse(from: ["detailLevel": "unknown"]) {
-        Issue.record("unknown detailLevel should fail")
+    #expect(throws: QueryParseError.self) {
+        try UIViewHierarchyQuery.parse(from: ["detailLevel": "unknown"])
     }
 }
 
 #if !canImport(UIKit)
 @Test("UIViewHierarchyQuery 拒绝无法安全转换为 Int 的 maxDepth")
 func viewHierarchyQueryRejectsOutOfRangeMaxDepth() {
-    guard case .failure = UIViewHierarchyQuery.parse(from: [
-        "maxDepth": .double(Double.greatestFiniteMagnitude),
-    ]) else {
-        Issue.record("out-of-range maxDepth must be rejected before Int conversion")
-        return
+    #expect(throws: QueryParseError.self) {
+        try UIViewHierarchyQuery.parse(from: [
+            "maxDepth": .double(Double.greatestFiniteMagnitude),
+        ])
     }
 }
 #endif

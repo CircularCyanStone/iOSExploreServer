@@ -69,7 +69,7 @@ func viewTargetsCollectsTargetsInContext() {
 }
 
 @Test("topViewHierarchy 采集注入 view 树的层级结构") @MainActor
-func topViewHierarchyCollectsTreeInContext() {
+func topViewHierarchyCollectsTreeInContext() throws {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.accessibilityIdentifier = "submit"
@@ -77,13 +77,7 @@ func topViewHierarchyCollectsTreeInContext() {
         root.addSubview(button)
     }
 
-    let query: UIViewHierarchyQuery
-    switch UIViewHierarchyQuery.parse(from: [:]) {
-    case .success(let q): query = q
-    case .failure(let message):
-        Issue.record("default query parse failed: \(message)")
-        return
-    }
+    let query = try UIViewHierarchyQuery.parse(from: [:])
 
     let result = UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
 

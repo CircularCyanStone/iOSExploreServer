@@ -342,16 +342,6 @@ public enum UIViewHierarchyDetailLevel: String, Sendable {
     case full
 }
 
-/// UI 层级查询参数解析结果。
-///
-/// 失败分支携带可直接返回给调用方的 `invalid_data` 文案，不表示 Swift 运行时异常。
-public enum UIViewHierarchyQueryParseResult: Sendable, Equatable {
-    /// 解析成功。
-    case success(UIViewHierarchyQuery)
-    /// 参数非法。
-    case failure(String)
-}
-
 /// UI 层级采集和筛选参数。
 ///
 /// 命令会从请求 `data` 解析为该类型；测试中也直接用它约束递归和筛选行为。
@@ -398,12 +388,13 @@ public struct UIViewHierarchyQuery: Sendable, Equatable {
     /// 从命令 `data` 解析查询参数。
     ///
     /// - Parameter data: `ExploreRequest.data`。
-    /// - Returns: 成功时返回查询对象；失败时返回可直接放入 `invalid_data` 的说明。
-    public static func parse(from data: JSON) -> UIViewHierarchyQueryParseResult {
+    /// - Returns: 解析出的查询对象。
+    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
+    public static func parse(from data: JSON) throws -> UIViewHierarchyQuery {
         let detailLevel: UIViewHierarchyDetailLevel
         if let raw = data["detailLevel"]?.stringValue {
             guard let parsed = UIViewHierarchyDetailLevel(rawValue: raw) else {
-                return .failure("detailLevel must be one of basic, appearance, full")
+                throw QueryParseError("detailLevel must be one of basic, appearance, full")
             }
             detailLevel = parsed
         } else {
@@ -413,20 +404,20 @@ public struct UIViewHierarchyQuery: Sendable, Equatable {
         let maxDepth: Int?
         if let rawDepth = data["maxDepth"]?.doubleValue {
             guard let intDepth = UIKitQueryNumber.nonNegativeInteger(rawDepth) else {
-                return .failure("maxDepth must be a non-negative integer")
+                throw QueryParseError("maxDepth must be a non-negative integer")
             }
             maxDepth = intDepth
         } else {
             maxDepth = nil
         }
 
-        return .success(UIViewHierarchyQuery(
+        return UIViewHierarchyQuery(
             detailLevel: detailLevel,
             maxDepth: maxDepth,
             includeHidden: data["includeHidden"]?.boolValue ?? false,
             accessibilityIdentifier: data["accessibilityIdentifier"]?.stringValue,
             accessibilityIdentifierPrefix: data["accessibilityIdentifierPrefix"]?.stringValue
-        ))
+        )
     }
 }
 

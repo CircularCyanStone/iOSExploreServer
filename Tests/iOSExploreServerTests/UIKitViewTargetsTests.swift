@@ -3,8 +3,8 @@ import Testing
 @testable import iOSExploreUIKit
 
 @Test("UIViewTargetsQuery 解析默认值和筛选参数")
-func viewTargetsQueryParsesDefaultsAndFilters() {
-    let result = UIViewTargetsQuery.parse(from: [
+func viewTargetsQueryParsesDefaultsAndFilters() throws {
+    let query = try UIViewTargetsQuery.parse(from: [
         "includeHidden": true,
         "includeDisabled": false,
         "includeStaticText": true,
@@ -14,48 +14,29 @@ func viewTargetsQueryParsesDefaultsAndFilters() {
         "textLimit": 120,
     ])
 
-    switch result {
-    case .success(let query):
-        #expect(query.includeHidden == true)
-        #expect(query.includeDisabled == false)
-        #expect(query.includeStaticText == true)
-        #expect(query.includeContainers == true)
-        #expect(query.maxDepth == 3)
-        #expect(query.accessibilityIdentifierPrefix == "home.")
-        #expect(query.textLimit == 120)
-    case .failure(let message):
-        Issue.record("unexpected parse failure: \(message)")
-    }
+    #expect(query.includeHidden == true)
+    #expect(query.includeDisabled == false)
+    #expect(query.includeStaticText == true)
+    #expect(query.includeContainers == true)
+    #expect(query.maxDepth == 3)
+    #expect(query.accessibilityIdentifierPrefix == "home.")
+    #expect(query.textLimit == 120)
 }
 
 @Test("UIViewTargetsQuery 拒绝非法 maxDepth 和 textLimit")
 func viewTargetsQueryRejectsInvalidNumbers() {
-    if case .success = UIViewTargetsQuery.parse(from: ["maxDepth": -1]) {
-        Issue.record("negative maxDepth should fail")
-    }
-    if case .success = UIViewTargetsQuery.parse(from: ["maxDepth": 1.5]) {
-        Issue.record("fractional maxDepth should fail")
-    }
-    if case .success = UIViewTargetsQuery.parse(from: ["textLimit": 201]) {
-        Issue.record("textLimit above upper bound should fail")
-    }
-    if case .success = UIViewTargetsQuery.parse(from: ["textLimit": 0]) {
-        Issue.record("textLimit below lower bound should fail")
-    }
+    #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: ["maxDepth": -1]) }
+    #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: ["maxDepth": 1.5]) }
+    #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: ["textLimit": 201]) }
+    #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: ["textLimit": 0]) }
 }
 
 @Test("UIViewTargetsQuery 解析 maxTargets 默认值和边界")
-func viewTargetsQueryParsesMaxTargets() {
-    guard case .success(let defaultQuery) = UIViewTargetsQuery.parse(from: [:]) else {
-        Issue.record("default query should parse")
-        return
-    }
+func viewTargetsQueryParsesMaxTargets() throws {
+    let defaultQuery = try UIViewTargetsQuery.parse(from: [:])
     #expect(defaultQuery.maxTargets == 200)
 
-    guard case .success(let maximumQuery) = UIViewTargetsQuery.parse(from: ["maxTargets": 512]) else {
-        Issue.record("maxTargets upper boundary should parse")
-        return
-    }
+    let maximumQuery = try UIViewTargetsQuery.parse(from: ["maxTargets": 512])
     #expect(maximumQuery.maxTargets == 512)
 
     for invalid: JSON in [
@@ -64,10 +45,7 @@ func viewTargetsQueryParsesMaxTargets() {
         ["maxTargets": 1.5],
         ["maxTargets": .double(Double.greatestFiniteMagnitude)],
     ] {
-        guard case .failure = UIViewTargetsQuery.parse(from: invalid) else {
-            Issue.record("invalid maxTargets accepted: \(invalid)")
-            return
-        }
+        #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: invalid) }
     }
 }
 
@@ -78,10 +56,7 @@ func viewTargetsQueryRejectsOutOfRangeNumbers() {
         ["maxDepth": .double(Double.greatestFiniteMagnitude)],
         ["textLimit": .double(Double.greatestFiniteMagnitude)],
     ] {
-        guard case .failure = UIViewTargetsQuery.parse(from: data) else {
-            Issue.record("out-of-range number must be rejected before Int conversion")
-            return
-        }
+        #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: data) }
     }
 }
 #endif

@@ -84,12 +84,13 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
     /// 从命令 data 解析查询参数。
     ///
     /// - Parameter data: `ExploreRequest.data`。
-    /// - Returns: 成功时返回查询对象；失败时返回可放入 `invalid_data` 的说明。
-    public static func parse(from data: JSON) -> UIViewTargetsQueryParseResult {
+    /// - Returns: 解析出的查询对象。
+    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
+    public static func parse(from data: JSON) throws -> UIViewTargetsQuery {
         let maxDepth: Int?
         if let rawDepth = data["maxDepth"]?.doubleValue {
             guard let intDepth = UIKitQueryNumber.nonNegativeInteger(rawDepth) else {
-                return .failure("maxDepth must be a non-negative integer")
+                throw QueryParseError("maxDepth must be a non-negative integer")
             }
             maxDepth = intDepth
         } else {
@@ -99,7 +100,7 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
         let textLimit: Int
         if let rawLimit = data["textLimit"]?.doubleValue {
             guard let intLimit = UIKitQueryNumber.integer(rawLimit, in: 1...200) else {
-                return .failure("textLimit must be an integer between 1 and 200")
+                throw QueryParseError("textLimit must be an integer between 1 and 200")
             }
             textLimit = intLimit
         } else {
@@ -109,14 +110,14 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
         let maxTargets: Int
         if let rawLimit = data["maxTargets"]?.doubleValue {
             guard let intLimit = UIKitQueryNumber.integer(rawLimit, in: 1...UIKitSnapshotLimits.maxFingerprints) else {
-                return .failure("maxTargets must be an integer between 1 and 512")
+                throw QueryParseError("maxTargets must be an integer between 1 and 512")
             }
             maxTargets = intLimit
         } else {
             maxTargets = 200
         }
 
-        return .success(UIViewTargetsQuery(
+        return UIViewTargetsQuery(
             includeHidden: data["includeHidden"]?.boolValue ?? false,
             includeDisabled: data["includeDisabled"]?.boolValue ?? true,
             includeStaticText: data["includeStaticText"]?.boolValue ?? false,
@@ -126,16 +127,8 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
             accessibilityIdentifierPrefix: data["accessibilityIdentifierPrefix"]?.stringValue,
             textLimit: textLimit,
             maxTargets: maxTargets
-        ))
+        )
     }
-}
-
-/// `ui.viewTargets` 查询参数解析结果。
-public enum UIViewTargetsQueryParseResult: Sendable, Equatable {
-    /// 解析成功。
-    case success(UIViewTargetsQuery)
-    /// 参数非法。
-    case failure(String)
 }
 
 /// `ui.viewTargets` 输出策略使用的 Foundation-only 候选摘要。

@@ -17,16 +17,6 @@ public enum UIKitLocator: Sendable, Equatable {
     case windowPoint(x: Double, y: Double)
 }
 
-/// `UIKitLocator.parse` 的结果。
-///
-/// 失败分支携带可放入 `invalid_data` envelope 的说明文案，不代表 Swift 异常。
-public enum UIKitLocatorParseResult: Sendable, Equatable {
-    /// 解析成功。
-    case success(UIKitLocator)
-    /// 参数非法。
-    case failure(String)
-}
-
 public extension UIKitLocator {
     /// 仅供内部日志使用的脱敏定位摘要。
     var logSummary: String {
@@ -50,29 +40,25 @@ public extension UIKitLocator {
     ///   - path: `root/0/2` 路径字段。
     ///   - x: window 坐标 x，需与 y 同时提供。
     ///   - y: window 坐标 y，需与 x 同时提供。
-    /// - Returns: 成功时返回定位器；失败时返回可放入 `invalid_data` 的说明。
-    static func parse(identifier: String?, path: String?, x: Double?, y: Double?) -> UIKitLocatorParseResult {
+    /// - Returns: 解析出的定位器。
+    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
+    static func parse(identifier: String?, path: String?, x: Double?, y: Double?) throws -> UIKitLocator {
         let hasViewLocator = identifier != nil || path != nil
         let hasPointLocator = x != nil || y != nil
         if hasViewLocator, hasPointLocator {
-            return .failure("view locator and window point are mutually exclusive")
+            throw QueryParseError("view locator and window point are mutually exclusive")
         }
         if hasPointLocator {
             guard let x, let y else {
-                return .failure("x and y must be provided together")
+                throw QueryParseError("x and y must be provided together")
             }
-            return .success(.windowPoint(x: x, y: y))
+            return .windowPoint(x: x, y: y)
         }
-        switch UIKitViewLookupTarget.parse(identifier: identifier, rawPath: path) {
-        case .success(let target):
-            switch target {
-            case .accessibilityIdentifier(let value):
-                return .success(.accessibilityIdentifier(value))
-            case .path(let value):
-                return .success(.path(value))
-            }
-        case .failure(let message):
-            return .failure(message)
+        switch try UIKitViewLookupTarget.parse(identifier: identifier, rawPath: path) {
+        case .accessibilityIdentifier(let value):
+            return .accessibilityIdentifier(value)
+        case .path(let value):
+            return .path(value)
         }
     }
 }
