@@ -333,7 +333,10 @@ public struct UIViewHierarchyScroll: Sendable, Equatable {
 ///
 /// `basic` 只保留结构、布局和状态；`appearance` 增加文本、颜色、控件等常见验收字段；
 /// `full` 预留给后续更高成本字段。第一版中 `appearance` 与 `full` 字段集合相同。
-public enum UIViewHierarchyDetailLevel: String, Sendable {
+///
+/// - Note: case 声明顺序即 `CaseIterable.allCases` 顺序，被 `QueryDecoder.enumValue`
+///   的 "must be one of ..." 错误文案依赖，勿随意重排。
+public enum UIViewHierarchyDetailLevel: String, Sendable, CaseIterable {
     /// 结构、布局和状态。
     case basic
     /// 常见 UI 验收字段。
@@ -391,32 +394,18 @@ public struct UIViewHierarchyQuery: Sendable, Equatable {
     /// - Returns: 解析出的查询对象。
     /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
     public static func parse(from data: JSON) throws -> UIViewHierarchyQuery {
-        let detailLevel: UIViewHierarchyDetailLevel
-        if let raw = data["detailLevel"]?.stringValue {
-            guard let parsed = UIViewHierarchyDetailLevel(rawValue: raw) else {
-                throw QueryParseError("detailLevel must be one of basic, appearance, full")
-            }
-            detailLevel = parsed
-        } else {
-            detailLevel = .appearance
-        }
+        var d = QueryDecoder(data)
+        return try parse(decoding: &d)
+    }
 
-        let maxDepth: Int?
-        if let rawDepth = data["maxDepth"]?.doubleValue {
-            guard let intDepth = UIKitQueryNumber.nonNegativeInteger(rawDepth) else {
-                throw QueryParseError("maxDepth must be a non-negative integer")
-            }
-            maxDepth = intDepth
-        } else {
-            maxDepth = nil
-        }
-
-        return UIViewHierarchyQuery(
-            detailLevel: detailLevel,
-            maxDepth: maxDepth,
-            includeHidden: data["includeHidden"]?.boolValue ?? false,
-            accessibilityIdentifier: data["accessibilityIdentifier"]?.stringValue,
-            accessibilityIdentifierPrefix: data["accessibilityIdentifierPrefix"]?.stringValue
+    /// 按 `QueryDecoder` 读取字段（供一致性测试拿 `accessedKeys`）。
+    static func parse(decoding d: inout QueryDecoder) throws -> UIViewHierarchyQuery {
+        UIViewHierarchyQuery(
+            detailLevel: try d.enumValue("detailLevel", default: .appearance),
+            maxDepth: try d.optionalNonNegativeInt("maxDepth"),
+            includeHidden: d.bool("includeHidden", default: false),
+            accessibilityIdentifier: d.string("accessibilityIdentifier"),
+            accessibilityIdentifierPrefix: d.string("accessibilityIdentifierPrefix")
         )
     }
 }

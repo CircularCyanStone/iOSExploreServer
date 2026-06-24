@@ -10,4 +10,12 @@ func viewTargetsKeysCoveredByParameters() throws {
     let params = Set(ViewTargetsCommand().parameters.map(\.name))
     #expect(d.accessedKeys.isSubset(of: params))
 }
+
+@Test("ui.topViewHierarchy parse 读取的 builder key 全部声明在 parameters")
+func topViewHierarchyKeysCoveredByParameters() throws {
+    var d = QueryDecoder([:])
+    _ = try UIViewHierarchyQuery.parse(decoding: &d)
+    let params = Set(TopViewHierarchyCommand().parameters.map(\.name))
+    #expect(d.accessedKeys.isSubset(of: params))
+}
 #endif
