@@ -1,6 +1,6 @@
 # iOSExploreUIKit 文件档案
 
-> 这是 `Sources/iOSExploreUIKit/` 全部 25 个文件的查阅手册。
+> 这是 `Sources/iOSExploreUIKit/` 全部 26 个文件的查阅手册。
 > 想知道"从哪开始读"看 [reading-guide.md](./reading-guide.md)；这里按目录逐个登记每个文件的职责、关键点与依赖关系，用于定位与改动。
 > 约定：✅ = Foundation-only（macOS `swift test` 可覆盖）；🍎 = `#if canImport(UIKit)`，仅 iOS 编译。
 
@@ -9,7 +9,7 @@
 | 目录 | 文件数 | 职责域 |
 |---|---|---|
 | 根目录 | 3 | 注册入口、日志、错误工厂 |
-| `Utils/` | 2 | 路径文法、安全数字解析 |
+| `Utils/` | 4 | 路径文法、安全数字解析、parse 错误类型、声明式取值器 |
 | `Context/` | 1 | 前台 window / 顶部控制器 |
 | `Locator/` | 2 | 定位语义 + 真实 view 解析 |
 | `Action/` | 4 | 动作执行引擎（tap / control） |
@@ -56,6 +56,12 @@
 - **职责**：UIKit 命令参数解析失败的统一错误类型。
 - **关键点**：所有 typed query 的 `parse` 用普通 `throws` 抛出本类型，取代此前每命令各自定义的 `success(T)/failure(String)` result 枚举（普通 throws 即可，无需 typed throws，故不升级 `SWIFT_VERSION`）；命令 handler 统一把它转成 `UIKitCommandError.invalidData`，文案直接进 `invalid_data` envelope。Foundation-only、`Sendable`，可在 macOS `swift test` 覆盖解析失败断言。
 - **依赖**：core `Foundation`。
+
+### `QueryDecoder.swift` ✅
+- **职责**：UIKit 命令参数的声明式取值器（builder）。
+- **关键点**：把 typed query parse 里重复的"按 key 取值 + 类型转换 + 默认值 + 范围/枚举校验 + 错误文案"封装成方法链（`bool`/`string`/`optionalNonNegativeInt`/`rangedInt`/`enumValue`/`requiredEnum`），失败统一抛 `QueryParseError`。`internal`（模块内 + `@testable` 测试，不进 public 表面）。每个读取方法记 key 到 `accessedKeys`，供一致性测试断言"走 builder 的 key ⊆ Command.parameters"防漏声明。`data` 为 internal let，供部分迁 query 的手写领域字段（互斥/成对/path 文法）直接 `d.data[...]` 访问（不进 accessedKeys）。不记日志（错误归 command handler 单一出口）。
+- **依赖**：core `JSON`/`JSONValue`、`UIKitQueryNumber`、`QueryParseError`。
+- **被调用**：4 个 typed query 的 `parse(decoding:)`（`UIViewTargetsQuery`/`UIViewHierarchyQuery`/`UITapQuery`/`UIControlSendActionQuery`）。
 
 ---
 
