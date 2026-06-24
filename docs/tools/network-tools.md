@@ -60,7 +60,6 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":
 - `detailLevel`: `basic` / `appearance` / `full`，默认 `appearance`。
 - `maxDepth`: 最大递归深度，`0` 表示只返回根 view。
 - `includeHidden`: 是否包含隐藏 view，默认 `false`。
-- `maxTargets`: 最多返回目标数，默认 `200`，范围 `1...512`；达到上限时响应 `truncated=true`，应缩小筛选范围后重新查询。
 - `accessibilityIdentifier`: 按 identifier 精确筛选。
 - `accessibilityIdentifierPrefix`: 按 identifier 前缀筛选。
 
@@ -73,6 +72,8 @@ curl -X POST http://localhost:38321/ \
   -H 'Content-Type: application/json' \
   -d '{"action":"ui.viewTargets","data":{"includeStaticText":true,"textLimit":80}}'
 ```
+
+`ui.viewTargets` 可选参数：`includeHidden`/`includeDisabled`/`includeStaticText`/`includeContainers`（节点包含开关）、`maxDepth`、`accessibilityIdentifier`/`accessibilityIdentifierPrefix`（筛选）、`textLimit`（展示文本截断，默认 80，上限 200）、`maxTargets`（最多返回目标数，默认 `200`，范围 `1...512`；达到上限时响应 `truncated=true`，应缩小筛选范围后重新查询）。每个 target 含 `path`、`role`、`availableActions`（仅目标自身为可用 UIControl 时非空）、短文本与基础交互状态。
 
 ### `ui.control.sendAction`
 
