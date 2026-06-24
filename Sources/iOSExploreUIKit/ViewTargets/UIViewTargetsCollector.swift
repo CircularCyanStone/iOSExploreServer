@@ -30,6 +30,7 @@ enum UIViewTargetsCollector {
         var visitedNodeCount = 0
         var targets: [UIViewTargetSummary] = []
         collect(view: context.rootView,
+                rootView: context.rootView,
                 window: context.window,
                 path: [],
                 depth: 0,
@@ -65,6 +66,7 @@ enum UIViewTargetsCollector {
     /// identifier 筛选只影响当前节点是否输出，不会提前剪枝子树，避免漏掉深层控件。
     /// 隐藏节点在 `includeHidden=false` 时会剪枝整棵子树，避免隐藏容器下的控件被误返回。
     private static func collect(view: UIView,
+                                rootView: UIView,
                                 window: UIWindow,
                                 path: [Int],
                                 depth: Int,
@@ -78,7 +80,7 @@ enum UIViewTargetsCollector {
 
         if shouldInclude(view: view, query: query),
            matchesIdentifier(view: view, query: query) {
-            targets.append(summary(for: view, window: window, path: path, query: query))
+            targets.append(summary(for: view, rootView: rootView, window: window, path: path, query: query))
         }
 
         if let maxDepth = query.maxDepth, depth >= maxDepth {
@@ -87,6 +89,7 @@ enum UIViewTargetsCollector {
 
         for (index, child) in view.subviews.enumerated() {
             collect(view: child,
+                    rootView: rootView,
                     window: window,
                     path: path + [index],
                     depth: depth + 1,
@@ -128,6 +131,7 @@ enum UIViewTargetsCollector {
 
     /// 从 UIKit view 生成轻量目标摘要。
     private static func summary(for view: UIView,
+                                rootView: UIView,
                                 window: UIWindow,
                                 path: [Int],
                                 query: UIViewTargetsQuery) -> UIViewTargetSummary {
@@ -137,8 +141,8 @@ enum UIViewTargetsCollector {
         // 仅 title/label/text/placeholder/value 这些展示型文本按 textLimit 裁剪。
         let nearestControl = control ?? UIKitLocatorResolver.nearestControl(from: view, stoppingAt: nil)
         let availability = UIKitActionCapabilityResolver.resolve(view: view,
-                                                                 nearestControl: nearestControl,
-                                                                 isEnabled: control?.isEnabled)
+                                                                 rootView: rootView,
+                                                                 nearestControl: nearestControl)
         if !availability.actions.isEmpty {
             UIKitCommandLogging.info("command", "ui view targets availableActions type=\(String(describing: Swift.type(of: view))) actionCount=\(availability.actions.count) enabled=\(nearestControl?.isEnabled ?? false)")
         }

@@ -37,8 +37,8 @@ func availabilityPreservesActionOrder() {
 func textFieldDeclaresEditingActions() {
     let textField = UITextField()
     let availability = UIKitActionCapabilityResolver.resolve(view: textField,
-                                                               nearestControl: textField,
-                                                               isEnabled: textField.isEnabled)
+                                                               rootView: textField,
+                                                               nearestControl: textField)
     #expect(availability.rawValues == [
         "tap",
         "control.editingChanged",
@@ -52,8 +52,32 @@ func disabledControlHasNoAvailableActions() {
     let button = UIButton(type: .system)
     button.isEnabled = false
     let availability = UIKitActionCapabilityResolver.resolve(view: button,
-                                                               nearestControl: button,
-                                                               isEnabled: button.isEnabled)
+                                                               rootView: button,
+                                                               nearestControl: button)
     #expect(availability.rawValues.isEmpty)
+}
+
+@Test("父容器不可见或不可交互时不声明可执行动作") @MainActor
+func ancestorStateBlocksAvailableActions() {
+    let root = UIView()
+    let container = UIView()
+    let button = UIButton(type: .system)
+    root.addSubview(container)
+    container.addSubview(button)
+
+    for mutate in [
+        { container.isHidden = true },
+        { container.alpha = 0 },
+        { container.isUserInteractionEnabled = false },
+    ] {
+        container.isHidden = false
+        container.alpha = 1
+        container.isUserInteractionEnabled = true
+        mutate()
+        let availability = UIKitActionCapabilityResolver.resolve(view: button,
+                                                                   rootView: root,
+                                                                   nearestControl: button)
+        #expect(availability.actions.isEmpty)
+    }
 }
 #endif

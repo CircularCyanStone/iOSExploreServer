@@ -213,8 +213,8 @@ enum UIKitActionExecutor {
         }
 
         let availability = UIKitActionCapabilityResolver.resolve(view: control,
-                                                                  nearestControl: control,
-                                                                  isEnabled: control.isEnabled)
+                                                                  rootView: context.rootView,
+                                                                  nearestControl: control)
         guard availability.actions.contains(.tap) else {
             let error = UIKitCommandError.unsupportedAction(action: tapAction,
                                                             targetDescription: targetDescription,
@@ -300,8 +300,8 @@ enum UIKitActionExecutor {
 
         let requestedAction = UIKitActionCapabilityResolver.actionKind(for: event)
         let availability = UIKitActionCapabilityResolver.resolve(view: control,
-                                                                  nearestControl: control,
-                                                                  isEnabled: control.isEnabled)
+                                                                  rootView: context.rootView,
+                                                                  nearestControl: control)
         guard availability.actions.contains(requestedAction) else {
             let error = UIKitCommandError.unsupportedAction(action: controlAction,
                                                             targetDescription: located.pathString,

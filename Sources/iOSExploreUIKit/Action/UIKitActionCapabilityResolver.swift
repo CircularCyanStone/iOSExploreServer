@@ -26,22 +26,36 @@ enum UIKitActionCapabilityResolver {
     ///
     /// - Parameters:
     ///   - view: 被采集/点击的真实 view。
+    ///   - rootView: 当前 UIKit 查询上下文的根 view；目标到该根之间任一节点不可交互即拒绝。
     ///   - nearestControl: 调用方预先解析的最近 `UIControl`（可由 `UIKitLocatorResolver.nearestControl`
     ///     得到）；若 view 自身即控件，传它本身即可。`nil` 表示无关联控件。
     ///   - isEnabled: 控件当前是否可用。非控件或未知时传 `nil`。
     /// - Returns: 该目标当前可执行的动作集合。无控件或 disabled 时返回空集合。
     static func resolve(view: UIView,
-                        nearestControl: UIControl?,
-                        isEnabled: Bool?) -> UIKitActionAvailability {
+                        rootView: UIView,
+                        nearestControl: UIControl?) -> UIKitActionAvailability {
+        guard isInteractable(view: view, through: rootView) else {
+            return UIKitActionAvailability(actions: [])
+        }
         let control = (view as? UIControl) ?? nearestControl
         guard let control else { return UIKitActionAvailability(actions: []) }
 
         // disabled 控件语义上不可执行：UITapCommand 的 touchUpInside fallback 与
         // UIControlSendActionCommand 都不应在 disabled 状态下被声明为可用动作。
-        let enabled = isEnabled ?? control.isEnabled
-        guard enabled else { return UIKitActionAvailability(actions: []) }
+        guard control.isEnabled else { return UIKitActionAvailability(actions: []) }
 
         return UIKitActionAvailability(actions: actions(for: control))
+    }
+
+    /// 检查 target 到上下文 root 的 UIKit 命中前提。
+    private static func isInteractable(view: UIView, through rootView: UIView) -> Bool {
+        var current: UIView? = view
+        while let node = current {
+            guard !node.isHidden, node.alpha > 0.01, node.isUserInteractionEnabled else { return false }
+            if node === rootView { return true }
+            current = node.superview
+        }
+        return false
     }
 
     /// 将命令事件映射为 capability 中的动作值。
