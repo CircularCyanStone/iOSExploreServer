@@ -33,18 +33,16 @@ enum UIViewHierarchyCollector {
                                                                   digest: digest)
         let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
                                                           targets: fingerprints)
+        let snapshotFields = UIKitSnapshotResponse.fields(for: snapshotID)
         var data: JSON = [
             "screen": .object(screenJSON(window: context.window,
                                          rootViewController: context.rootViewController,
                                          topViewController: context.topViewController)),
             "nodeCount": .double(Double(root.nodeCount)),
             "detailLevel": .string(query.detailLevel.rawValue),
+            "snapshotID": snapshotFields.id,
+            "snapshotUnavailableReason": snapshotFields.unavailableReason,
         ]
-        if let snapshotID {
-            data["snapshotID"] = .string(snapshotID)
-        } else {
-            data["snapshotID"] = .null
-        }
 
         if query.hasIdentifierFilter {
             let matches = UIViewHierarchyBuilder.matches(in: element, query: query)

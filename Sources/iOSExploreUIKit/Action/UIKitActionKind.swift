@@ -7,9 +7,9 @@ import Foundation
 /// - 所有 `control.*` case 都对应 `UIControlSendActionCommand` 接受的 event 名；resolver
 ///   决定具体控件在当前状态下可以使用其中哪些值。
 ///
-/// 它与 `UIViewTargetRole.suggestedActions` 的字面量有意保持一致，但二者来源不同：
-/// `suggestedActions` 按 role 粗略推断，仅作为 agent 提示；`UIKitActionKind` 描述的是
-/// executor 真正能派发的动作，由 `UIKitActionCapabilityResolver` 按真实 view/控件状态生成。
+/// `UIKitActionKind` 描述 executor 真正能派发的动作，由 `UIKitActionCapabilityResolver`
+/// 按真实 view/控件状态生成；命令响应中的 `availableActions` 即由本类型序列化，是 agent
+/// 判断目标可执行性的唯一动作依据（`role` 仅作类型提示，不再派生动作建议）。
 public enum UIKitActionKind: String, Sendable, Equatable {
     /// 点击语义。executor 对 `UIControl` 派发 `touchUpInside`。
     case tap

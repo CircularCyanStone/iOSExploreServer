@@ -38,7 +38,6 @@ func snapshotRejectsChangedContextOrAncestorDigest() {
                                           path: "root/0",
                                           viewType: "UIButton",
                                           identifierHash: UIKitTargetFingerprint.stableHash("settings.save"),
-                                          role: "button",
                                           isEnabled: true,
                                           isSelected: false,
                                           ancestorDigest: 10)
@@ -56,7 +55,6 @@ func snapshotRejectsChangedContextOrAncestorDigest() {
                                                  path: original.path,
                                                  viewType: original.viewType,
                                                  identifierHash: original.identifierHash,
-                                                 role: original.role,
                                                  isEnabled: original.isEnabled,
                                                  isSelected: original.isSelected,
                                                  ancestorDigest: 11)
@@ -80,6 +78,20 @@ func unknownSnapshotIsStale() {
 func actionQueriesParseSnapshotID() {
     #expect(UITapQuery.parse(from: ["path": "root/0", "snapshotID": "s1"]).snapshotID == "s1")
     #expect(UIControlSendActionQuery.parse(from: ["path": "root/0", "event": "touchUpInside", "snapshotID": "s1"]).snapshotID == "s1")
+}
+
+@Test("snapshot 签发成功映射 snapshotID 字段且原因为 null")
+func snapshotResponseFieldsForIssuedID() {
+    let fields = UIKitSnapshotResponse.fields(for: "snap-1")
+    #expect(fields.id == .string("snap-1"))
+    #expect(fields.unavailableReason == .null)
+}
+
+@Test("snapshot 超限未签发时原因为 fingerprintLimit")
+func snapshotResponseFieldsForOverLimit() {
+    let fields = UIKitSnapshotResponse.fields(for: nil)
+    #expect(fields.id == .null)
+    #expect(fields.unavailableReason == .string(UIKitSnapshotResponse.fingerprintLimitReason))
 }
 
 #if canImport(UIKit)

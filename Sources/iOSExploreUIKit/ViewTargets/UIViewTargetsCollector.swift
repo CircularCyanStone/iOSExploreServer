@@ -44,7 +44,8 @@ enum UIViewTargetsCollector {
 
         let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
                                                           targets: fingerprints)
-        var data: JSON = [
+        let snapshotFields = UIKitSnapshotResponse.fields(for: snapshotID)
+        let data: JSON = [
             "screen": .object(screenJSON(window: context.window,
                                          rootViewController: context.rootViewController,
                                          topViewController: context.topViewController)),
@@ -54,13 +55,9 @@ enum UIViewTargetsCollector {
             "maxTargets": .double(Double(query.maxTargets)),
             "truncated": .bool(truncated),
             "truncationReason": truncated ? .string("maxTargets") : .null,
-            "snapshotUnavailableReason": snapshotID == nil ? .string("fingerprintLimit") : .null,
+            "snapshotID": snapshotFields.id,
+            "snapshotUnavailableReason": snapshotFields.unavailableReason,
         ]
-        if let snapshotID {
-            data["snapshotID"] = .string(snapshotID)
-        } else {
-            data["snapshotID"] = .null
-        }
         UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(targets.count) topViewController=\(String(describing: type(of: context.topViewController)))")
         return .success(data)
     }
@@ -151,10 +148,6 @@ enum UIViewTargetsCollector {
         let frame = view.convert(view.bounds, to: window)
         // identifier 完整保留：它是事件下发的稳定定位键，裁断会让后续 tap/sendAction 失配。
         // 仅 title/label/text/placeholder/value 这些展示型文本按 textLimit 裁剪。
-        let nearestControl = control ?? UIKitLocatorResolver.nearestControl(from: view, stoppingAt: nil)
-        let availability = UIKitActionCapabilityResolver.resolve(view: view,
-                                                                 rootView: rootView,
-                                                                 nearestControl: nearestControl)
         return UIViewTargetSummary(
             path: UIKitViewLookupTarget.pathString(from: path),
             type: String(describing: Swift.type(of: view)),
@@ -173,8 +166,25 @@ enum UIViewTargetsCollector {
                                      isSelected: control?.isSelected,
                                      isHighlighted: control?.isHighlighted,
                                      hasGestureRecognizers: view.gestureRecognizers?.isEmpty == false),
-            availableActions: availability
+            availableActions: availableActions(for: view, rootView: rootView)
         )
+    }
+
+    /// 计算 path-target 的可执行动作，供 `summary` 与可测入口共用。
+    ///
+    /// 与 `UIKitActionExecutor` 的 view-tap 语义保持一致是本方法的核心约束：第一版 executor 只
+    /// 对目标自身为 `UIControl` 的 path 派发事件，因此能力声明只认目标自身的 control 身份，
+    /// 不向上借用祖先 control——否则会出现 collector 声明可 tap、executor 按 path 派发却返回
+    /// `unsupportedTarget` 的分叉。
+    ///
+    /// - Parameters:
+    ///   - view: 被采集/点击的目标 view。
+    ///   - rootView: 当前查询上下文的根 view，用于祖先交互性校验。
+    /// - Returns: 目标当前可执行的动作集合；非 control、不可交互或 disabled 时为空。
+    static func availableActions(for view: UIView, rootView: UIView) -> UIKitActionAvailability {
+        UIKitActionCapabilityResolver.resolve(view: view,
+                                              rootView: rootView,
+                                              nearestControl: view as? UIControl)
     }
 
     /// 识别轻量目标角色，用于给 agent 返回建议动作。

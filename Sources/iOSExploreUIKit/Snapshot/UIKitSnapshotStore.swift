@@ -14,8 +14,8 @@ enum UIKitSnapshotLimits {
 /// UIKit 目标的轻量指纹。
 ///
 /// 陈旧检测的关键值类型：只保存"判断两次调用间的同一 path 是否仍指向同一 view"所需的
-/// 最少信息——context 类型摘要、path、view 类型名、identifier 的**稳定哈希**、role、基础
-/// 状态布尔。**绝不保存** `UIView`、文本内容或完整 identifier，因此：
+/// 最少信息——context 类型摘要、path、view 类型名、identifier 的**稳定哈希**、基础状态布尔
+/// 与祖先结构摘要。**绝不保存** `UIView`、文本内容或完整 identifier，因此：
 ///
 /// - 不泄露用户输入全文或大块 payload（只存哈希/摘要）；
 /// - 哈希自实现（FNV-1a），跨进程稳定，**不使用** `Hashable.hashValue`（后者每次运行随机）；
@@ -32,8 +32,6 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
     public let viewType: String
     /// accessibilityIdentifier 的稳定哈希；无 identifier 时为 0。
     public let identifierHash: UInt64
-    /// 目标角色（button/switch/...），用于检测结构变化。
-    public let role: String
     /// 控件是否可用（UIControl.isEnabled，非控件视为 true）。
     public let isEnabled: Bool
     /// 控件是否选中（UIControl.isSelected，非控件视为 false）。
@@ -64,7 +62,6 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
                 path: String,
                 viewType: String,
                 identifierHash: UInt64,
-                role: String,
                 isEnabled: Bool,
                 isSelected: Bool,
                 isHidden: Bool = false,
@@ -75,7 +72,6 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
         self.path = path
         self.viewType = viewType
         self.identifierHash = identifierHash
-        self.role = role
         self.isEnabled = isEnabled
         self.isSelected = isSelected
         self.isHidden = isHidden
@@ -92,7 +88,6 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
                                                     path: "root/0",
                                                     viewType: "TestView",
                                                     identifierHash: Self.stableHash("test-id"),
-                                                    role: "button",
                                                     isEnabled: true,
                                                     isSelected: false,
                                                     isHidden: false,

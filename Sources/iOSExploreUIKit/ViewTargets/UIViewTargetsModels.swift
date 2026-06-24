@@ -218,21 +218,6 @@ public enum UIViewTargetRole: String, Sendable, Equatable {
     /// 普通 view。
     case view
 
-    /// 面向 agent 的建议动作。
-    public var suggestedActions: [String] {
-        switch self {
-        case .button:
-            return ["tap", "control.touchUpInside"]
-        case .switch:
-            return ["tap", "control.valueChanged"]
-        case .slider, .segmentedControl:
-            return ["control.valueChanged"]
-        case .textField:
-            return ["tap", "control.editingDidBegin", "control.editingChanged"]
-        case .textView, .label, .imageView, .container, .view:
-            return ["tap"]
-        }
-    }
 }
 
 /// 轻量目标的可见性和交互状态。
@@ -390,7 +375,6 @@ public struct UIViewTargetSummary: Sendable, Equatable {
             "isSelected": state.isSelected.map(JSONValue.bool) ?? .null,
             "isHighlighted": state.isHighlighted.map(JSONValue.bool) ?? .null,
             "hasGestureRecognizers": .bool(state.hasGestureRecognizers),
-            "suggestedActions": .array(role.suggestedActions.map(JSONValue.string)),
             "availableActions": .array(availableActions.rawValues.map(JSONValue.string)),
         ]
     }

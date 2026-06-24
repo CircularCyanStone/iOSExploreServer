@@ -101,15 +101,6 @@ func viewTargetsQueryShouldIncludeCandidates() {
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isUserInteractionEnabled: true, hasGestureRecognizers: true)) == true)
 }
 
-@Test("UIViewTargetRole 生成建议动作")
-func viewTargetRoleSuggestedActions() {
-    #expect(UIViewTargetRole.button.suggestedActions == ["tap", "control.touchUpInside"])
-    #expect(UIViewTargetRole.switch.suggestedActions == ["tap", "control.valueChanged"])
-    #expect(UIViewTargetRole.slider.suggestedActions == ["control.valueChanged"])
-    #expect(UIViewTargetRole.textField.suggestedActions == ["tap", "control.editingDidBegin", "control.editingChanged"])
-    #expect(UIViewTargetRole.view.suggestedActions == ["tap"])
-}
-
 @Test("UIViewTargetSummary 转 JSON 保留轻量字段")
 func viewTargetSummaryJSONIncludesLightweightFields() {
     let summary = UIViewTargetSummary(
@@ -138,11 +129,9 @@ func viewTargetSummaryJSONIncludesLightweightFields() {
     #expect(json["role"]?.stringValue == "button")
     #expect(json["accessibilityIdentifier"]?.stringValue == "home.submit")
     #expect(json["title"]?.stringValue == "提交")
-    guard case .array(let actions)? = json["suggestedActions"] else {
-        Issue.record("suggestedActions not array")
-        return
-    }
-    #expect(actions.map(\.stringValue) == ["tap", "control.touchUpInside"])
+    // suggestedActions 已移除：availableActions 是唯一动作字段，与 executor 派发一致，
+    // 避免 role 粗略推断与真实能力分叉对 agent 造成歧义。
+    #expect(json["suggestedActions"] == nil)
     // availableActions 默认为空：模型层不按 role 推断，真实能力由 resolver 在 UIKit 域生成
     guard case .array(let available)? = json["availableActions"] else {
         Issue.record("availableActions not array")

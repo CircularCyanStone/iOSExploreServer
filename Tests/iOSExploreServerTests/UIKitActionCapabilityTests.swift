@@ -80,4 +80,21 @@ func ancestorStateBlocksAvailableActions() {
         #expect(availability.actions.isEmpty)
     }
 }
+
+@Test("非 control 目标不因祖先 control 被声明可执行动作（与 executor view-tap 一致）") @MainActor
+func nonControlTargetDoesNotInheritAncestorControlActions() {
+    // 结构：root > button > container > leaf。leaf 非 control 且可交互，祖先是 UIControl。
+    // collector 不应借用祖先 control 声明动作——否则 executor 按 path 派发时，nearestControl
+    // 被限制在 leaf.superview 之内（找不到 control）会返回 unsupportedTarget，造成声明与派发分叉。
+    let root = UIView()
+    let button = UIButton(type: .system)
+    let container = UIView()
+    let leaf = UIView()
+    root.addSubview(button)
+    button.addSubview(container)
+    container.addSubview(leaf)
+
+    let availability = UIViewTargetsCollector.availableActions(for: leaf, rootView: root)
+    #expect(availability.actions.isEmpty)
+}
 #endif
