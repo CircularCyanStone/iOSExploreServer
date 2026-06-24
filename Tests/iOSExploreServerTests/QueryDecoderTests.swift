@@ -31,6 +31,14 @@ func queryDecoderOptionalNonNegativeInt() throws {
         var d = QueryDecoder(["depth": -1])
         try d.optionalNonNegativeInt("depth")
     }
+    // throw 后 key 仍记录（insert before throw，tracing 一致性核心）
+    var dNonNeg = QueryDecoder(["depth": -1])
+    do {
+        _ = try dNonNeg.optionalNonNegativeInt("depth")
+        Issue.record("expected throw")
+    } catch {
+        #expect(dNonNeg.accessedKeys.contains("depth"))
+    }
 }
 
 @Test("QueryDecoder rangedInt 文案与边界")
@@ -42,6 +50,14 @@ func queryDecoderRangedInt() throws {
     #expect(throws: QueryParseError("n must be an integer between 1 and 200")) {
         var d = QueryDecoder(["n": 201])
         try d.rangedInt("n", in: 1...200, default: 80)
+    }
+    // throw 后 key 仍记录（insert before throw，tracing 一致性核心）
+    var dRanged = QueryDecoder(["n": 201])
+    do {
+        _ = try dRanged.rangedInt("n", in: 1...200, default: 80)
+        Issue.record("expected throw")
+    } catch {
+        #expect(dRanged.accessedKeys.contains("n"))
     }
 }
 
@@ -56,6 +72,14 @@ func queryDecoderEnumValue() throws {
         var d = QueryDecoder(["level": "nope"])
         try d.enumValue("level", default: Level.appearance)
     }
+    // throw 后 key 仍记录（insert before throw，tracing 一致性核心）
+    var dEnum = QueryDecoder(["level": "nope"])
+    do {
+        _ = try dEnum.enumValue("level", default: Level.appearance)
+        Issue.record("expected throw")
+    } catch {
+        #expect(dEnum.accessedKeys.contains("level"))
+    }
 }
 
 @Test("QueryDecoder requiredEnum 缺失与非法文案")
@@ -69,7 +93,23 @@ func queryDecoderRequiredEnum() throws {
         var d = QueryDecoder(["event": "nope"])
         _ = try d.requiredEnum("event") as Event
     }
+    // throw 后 key 仍记录（insert before throw，tracing 一致性核心）
+    var dReqEnum = QueryDecoder(["event": "nope"])
+    do {
+        _ = try dReqEnum.requiredEnum("event") as Event
+        Issue.record("expected throw")
+    } catch {
+        #expect(dReqEnum.accessedKeys.contains("event"))
+    }
     var valid = QueryDecoder(["event": "touchUpInside"])
     let e: Event = try valid.requiredEnum("event")
     #expect(e == .touchUpInside)
+}
+
+@Test("QueryDecoder requiredEnum 真实事件文案锁顺序")
+func queryDecoderRequiredEnumRealEventOrder() {
+    #expect(throws: QueryParseError("event must be one of touchDown, touchUpInside, valueChanged, editingChanged, editingDidBegin, editingDidEnd")) {
+        var d = QueryDecoder(["event": "nope"])
+        _ = try d.requiredEnum("event") as UIControlSendActionEvent
+    }
 }
