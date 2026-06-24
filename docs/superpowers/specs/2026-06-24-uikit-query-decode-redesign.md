@@ -1,7 +1,7 @@
 # UIKit Query 解析重构设计
 
 > 日期：2026-06-24
-> 状态：方案提案（路线 A 待确认落地，路线 B 待后续分析）
+> 状态：路线 A 已落地（已提交）；路线 B2 已确认采用 QueryDecoder builder（待实现）
 > 关联：`Sources/iOSExploreUIKit/**` 的 typed query 解析层
 
 ## 背景与现状
@@ -225,9 +225,9 @@ snapshotID 断言（`UIKitSnapshotTests`）：
 
 ---
 
-## 路线 B：Codable + 属性包装器（待后续分析）
+## 路线 B：声明式化取值/校验样板
 
-> 状态：本轮仅记录思路与可行性分析，不在路线 A 之前落地。
+> 状态：B1 否决、B2 已确认采用 QueryDecoder builder（本轮 brainstorming 确认，2026-06-24）。
 
 用户提出：能否用 Codable 配合属性包装器，把手写解析进一步声明式化。下面分两个子路线分析。
 
@@ -247,39 +247,225 @@ snapshotID 断言（`UIKitSnapshotTests`）：
 
 结论：纯 Codable + property wrapper 只能解决"基础类型转换"约 30%，核心复杂度（默认值/范围/互斥/错误文案）解决不了，硬上变成"Codable decode 一半 + 手写校验一半"两层拼接，错误处理被切成 `DecodingError` 与 `invalid_data` 两套，更碎。**不推荐。**
 
-### B2. 自定义 decode 协议 + property wrapper（QueryDecoder 的 wrapper 化，可行演进）
+### B2. QueryDecoder builder（已确认采用）
 
-思路：不走标准 Codable，而是基于现有 `JSON` 写一个轻量 decode 驱动，用 property wrapper 把"取值 + 类型转换 + 默认值 + 校验 + 错误文案"声明式化。这是路线 A 落地后的**自然演进**——throws 已经统一了错误出口（抛 `QueryParseError`），剩下的样板（取值/校验）再用 wrapper 声明式化。
+> 决策日期：2026-06-24（本轮 brainstorming 确认载体）；建立在路线 A 已落地的 throws 统一之上。
 
-雏形（待细化）：
+#### 决策与三载体取舍
+
+| 载体 | 结论 | 依据 |
+|---|---|---|
+| γ 纯 Codable | 否决 | 见 B1：core `JSON`/`JSONValue` 有意保持动态单边界、非 Codable；强行 Codable 化破坏 core 设计哲学，且 `JSONValue.double` 取整语义与标准 decoder 不一致。即便让 wrapper 自抛 `QueryParseError`，wrapper 自己就得手写取值+校验，等于自带 decode 驱动——不如直接写驱动，省掉 Codable 合成与 `DecodingError`/`QueryParseError` 双轨制。 |
+| β property wrapper | 否决 | `SWIFT_VERSION=5.0`（无 Macros）下做不到"驱动自动遍历 wrapper 字段 decode"，逐字段调用省不掉（Codable 合成只是把逐字段代码藏进编译器，复杂度不消失）。外加每个 wrapper 的 `projectedValue`/`init(wrappedValue:)`/`decode` 样板，且跨字段约束（互斥/成对/path 文法）wrapper 无法表达、decode 后仍要手写。唯一收益（key 绑在属性声明处）在本场景换不回复杂度。 |
+| **α QueryDecoder builder** | **采用** | 一个 Foundation-only 取值器，方法链封装"取值+类型转换+默认+范围+错误文案"，失败统一 `throw QueryParseError`。每字段一行，无注入次序问题、无重复默认值、无 projectedValue 杂技、错误文案可控、易单测。 |
+
+> 反直觉要点：B2 的真实收益集中在 **ranged int**（maxDepth/textLimit/maxTargets，每字段 7~8 行 if-let/guard/throw → 1 行，单 `UIViewTargetsQuery.parse` 即净省 ~18 行）和 **enum + 默认**（detailLevel/event）。bool/string 样板本身很短、迁移后行数持平，但**仍全走 builder**——这是 key 防漏策略（tracing）的前提：`QueryDecoder` 靠记录每个读取方法访问的 key 覆盖走 builder 字段的漏声明（互斥/成对/path 文法等手写领域 key 不覆盖，见下"覆盖范围"），bool/string 若不走 builder，其 key 就进不了 `accessedKeys`。
+
+#### 设计：`QueryDecoder`
+
+新增 `Sources/iOSExploreUIKit/Utils/QueryDecoder.swift`，Foundation-only、`Sendable`、不包 `#if canImport(UIKit)`（与 `QueryParseError`/`UIKitQueryNumber` 同目录同边界，macOS `swift test` 可覆盖）。核心是 `UIKitQueryNumber`（已有范围校验）的一层声明式封装：
 
 ```swift
-/// 带默认值的布尔字段。
-@propertyWrapper
-struct DefaultBool {
-    let key: String
-    let defaultValue: Bool
-    var wrappedValue: Bool
-}
+import Foundation
+import iOSExploreServer
 
-/// 限定范围的整数字段。
-@propertyWrapper
-struct RangedInt {
-    let key: String
-    let range: ClosedRange<Int>
-    let defaultValue: Int
-    var wrappedValue: Int
-}
+/// UIKit 命令参数的声明式取值器。
+///
+/// 把"从 `JSON` 按 key 取值 + 类型转换 + 默认值 + 范围/枚举校验 + 错误文案"封装成方法链，
+/// 取代各 parse 里重复的 if-let/guard/?? 样板。内部失败统一抛 `QueryParseError`，
+/// 文案可直接进入 `invalid_data` envelope。
+///
+/// `internal`：模块内 + `@testable` 测试使用，不进 public 表面。Foundation-only、`Sendable`，
+/// 不携带 UIKit 类型；message 单测可在 macOS `swift test` 覆盖，一致性测试因读
+/// `Command.parameters` 归 iOS framework test target。
+struct QueryDecoder: Sendable {
+    /// 待解码的命令 data（internal，供 `parse(decoding:)` 的手写领域字段直接访问，不进 `accessedKeys`）。
+    let data: JSON
+    /// 累积已读取的 key，供一致性测试断言 ⊆ `Command.parameters`。
+    private(set) var accessedKeys: Set<String> = []
 
-// 一个统一的 decode 驱动按字段元数据取值、校验，失败抛 QueryParseError
+    /// 创建取值器。
+    ///
+    /// - Parameter data: `ExploreRequest.data`。
+    init(_ data: JSON) { self.data = data }
+
+    /// 布尔字段：缺失或非布尔都取默认值（保持现状语义，不抛错）。
+    mutating func bool(_ key: String, default value: Bool) -> Bool {
+        accessedKeys.insert(key)
+        return data[key]?.boolValue ?? value
+    }
+
+    /// 可选字符串字段：缺失返回 nil。
+    mutating func string(_ key: String) -> String? {
+        accessedKeys.insert(key)
+        return data[key]?.stringValue
+    }
+
+    /// 可选非负整数：缺失返回 nil；存在但非有限/非整数/为负抛错。
+    mutating func optionalNonNegativeInt(_ key: String) throws -> Int? {
+        accessedKeys.insert(key)
+        guard let raw = data[key]?.doubleValue else { return nil }
+        guard let value = UIKitQueryNumber.nonNegativeInteger(raw) else {
+            throw QueryParseError("\(key) must be a non-negative integer")
+        }
+        return value
+    }
+
+    /// 限定范围整数：缺失取默认；存在但越界/非整数抛错。
+    mutating func rangedInt(_ key: String, in range: ClosedRange<Int>, default value: Int) throws -> Int {
+        accessedKeys.insert(key)
+        guard let raw = data[key]?.doubleValue else { return value }
+        guard let parsed = UIKitQueryNumber.integer(raw, in: range) else {
+            throw QueryParseError("\(key) must be an integer between \(range.lowerBound) and \(range.upperBound)")
+        }
+        return parsed
+    }
+
+    /// String 原始值枚举（带默认）：缺失取默认；存在但非合法抛错。
+    mutating func enumValue<E: RawRepresentable & CaseIterable>(_ key: String, default value: E) throws -> E
+        where E.RawValue == String {
+        accessedKeys.insert(key)
+        guard let raw = data[key]?.stringValue else { return value }
+        guard let parsed = E(rawValue: raw) else {
+            throw QueryParseError("\(key) must be one of \(E.allCases.map(\.rawValue).joined(separator: ", "))")
+        }
+        return parsed
+    }
+
+    /// 必填 String 原始值枚举：缺失抛 "missing required parameter"；非合法抛 must be one of。
+    mutating func requiredEnum<E: RawRepresentable & CaseIterable>(_ key: String) throws -> E
+        where E.RawValue == String {
+        accessedKeys.insert(key)
+        guard let raw = data[key]?.stringValue else {
+            throw QueryParseError("missing required parameter '\(key)'")
+        }
+        guard let parsed = E(rawValue: raw) else {
+            throw QueryParseError("\(key) must be one of \(E.allCases.map(\.rawValue).joined(separator: ", "))")
+        }
+        return parsed
+    }
+}
 ```
 
-待解决的问题（后续分析重点）：
-1. property wrapper 的 `wrappedValue` 初始值与 decoder 注入的次序——wrapper 默认 init 与 decode 注入如何协调（Swift 的 wrapper 在 init 完成后才能被外部赋值，decoder 驱动模式需要 wrapper 暴露可写后端存储）。
-2. `@MainActor` 与 Foundation-only 边界：wrapper 必须保持 Foundation-only（typed factory 硬规则），不能引入 UIKit 类型。
-3. 裸 key 的终极收敛：让 `CommandParameter(name:)` 从 property wrapper 的 `key` 生成，消灭 parse/parameters 的 key 双写——这是更大工程，需评估 property wrapper 的 `key` 能否在运行时/编译期被 `parameters` 反射读取（Swift 元数据有限，可能要手写映射表）。
-4. 互斥/成对约束（tap/locator）是领域逻辑，不该塞进通用 wrapper，保留手写。
-5. 与路线 A 的关系：**B 建立在 A 之上**（A 用普通 throws 统一错误出口后，B 才能声明式化剩余样板）。不建议在 A 落地前做 B。
+> `enumValue`/`requiredEnum` 的文案依赖 `CaseIterable`：`UIViewHierarchyDetailLevel`、`UIControlSendActionEvent` 需补 `CaseIterable`（零成本，case 声明顺序即现有文案顺序，逐字一致）。
+
+#### 日志策略（刻意不加日志）
+
+`QueryDecoder` **不记日志**。理由：所有 parse 错误已在 command handler 的 `do/catch` 转成 `UIKitCommandError.invalidData` 并记 `command` category 日志（见 A5），decoder 再记会双重记录。decoder 只负责抛带对外文案的 `QueryParseError`，日志归 handler 层单一出口。符合 AGENTS.md"刻意不加日志须说明原因"。
+
+#### 迁移边界（哪些迁 / 哪些保留手写）
+
+| parse | 迁移程度 | 说明 |
+|---|---|---|
+| `UIViewTargetsQuery.parse` | 完全 | 3 ranged int（maxDepth/textLimit/maxTargets）+ 4 bool + 2 string 全迁 |
+| `UIViewHierarchyQuery.parse` | 完全 | `enumValue` detailLevel + `optionalNonNegativeInt` maxDepth + bool + 2 string |
+| `UIControlSendActionQuery.parse` | 部分 | snapshotID `string`、event `requiredEnum`；嵌套 `UIKitViewLookupTarget.parse` 保留 |
+| `UITapQuery.parse` | 部分（仅 snapshotID） | 仅 snapshotID 迁 `string`；coordinateSpace 单值校验（文案 `"must be window"`，非 enum）、view-vs-point 互斥、x/y 成对均保留手写 |
+| `UIKitViewLookupTarget.parse` | 不迁 | identifier/path 互斥 + `root/0/2` path 文法，多字段领域逻辑 |
+| `UIKitLocator.parse` | 不迁 | 不直接吃 data（入参已拆为 `String?`/`Double?`），view/point 互斥 + x/y 成对，领域逻辑 |
+
+边界原则：builder 只接手**单字段取值+校验**；**跨字段约束**（互斥/成对/path 文法）继续 `throw QueryParseError` 手写。这条边界护住 typed factory 硬规则——领域语义不被通用机制吞掉。
+
+#### 行为等价约束（重构不改行为）
+
+- bool：缺失或非布尔 → 默认（不报错）。（`JSONValue.boolValue` 是 `if case .bool` 精确匹配，非布尔返回 nil → 取默认，与现状逐字等价；同理 `doubleValue`/`stringValue` 类型不符返回 nil。）
+- int/enum：缺失 → 默认（或 required 抛 missing）；存在但非法 → throw 文案。
+- 文案逐字保留：`rangedInt`/`enumValue` 方法机械生成与现状相同的字符串。**两处隐式契约需显式锁定**：(a) `maxTargets` 现状文案硬编码 "512"，builder 绑定 `UIKitSnapshotLimits.maxFingerprints`（当前 == 512，逐字一致；常量变更时 builder 文案自动跟，比手写更正确）；(b) `event`/`detailLevel` 的 "must be one of ..." 文案依赖 `CaseIterable` allCases 顺序 = case 声明顺序，两个 enum 加注释"case 顺序即对外文案顺序，勿重排"。
+- 现有测试大多只断言错误类型（`#expect(throws: QueryParseError.self)`）、不断言文案；**`QueryDecoderTests` 必须对每个方法的文案做 message 级断言**（`between X and Y`/`must be one of`/`missing required parameter 'X'`/`must be a non-negative integer`），弥补 per-query 测试只验类型的缺口。注意 `rangedInt` 文案含动态 `range.upperBound`（maxTargets 绑 `maxFingerprints` 常量），message 断言用 `message.contains("must be an integer between")` + 边界参数化，不锁死字面量上限（常量变更时文案应自动跟）。
+
+#### before/after 样例
+
+`UIViewTargetsQuery.parse` 的字段读取体（~43 行 → ~12 行）：
+
+```swift
+static func parse(decoding d: inout QueryDecoder) throws -> UIViewTargetsQuery {
+    UIViewTargetsQuery(
+        includeHidden: d.bool("includeHidden", default: false),
+        includeDisabled: d.bool("includeDisabled", default: true),
+        includeStaticText: d.bool("includeStaticText", default: false),
+        includeContainers: d.bool("includeContainers", default: false),
+        maxDepth: try d.optionalNonNegativeInt("maxDepth"),
+        accessibilityIdentifier: d.string("accessibilityIdentifier"),
+        accessibilityIdentifierPrefix: d.string("accessibilityIdentifierPrefix"),
+        textLimit: try d.rangedInt("textLimit", in: 1...200, default: 80),
+        maxTargets: try d.rangedInt("maxTargets", in: 1...UIKitSnapshotLimits.maxFingerprints, default: 200)
+    )
+}
+// parse(from:) 保持 public：var d = QueryDecoder(data); return try parse(decoding: &d)
+```
+
+#### key 双写收敛（c1：一致性测试 + 补漏）
+
+读代码时发现**现存遗漏**——review 系统核对全部 4 个 Command 后确认为 3 处同型漏（不止 maxTargets）：
+
+- `ViewTargetsCommand.parameters` 漏 `maxTargets`（parse 实际接受，1...512，默认 200）；
+- `UITapCommand.parameters` 漏 `snapshotID`（`UITapQuery.parse` 读取，陈旧防护核心参数）；
+- `UIControlSendActionCommand.parameters` 漏 `snapshotID`（`UIControlSendActionQuery.parse` 读取）。
+
+`TopViewHierarchyCommand` 的 5 个声明 key 与 parse 读取完全对齐，无漏。三处都是"parse 接受的 key 未在 parameters 声明、help schema 缺该参数"，印证 key 双写会漏且非孤例。
+
+收敛方案（最小且够用）：
+1. 把 3 处漏声明补进各自 `parameters`：`maxTargets`→`ViewTargetsCommand`、`snapshotID`→`UITapCommand` + `UIControlSendActionCommand`。
+2. **tracing 防漏（取代手维护期望 key 表）**：`QueryDecoder` 记录每个读取方法访问的 key 到 `accessedKeys`；每个 query 的 `parse` 拆为双层——`parse(from:)` 委托给 `parse(decoding: inout QueryDecoder)`（`parse(decoding:)` 为 internal，测试经 `@testable import`；`parse(from:)` 保持 public 供 command handler 调用），一致性测试注入 decoder 跑一次后断言 `d.accessedKeys ⊆ Set(command.parameters.map(\.name))`。走 builder 的字段加进 `accessedKeys`，漏声明立即报红，零手维护。
+
+   **覆盖范围（诚实化）**：tracing 只覆盖**走 builder 的 key**。`UIViewTargetsQuery`/`UIViewHierarchyQuery` 完全迁 → 所有 key 进 `accessedKeys`，tracing 真保护。`UITapQuery`（仅 snapshotID 迁）/`UIControlSendActionQuery`（snapshotID+event 迁）的**手写领域 key**（coordinateSpace/x/y/identifier/path）不进 `accessedKeys`——这些是互斥/成对/path 文法领域逻辑，第一轮已确认在各自 `parameters` 声明无漏，靠人 + review 保证（tracing 不覆盖）。`UIKitViewLookupTarget`/`UIKitLocator` 不直接吃 data、无独立 `parameters`，不纳入。
+
+   **测试 data（关键约束）**：tracing 测试必须让 parse **走到成功路径**，否则抛错时 `accessedKeys` 不完整、子集断言假绿。每个 query 最小成功 data：
+
+   | Query | 最小成功 data | 说明 |
+   |---|---|---|
+   | `UIViewTargetsQuery` | `[:]` | 全可选/有默认 |
+   | `UIViewHierarchyQuery` | `[:]` | detailLevel 默认 `.appearance` |
+   | `UIControlSendActionQuery` | `["event":"touchUpInside","path":"root"]` | event 必填；需 identifier 或 path 喂 `UIKitViewLookupTarget.parse` |
+   | `UITapQuery` | `["path":"root"]` | 需 view 或 point 定位，否则抛 "either...required" |
+
+   **测试 target 归属**：4 个 Command 全 `#if canImport(UIKit)` 守卫，`Command.parameters` 在 macOS `swift test` 不可见 → 一致性测试归 **iOS framework test target**；macOS SPM test 只跑 `QueryDecoder` message 级单测 + query parse 行为等价测（query 模型 Foundation-only）。
+
+```swift
+// parse 双层：from 保持 public（command handler 调用），decoding 为 internal 测试入口
+public static func parse(from data: JSON) throws -> UIViewTargetsQuery {
+    var d = QueryDecoder(data)
+    return try parse(decoding: &d)
+}
+static func parse(decoding d: inout QueryDecoder) throws -> UIViewTargetsQuery {
+    UIViewTargetsQuery(
+        includeHidden: d.bool("includeHidden", default: false),
+        ...
+        textLimit: try d.rangedInt("textLimit", in: 1...200, default: 80),
+        maxTargets: try d.rangedInt("maxTargets", in: 1...UIKitSnapshotLimits.maxFingerprints, default: 200)
+    )
+}
+
+// 一致性测试（iOS framework test target，@testable import iOSExploreUIKit）
+@Test func viewTargetsKeysCovered() throws {
+    var d = QueryDecoder([:])                 // UIViewTargetsQuery 全可选，[:] 够
+    _ = try UIViewTargetsQuery.parse(decoding: &d)
+    let params = Set(ViewTargetsCommand().parameters.map(\.name))
+    #expect(d.accessedKeys.isSubset(of: params))   // snapshotID/maxTargets 这类漏声明报红
+}
+```
+
+不自动从元数据生成 `parameters`（无 Macros 不可行/脆弱，YAGNI）；暂不引入 per-command `Key` enum（c2，c1 测试已够防漏）。
+
+#### 改动面
+
+| 改动 | 文件 |
+|---|---|
+| 新增 `QueryDecoder` + 单测 | `Sources/iOSExploreUIKit/Utils/QueryDecoder.swift`、`Tests/iOSExploreServerTests/QueryDecoderTests.swift` |
+| 完全迁 2 个 parse | `UIViewTargetsModels.swift`、`UIViewHierarchyModels.swift` |
+| 部分迁 2 个 parse | `UITapModels.swift`、`UIControlSendActionModels.swift` |
+| 2 个 enum 加 `CaseIterable` + "case 顺序即对外文案顺序，勿重排"注释 | `UIViewHierarchyModels.swift`、`UIControlSendActionModels.swift` |
+| 补 3 处漏声明 | `maxTargets`→`ViewTargetsCommand.swift`、`snapshotID`→`UITapCommand.swift` + `UIControlSendActionCommand.swift` |
+| `QueryDecoder` message 单测 + parse 行为等价测 | `Tests/iOSExploreServerTests/`（macOS SPM，Foundation-only） |
+| key 一致性 tracing 测试 | iOS framework test target（`#if canImport(UIKit)`，读 `Command.parameters`） |
+| 现有 parse 测试 | 行为等价，预期全绿（失败断言文案不变） |
+
+验证：**第一步先写 `QueryDecoder` 骨架（泛型 `enumValue`/`requiredEnum` + `E.allCases.map(\.rawValue)`）跑一次 framework `xcodebuild -sdk iphonesimulator build` 确认 5.0 双编译通过**（`UIKitActionKind.swift` 已用同 keypath 语法佐证可行，但带 `where` 子句的泛型方法仍先实测），再铺开迁移；全量 `swift test`（含集成 38399 串行）+ framework `xcodebuild ... test`。不动 `project.pbxproj`、不动 `SWIFT_VERSION`、不碰 core `JSON`/`JSONValue`。
+
+#### 不做（YAGNI）
+
+- property wrapper（β）、纯 Codable（γ）、core 加 Codable。
+- 自动生成 `parameters`、per-command `Key` enum。
 
 ### 路线 A vs B 关系
 
@@ -292,7 +478,8 @@ struct RangedInt {
 ## 决策与下一步
 
 1. **版本**：保持 `SWIFT_VERSION=5.0` 不变（已确认源码无 Swift 6 特性，不升级）。
-2. **路线 A**：按 A1~A7 落地普通 throws 统一。直接消除用户指出的"鸡肋 result enum"模式，无版本风险。
-3. **路线 B**：本设计文档已记录，待 A 落地后单独评估 B2（property wrapper 声明式化 + key 双写收敛）。
+2. **路线 A**：已落地（普通 throws 统一，已提交）。
+3. **路线 B2**：已确认采用 QueryDecoder builder（见上）。新增 `Utils/QueryDecoder.swift` + 迁 4 个 parse + 2 个 enum 补 `CaseIterable` + key 一致性测试 + 补 `maxTargets` 参数声明。
+4. **key 双写收敛**：采用 c1（一致性测试 + 补漏），不做自动生成 `parameters` / per-command `Key` enum（YAGNI）。
 
-硬编码 key（`"maxDepth"` 等）：路线 A 不强制收敛（parse 内仍是字符串 key），真正的 key 双写收敛留给路线 B2 评估。若希望 A 阶段就引入每命令一个 `enum Key: String`，可作为 A 的可选项。
+验证：`swift test`（含集成 38399 串行）+ framework `xcodebuild ... test`。不动 `SWIFT_VERSION`、不动 `project.pbxproj`、不碰 core `JSON`/`JSONValue` 的动态边界。
