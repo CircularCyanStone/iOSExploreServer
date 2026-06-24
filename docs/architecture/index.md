@@ -39,6 +39,8 @@ curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ :38321 ──
 
 ## UIKit 扩展模块（`Sources/iOSExploreUIKit/`）
 
+> 想系统阅读 UIKit 子包（从哪看 / 整体设计 / 逐文件档案）→ [`docs/uikit/`](../uikit/README.md)
+
 core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSExploreUIKit`，由宿主 App **显式注册**（`server.registerUIKitCommands()`）。core 与 UIKit 之间只通过 public 缝交互，core 永不 `import UIKit` / `canImport(UIKit)`。
 
 | 文件/目录 | 职责 | 关键点 |

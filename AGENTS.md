@@ -52,6 +52,8 @@
   → `docs/runbooks/debugging.md`
 - 完整设计背景与决策依据
   → `docs/superpowers/specs/2026-06-21-ios-explore-server-design.md`
+- 阅读 / 改 `Sources/iOSExploreUIKit` 子包（从哪看 / 整体设计 / 逐文件档案）
+  → `docs/uikit/README.md`（[阅读指南](docs/uikit/reading-guide.md) / [文件档案](docs/uikit/uikit-file-reference.md)）
 
 ## 关键约束速记
 
