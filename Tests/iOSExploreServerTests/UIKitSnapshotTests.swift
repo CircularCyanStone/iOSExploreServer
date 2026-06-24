@@ -30,6 +30,42 @@ func oversizedSnapshotIsNotStored() {
     #expect(store.insert(context: .test, targets: targets) == nil)
 }
 
+@Test("snapshot context 或祖先摘要变化必须判定陈旧") @MainActor
+func snapshotRejectsChangedContextOrAncestorDigest() {
+    let store = UIKitSnapshotStore()
+    let context = UIKitSnapshotContext(windowIdentity: "window-A", topViewControllerIdentity: "controller-A")
+    let original = UIKitTargetFingerprint(contextDigest: "SettingsViewController",
+                                          path: "root/0",
+                                          viewType: "UIButton",
+                                          identifierHash: UIKitTargetFingerprint.stableHash("settings.save"),
+                                          role: "button",
+                                          isEnabled: true,
+                                          isSelected: false,
+                                          ancestorDigest: 10)
+    guard let id = store.insert(context: context, targets: [original.path: original]) else {
+        Issue.record("small snapshot should be stored")
+        return
+    }
+
+    #expect(store.validation(snapshotID: id,
+                             path: original.path,
+                             context: UIKitSnapshotContext(windowIdentity: "window-B", topViewControllerIdentity: "controller-A"),
+                             current: original) == .stale)
+
+    let changedAncestor = UIKitTargetFingerprint(contextDigest: original.contextDigest,
+                                                 path: original.path,
+                                                 viewType: original.viewType,
+                                                 identifierHash: original.identifierHash,
+                                                 role: original.role,
+                                                 isEnabled: original.isEnabled,
+                                                 isSelected: original.isSelected,
+                                                 ancestorDigest: 11)
+    #expect(store.validation(snapshotID: id,
+                             path: original.path,
+                             context: context,
+                             current: changedAncestor) == .stale)
+}
+
 #if !canImport(UIKit)
 @Test("未知 snapshotID 必须被判定为陈旧") @MainActor
 func unknownSnapshotIsStale() {

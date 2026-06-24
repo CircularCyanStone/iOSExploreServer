@@ -44,6 +44,33 @@ func viewTargetsQueryRejectsInvalidNumbers() {
     }
 }
 
+@Test("UIViewTargetsQuery 解析 maxTargets 默认值和边界")
+func viewTargetsQueryParsesMaxTargets() {
+    guard case .success(let defaultQuery) = UIViewTargetsQuery.parse(from: [:]) else {
+        Issue.record("default query should parse")
+        return
+    }
+    #expect(defaultQuery.maxTargets == 200)
+
+    guard case .success(let maximumQuery) = UIViewTargetsQuery.parse(from: ["maxTargets": 512]) else {
+        Issue.record("maxTargets upper boundary should parse")
+        return
+    }
+    #expect(maximumQuery.maxTargets == 512)
+
+    for invalid: JSON in [
+        ["maxTargets": 0],
+        ["maxTargets": 513],
+        ["maxTargets": 1.5],
+        ["maxTargets": .double(Double.greatestFiniteMagnitude)],
+    ] {
+        guard case .failure = UIViewTargetsQuery.parse(from: invalid) else {
+            Issue.record("invalid maxTargets accepted: \(invalid)")
+            return
+        }
+    }
+}
+
 #if !canImport(UIKit)
 @Test("UIViewTargetsQuery 拒绝无法安全转换为 Int 的数值")
 func viewTargetsQueryRejectsOutOfRangeNumbers() {

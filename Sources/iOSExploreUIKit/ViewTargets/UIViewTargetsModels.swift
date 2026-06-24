@@ -21,6 +21,8 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
     public let accessibilityIdentifierPrefix: String?
     /// title/text/placeholder/value 的最大返回字符数。
     public let textLimit: Int
+    /// 单次响应最多返回的目标数。
+    public let maxTargets: Int
 
     /// 默认查询：面向事件下发前的低成本目标发现。
     public static let `default` = UIViewTargetsQuery()
@@ -43,7 +45,8 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
                 maxDepth: Int? = nil,
                 accessibilityIdentifier: String? = nil,
                 accessibilityIdentifierPrefix: String? = nil,
-                textLimit: Int = 80) {
+                textLimit: Int = 80,
+                maxTargets: Int = 200) {
         self.includeHidden = includeHidden
         self.includeDisabled = includeDisabled
         self.includeStaticText = includeStaticText
@@ -52,6 +55,7 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
         self.accessibilityIdentifier = accessibilityIdentifier
         self.accessibilityIdentifierPrefix = accessibilityIdentifierPrefix
         self.textLimit = textLimit
+        self.maxTargets = maxTargets
     }
 
     /// 是否包含 identifier 筛选条件。
@@ -102,6 +106,16 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
             textLimit = 80
         }
 
+        let maxTargets: Int
+        if let rawLimit = data["maxTargets"]?.doubleValue {
+            guard let intLimit = UIKitQueryNumber.integer(rawLimit, in: 1...UIKitSnapshotLimits.maxFingerprints) else {
+                return .failure("maxTargets must be an integer between 1 and 512")
+            }
+            maxTargets = intLimit
+        } else {
+            maxTargets = 200
+        }
+
         return .success(UIViewTargetsQuery(
             includeHidden: data["includeHidden"]?.boolValue ?? false,
             includeDisabled: data["includeDisabled"]?.boolValue ?? true,
@@ -110,7 +124,8 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
             maxDepth: maxDepth,
             accessibilityIdentifier: data["accessibilityIdentifier"]?.stringValue,
             accessibilityIdentifierPrefix: data["accessibilityIdentifierPrefix"]?.stringValue,
-            textLimit: textLimit
+            textLimit: textLimit,
+            maxTargets: maxTargets
         ))
     }
 }

@@ -1,5 +1,14 @@
 import Foundation
 
+/// UIKit snapshot 的 Foundation-only 容量常量。
+///
+/// 查询模型也需要读取 fingerprint 上限，因此常量不能放在 `@MainActor` store 的静态成员上；
+/// 该类型不持有 UIKit 对象，可安全供 Foundation-only 参数解析复用。
+enum UIKitSnapshotLimits {
+    /// 单条 snapshot 最多保存的 target fingerprint 数。
+    static let maxFingerprints = 512
+}
+
 // MARK: - UIKitTargetFingerprint
 
 /// UIKit 目标的轻量指纹。
@@ -35,6 +44,8 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
     public let alpha: Double
     /// 是否允许用户交互；关闭后不能沿用查询时的动作能力。
     public let isUserInteractionEnabled: Bool
+    /// 从 root 到目标父节点的结构与交互状态摘要。
+    public let ancestorDigest: UInt64
 
     /// 创建一个目标指纹。
     ///
@@ -58,7 +69,8 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
                 isSelected: Bool,
                 isHidden: Bool = false,
                 alpha: Double = 1,
-                isUserInteractionEnabled: Bool = true) {
+                isUserInteractionEnabled: Bool = true,
+                ancestorDigest: UInt64 = 0) {
         self.contextDigest = contextDigest
         self.path = path
         self.viewType = viewType
@@ -69,6 +81,7 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
         self.isHidden = isHidden
         self.alpha = alpha
         self.isUserInteractionEnabled = isUserInteractionEnabled
+        self.ancestorDigest = ancestorDigest
     }
 
     /// 仅供测试的固定指纹 fixture。
@@ -84,7 +97,8 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
                                                     isSelected: false,
                                                     isHidden: false,
                                                     alpha: 1,
-                                                    isUserInteractionEnabled: true)
+                                                    isUserInteractionEnabled: true,
+                                                    ancestorDigest: 0)
 
     /// 字符串的稳定哈希（FNV-1a，64 位）。
     ///
@@ -103,23 +117,42 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
 
 // MARK: - UIKitSnapshotContext
 
-/// snapshot 所属的查询上下文摘要。
+/// snapshot 所属的查询上下文身份。
 ///
-/// 仅保存"判断页面是否切换"所需的稳定信息：顶部控制器类型摘要。它配合每个 target 的
-/// `contextDigest` 字段，使一次查询签发的所有指纹共享同一页面身份。
+/// window 或顶部控制器换成同类型的新实例时，旧 path 也不能继续使用。两个 identity 只在
+/// store 内比较，绝不写入 HTTP 响应或日志。
 public struct UIKitSnapshotContext: Sendable, Equatable {
-    /// 顶部控制器类型摘要（类型名等稳定标识）。
-    public let digest: String
+    /// 当前 window 的进程内实例标识。
+    public let windowIdentity: String
+    /// 当前顶部控制器的进程内实例标识。
+    public let topViewControllerIdentity: String
+
+    /// 兼容既有诊断调用的摘要。
+    ///
+    /// 新实现不得把实例 identity 写入日志；该属性仅保留旧 collector 在迁移到新 context
+    /// 构造方式前的编译兼容，返回顶部控制器 identity。
+    public var digest: String { topViewControllerIdentity }
 
     /// 创建一个上下文摘要。
     ///
-    /// - Parameter digest: 顶部控制器类型摘要。
+    /// - Parameters:
+    ///   - windowIdentity: 当前 window 的进程内实例标识。
+    ///   - topViewControllerIdentity: 当前顶部控制器的进程内实例标识。
+    public init(windowIdentity: String, topViewControllerIdentity: String) {
+        self.windowIdentity = windowIdentity
+        self.topViewControllerIdentity = topViewControllerIdentity
+    }
+
+    /// 兼容旧调用方提供的单一上下文摘要。
+    ///
+    /// - Parameter digest: 旧版调用方提供的上下文摘要。
     public init(digest: String) {
-        self.digest = digest
+        self.init(windowIdentity: digest, topViewControllerIdentity: digest)
     }
 
     /// 仅供测试的固定上下文 fixture。
-    public static let test = UIKitSnapshotContext(digest: "test-context")
+    public static let test = UIKitSnapshotContext(windowIdentity: "test-window",
+                                                  topViewControllerIdentity: "test-controller")
 }
 
 // MARK: - UIKitSnapshotStore
@@ -147,7 +180,7 @@ public final class UIKitSnapshotStore {
     /// 快照最大条数。
     static let maxSnapshots = 8
     /// 单条快照最大指纹数；超过则不签发。
-    static let maxFingerprints = 512
+    static let maxFingerprints = UIKitSnapshotLimits.maxFingerprints
     /// 快照存活秒数。
     static let ttlSeconds: TimeInterval = 10
 
@@ -159,6 +192,8 @@ public final class UIKitSnapshotStore {
         var lastAccessedAt: Date
         /// 该快照的指纹表（path → fingerprint）。
         var fingerprints: [String: UIKitTargetFingerprint]
+        /// 签发查询时的 window 与顶部控制器实例身份。
+        let context: UIKitSnapshotContext
     }
 
     /// snapshotID → 快照记录。
@@ -210,8 +245,9 @@ public final class UIKitSnapshotStore {
         let stamp = now()
         entries[id] = Entry(createdAt: stamp,
                             lastAccessedAt: stamp,
-                            fingerprints: targets)
-        UIKitCommandLogging.info("command", "ui snapshot insert id=\(id) fingerprints=\(targets.count) digest=\(context.digest)")
+                            fingerprints: targets,
+                            context: context)
+        UIKitCommandLogging.info("command", "ui snapshot insert id=\(id) fingerprints=\(targets.count)")
         return id
     }
 
@@ -226,6 +262,7 @@ public final class UIKitSnapshotStore {
     ///   - `.stale`：snapshotID 不存在、已过期、path 缺失或指纹不匹配（需重新查询）。
     public func validation(snapshotID: String,
                            path: String,
+                           context: UIKitSnapshotContext,
                            current: UIKitTargetFingerprint) -> UIKitSnapshotValidation {
         guard var entry = entries[snapshotID] else {
             UIKitCommandLogging.info("command", "ui snapshot unknown id=\(snapshotID) path=\(path)")
@@ -238,6 +275,10 @@ public final class UIKitSnapshotStore {
         }
         entry.lastAccessedAt = now()
         entries[snapshotID] = entry
+        guard entry.context == context else {
+            UIKitCommandLogging.info("command", "ui snapshot context mismatch id=\(snapshotID) path=\(path)")
+            return .stale
+        }
         guard let stored = entry.fingerprints[path] else {
             UIKitCommandLogging.info("command", "ui snapshot path missing id=\(snapshotID) path=\(path)")
             return .stale
@@ -247,6 +288,15 @@ public final class UIKitSnapshotStore {
         }
         UIKitCommandLogging.info("command", "ui snapshot fingerprint mismatch id=\(snapshotID) path=\(path)")
         return .stale
+    }
+
+    /// 兼容未传实例上下文的既有调用方。
+    ///
+    /// 新 executor 必须使用带 context 的 overload；此 overload 仅保留 Foundation 测试的兼容性。
+    public func validation(snapshotID: String,
+                           path: String,
+                           current: UIKitTargetFingerprint) -> UIKitSnapshotValidation {
+        validation(snapshotID: snapshotID, path: path, context: .test, current: current)
     }
 
     /// 判断快照是否超过 TTL。
