@@ -45,7 +45,7 @@
               │  两个 Foundation-only 层（macOS 可测，无 UIKit）  │
               ├────────────────────────────────────────────────┤
               │  Models：UIKitLocator / UIViewHierarchyQuery …  │
-              │  Utils ：UIKitViewLookupTarget / UIKitQueryNumber │
+              │  Parsing：QueryDecoder / UIKitQueryNumber        │
               └────────────────────────────────────────────────┘
 ```
 
@@ -67,35 +67,35 @@
 
 ### 第 1 步：两个查询命令（最容易上手，~750 行）
 查询命令是纯读、无副作用，最适合先读：
-- `ViewTargets/UIViewTargetsModels.swift`（381 行）——**重点读 `UIViewTargetsQuery.shouldInclude`**，这是整个目标发现的决策核心，而且全是 Foundation-only 逻辑。
-- `ViewTargets/UIViewTargetsCollector.swift`（270 行）——看 `collect(view:...)` 递归遍历 + 签发 snapshot 的主流程。
-- `ViewTargets/ViewTargetsCommand.swift`（81 行）——最薄的 adapter，看"解析参数 → 调 collector → 打日志"模板。
-- （可选）`ViewHierarchy/` 三件套——结构类似，但多了完整树和 `UIViewHierarchyElement` 协议抽象，可略读。
+- `Commands/ViewTargets/UIViewTargetsModels.swift`（381 行）——**重点读 `UIViewTargetsQuery.shouldInclude`**，这是整个目标发现的决策核心，而且全是 Foundation-only 逻辑。
+- `Commands/ViewTargets/UIViewTargetsCollector.swift`（270 行）——看 `collect(view:...)` 递归遍历 + 签发 snapshot 的主流程。
+- `Commands/ViewTargets/ViewTargetsCommand.swift`（81 行）——最薄的 adapter，看"解析参数 → 调 collector → 打日志"模板。
+- （可选）`Commands/TopViewHierarchy/` 三件套——结构类似，但多了完整树和 `UIViewHierarchyElement` 协议抽象，可略读。
 
 > 目标：吃透"adapter 解析参数 → MainActor collector 采集 → 返回 JSON + snapshotID"这套模板。后两个命令照搬。
 
 ### 第 2 步：定位与执行（核心难点，~700 行）
 两个交互命令（tap / sendAction）共享同一套执行引擎，**这是模块最值得读的部分**：
-- `Locator/UIKitLocator.swift`（78 行）——三种定位语义（identifier / path / windowPoint）收敛成一个枚举。
-- `Locator/UIKitLocatorResolver.swift`（143 行）——把 locator 在真实 view 树里解析成 `UIView`。
-- `Action/UIKitActionExecutor.swift`（379 行）——**全模块的执行核心**。重点看 `executeTap` 和 `executeControlEvent`：locate → 陈旧校验 → 能力校验 → hit-test/sendActions。
-- `Tap/UITapCommand.swift` + `ControlAction/UIControlSendActionCommand.swift`（共 ~140 行）——又是薄 adapter，和第 1 步的 adapter 模板一模一样。
+- `Support/Locator/UIKitLocator.swift`（78 行）——三种定位语义（identifier / path / windowPoint）收敛成一个枚举。
+- `Support/Locator/UIKitLocatorResolver.swift`（143 行）——把 locator 在真实 view 树里解析成 `UIView`（失败 throws，由调用方工厂闭包构造对应错误）。
+- `Support/Action/UIKitActionExecutor.swift`——**全模块的执行核心**。重点看 `executeTap` 和 `executeControlEvent`：locate → 陈旧校验 → 能力校验 → hit-test/sendActions（全程 throws，失败由 handler 顶层 catch 转 envelope）。
+- `Commands/Tap/UITapCommand.swift` + `Commands/ControlAction/UIControlSendActionCommand.swift`（共 ~140 行）——又是薄 adapter，和第 1 步的 adapter 模板一模一样。
 
 > 目标：理解"一个交互命令从参数到真实 `sendActions(for:)` 的完整路径"。
 
 ### 第 3 步：陈旧防护（决定正确性，~470 行）
 为什么 tap 带了 `snapshotID` 才安全？读这块就懂：
-- `Snapshot/UIKitSnapshotStore.swift`（328 行）——指纹快照存储，**重点看 `validation` 方法和容量/淘汰策略**。
-- `Snapshot/UIKitFingerprintCollector.swift`（114 行）——从 `UIView` 抽指纹；注意 identifier 只存哈希、不存原文。
+- `Support/Snapshot/UIKitSnapshotStore.swift`——指纹快照存储，**重点看 `isStale` 方法和容量/淘汰策略**。
+- `Support/Snapshot/UIKitFingerprintCollector.swift`（114 行）——从 `UIView` 抽指纹；注意 identifier 只存哈希、不存原文。
 
 > 目标：理解"path 陈旧问题怎么被解决的"——这是 `ui.viewTargets` 返回 `snapshotID` 的全部理由。
 
 ### 第 4 步：辅助基础设施（按需查，~330 行）
 用到时再翻，不必通读：
-- `Context/UIKitContextProvider.swift`（95 行）——怎么找前台 window 和顶部 VC。
-- `Action/UIKitActionCapabilityResolver.swift`（91 行）——"什么 view 能做什么动作"的规则（collector 和 executor 共用）。
-- `UIKitCommandError.swift`（183 行）——错误工厂，**查的时候看**，不需要通读。
-- `Utils/`（两个文件共 150 行）——路径解析与安全整数转换。
+- `Support/Context/UIKitContextProvider.swift`——怎么找前台 window 和顶部 VC（`currentContext(action:) throws`）。
+- `Support/Action/UIKitActionCapabilityResolver.swift`（91 行）——"什么 view 能做什么动作"的规则（collector 和 executor 共用）。
+- `UIKitCommandError.swift`——错误工厂（conform `Error`，可被 throw），**查的时候看**，不需要通读。
+- `Support/Parsing/`——声明式取值器与安全整数转换。
 
 ## 三个"如果你只想快速理解"的捷径
 

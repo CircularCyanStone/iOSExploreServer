@@ -48,11 +48,11 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 | `UIKitCommandRegistrar.swift` | 显式注册入口 | `public extension ExploreServer`；注册前后打 `uikit.registrar` 日志（started/completed count） |
 | `UIKitCommandLogging.swift` | 日志入口 | 复用 core public 缝 `ExploreLogging.emitExtension`，category 统一 `command`；不暴露 core internal logger |
 | `UIKitCommandError.swift` | UIKit 错误工厂 | 生成 `invalid_data`/`internal_error`，单一来源 |
-| `Context/UIKitContextProvider.swift` | `@MainActor` 上下文 | 取当前前台 window / 顶部控制器 / 根 view；记录 MainActor hop 日志 |
-| `Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` | 目标定位 | `UIKitLocator` 是 Foundation-only 值类型（query→identifier/path/snapshotID），resolver 仅 iOS 编译把 locator 解析为真实 `UIView` |
-| `Action/UIKitActionExecutor.swift` | 动作执行 | `@MainActor`；按能力（tap/control）路由到具体执行；解析失败/定位失败/能力不支持各自记 error 日志 |
-| `Action/UIKitActionCapabilityResolver.swift` | 能力解析 | 判断目标 view 支持哪种动作 |
-| `Snapshot/UIKitSnapshotStore.swift` + `UIKitFingerprintCollector.swift` | 快照与陈旧检测 | 容量 512、TTL、LRU；path+snapshotID 仅在可验证时允许执行，未知/过期/状态变化均返回 `invalid_data` + 固定陈旧消息 |
+| `Support/Context/UIKitContextProvider.swift` | `@MainActor` 上下文 | 取当前前台 window / 顶部控制器 / 根 view；`currentContext(action:) throws` 失败抛 `hierarchyUnavailable` |
+| `Support/Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` + `UIKitViewLookupModels.swift` | 目标定位 | `UIKitLocator` 是 Foundation-only 值类型（query→identifier/path/snapshotID），resolver 仅 iOS 编译把 locator 解析为真实 `UIView`（`locate(...) throws`，失败由调用方工厂构造错误） |
+| `Support/Action/UIKitActionExecutor.swift` | 动作执行 | `@MainActor`；`execute throws -> JSON`，按能力（tap/control）路由到具体执行；失败 throw `UIKitCommandError`，handler 顶层 catch 转 envelope |
+| `Support/Action/UIKitActionCapabilityResolver.swift` | 能力解析 | 判断目标 view 支持哪种动作（collector 与 executor 共用） |
+| `Support/Snapshot/UIKitSnapshotStore.swift` + `UIKitFingerprintCollector.swift` | 快照与陈旧检测 | 容量 8 条快照 × 每条 512 指纹、TTL、LRU；`isStale` 为 true 时 executor 抛 `invalid_data` + 固定陈旧消息 |
 
 **typed factory 规则**：每个 UIKit 命令的入参先用 Foundation-only 的 typed query 模型（如 `UITapQuery`）解析并校验，校验通过后才进入 `@MainActor` 的 resolver/executor；UIKit 类型绝不穿过 public 边界回到非隔离域。这保证模型/解析逻辑可在 macOS `swift test` 覆盖，真实 `UIView` 采集只在 iOS 编译执行。
 
@@ -107,7 +107,7 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 
 `ui.viewTargets` 是事件下发前的轻量目标发现命令，返回扁平 targets 列表，不返回完整 `subviews` 树，也不承担视觉验收职责。每个 target 包含 `path`、运行时类型、轻量 role、`accessibilityIdentifier`、短文本、window 坐标 frame、基础交互状态和 `availableActions`；`availableActions` 仅在目标自身为可用 `UIControl` 时非空（与第一版 `ui.tap`/`ui.control.sendAction` 只对 `UIControl` 派发一致），其中 `tap` 对应 `ui.tap`，`control.<event>` 对应 `ui.control.sendAction` 的 `<event>` 参数。agent 应优先按该能力表选择后续事件命令。
 
-`Utils/`（`iOSExploreUIKit` 内）集中保存 UIKit view 定位能力：当前前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、命中 view 与目标 view 的祖先关系判断。后续 UIKit 命令应复用该目录，不要各自重新实现路径解析和遍历。
+`Support/`（`iOSExploreUIKit` 内）集中保存 UIKit 横切能力：定位（`Support/Locator/`，前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、祖先关系判断）、动作执行（`Support/Action/`）、快照陈旧检测（`Support/Snapshot/`）、参数解析（`Support/Parsing/`）。4 个命令在 `Commands/` 下按领域分子目录组织。后续 UIKit 命令应复用 `Support/`，不要各自重新实现路径解析和遍历。
 
 ## UIKit 定位语义
 

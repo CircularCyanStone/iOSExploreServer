@@ -27,15 +27,16 @@
 ## 模块边界
 
 - `Sources/iOSExploreServer/` — SPM 库 core（主交付物，**不依赖 UIKit**）。门面 `ExploreServer`（`Sendable`）；传输 `HTTPListener`（NWListener，`start` await 端口就绪、串行 network queue、session map）；单连接 `ClientSession`（session id、receive buffer、读/命令超时、统一 close）；解析 `HTTPParser`（三态 complete/incomplete/invalid）；统一错误 `ExploreServerError`（HTTP status/reason、envelope code/message、logMessage 单一来源）；分发 `Router`（`Mutex` 保护的 `final class`，同步 register、route 锁外校验+await）；同步原语 `Mutex`；命令协议 `Command`（action/description/parameters）；命令扩展缝 `ExploreCommandSupport`（`register(_:)` 接收 `Command`、`ExploreLogging.emitExtension` 给扩展模块复用日志）；模型 `Models`/`JSONCoder`；HTTP 值类型 `HTTPRequest`/`HTTPResponse`；日志 `ExploreLogging`；内置命令 `Handlers/BuiltinHandlers`（ping/echo/info/help，均为 `Command` struct）。
-- `Sources/iOSExploreUIKit/` — UIKit 扩展模块（依赖 core，源码整体 `#if canImport(UIKit)`；macOS 编译为空壳，iOS 提供 `ui.*` 实现）。**typed factory 规则**：入参先用 Foundation-only typed query（如 `UITapQuery`）解析校验，通过后才进 `@MainActor` 的 resolver/executor，UIKit 类型绝不穿过 public 边界回非隔离域。子结构：
+- `Sources/iOSExploreUIKit/` — UIKit 扩展模块（依赖 core，源码整体 `#if canImport(UIKit)`；macOS 编译为空壳，iOS 提供 `ui.*` 实现）。**typed factory 规则**：入参先用 Foundation-only typed query（如 `UITapQuery`）解析校验，通过后才进 `@MainActor` 的 resolver/executor，UIKit 类型绝不穿过 public 边界回非隔离域。**执行核心 throw 化**：executor/collector 成功返回 `JSON`、失败 `throw UIKitCommandError`（conform `Error`），由命令 handler 顶层 `catch` 转 `ExploreResult` envelope（业务码不丢），失败日志在顶层一处记。子结构分两层 `Commands/`（命令）+ `Support/`（辅助）：
   - `UIKitCommandRegistrar.swift` — 显式注册入口 `server.registerUIKitCommands()`；注册前后打 `uikit.registrar` 日志（started/completed count）。**core 初始化不自动注册 UIKit 命令**，宿主必须显式调用。
-  - `Context/UIKitContextProvider.swift` — `@MainActor` 上下文（前台 window/顶部控制器/根 view）；记录 MainActor hop 日志。
-  - `Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` — 定位模型（query→identifier/path/snapshotID 的 Foundation-only 值）与仅 iOS 的真实 `UIView` 解析。
-  - `Action/UIKitActionExecutor.swift` + `UIKitActionCapabilityResolver.swift` — `@MainActor` 动作执行（tap/control 路由）；解析失败/定位失败/能力不支持各记 error 日志。
-  - `Snapshot/UIKitSnapshotStore.swift` + `UIKitFingerprintCollector.swift` — 快照与陈旧检测（容量 512、TTL、LRU）；path+snapshotID 页面变动返回 `invalid_data` + 固定陈旧消息。
+  - `Support/Context/UIKitContextProvider.swift` — `@MainActor` 上下文（前台 window/顶部控制器/根 view）；`currentContext(action:) throws` 失败抛 `hierarchyUnavailable`。
+  - `Support/Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` + `UIKitViewLookupModels.swift` — 定位模型（query→identifier/path/snapshotID 的 Foundation-only 值）与仅 iOS 的真实 `UIView` 解析（`locate(...) throws`，notFound/ambiguous 由调用方工厂构造错误）。
+  - `Support/Action/UIKitActionExecutor.swift` + `UIKitActionCapabilityResolver.swift` — `@MainActor` 动作执行（tap/control 路由）；`execute throws -> JSON`，失败 throw `UIKitCommandError`，handler 顶层 catch 转 envelope。
+  - `Support/Snapshot/UIKitSnapshotStore.swift` + `UIKitFingerprintCollector.swift` — 快照与陈旧检测（容量 8 条快照 × 每条 512 指纹、TTL、LRU）；`isStale` 为 true 时 executor 抛 `invalid_data` + 固定陈旧消息。
+  - `Support/Parsing/` — `QueryDecoder`（声明式取值器）、`UIKitQueryNumber`（安全整数）、`QueryParseError`（解析错误，handler 单独 catch 转 `invalid_data`）。
   - `UIKitCommandLogging.swift` — 日志入口，复用 core `ExploreLogging.emitExtension`，category 统一 `command`。
-  - `UIKitCommandError.swift` — UIKit 错误工厂。
-  - `ViewHierarchy/`、`ViewTargets/`、`Tap/`、`ControlAction/` — 四个 `ui.*` 命令及其 typed query 模型。
+  - `UIKitCommandError.swift` — UIKit 错误工厂（conform `Error`）。
+  - `Commands/TopViewHierarchy/`、`Commands/ViewTargets/`、`Commands/Tap/`、`Commands/ControlAction/` — 四个 `ui.*` 命令（adapter + typed query 模型；查询命令含 collector）。
 - `iOSExploreServer/iOSExploreServer.xcodeproj/` — framework 工程，两个 target：`iOSExploreServer.framework`（`PBXFileSystemSynchronizedRootGroup` 指向 `../Sources/iOSExploreServer/`）与 `iOSExploreUIKit.framework`（指向 `../Sources/iOSExploreUIKit/`，链接并依赖 core framework）；测试 target 同时链接两个 framework。Debug/Release 均 `SWIFT_VERSION=5.0`、`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`（Swift 6.2 工具链要求，详见 runbooks）。
 - `Examples/SPMExample/` — UIKit 测试 App，本地 SPM 依赖同时选 core 与 `iOSExploreUIKit` product；`ViewController` 显式 `server.registerUIKitCommands()` 开放 UIKit 命令；启动/停止按钮 + 请求日志面板 + `greet`/`device` 自定义命令演示。
 - `scripts/proxy.sh` — iproxy 一键转发（`iproxy 38321 38321`）。
