@@ -51,6 +51,10 @@ struct ViewTargetsCommand: Command {
                          kind: .number,
                          required: false,
                          description: "title/text/placeholder/value 最大字符数, 默认 80, 上限 200"),
+        CommandParameter(name: "maxTargets",
+                         kind: .number,
+                         required: false,
+                         description: "单次响应最多返回的目标数, 默认 200, 上限 512"),
     ]
 
     /// 执行轻量目标查询。

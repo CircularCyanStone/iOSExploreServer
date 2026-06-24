@@ -87,46 +87,22 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
     /// - Returns: 解析出的查询对象。
     /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
     public static func parse(from data: JSON) throws -> UIViewTargetsQuery {
-        let maxDepth: Int?
-        if let rawDepth = data["maxDepth"]?.doubleValue {
-            guard let intDepth = UIKitQueryNumber.nonNegativeInteger(rawDepth) else {
-                throw QueryParseError("maxDepth must be a non-negative integer")
-            }
-            maxDepth = intDepth
-        } else {
-            maxDepth = nil
-        }
+        var d = QueryDecoder(data)
+        return try parse(decoding: &d)
+    }
 
-        let textLimit: Int
-        if let rawLimit = data["textLimit"]?.doubleValue {
-            guard let intLimit = UIKitQueryNumber.integer(rawLimit, in: 1...200) else {
-                throw QueryParseError("textLimit must be an integer between 1 and 200")
-            }
-            textLimit = intLimit
-        } else {
-            textLimit = 80
-        }
-
-        let maxTargets: Int
-        if let rawLimit = data["maxTargets"]?.doubleValue {
-            guard let intLimit = UIKitQueryNumber.integer(rawLimit, in: 1...UIKitSnapshotLimits.maxFingerprints) else {
-                throw QueryParseError("maxTargets must be an integer between 1 and 512")
-            }
-            maxTargets = intLimit
-        } else {
-            maxTargets = 200
-        }
-
-        return UIViewTargetsQuery(
-            includeHidden: data["includeHidden"]?.boolValue ?? false,
-            includeDisabled: data["includeDisabled"]?.boolValue ?? true,
-            includeStaticText: data["includeStaticText"]?.boolValue ?? false,
-            includeContainers: data["includeContainers"]?.boolValue ?? false,
-            maxDepth: maxDepth,
-            accessibilityIdentifier: data["accessibilityIdentifier"]?.stringValue,
-            accessibilityIdentifierPrefix: data["accessibilityIdentifierPrefix"]?.stringValue,
-            textLimit: textLimit,
-            maxTargets: maxTargets
+    /// 按 `QueryDecoder` 读取字段（供一致性测试拿 `accessedKeys`）。
+    static func parse(decoding d: inout QueryDecoder) throws -> UIViewTargetsQuery {
+        UIViewTargetsQuery(
+            includeHidden: d.bool("includeHidden", default: false),
+            includeDisabled: d.bool("includeDisabled", default: true),
+            includeStaticText: d.bool("includeStaticText", default: false),
+            includeContainers: d.bool("includeContainers", default: false),
+            maxDepth: try d.optionalNonNegativeInt("maxDepth"),
+            accessibilityIdentifier: d.string("accessibilityIdentifier"),
+            accessibilityIdentifierPrefix: d.string("accessibilityIdentifierPrefix"),
+            textLimit: try d.rangedInt("textLimit", in: 1...200, default: 80),
+            maxTargets: try d.rangedInt("maxTargets", in: 1...UIKitSnapshotLimits.maxFingerprints, default: 200)
         )
     }
 }
