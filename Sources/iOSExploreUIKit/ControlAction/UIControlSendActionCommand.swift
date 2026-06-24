@@ -33,6 +33,10 @@ struct UIControlSendActionCommand: Command {
                          kind: .string,
                          required: true,
                          description: "事件名: touchDown / touchUpInside / valueChanged / editingChanged / editingDidBegin / editingDidEnd"),
+        CommandParameter(name: "snapshotID",
+                         kind: .string,
+                         required: false,
+                         description: "快照标识, 用于 path 定位的陈旧校验"),
     ]
 
     /// 执行 sendAction。

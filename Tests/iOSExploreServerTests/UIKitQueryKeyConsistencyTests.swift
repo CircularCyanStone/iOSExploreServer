@@ -18,4 +18,12 @@ func topViewHierarchyKeysCoveredByParameters() throws {
     let params = Set(TopViewHierarchyCommand().parameters.map(\.name))
     #expect(d.accessedKeys.isSubset(of: params))
 }
+
+@Test("ui.control.sendAction parse 读取的 builder key 全部声明在 parameters")
+func controlSendActionKeysCoveredByParameters() throws {
+    var d = QueryDecoder(["event": "touchUpInside", "path": "root"])
+    _ = try UIControlSendActionQuery.parse(decoding: &d)
+    let params = Set(UIControlSendActionCommand().parameters.map(\.name))
+    #expect(d.accessedKeys.isSubset(of: params))
+}
 #endif

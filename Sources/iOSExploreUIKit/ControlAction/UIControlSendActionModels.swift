@@ -4,7 +4,10 @@ import iOSExploreServer
 /// `ui.control.sendAction` 支持的 UIControl 事件名。
 ///
 /// 该枚举保持 Foundation-only，UIKit 平台再把它映射为 `UIControl.Event`。
-public enum UIControlSendActionEvent: String, Sendable, Equatable {
+///
+/// - Note: case 声明顺序即 `CaseIterable.allCases` 顺序，被 `QueryDecoder.requiredEnum`
+///   的 "must be one of ..." 错误文案依赖，勿随意重排。
+public enum UIControlSendActionEvent: String, Sendable, Equatable, CaseIterable {
     /// 按下控件。
     case touchDown
     /// 常见按钮点击完成事件。
@@ -49,16 +52,17 @@ public struct UIControlSendActionQuery: Sendable, Equatable {
     /// - Returns: 解析出的查询对象。
     /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
     public static func parse(from data: JSON) throws -> UIControlSendActionQuery {
-        let snapshotID = data["snapshotID"]?.stringValue
-        guard let rawEvent = data["event"]?.stringValue else {
-            throw QueryParseError("missing required parameter 'event'")
-        }
-        guard let event = UIControlSendActionEvent(rawValue: rawEvent) else {
-            throw QueryParseError("event must be one of touchDown, touchUpInside, valueChanged, editingChanged, editingDidBegin, editingDidEnd")
-        }
+        var d = QueryDecoder(data)
+        return try parse(decoding: &d)
+    }
 
-        let target = try UIKitViewLookupTarget.parse(identifier: data["accessibilityIdentifier"]?.stringValue,
-                                                     rawPath: data["path"]?.stringValue)
+    /// 按 `QueryDecoder` 读取 snapshotID/event；identifier/path 取值经 builder 但领域校验
+    /// （互斥/path 文法）保留在 `UIKitViewLookupTarget.parse`。
+    static func parse(decoding d: inout QueryDecoder) throws -> UIControlSendActionQuery {
+        let snapshotID = d.string("snapshotID")
+        let event: UIControlSendActionEvent = try d.requiredEnum("event")
+        let target = try UIKitViewLookupTarget.parse(identifier: d.data["accessibilityIdentifier"]?.stringValue,
+                                                     rawPath: d.data["path"]?.stringValue)
         return UIControlSendActionQuery(target: target, event: event, snapshotID: snapshotID)
     }
 }
