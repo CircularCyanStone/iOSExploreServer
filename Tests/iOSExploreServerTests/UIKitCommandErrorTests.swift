@@ -79,4 +79,11 @@ struct UIKitCommandErrorTests {
                                                                type: "UILabel")
         #expect(error.result == .failure(code: .invalidData, message: "target view is not UIControl"))
     }
+
+    @Test("UIKitCommandError 可作为 Error 抛出与捕获")
+    func errorIsThrowableAndCatchable() {
+        #expect(throws: UIKitCommandError.self) {
+            throw UIKitCommandError.targetNotFound(action: "ui.tap", targetDescription: "root/0")
+        }
+    }
 }

@@ -10,7 +10,7 @@ import iOSExploreServer
 ///
 /// 错误码语义与既有行为保持一致：定位/命中类失败用 `.invalidData`，UIKit 上下文不可用
 /// 用 `.internalError`。
-struct UIKitCommandError: Sendable, Equatable {
+struct UIKitCommandError: Error, Sendable, Equatable {
     /// 被包装的扩展失败描述。
     let failure: ExploreCommandFailure
 
