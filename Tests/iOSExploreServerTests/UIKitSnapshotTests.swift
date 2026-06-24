@@ -20,7 +20,7 @@ func expiredSnapshotIsStale() {
         Issue.record("small snapshot should be stored"); return
     }
     store.setNow(Date(timeIntervalSince1970: 111))
-    #expect(store.validation(snapshotID: id, path: "root/0", current: .test) == .stale)
+    #expect(store.isStale(snapshotID: id, path: "root/0", current: .test))
 }
 
 @Test("超过 512 条指纹时不签发 snapshot") @MainActor
@@ -46,10 +46,10 @@ func snapshotRejectsChangedContextOrAncestorDigest() {
         return
     }
 
-    #expect(store.validation(snapshotID: id,
-                             path: original.path,
-                             context: UIKitSnapshotContext(windowIdentity: "window-B", topViewControllerIdentity: "controller-A"),
-                             current: original) == .stale)
+    #expect(store.isStale(snapshotID: id,
+                          path: original.path,
+                          context: UIKitSnapshotContext(windowIdentity: "window-B", topViewControllerIdentity: "controller-A"),
+                          current: original))
 
     let changedAncestor = UIKitTargetFingerprint(contextDigest: original.contextDigest,
                                                  path: original.path,
@@ -58,19 +58,19 @@ func snapshotRejectsChangedContextOrAncestorDigest() {
                                                  isEnabled: original.isEnabled,
                                                  isSelected: original.isSelected,
                                                  ancestorDigest: 11)
-    #expect(store.validation(snapshotID: id,
-                             path: original.path,
-                             context: context,
-                             current: changedAncestor) == .stale)
+    #expect(store.isStale(snapshotID: id,
+                          path: original.path,
+                          context: context,
+                          current: changedAncestor))
 }
 
 #if !canImport(UIKit)
 @Test("未知 snapshotID 必须被判定为陈旧") @MainActor
 func unknownSnapshotIsStale() {
     let store = UIKitSnapshotStore()
-    #expect(store.validation(snapshotID: "evicted-snapshot",
-                             path: "root/0",
-                             current: .test) == .stale)
+    #expect(store.isStale(snapshotID: "evicted-snapshot",
+                          path: "root/0",
+                          current: .test))
 }
 #endif
 

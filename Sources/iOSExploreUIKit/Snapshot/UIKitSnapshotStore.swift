@@ -246,52 +246,50 @@ public final class UIKitSnapshotStore {
         return id
     }
 
-    /// 校验某 path 在某 snapshotID 下是否仍与当前指纹一致。
+    /// 校验 snapshot 是否陈旧（snapshot 不存在、TTL 过期、context 变化、path 缺失或指纹不匹配）。
+    ///
+    /// executor 对携带 snapshotID 的交互在陈旧时 throw `staleLocator`；所有无法验证的情况均
+    /// 返回 `true`，防止 LRU 淘汰后的旧 path 静默退化为无防护执行。
     ///
     /// - Parameters:
     ///   - snapshotID: 调用方携带的快照标识。
     ///   - path: 要交互的目标 path。
+    ///   - context: 当前查询上下文身份。
     ///   - current: 当前重新采集的该 path 指纹。
-    /// - Returns:
-    ///   - `.valid`：snapshot 存在、未过期且指纹一致；
-    ///   - `.stale`：snapshotID 不存在、已过期、path 缺失或指纹不匹配（需重新查询）。
-    public func validation(snapshotID: String,
-                           path: String,
-                           context: UIKitSnapshotContext,
-                           current: UIKitTargetFingerprint) -> UIKitSnapshotValidation {
+    /// - Returns: `true` 表示陈旧（需重新查询）；`false` 表示有效。
+    public func isStale(snapshotID: String,
+                        path: String,
+                        context: UIKitSnapshotContext,
+                        current: UIKitTargetFingerprint) -> Bool {
         guard var entry = entries[snapshotID] else {
             UIKitCommandLogging.info("command", "ui snapshot unknown id=\(snapshotID) path=\(path)")
-            return .stale
+            return true
         }
         if isExpired(entry: entry) {
             entries.removeValue(forKey: snapshotID)
             UIKitCommandLogging.info("command", "ui snapshot expired id=\(snapshotID) path=\(path)")
-            return .stale
+            return true
         }
         entry.lastAccessedAt = now()
         entries[snapshotID] = entry
         guard entry.context == context else {
             UIKitCommandLogging.info("command", "ui snapshot context mismatch id=\(snapshotID) path=\(path)")
-            return .stale
+            return true
         }
         guard let stored = entry.fingerprints[path] else {
             UIKitCommandLogging.info("command", "ui snapshot path missing id=\(snapshotID) path=\(path)")
-            return .stale
+            return true
         }
-        if stored == current {
-            return .valid
-        }
+        if stored == current { return false }
         UIKitCommandLogging.info("command", "ui snapshot fingerprint mismatch id=\(snapshotID) path=\(path)")
-        return .stale
+        return true
     }
 
-    /// 兼容未传实例上下文的既有调用方。
-    ///
-    /// 新 executor 必须使用带 context 的 overload；此 overload 仅保留 Foundation 测试的兼容性。
-    public func validation(snapshotID: String,
-                           path: String,
-                           current: UIKitTargetFingerprint) -> UIKitSnapshotValidation {
-        validation(snapshotID: snapshotID, path: path, context: .test, current: current)
+    /// 兼容未传实例上下文的既有调用方（Foundation 测试）。
+    public func isStale(snapshotID: String,
+                        path: String,
+                        current: UIKitTargetFingerprint) -> Bool {
+        isStale(snapshotID: snapshotID, path: path, context: .test, current: current)
     }
 
     /// 判断快照是否超过 TTL。
@@ -314,15 +312,4 @@ public final class UIKitSnapshotStore {
             UIKitCommandLogging.info("command", "ui snapshot evict lru id=\(lru.key) lastAccessedAgo=\(stamp.timeIntervalSince(lru.value.lastAccessedAt))")
         }
     }
-}
-
-/// snapshot 校验结果。
-///
-/// executor 对携带 snapshotID 的交互仅接受 `.valid`；所有无法验证的情况均为 `.stale`，
-/// 防止 LRU 淘汰后的旧 path 静默退化为无防护执行。
-public enum UIKitSnapshotValidation: Sendable, Equatable {
-    /// snapshot 存在、未过期且指纹一致。
-    case valid
-    /// snapshot 不存在、TTL 过期、path 缺失或指纹不匹配，需重新查询。
-    case stale
 }

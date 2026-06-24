@@ -12,8 +12,8 @@ import UIKit
 /// 生成既有 JSON。
 ///
 /// 该类型是 `@MainActor`：adapter（network queue 上的命令 handler）只能 `await` 其入口，
-/// 不能把解析出的 `UIView`/`UIControl` 返回到非隔离域——跨边界只传 `Sendable` 的
-/// `ExploreResult`（含 JSON 摘要、路径、类型名）。
+/// 不能把解析出的 `UIView`/`UIControl` 返回到非隔离域——跨边界只传 `Sendable` 的成功 `JSON`
+/// 或 `throw UIKitCommandError`（由 handler 顶层 catch 转成 `ExploreResult` envelope）。
 ///
 /// 与 `UIKitActionCapabilityResolver` 共用同一份"什么 view 能派发动作"规则：执行器解析出
 /// 命中的控件后，必须用 resolver 的动作列表确认目标支持当前动作（tap/control event），避免
@@ -21,10 +21,11 @@ import UIKit
 /// 重新查询或选择可用目标。
 ///
 /// 陈旧校验（Task 6）：当 plan 携带 `.path + snapshotID` 时，执行器从当前 view 树重采该
-/// path 的指纹，与 `UIKitSnapshotStore` 保存的比对；`.stale`（TTL 过期或指纹不匹配）时通过
-/// `UIKitCommandError.staleLocator` 返回 `invalid_data`。identifier 定位、windowPoint 或无
-/// snapshotID 时不校验。本执行器的日志点：进入/退出、Context 不可用、resolve 失败、陈旧校验、
-/// hit-test、sendActions、错误分支，均记录摘要/路径/类型/错误码，不写完整 payload。
+/// path 的指纹，与 `UIKitSnapshotStore` 保存的比对；陈旧（TTL 过期或指纹不匹配）时抛出
+/// `UIKitCommandError.staleLocator`（`invalid_data`）。identifier 定位、windowPoint 或无
+/// snapshotID 时不校验。失败日志不在本执行器内记录——统一由 handler 顶层 catch 后记录
+/// `error.failure.logMessage`；本执行器仅记录进入、hit-test、sendActions 等成功路径摘要，
+/// 不写完整 payload。
 @MainActor
 enum UIKitActionExecutor {
     /// tap 动作的固定 action 名，用于错误工厂与日志关联。
@@ -34,24 +35,17 @@ enum UIKitActionExecutor {
 
     /// 执行一个 UIKit 动作计划（生产入口：取真实 App 上下文后转调注入版本）。
     ///
-    /// 在 `MainActor` 上读取当前前台 window 与顶部控制器；上下文不可用时按 plan 对应的
-    /// action 返回 `hierarchyUnavailable`。取得上下文后转调 `execute(_:context:)`，使派发
-    /// 流程（locate / hit-test / capability / sendActions / 陈旧校验）可在测试里用可控
-    /// view 树驱动，而不依赖真实 UIApplication scene。
+    /// 在 `MainActor` 上读取当前前台 window 与顶部控制器；上下文不可用时抛出
+    /// `hierarchyUnavailable`。取得上下文后转调 `execute(_:context:)`，使派发流程
+    /// （locate / hit-test / capability / sendActions / 陈旧校验）可在测试里用可控 view 树
+    /// 驱动，而不依赖真实 UIApplication scene。
     ///
     /// - Parameter plan: 动作计划（tap 或 controlEvent）。
-    /// - Returns: 命令结果。成功时返回迁移前一致的 JSON；失败时返回既有错误语义的 envelope。
-    static func execute(_ plan: UIKitActionPlan) -> ExploreResult {
-        let context: UIKitContextProvider.Context
-        switch UIKitContextProvider.currentContext() {
-        case .success(let value):
-            context = value
-        case .failure(let reason):
-            let error = UIKitCommandError.hierarchyUnavailable(action: actionName(for: plan), reason: reason)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        }
-        return execute(plan, context: context)
+    /// - Returns: 成功时返回迁移前一致的 JSON。
+    /// - Throws: `UIKitCommandError`——上下文不可用 / 定位失败 / 能力不支持 / 陈旧等。
+    static func execute(_ plan: UIKitActionPlan) throws -> JSON {
+        let context = try UIKitContextProvider.currentContext(action: actionName(for: plan))
+        return try execute(plan, context: context)
     }
 
     /// 执行一个 UIKit 动作计划（注入入口：测试与内部复用）。
@@ -63,13 +57,14 @@ enum UIKitActionExecutor {
     /// - Parameters:
     ///   - plan: 动作计划（tap 或 controlEvent）。
     ///   - context: 当前 UIKit 查询上下文（持有真实 window / rootView，可由测试构造）。
-    /// - Returns: 命令结果。成功时返回迁移前一致的 JSON；失败时返回既有错误语义的 envelope。
-    static func execute(_ plan: UIKitActionPlan, context: UIKitContextProvider.Context) -> ExploreResult {
+    /// - Returns: 成功时返回迁移前一致的 JSON。
+    /// - Throws: `UIKitCommandError`——定位失败 / 能力不支持 / 陈旧等。
+    static func execute(_ plan: UIKitActionPlan, context: UIKitContextProvider.Context) throws -> JSON {
         switch plan {
         case .tap(let locator, let snapshotID):
-            return executeTap(locator: locator, snapshotID: snapshotID, context: context)
+            return try executeTap(locator: locator, snapshotID: snapshotID, context: context)
         case .controlEvent(let locator, let event, let snapshotID):
-            return executeControlEvent(locator: locator, event: event, snapshotID: snapshotID, context: context)
+            return try executeControlEvent(locator: locator, event: event, snapshotID: snapshotID, context: context)
         }
     }
 
@@ -84,8 +79,8 @@ enum UIKitActionExecutor {
     /// 仅在 `.path + snapshotID` 同时存在时做陈旧校验。
     ///
     /// 复用调用方已 locate 的 `LocatedView`（避免对同一 path 二次遍历），重新采集该 path 的
-    /// 指纹，与 store 中保存的比对。`.stale` 时通过 `UIKitCommandError.staleLocator` 返回
-    /// `invalid_data`；无 snapshotID 时不校验（返回 nil）。"仅对 `.path` 校验"由调用方
+    /// 指纹，与 store 中保存的比对。陈旧时抛出 `UIKitCommandError.staleLocator`（`invalid_data`）；
+    /// 无 snapshotID 时不校验（直接返回）。"仅对 `.path` 校验"由调用方
     /// （`executeTap`/`executeControlEvent`）在调用前用 `if case .path` 把关。
     ///
     /// - Parameters:
@@ -93,27 +88,22 @@ enum UIKitActionExecutor {
     ///   - snapshotID: 调用方携带的快照标识。
     ///   - context: 当前 UIKit 上下文（用于重采指纹）。
     ///   - action: 触发校验的 action 名（错误关联）。
-    /// - Returns: 失败时返回错误结果；通过/不校验时返回 nil。
+    /// - Throws: `UIKitCommandError.staleLocator`——指纹陈旧时。
     private static func validateFreshness(located: UIKitLocatorResolver.LocatedView,
                                           snapshotID: String?,
                                           context: UIKitContextProvider.Context,
-                                          action: String) -> ExploreResult? {
-        guard let snapshotID else { return nil }
+                                          action: String) throws {
+        guard let snapshotID else { return }
         let path = located.pathString
         let current = UIKitFingerprintCollector.fingerprint(for: located.view,
                                                              path: path,
                                                              rootView: context.rootView,
                                                              digest: UIKitFingerprintCollector.digest(topViewController: context.topViewController))
-        switch UIKitSnapshotStore.shared.validation(snapshotID: snapshotID,
-                                                    path: path,
-                                                    context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
-                                                    current: current) {
-        case .stale:
-            let error = UIKitCommandError.staleLocator(action: action, snapshotID: snapshotID)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        case .valid:
-            return nil
+        if UIKitSnapshotStore.shared.isStale(snapshotID: snapshotID,
+                                             path: path,
+                                             context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
+                                             current: current) {
+            throw UIKitCommandError.staleLocator(action: action, snapshotID: snapshotID)
         }
     }
 
@@ -128,43 +118,29 @@ enum UIKitActionExecutor {
     ///   - locator: 点击目标的统一定位器。
     ///   - snapshotID: 可选 snapshotID，仅在 `.path` 且非 nil 时校验。
     ///   - context: 当前 UIKit 查询上下文（由 `execute(_:)` 注入）。
-    /// - Returns: tap 命令结果，与迁移前 `UITapCommand` 行为一致。
+    /// - Returns: tap 命令 JSON，与迁移前 `UITapCommand` 行为一致。
+    /// - Throws: `UIKitCommandError`——定位失败 / 陈旧 / hit-test 失败 / 能力不支持。
     private static func executeTap(locator: UIKitLocator,
                                    snapshotID: String?,
-                                   context: UIKitContextProvider.Context) -> ExploreResult {
+                                   context: UIKitContextProvider.Context) throws -> JSON {
         switch locator {
         case .accessibilityIdentifier, .path:
             // 先 locate 一次，freshness 校验与执行都复用该 LocatedView（避免二次遍历同一 path）。
-            let located: UIKitLocatorResolver.LocatedView
-            switch UIKitLocatorResolver.locate(locator: locator, in: context.rootView) {
-            case .found(let value):
-                located = value
-            case .notFound:
-                let error = UIKitCommandError.targetNotFound(action: tapAction,
-                                                              targetDescription: locatorSummary(locator))
-                UIKitCommandLogging.error("command", error.failure.logMessage)
-                return error.result
-            case .ambiguous(let count):
-                let error = UIKitCommandError.targetAmbiguous(action: tapAction,
-                                                              targetDescription: locatorSummary(locator),
-                                                              count: count)
-                UIKitCommandLogging.error("command", error.failure.logMessage)
-                return error.result
-            }
+            let target = locatorSummary(locator)
+            let located = try UIKitLocatorResolver.locate(
+                locator: locator,
+                in: context.rootView,
+                notFound: { UIKitCommandError.targetNotFound(action: tapAction, targetDescription: target) },
+                ambiguous: { UIKitCommandError.targetAmbiguous(action: tapAction, targetDescription: target, count: $0) })
             // 陈旧校验仅对 .path + snapshotID，复用 located.view 重采指纹。
             if case .path = locator, let snapshotID {
-                if let stale = validateFreshness(located: located,
-                                                 snapshotID: snapshotID,
-                                                 context: context,
-                                                 action: tapAction) {
-                    return stale
-                }
+                try validateFreshness(located: located, snapshotID: snapshotID, context: context, action: tapAction)
             }
-            return executeTapViewTarget(located, context: context)
+            return try executeTapViewTarget(located, context: context)
         case .windowPoint(let x, let y):
-            return executeTapWindowPoint(CGPoint(x: x, y: y),
-                                         targetDescription: locatorSummary(locator),
-                                         context: context)
+            return try executeTapWindowPoint(CGPoint(x: x, y: y),
+                                             targetDescription: locatorSummary(locator),
+                                             context: context)
         }
     }
 
@@ -173,91 +149,82 @@ enum UIKitActionExecutor {
     /// - Parameters:
     ///   - located: 调用方已 resolve 的定位视图（复用，不再二次 locate）。
     ///   - context: 当前 UIKit 上下文。
+    /// - Throws: `UIKitCommandError`——hit-test 失败 / 命中不一致 / 能力不支持。
     private static func executeTapViewTarget(_ located: UIKitLocatorResolver.LocatedView,
-                                             context: UIKitContextProvider.Context) -> ExploreResult {
+                                             context: UIKitContextProvider.Context) throws -> JSON {
         let point = located.view.convert(CGPoint(x: located.view.bounds.midX,
                                                  y: located.view.bounds.midY),
                                          to: context.window)
         guard let hitView = context.window.hitTest(point, with: nil) else {
-            let error = UIKitCommandError.hitTestFailed(action: tapAction,
-                                                       targetDescription: located.pathString,
-                                                       x: Double(point.x),
-                                                       y: Double(point.y))
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
+            throw UIKitCommandError.hitTestFailed(action: tapAction,
+                                                  targetDescription: located.pathString,
+                                                  x: Double(point.x),
+                                                  y: Double(point.y))
         }
         guard UIKitLocatorResolver.view(hitView, isDescendantOfOrSameAs: located.view) ||
               UIKitLocatorResolver.view(located.view, isDescendantOfOrSameAs: hitView) else {
-            let error = UIKitCommandError.hitMismatch(action: tapAction,
-                                                      targetDescription: located.pathString,
-                                                      hitType: String(describing: Swift.type(of: hitView)))
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
+            throw UIKitCommandError.hitMismatch(action: tapAction,
+                                                targetDescription: located.pathString,
+                                                hitType: String(describing: Swift.type(of: hitView)))
         }
 
         let control = (located.view as? UIControl) ??
             UIKitLocatorResolver.nearestControl(from: hitView, stoppingAt: located.view.superview)
-        return dispatchTap(to: control,
-                           hitView: hitView,
-                           point: point,
-                           targetDescription: located.pathString,
-                           context: context)
+        return try dispatchTap(to: control,
+                               hitView: hitView,
+                               point: point,
+                               targetDescription: located.pathString,
+                               context: context)
     }
 
     /// 点击 window 坐标。
     private static func executeTapWindowPoint(_ point: CGPoint,
                                               targetDescription: String,
-                                              context: UIKitContextProvider.Context) -> ExploreResult {
+                                              context: UIKitContextProvider.Context) throws -> JSON {
         guard let hitView = context.window.hitTest(point, with: nil) else {
-            let error = UIKitCommandError.hitTestFailed(action: tapAction,
-                                                       targetDescription: targetDescription,
-                                                       x: Double(point.x),
-                                                       y: Double(point.y))
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
+            throw UIKitCommandError.hitTestFailed(action: tapAction,
+                                                  targetDescription: targetDescription,
+                                                  x: Double(point.x),
+                                                  y: Double(point.y))
         }
         let control = UIKitLocatorResolver.nearestControl(from: hitView, stoppingAt: nil)
-        return dispatchTap(to: control,
-                           hitView: hitView,
-                           point: point,
-                           targetDescription: targetDescription,
-                           context: context)
+        return try dispatchTap(to: control,
+                               hitView: hitView,
+                               point: point,
+                               targetDescription: targetDescription,
+                               context: context)
     }
 
     /// 对 UIControl 派发第一版 tap fallback（`touchUpInside`）。
     ///
     /// capability 校验：通过 `UIKitActionCapabilityResolver` 确认命中控件支持 `tap` 动作
-    /// （与 collector 的 `availableActions` 共用同一份规则）。不可用控件会返回
+    /// （与 collector 的 `availableActions` 共用同一份规则）。不可用控件会抛出
     /// `invalid_data`，不会绕过 discovery 声明直接派发 `touchUpInside`。
     private static func dispatchTap(to control: UIControl?,
                                     hitView: UIView,
                                     point: CGPoint,
                                     targetDescription: String,
-                                    context: UIKitContextProvider.Context) -> ExploreResult {
+                                    context: UIKitContextProvider.Context) throws -> JSON {
         guard let control else {
-            let error = UIKitCommandError.unsupportedTarget(action: tapAction,
-                                                            targetDescription: targetDescription,
-                                                            type: String(describing: Swift.type(of: hitView)))
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
+            throw UIKitCommandError.unsupportedTarget(action: tapAction,
+                                                      targetDescription: targetDescription,
+                                                      type: String(describing: Swift.type(of: hitView)))
         }
 
         let availability = UIKitActionCapabilityResolver.resolve(view: control,
                                                                   rootView: context.rootView,
                                                                   nearestControl: control)
         guard availability.actions.contains(.tap) else {
-            let error = UIKitCommandError.unsupportedAction(action: tapAction,
-                                                            targetDescription: targetDescription,
-                                                            requestedAction: UIKitActionKind.tap.rawValue)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
+            throw UIKitCommandError.unsupportedAction(action: tapAction,
+                                                      targetDescription: targetDescription,
+                                                      requestedAction: UIKitActionKind.tap.rawValue)
         }
 
         let locatedControl = UIKitLocatorResolver.locatedView(for: control, in: context.rootView)
         let locatedHit = UIKitLocatorResolver.locatedView(for: hitView, in: context.rootView)
         UIKitCommandLogging.info("command", "ui tap dispatch controlActionFallback target=\(targetDescription) controlType=\(String(describing: Swift.type(of: control))) hitType=\(String(describing: Swift.type(of: hitView))) x=\(Double(point.x)) y=\(Double(point.y))")
         control.sendActions(for: .touchUpInside)
-        return .success([
+        return [
             "tapped": .bool(true),
             "dispatchMode": .string("controlActionFallback"),
             "event": .string("touchUpInside"),
@@ -269,7 +236,7 @@ enum UIKitActionExecutor {
             "controlType": .string(String(describing: Swift.type(of: control))),
             "controlPath": locatedControl.map { .string($0.pathString) } ?? .null,
             "accessibilityIdentifier": control.accessibilityIdentifier.map(JSONValue.string) ?? .null,
-        ])
+        ]
     }
 
     // MARK: - Control Event
@@ -281,43 +248,27 @@ enum UIKitActionExecutor {
     ///   - event: 要发送的 UIControl 事件。
     ///   - snapshotID: 可选 snapshotID，仅在 `.path` 且非 nil 时校验。
     ///   - context: 当前 UIKit 查询上下文（由 `execute(_:)` 注入）。
-    /// - Returns: control.sendAction 命令结果，与迁移前 `UIControlSendActionCommand` 行为一致。
+    /// - Returns: control.sendAction 命令 JSON，与迁移前 `UIControlSendActionCommand` 行为一致。
+    /// - Throws: `UIKitCommandError`——定位失败 / 非 control / 能力不支持 / 陈旧。
     private static func executeControlEvent(locator: UIKitLocator,
                                             event: UIControlSendActionEvent,
                                             snapshotID: String?,
-                                            context: UIKitContextProvider.Context) -> ExploreResult {
+                                            context: UIKitContextProvider.Context) throws -> JSON {
         // 先 locate，后续 freshness 校验与派发都复用 located（避免二次遍历同一 path）。
-        let located: UIKitLocatorResolver.LocatedView
-        switch UIKitLocatorResolver.locate(locator: locator, in: context.rootView) {
-        case .found(let value):
-            located = value
-        case .notFound:
-            let error = UIKitCommandError.controlTargetNotFound(action: controlAction,
-                                                                targetDescription: locatorSummary(locator))
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        case .ambiguous(let count):
-            let error = UIKitCommandError.controlTargetAmbiguous(action: controlAction,
-                                                                 targetDescription: locatorSummary(locator),
-                                                                 count: count)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        }
+        let target = locatorSummary(locator)
+        let located = try UIKitLocatorResolver.locate(
+            locator: locator,
+            in: context.rootView,
+            notFound: { UIKitCommandError.controlTargetNotFound(action: controlAction, targetDescription: target) },
+            ambiguous: { UIKitCommandError.controlTargetAmbiguous(action: controlAction, targetDescription: target, count: $0) })
         // 陈旧校验仅对 .path + snapshotID，复用 located.view 重采指纹。
         if case .path = locator, let snapshotID {
-            if let stale = validateFreshness(located: located,
-                                             snapshotID: snapshotID,
-                                             context: context,
-                                             action: controlAction) {
-                return stale
-            }
+            try validateFreshness(located: located, snapshotID: snapshotID, context: context, action: controlAction)
         }
         guard let control = located.view as? UIControl else {
-            let error = UIKitCommandError.controlTargetNotControl(action: controlAction,
-                                                                  targetDescription: located.pathString,
-                                                                  type: String(describing: Swift.type(of: located.view)))
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
+            throw UIKitCommandError.controlTargetNotControl(action: controlAction,
+                                                            targetDescription: located.pathString,
+                                                            type: String(describing: Swift.type(of: located.view)))
         }
 
         let requestedAction = UIKitActionCapabilityResolver.actionKind(for: event)
@@ -325,16 +276,14 @@ enum UIKitActionExecutor {
                                                                   rootView: context.rootView,
                                                                   nearestControl: control)
         guard availability.actions.contains(requestedAction) else {
-            let error = UIKitCommandError.unsupportedAction(action: controlAction,
-                                                            targetDescription: located.pathString,
-                                                            requestedAction: requestedAction.rawValue)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
+            throw UIKitCommandError.unsupportedAction(action: controlAction,
+                                                      targetDescription: located.pathString,
+                                                      requestedAction: requestedAction.rawValue)
         }
 
         UIKitCommandLogging.info("command", "ui control send action mainactor target=\(located.pathString) type=\(String(describing: Swift.type(of: control))) event=\(event.rawValue) enabled=\(control.isEnabled)")
         control.sendActions(for: event.uiControlEvent)
-        return .success([
+        return [
             "sent": .bool(true),
             "event": .string(event.rawValue),
             "path": .string(located.pathString),
@@ -343,7 +292,7 @@ enum UIKitActionExecutor {
             "isEnabled": .bool(control.isEnabled),
             "isSelected": .bool(control.isSelected),
             "isHighlighted": .bool(control.isHighlighted),
-        ])
+        ]
     }
 
     // MARK: - Helpers

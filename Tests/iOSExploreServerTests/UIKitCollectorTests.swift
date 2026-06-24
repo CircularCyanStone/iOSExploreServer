@@ -26,12 +26,7 @@ func viewTargetsCollectsTargetsInContext() {
         root.addSubview(plain)
     }
 
-    let result = UIViewTargetsCollector.collect(query: .default, context: context)
-
-    guard case .success(let data) = result else {
-        Issue.record("expected success, got \(result)")
-        return
-    }
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
     // 默认策略：button（control）与 tagged（有 identifier）被采集；plain（无语义/交互）被过滤
     #expect(data["targetCount"]?.doubleValue == 2)
     #expect(data["truncated"]?.boolValue == false)
@@ -79,12 +74,7 @@ func topViewHierarchyCollectsTreeInContext() throws {
 
     let query = try UIViewHierarchyQuery.parse(from: [:])
 
-    let result = UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
-
-    guard case .success(let data) = result else {
-        Issue.record("expected success, got \(result)")
-        return
-    }
+    let data = UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
     #expect(data["snapshotID"]?.stringValue != nil)
 
     guard case .object(let root)? = data["root"] else {

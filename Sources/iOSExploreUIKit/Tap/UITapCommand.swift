@@ -55,23 +55,20 @@ struct UITapCommand: Command {
     /// - Returns: 成功时返回命中目标与派发方式；失败时返回明确原因。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
         UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
-        let query: UITapQuery
         do {
-            query = try UITapQuery.parse(from: request.data)
+            let query = try UITapQuery.parse(from: request.data)
+            let plan = UIKitActionPlan.tap(locator: query.target.locator, snapshotID: query.snapshotID)
+            let data = try await UIKitActionExecutor.execute(plan)
+            UIKitCommandLogging.info("command", "command \(action) completed target=\(query.target.description) dispatchMode=\(data["dispatchMode"]?.stringValue ?? "unknown")")
+            return .success(data)
+        } catch let error as UIKitCommandError {
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         } catch let parseError as QueryParseError {
             let error = UIKitCommandError.invalidData(action: action, message: parseError.message)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
         }
-        let plan = UIKitActionPlan.tap(locator: query.target.locator, snapshotID: query.snapshotID)
-        let result = await UIKitActionExecutor.execute(plan)
-        switch result {
-        case .success(let data):
-            UIKitCommandLogging.info("command", "command \(action) completed target=\(query.target.description) dispatchMode=\(data["dispatchMode"]?.stringValue ?? "unknown")")
-        case .failure(let code, let message):
-            UIKitCommandLogging.error("command", "command \(action) failed code=\(code.rawValue) message=\(message)")
-        }
-        return result
     }
 }
 #endif

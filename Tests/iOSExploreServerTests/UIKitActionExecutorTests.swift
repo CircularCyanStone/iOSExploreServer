@@ -11,24 +11,23 @@ import iOSExploreServer
 /// "零件都对、组装分叉"bug 能潜伏的盲区。
 ///
 /// 注意：logic test 下 `UIControl.sendActions` 不派发 target-action（无 app runloop），故这些
-/// 测试验证的是 executor 自身逻辑（走到 sendActions、命中正确 control、返回正确 envelope 或
-/// 错误码），而非 UIKit 的派发效果。
+/// 测试验证的是 executor 自身逻辑（走到 sendActions、命中正确 control、返回正确 JSON 或
+/// 抛出对应错误码），而非 UIKit 的派发效果。
+///
+/// executor 已 throw 化：成功路径返回纯 `JSON`，失败路径 `throw UIKitCommandError`，故成功
+/// 测试用 `try` 直取 JSON，失败测试用 do/catch 断言 `error.failure.code`。
 
 @Test("executor 按 path tap 可交互 UIControl 走 controlActionFallback") @MainActor
-func executorTapsUIControlByPath() {
+func executorTapsUIControlByPath() throws {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
         root.addSubview(button)
     }
 
-    let result = UIKitActionExecutor.execute(.tap(locator: .path([0]), snapshotID: nil),
-                                             context: context)
+    let data = try UIKitActionExecutor.execute(.tap(locator: .path([0]), snapshotID: nil),
+                                               context: context)
 
-    guard case .success(let data) = result else {
-        Issue.record("expected success, got \(result)")
-        return
-    }
     #expect(data["tapped"]?.boolValue == true)
     #expect(data["dispatchMode"]?.stringValue == "controlActionFallback")
     #expect(data["event"]?.stringValue == "touchUpInside")
@@ -37,7 +36,7 @@ func executorTapsUIControlByPath() {
 }
 
 @Test("executor tap 按 accessibilityIdentifier 命中 UIControl") @MainActor
-func executorTapsUIControlByIdentifier() {
+func executorTapsUIControlByIdentifier() throws {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
@@ -45,17 +44,13 @@ func executorTapsUIControlByIdentifier() {
         root.addSubview(button)
     }
 
-    let result = UIKitActionExecutor.execute(.tap(locator: .accessibilityIdentifier("submit"), snapshotID: nil),
-                                             context: context)
+    let data = try UIKitActionExecutor.execute(.tap(locator: .accessibilityIdentifier("submit"), snapshotID: nil),
+                                               context: context)
 
-    guard case .success(let data) = result else {
-        Issue.record("expected success, got \(result)")
-        return
-    }
     #expect(data["controlType"]?.stringValue == "UIButton")
 }
 
-@Test("executor tap 非 control 可交互 view 返回 invalid_data") @MainActor
+@Test("executor tap 非 control 可交互 view 抛 invalid_data") @MainActor
 func executorTapNonControlReturnsInvalidData() {
     let context = UIKitTestHost.context { root in
         let view = UIView()
@@ -64,18 +59,19 @@ func executorTapNonControlReturnsInvalidData() {
         root.addSubview(view)
     }
 
-    let result = UIKitActionExecutor.execute(.tap(locator: .path([0]), snapshotID: nil),
-                                             context: context)
-
-    guard case .failure(let code, _) = result else {
-        Issue.record("expected failure, got \(result)")
-        return
+    do {
+        _ = try UIKitActionExecutor.execute(.tap(locator: .path([0]), snapshotID: nil),
+                                            context: context)
+        Issue.record("expected failure, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .invalidData)
+    } catch {
+        Issue.record("unexpected error: \(error)")
     }
-    #expect(code == .invalidData)
 }
 
 @Test("executor tap window 坐标命中 UIControl") @MainActor
-func executorTapWindowPointHitsControl() {
+func executorTapWindowPointHitsControl() throws {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
@@ -83,40 +79,32 @@ func executorTapWindowPointHitsControl() {
     }
 
     // button 中心在 window 坐标 (160, 130)
-    let result = UIKitActionExecutor.execute(.tap(locator: .windowPoint(x: 160, y: 130), snapshotID: nil),
-                                             context: context)
+    let data = try UIKitActionExecutor.execute(.tap(locator: .windowPoint(x: 160, y: 130), snapshotID: nil),
+                                               context: context)
 
-    guard case .success(let data) = result else {
-        Issue.record("expected success, got \(result)")
-        return
-    }
     #expect(data["controlType"]?.stringValue == "UIButton")
     #expect(data["dispatchMode"]?.stringValue == "controlActionFallback")
 }
 
 @Test("executor control.sendAction 对 UIControl 返回 sent") @MainActor
-func executorControlSendActionOnUIControl() {
+func executorControlSendActionOnUIControl() throws {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
         root.addSubview(button)
     }
 
-    let result = UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
-                                                            event: .touchUpInside,
-                                                            snapshotID: nil),
-                                             context: context)
+    let data = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
+                                                              event: .touchUpInside,
+                                                              snapshotID: nil),
+                                               context: context)
 
-    guard case .success(let data) = result else {
-        Issue.record("expected success, got \(result)")
-        return
-    }
     #expect(data["sent"]?.boolValue == true)
     #expect(data["event"]?.stringValue == "touchUpInside")
     #expect(data["type"]?.stringValue == "UIButton")
 }
 
-@Test("executor control.sendAction 非 UIControl 返回 invalid_data") @MainActor
+@Test("executor control.sendAction 非 UIControl 抛 invalid_data") @MainActor
 func executorControlSendActionNonControlReturnsInvalidData() {
     let context = UIKitTestHost.context { root in
         let view = UIView()
@@ -124,19 +112,20 @@ func executorControlSendActionNonControlReturnsInvalidData() {
         root.addSubview(view)
     }
 
-    let result = UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
-                                                            event: .touchUpInside,
-                                                            snapshotID: nil),
-                                             context: context)
-
-    guard case .failure(let code, _) = result else {
-        Issue.record("expected failure, got \(result)")
-        return
+    do {
+        _ = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
+                                                           event: .touchUpInside,
+                                                           snapshotID: nil),
+                                            context: context)
+        Issue.record("expected failure, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .invalidData)
+    } catch {
+        Issue.record("unexpected error: \(error)")
     }
-    #expect(code == .invalidData)
 }
 
-@Test("executor control.sendAction 不支持的事件返回 invalid_data") @MainActor
+@Test("executor control.sendAction 不支持的事件抛 invalid_data") @MainActor
 func executorControlSendActionUnsupportedEventReturnsInvalidData() {
     let context = UIKitTestHost.context { root in
         let toggle = UISwitch()
@@ -145,19 +134,20 @@ func executorControlSendActionUnsupportedEventReturnsInvalidData() {
     }
 
     // UISwitch 只声明 valueChanged，touchUpInside 不在其 availableActions
-    let result = UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
-                                                            event: .touchUpInside,
-                                                            snapshotID: nil),
-                                             context: context)
-
-    guard case .failure(let code, _) = result else {
-        Issue.record("expected failure, got \(result)")
-        return
+    do {
+        _ = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
+                                                           event: .touchUpInside,
+                                                           snapshotID: nil),
+                                            context: context)
+        Issue.record("expected failure, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .invalidData)
+    } catch {
+        Issue.record("unexpected error: \(error)")
     }
-    #expect(code == .invalidData)
 }
 
-@Test("executor path tap 携带陈旧 snapshotID 返回 invalid_data") @MainActor
+@Test("executor path tap 携带陈旧 snapshotID 抛 invalid_data") @MainActor
 func executorTapStaleSnapshotReturnsInvalidData() {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
@@ -165,22 +155,23 @@ func executorTapStaleSnapshotReturnsInvalidData() {
         root.addSubview(button)
     }
 
-    let collectResult = UIViewTargetsCollector.collect(query: .default, context: context)
-    guard case .success(let data) = collectResult, let snapshotID = data["snapshotID"]?.stringValue else {
-        Issue.record("collect should succeed with snapshotID")
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    guard let snapshotID = data["snapshotID"]?.stringValue else {
+        Issue.record("collect should produce snapshotID")
         return
     }
 
     // 改变 button 的 enabled 状态使指纹陈旧（isEnabled 进入指纹）
     (context.rootView.subviews.first as? UIButton)?.isEnabled = false
 
-    let result = UIKitActionExecutor.execute(.tap(locator: .path([0]), snapshotID: snapshotID),
-                                             context: context)
-
-    guard case .failure(let code, _) = result else {
-        Issue.record("expected failure, got \(result)")
-        return
+    do {
+        _ = try UIKitActionExecutor.execute(.tap(locator: .path([0]), snapshotID: snapshotID),
+                                            context: context)
+        Issue.record("expected failure, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .invalidData)
+    } catch {
+        Issue.record("unexpected error: \(error)")
     }
-    #expect(code == .invalidData)
 }
 #endif

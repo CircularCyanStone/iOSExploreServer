@@ -12,18 +12,12 @@ enum UIViewHierarchyCollector {
     /// 采集当前顶部控制器 view 层级并转换为命令响应。
     ///
     /// - Parameter query: 采集和筛选参数。
-    /// - Returns: 成功时返回层级 JSON；失败时返回业务失败 envelope。
-    static func collectTopViewHierarchy(query: UIViewHierarchyQuery) -> ExploreResult {
+    /// - Returns: 层级 JSON。
+    /// - Throws: `UIKitCommandError.hierarchyUnavailable`——UIKit 上下文不可用时。
+    static func collectTopViewHierarchy(query: UIViewHierarchyQuery) throws -> JSON {
         UIKitCommandLogging.info("command", "ui hierarchy collect mainactor start detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
-        switch UIKitContextProvider.currentContext() {
-        case .success(let value):
-            return collectTopViewHierarchy(query: query, context: value)
-        case .failure(let reason):
-            let error = UIKitCommandError.hierarchyUnavailable(action: TopViewHierarchyCommand.actionName,
-                                                               reason: reason)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        }
+        let context = try UIKitContextProvider.currentContext(action: TopViewHierarchyCommand.actionName)
+        return collectTopViewHierarchy(query: query, context: context)
     }
 
     /// 采集顶部控制器 view 层级（注入入口：测试与内部复用）。
@@ -34,8 +28,8 @@ enum UIViewHierarchyCollector {
     /// - Parameters:
     ///   - query: 采集和筛选参数。
     ///   - context: 当前 UIKit 查询上下文。
-    /// - Returns: 成功时返回层级 JSON；失败时返回业务失败 envelope。
-    static func collectTopViewHierarchy(query: UIViewHierarchyQuery, context: UIKitContextProvider.Context) -> ExploreResult {
+    /// - Returns: 层级 JSON。
+    static func collectTopViewHierarchy(query: UIViewHierarchyQuery, context: UIKitContextProvider.Context) -> JSON {
         let element = UIKitViewElement(view: context.rootView)
         let root = UIViewHierarchyBuilder.build(from: element, query: query)
         let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
@@ -64,7 +58,7 @@ enum UIViewHierarchyCollector {
             data["root"] = .object(root.toJSON())
             UIKitCommandLogging.info("command", "ui hierarchy collect completed mode=root nodeCount=\(root.nodeCount) rootType=\(root.type)")
         }
-        return .success(data)
+        return data
     }
 
     /// 生成屏幕和控制器上下文。

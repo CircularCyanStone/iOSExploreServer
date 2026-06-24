@@ -26,36 +26,35 @@ enum UIKitLocatorResolver {
         }
     }
 
-    /// 定位结果。
-    enum LocateResult {
-        /// 找到唯一 view。
-        case found(LocatedView)
-        /// 没有找到。
-        case notFound
-        /// identifier 匹配到多个 view。
-        case ambiguous(count: Int)
-    }
-
-    /// 按通用目标定位 view。
+    /// 按通用目标定位 view，失败时抛出由调用方提供的业务错误。
     ///
-    /// 仅解析 `accessibilityIdentifier` 与 `path` 变体；`windowPoint` 不应传入本方法。
+    /// 仅解析 `accessibilityIdentifier` 与 `path` 变体；`windowPoint` 不应传入本方法（传入会抛
+    /// `notFound()`，作为防御）。`notFound` / `ambiguous` 两个工厂由调用方提供——因为 tap 与
+    /// control 命令对「未找到 / 歧义」映射到不同业务错误码（`targetNotFound` vs
+    /// `controlTargetNotFound`），定位器本身不持有调用语境，交由调用方决定。
     ///
     /// - Parameters:
     ///   - locator: 统一定位器。
     ///   - rootView: 顶部控制器根 view。
-    /// - Returns: 定位结果。
-    static func locate(locator: UIKitLocator, in rootView: UIView) -> LocateResult {
+    ///   - notFound: 未命中时构造的业务错误工厂。
+    ///   - ambiguous: 命中多个时构造的业务错误工厂，入参为命中数量。
+    /// - Returns: 唯一命中的 `LocatedView`。
+    /// - Throws: 调用方提供的 `UIKitCommandError`（未找到 / 歧义）。
+    static func locate(locator: UIKitLocator,
+                       in rootView: UIView,
+                       notFound: () -> UIKitCommandError,
+                       ambiguous: (Int) -> UIKitCommandError) throws -> LocatedView {
         switch locator {
         case .accessibilityIdentifier(let identifier):
             let matches = findViews(withAccessibilityIdentifier: identifier, in: rootView, path: [])
-            if matches.isEmpty { return .notFound }
-            if matches.count > 1 { return .ambiguous(count: matches.count) }
-            return .found(matches[0])
+            if matches.isEmpty { throw notFound() }
+            if matches.count > 1 { throw ambiguous(matches.count) }
+            return matches[0]
         case .path(let indexes):
-            guard let located = findView(at: indexes, in: rootView) else { return .notFound }
-            return .found(located)
+            guard let located = findView(at: indexes, in: rootView) else { throw notFound() }
+            return located
         case .windowPoint:
-            return .notFound
+            throw notFound()
         }
     }
 

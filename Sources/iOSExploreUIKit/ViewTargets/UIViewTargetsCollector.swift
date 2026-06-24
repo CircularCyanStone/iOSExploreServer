@@ -12,19 +12,12 @@ enum UIViewTargetsCollector {
     /// 采集当前顶部控制器 view 下的轻量目标列表。
     ///
     /// - Parameter query: 查询参数，控制包含策略、递归深度、identifier 筛选和文本长度。
-    /// - Returns: 成功时返回 screen、targetCount、visitedNodeCount 与 targets；失败时返回业务失败 envelope。
-    static func collect(query: UIViewTargetsQuery) -> ExploreResult {
+    /// - Returns: screen、targetCount、visitedNodeCount 与 targets 的 JSON。
+    /// - Throws: `UIKitCommandError.hierarchyUnavailable`——UIKit 上下文不可用时。
+    static func collect(query: UIViewTargetsQuery) throws -> JSON {
         UIKitCommandLogging.info("command", "ui view targets collect mainactor start includeHidden=\(query.includeHidden) includeDisabled=\(query.includeDisabled) includeStaticText=\(query.includeStaticText) includeContainers=\(query.includeContainers) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit)")
-
-        switch UIKitContextProvider.currentContext() {
-        case .success(let value):
-            return collect(query: query, context: value)
-        case .failure(let reason):
-            let error = UIKitCommandError.hierarchyUnavailable(action: ViewTargetsCommand.actionName,
-                                                               reason: reason)
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        }
+        let context = try UIKitContextProvider.currentContext(action: ViewTargetsCommand.actionName)
+        return collect(query: query, context: context)
     }
 
     /// 采集轻量目标列表（注入入口：测试与内部复用）。
@@ -35,8 +28,8 @@ enum UIViewTargetsCollector {
     /// - Parameters:
     ///   - query: 查询参数。
     ///   - context: 当前 UIKit 查询上下文。
-    /// - Returns: 成功时返回 targets 列表；失败时返回业务失败 envelope。
-    static func collect(query: UIViewTargetsQuery, context: UIKitContextProvider.Context) -> ExploreResult {
+    /// - Returns: targets 列表 JSON。
+    static func collect(query: UIViewTargetsQuery, context: UIKitContextProvider.Context) -> JSON {
         var visitedNodeCount = 0
         var targets: [UIViewTargetSummary] = []
         var fingerprints: [String: UIKitTargetFingerprint] = [:]
@@ -69,7 +62,7 @@ enum UIViewTargetsCollector {
             "snapshotUnavailableReason": snapshotFields.unavailableReason,
         ]
         UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(targets.count) topViewController=\(String(describing: type(of: context.topViewController)))")
-        return .success(data)
+        return data
     }
 
     /// 递归遍历 view 树，并把符合输出策略和筛选条件的节点加入 targets。

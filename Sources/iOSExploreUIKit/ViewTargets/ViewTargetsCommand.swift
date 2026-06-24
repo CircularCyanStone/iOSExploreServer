@@ -63,24 +63,21 @@ struct ViewTargetsCommand: Command {
     /// - Returns: 成功时返回 targets 列表；参数非法或 UIKit 上下文不可用时返回业务失败 envelope。
     func handle(_ request: ExploreRequest) async throws -> ExploreResult {
         UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
-        let query: UIViewTargetsQuery
         do {
-            query = try UIViewTargetsQuery.parse(from: request.data)
+            let query = try UIViewTargetsQuery.parse(from: request.data)
+            let data = try await UIViewTargetsCollector.collect(query: query)
+            let targetCount = data["targetCount"]?.doubleValue ?? 0
+            let visitedCount = data["visitedNodeCount"]?.doubleValue ?? 0
+            UIKitCommandLogging.info("command", "command \(action) completed targetCount=\(targetCount) visitedNodeCount=\(visitedCount)")
+            return .success(data)
+        } catch let error as UIKitCommandError {
+            UIKitCommandLogging.error("command", error.failure.logMessage)
+            return error.result
         } catch let parseError as QueryParseError {
             let error = UIKitCommandError.invalidData(action: action, message: parseError.message)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
         }
-        let result = await UIViewTargetsCollector.collect(query: query)
-        switch result {
-        case .success(let data):
-            let targetCount = data["targetCount"]?.doubleValue ?? 0
-            let visitedCount = data["visitedNodeCount"]?.doubleValue ?? 0
-            UIKitCommandLogging.info("command", "command \(action) completed targetCount=\(targetCount) visitedNodeCount=\(visitedCount)")
-        case .failure(let code, let message):
-            UIKitCommandLogging.error("command", "command \(action) failed code=\(code.rawValue) message=\(message)")
-        }
-        return result
     }
 }
 #endif
