@@ -103,7 +103,7 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 
 优先用业务层设置的 `accessibilityIdentifier` 做稳定语义锚点；缺失时用 `path` 描述快照内位置。命令不主动设置 identifier。
 
-`ui.viewTargets` 是事件下发前的轻量目标发现命令，返回扁平 targets 列表，不返回完整 `subviews` 树，也不承担视觉验收职责。每个 target 包含 `path`、运行时类型、轻量 role、`accessibilityIdentifier`、短文本、window 坐标 frame、基础交互状态和 `availableActions`；其中 `tap` 对应 `ui.tap`，`control.<event>` 对应 `ui.control.sendAction` 的 `<event>` 参数。agent 应优先按该能力表选择后续事件命令。
+`ui.viewTargets` 是事件下发前的轻量目标发现命令，返回扁平 targets 列表，不返回完整 `subviews` 树，也不承担视觉验收职责。每个 target 包含 `path`、运行时类型、轻量 role、`accessibilityIdentifier`、短文本、window 坐标 frame、基础交互状态和 `availableActions`；`availableActions` 仅在目标自身为可用 `UIControl` 时非空（与第一版 `ui.tap`/`ui.control.sendAction` 只对 `UIControl` 派发一致），其中 `tap` 对应 `ui.tap`，`control.<event>` 对应 `ui.control.sendAction` 的 `<event>` 参数。agent 应优先按该能力表选择后续事件命令。
 
 `Utils/`（`iOSExploreUIKit` 内）集中保存 UIKit view 定位能力：当前前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、命中 view 与目标 view 的祖先关系判断。后续 UIKit 命令应复用该目录，不要各自重新实现路径解析和遍历。
 
@@ -113,7 +113,7 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 
 - `identifier`：按业务层设置的 `accessibilityIdentifier` 精确定位。**完整匹配、不截断**（历史 bug 曾截断 prefix）；匹配多个 view 返回 `invalid_data`。
 - `path`：来自 `ui.viewTargets`/`ui.topViewHierarchy` 的只读路径（如 `root/0/2`），仅描述快照内位置。
-- `snapshotID` + `path`：交互命令携带 `ui.viewTargets` 返回的 `snapshotID` 时，executor 会重新采集当前 view 树指纹并逐字段比对；类型、identifier、role、enabled/selected、hidden、alpha 或交互开关任一不同，或 snapshot 已淘汰/过期，都会判定陈旧，返回 HTTP 200 + `ok:false` + `invalid_data` + **固定陈旧消息**。无 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
+- `snapshotID` + `path`：交互命令携带 `ui.viewTargets` 或 `ui.topViewHierarchy` 返回的 `snapshotID` 时，executor 会重新采集当前 view 树指纹并逐字段比对；类型、identifier、enabled/selected、hidden、alpha、交互开关或祖先结构任一不同，或 snapshot 已淘汰/过期，都会判定陈旧，返回 HTTP 200 + `ok:false` + `invalid_data` + **固定陈旧消息**。无 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
 
 `ui.control.sendAction` 复用同一套顶部控制器根 view 和 `path` 规则，按 `accessibilityIdentifier` 或 `path` 定位目标，校验目标是 `UIControl` 且请求 event 位于该目标 `availableActions` 后，才在 `MainActor` 调用 `sendActions(for:)`。该命令触发 target-action，不模拟真实触摸坐标、命中测试或高亮过程。
 

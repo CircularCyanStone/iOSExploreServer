@@ -43,7 +43,7 @@
 
 - `accessibilityIdentifier`（优先）：按业务层 identifier **精确匹配，不截断、不做 prefix 匹配**。匹配多个 view 返回 `invalid_data`，避免误触发。
 - `path`：来自 `ui.viewTargets` / `ui.topViewHierarchy` 的只读路径（`root/0/2`），仅描述快照内位置，不写回业务 UI。
-- `snapshotID`（可选，配合 `path`）：携带 `ui.viewTargets` 返回的 `snapshotID` 时，命令会重新采集当前 view 树指纹并逐字段比对（context 类型、path、view 类型、identifier 哈希、role、enabled/selected、hidden、alpha、交互开关）。页面已变动，或 snapshot 已淘汰/过期而无法验证时，均返回 **HTTP 200 + `ok:false` + `invalid_data` + 固定陈旧消息**。不带 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
+- `snapshotID`（可选，配合 `path`）：携带 `ui.viewTargets` 或 `ui.topViewHierarchy` 返回的 `snapshotID` 时，命令会重新采集当前 view 树指纹并逐字段比对（context 类型、path、view 类型、identifier 哈希、enabled/selected、hidden、alpha、交互开关与祖先结构摘要）。页面已变动，或 snapshot 已淘汰/过期而无法验证时，均返回 **HTTP 200 + `ok:false` + `invalid_data` + 固定陈旧消息**。不带 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
 
 ### `ui.topViewHierarchy`
 
@@ -64,7 +64,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":
 - `accessibilityIdentifier`: 按 identifier 精确筛选。
 - `accessibilityIdentifierPrefix`: 按 identifier 前缀筛选。
 
-无筛选时响应 `data.root` 是完整树；带 identifier 筛选时响应 `data.matches` 是匹配节点列表。每个节点包含 `path`、`type`、accessibility 字段、`frame`、`bounds`、`state`、`text`、`appearance`、`control`、`image`、`scroll` 和 `subviews`。
+无筛选时响应 `data.root` 是完整树；带 identifier 筛选时响应 `data.matches` 是匹配节点列表。每个节点包含 `path`、`type`、accessibility 字段、`frame`、`bounds`、`state`、`text`、`appearance`、`control`、`image`、`scroll` 和 `subviews`。响应还含 `snapshotID`（供后续交互命令做陈旧防护）；当可见节点过多、超过指纹上限无法签发时，`snapshotID` 为 `null` 且 `snapshotUnavailableReason="fingerprintLimit"`，该轮交互命令应不带 `snapshotID` 执行。
 
 事件下发前可先用轻量目标发现命令获取扁平 targets 列表：
 
