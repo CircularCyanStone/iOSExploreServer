@@ -334,7 +334,7 @@ public struct UIViewHierarchyScroll: Sendable, Equatable {
 /// `basic` 只保留结构、布局和状态；`appearance` 增加文本、颜色、控件等常见验收字段；
 /// `full` 预留给后续更高成本字段。第一版中 `appearance` 与 `full` 字段集合相同。
 ///
-/// - Note: case 声明顺序即 `CaseIterable.allCases` 顺序，被 `QueryDecoder.enumValue`
+/// - Note: case 声明顺序即 `CaseIterable.allCases` 顺序，被 `CommandFields.enumValue`
 ///   的 "must be one of ..." 错误文案依赖，勿随意重排。
 public enum UIViewHierarchyDetailLevel: String, Sendable, CaseIterable {
     /// 结构、布局和状态。

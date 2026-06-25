@@ -5,7 +5,7 @@ import iOSExploreServer
 ///
 /// 该枚举保持 Foundation-only，UIKit 平台再把它映射为 `UIControl.Event`。
 ///
-/// - Note: case 声明顺序即 `CaseIterable.allCases` 顺序，被 `QueryDecoder.requiredEnum`
+/// - Note: case 声明顺序即 `CaseIterable.allCases` 顺序，被 `CommandFields.requiredEnum`
 ///   的 "must be one of ..." 错误文案依赖，勿随意重排。
 public enum UIControlSendActionEvent: String, Sendable, Equatable, CaseIterable {
     /// 按下控件。
