@@ -14,7 +14,7 @@ enum UIViewTargetsCollector {
     /// - Parameter query: 查询参数，控制包含策略、递归深度、identifier 筛选和文本长度。
     /// - Returns: screen、targetCount、visitedNodeCount 与 targets 的 JSON。
     /// - Throws: `UIKitCommandError.hierarchyUnavailable`——UIKit 上下文不可用时。
-    static func collect(query: UIViewTargetsQuery) throws -> JSON {
+    static func collect(query: UIViewTargetsInput) throws -> JSON {
         UIKitCommandLogging.info("command", "ui view targets collect mainactor start includeHidden=\(query.includeHidden) includeDisabled=\(query.includeDisabled) includeStaticText=\(query.includeStaticText) includeContainers=\(query.includeContainers) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit)")
         let context = try UIKitContextProvider.currentContext(action: ViewTargetsCommand.actionName)
         return collect(query: query, context: context)
@@ -29,7 +29,7 @@ enum UIViewTargetsCollector {
     ///   - query: 查询参数。
     ///   - context: 当前 UIKit 查询上下文。
     /// - Returns: targets 列表 JSON。
-    static func collect(query: UIViewTargetsQuery, context: UIKitContextProvider.Context) -> JSON {
+    static func collect(query: UIViewTargetsInput, context: UIKitContextProvider.Context) -> JSON {
         var visitedNodeCount = 0
         var targets: [UIViewTargetSummary] = []
         var fingerprints: [String: UIKitTargetFingerprint] = [:]
@@ -74,7 +74,7 @@ enum UIViewTargetsCollector {
                                 window: UIWindow,
                                 path: [Int],
                                 depth: Int,
-                                query: UIViewTargetsQuery,
+                                query: UIViewTargetsInput,
                                 visitedNodeCount: inout Int,
                                 targets: inout [UIViewTargetSummary],
                                 fingerprints: inout [String: UIKitTargetFingerprint],
@@ -112,7 +112,7 @@ enum UIViewTargetsCollector {
     }
 
     /// 判断 view 是否符合默认或可选输出策略。
-    private static func shouldInclude(view: UIView, query: UIViewTargetsQuery) -> Bool {
+    private static func shouldInclude(view: UIView, query: UIViewTargetsInput) -> Bool {
         let control = view as? UIControl
         let candidate = UIViewTargetCandidate(
             isHidden: view.isHidden,
@@ -129,7 +129,7 @@ enum UIViewTargetsCollector {
     }
 
     /// 判断当前 view 是否通过 identifier 输出筛选。
-    private static func matchesIdentifier(view: UIView, query: UIViewTargetsQuery) -> Bool {
+    private static func matchesIdentifier(view: UIView, query: UIViewTargetsInput) -> Bool {
         guard query.hasIdentifierFilter else { return true }
         let identifier = view.accessibilityIdentifier
         if let expected = query.accessibilityIdentifier, identifier == expected {
@@ -146,7 +146,7 @@ enum UIViewTargetsCollector {
                                 rootView: UIView,
                                 window: UIWindow,
                                 path: [Int],
-                                query: UIViewTargetsQuery) -> UIViewTargetSummary {
+                                query: UIViewTargetsInput) -> UIViewTargetSummary {
         let control = view as? UIControl
         let frame = view.convert(view.bounds, to: window)
         // identifier 完整保留：它是事件下发的稳定定位键，裁断会让后续 tap/sendAction 失配。

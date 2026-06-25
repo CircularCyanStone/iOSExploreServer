@@ -29,11 +29,11 @@ struct UITapCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的 tap 输入。
     /// - Returns: 成功时返回命中目标与派发方式；失败时返回明确原因。
     func handle(_ input: UITapInput) async throws -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start target=\(input.target.description)")
+        UIKitCommandLogging.info("command", "command \(action) start target=\(input.target.logSummary)")
         do {
             let plan = UIKitActionPlan.tap(locator: input.target.locator, snapshotID: input.snapshotID)
             let data = try await UIKitActionExecutor.execute(plan)
-            UIKitCommandLogging.info("command", "command \(action) completed target=\(input.target.description) dispatchMode=\(data["dispatchMode"]?.stringValue ?? "unknown")")
+            UIKitCommandLogging.info("command", "command \(action) completed target=\(input.target.logSummary) dispatchMode=\(data["dispatchMode"]?.stringValue ?? "unknown")")
             return .success(data)
         } catch let error as UIKitCommandError {
             UIKitCommandLogging.error("command", error.failure.logMessage)

@@ -150,9 +150,6 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     }
 }
 
-/// 保留旧查询类型名，减少 collector 和既有测试的迁移面。
-public typealias UIViewTargetsQuery = UIViewTargetsInput
-
 /// `ui.viewTargets` 输出策略使用的 Foundation-only 候选摘要。
 ///
 /// UIKit 采集器负责把真实 `UIView` 转成该摘要，模型层只根据这些布尔状态执行纯决策，

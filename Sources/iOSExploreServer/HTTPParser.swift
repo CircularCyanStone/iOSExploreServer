@@ -106,16 +106,27 @@ enum HTTPParser {
 
     /// 从 HTTP body 解析出命令请求。
     ///
-    /// body 必须是 JSON 对象并包含字符串类型 `action`。`data` 可省略；如果存在但不是对象，
-    /// 会被当作空对象处理，复杂参数合法性由 `Router` 的参数 schema 校验负责。
-    static func exploreRequest(from body: Data) -> ExploreRequest? {
-        guard let json = JSONCoder.decode(body) else { return nil }
-        guard case .string(let action)? = json["action"] else { return nil }
-        let data: JSON = {
-            if case .object(let o)? = json["data"] { return o }
-            return JSON()
-        }()
-        return ExploreRequest(action: action, data: data)
+    /// body 必须是 JSON 对象并包含字符串类型 `action`。`data` 可省略；如果存在但不是
+    /// JSON 对象（数组、字符串、数字等），返回 `invalidCommandData` 失败——协议要求 `data`
+    /// 是对象，在这里报精确错误，避免调用方传错格式时只收到命令参数层的模糊缺参错误。
+    ///
+    /// - Parameter body: HTTP body 原始字节。
+    /// - Returns: 成功时携带 `ExploreRequest`；失败时携带对应的 `ExploreServerError`。
+    static func exploreRequest(from body: Data) -> Result<ExploreRequest, ExploreServerError> {
+        guard let json = JSONCoder.decode(body) else {
+            return .failure(.invalidCommandBody(bodyBytes: body.count))
+        }
+        guard case .string(let action)? = json["action"] else {
+            return .failure(.invalidCommandBody(bodyBytes: body.count))
+        }
+        switch json["data"] {
+        case nil:
+            return .success(ExploreRequest(action: action, data: JSON()))
+        case .object(let object)?:
+            return .success(ExploreRequest(action: action, data: object))
+        default:
+            return .failure(.invalidCommandData())
+        }
     }
 
     /// 把业务结果包装为统一 HTTP 响应。

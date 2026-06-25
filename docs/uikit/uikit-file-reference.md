@@ -48,14 +48,14 @@
 - **关键点**：命令协议把 JSON 数字统一表示为 `Double`，直接 `Int()` 会在溢出时触发运行时断言；这里先做有限性/整数性/范围校验。`nonNegativeInteger` 与 `integer(in:)` 两个入口。
 - **依赖**：无。
 
-### `QueryParseError.swift` ✅
+### `UIKitLocatorParseError.swift` ✅
 - **职责**：底层 locator/path 文法解析失败的错误类型。
 - **关键点**：命令输入主路径已经迁移到 core `CommandInputParseError`；本类型只保留给 `UIKitViewLookupTarget`、`UIKitLocator` 这类 Foundation-only helper。命令 input 层必须把它转换为 `CommandInputParseError`，再由 `AnyCommand` 转成 `invalid_data` envelope。
 - **依赖**：core `Foundation`。
 
 ### `UIKitCommandFields.swift` ✅
 - **职责**：UIKit 命令复用的 `CommandField` 定义与 locator input helper。
-- **关键点**：`UIKitFilterFields` 只服务查询筛选字段，`UIKitLocatorFields` 只服务交互定位字段，避免同名 key 的 description 被硬套。`UIKitLocatorInput.parse` 通过 core `CommandInputDecoder.read` 读取字段，再复用底层 `UIKitViewLookupTarget.parse`，并把 `QueryParseError` 转成 `CommandInputParseError`。
+- **关键点**：`UIKitFilterFields` 只服务查询筛选字段，`UIKitLocatorFields` 只服务交互定位字段，避免同名 key 的 description 被硬套。`UIKitLocatorInput.parse` 通过 core `CommandInputDecoder.read` 读取字段，再复用底层 `UIKitViewLookupTarget.parse`，并把 `UIKitLocatorParseError` 转成 `CommandInputParseError`。
 - **依赖**：core `CommandFields`/`CommandInputDecoder`/`CommandInputParseError`、`UIKitViewLookupTarget`。
 - **被调用**：`UIViewTargetsInput`、`UIViewHierarchyInput`、`UITapInput`、`UIControlSendActionInput`。
 
@@ -86,7 +86,7 @@
 
 ### `UIKitViewLookupModels.swift` ✅
 - **职责**：UIKit view 的通用定位目标 `UIKitViewLookupTarget`（identifier / path 二选一）。
-- **关键点**：path 文法解析（`root/0/2`）；`identifier` 与 `path` 互斥校验；作为 `UIKitLocator` 的 compatibility wrapper（新代码用 `UIKitLocator`）。**`accessibilityIdentifier` 完整匹配、不截断**。
+- **关键点**：path 文法解析（`root/0/2`）；`identifier` 与 `path` 互斥校验；交互执行前桥接为统一 `UIKitLocator`。**`accessibilityIdentifier` 完整匹配、不截断**。
 - **依赖**：`UIKitLocator`、`UIKitTargetFingerprint.stableHash`（仅日志脱敏用）。
 
 ---
@@ -141,7 +141,7 @@
 ## `Commands/Tap/`（`ui.tap`）
 
 ### `UITapModels.swift` ✅
-- **职责**：`UITapInput` + `UITapTarget`（view 目标 / windowPoint 目标）；`UITapQuery` 只是兼容旧模型名的 typealias。
+- **职责**：`UITapInput` + `UITapTarget`（view 目标 / windowPoint 目标）。
 - **关键点**：conform core `CommandInput`；字段定义同时驱动解析和 `help.inputSchema`。view 目标与坐标目标互斥；`x/y` 必须成对；`coordinateSpace` 第一版仅支持 `window` 且只对坐标目标有效；`snapshotID` 只允许搭配 `path`。
 - **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitViewLookupTarget`、`UIKitLocator`。
 
@@ -155,8 +155,8 @@
 ## `Commands/ControlAction/`（`ui.control.sendAction`）
 
 ### `UIControlSendActionModels.swift` ✅
-- **职责**：`UIControlSendActionInput` + `UIControlSendActionEvent`；`UIControlSendActionQuery` 只是兼容旧模型名的 typealias。
-- **关键点**：conform core `CommandInput`；`event` 必填且来自枚举；`accessibilityIdentifier` 与 `path` 必须二选一；`snapshotID` 只允许搭配 `path`。`UIControlSendActionTarget` 是 `UIKitViewLookupTarget` 的 typealias（兼容旧名）。
+- **职责**：`UIControlSendActionInput` + `UIControlSendActionEvent`。
+- **关键点**：conform core `CommandInput`；`event` 必填且来自枚举；`accessibilityIdentifier` 与 `path` 必须二选一；`snapshotID` 只允许搭配 `path`；目标类型直接使用 `UIKitViewLookupTarget`。
 - **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitViewLookupTarget`。
 
 ### `UIControlSendActionCommand.swift` 🍎
@@ -170,7 +170,7 @@
 
 ### `UIViewHierarchyModels.swift` ✅（最大文件）
 - **职责**：完整层级快照的全部模型——矩形/accessibility/状态/文本/外观/控件/图片/滚动 8 类验收字段 + 查询参数 + `UIViewHierarchyElement` 协议 + `UIViewHierarchyBuilder`。
-- **关键点**：`UIViewHierarchyInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；`UIViewHierarchyQuery` 是兼容旧模型名的 typealias。`UIViewHierarchyElement` 协议把递归/路径/筛选逻辑与 UIKit 解耦（真实采集器和测试 fake 都复用同一套 builder）；`detailLevel`（basic/appearance/full）控制是否输出文本/颜色等高成本字段；支持 identifier 精确/前缀筛选。
+- **关键点**：`UIViewHierarchyInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；`UIViewHierarchyElement` 协议把递归/路径/筛选逻辑与 UIKit 解耦（真实采集器和测试 fake 都复用同一套 builder）；`detailLevel`（basic/appearance/full）控制是否输出文本/颜色等高成本字段；支持 identifier 精确/前缀筛选。
 - **依赖**：core `CommandInput`/`CommandFields`/`JSON`/`JSONValue`、`UIKitCommandFields`。
 
 ### `UIViewHierarchyCollector.swift` 🍎
@@ -188,8 +188,8 @@
 ## `Commands/ViewTargets/`（`ui.viewTargets`）
 
 ### `UIViewTargetsModels.swift` ✅
-- **职责**：轻量目标的全部模型——`UIViewTargetsQuery` + `UIViewTargetCandidate` + `UIViewTargetSummary` + 角色/状态/文本裁剪。
-- **关键点**：`UIViewTargetsInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；`UIViewTargetsQuery` 是兼容旧模型名的 typealias。**`UIViewTargetsInput.shouldInclude` 是目标发现决策核心**，纯 Foundation-only 逻辑。默认包含策略：控件全部包含、有手势/有 identifier/有 label 的可交互节点包含；静态文本与容器默认排除。`maxTargets` 默认 200（上限 512），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本。
+- **职责**：轻量目标的全部模型——`UIViewTargetsInput` + `UIViewTargetCandidate` + `UIViewTargetSummary` + 角色/状态/文本裁剪。
+- **关键点**：`UIViewTargetsInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；**`UIViewTargetsInput.shouldInclude` 是目标发现决策核心**，纯 Foundation-only 逻辑。默认包含策略：控件全部包含、有手势/有 identifier/有 label 的可交互节点包含；静态文本与容器默认排除。`maxTargets` 默认 200（上限 512），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本。
 - **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitSnapshotLimits`、`UIKitActionAvailability`、`UIViewHierarchyRect`。
 
 ### `UIViewTargetsCollector.swift` 🍎

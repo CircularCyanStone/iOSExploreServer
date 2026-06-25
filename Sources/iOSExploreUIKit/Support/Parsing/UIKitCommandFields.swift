@@ -76,7 +76,7 @@ public enum UIKitLocatorInput {
         let rawPath = try decoder.read(pathField)
         do {
             return try UIKitViewLookupTarget.parse(identifier: identifier, rawPath: rawPath)
-        } catch let error as QueryParseError {
+        } catch let error as UIKitLocatorParseError {
             throw CommandInputParseError(error.message)
         }
     }

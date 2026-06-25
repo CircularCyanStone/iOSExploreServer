@@ -190,6 +190,20 @@ struct ExploreServerError: Error, Sendable, Equatable {
                            logMessage: "invalid command body bytes=\(bodyBytes)")
     }
 
+    /// body 的 `data` 字段存在但不是 JSON 对象。
+    ///
+    /// 区别于 `invalidCommandBody`（body 整体非法）：这里 body 是合法 JSON 且含 `action`，
+    /// 但 `data` 写成了数组、字符串或数字。协议要求 `data` 是对象，单独报错让调用方定位
+    /// “是 data 格式错了”，而不是被后续命令参数校验降级成模糊的缺参错误。
+    static func invalidCommandData() -> ExploreServerError {
+        ExploreServerError(category: .http,
+                           httpStatus: 400,
+                           httpReason: "Bad Request",
+                           code: .badRequest,
+                           message: "field 'data' must be a JSON object",
+                           logMessage: "command body field 'data' is not a JSON object")
+    }
+
     /// handler 抛出未转换异常，统一收敛为 `internal_error`。
     static func handlerThrown(action: String, error: Error) -> ExploreServerError {
         ExploreServerError(category: .command,
@@ -198,6 +212,16 @@ struct ExploreServerError: Error, Sendable, Equatable {
                            code: .internalError,
                            message: error.localizedDescription,
                            logMessage: "handler threw action=\(action) error=\(error.localizedDescription)")
+    }
+
+    /// typed input 解析阶段抛出非 `CommandInputParseError`，代表命令实现 bug。
+    static func unexpectedInputParseError(action: String, error: Error) -> ExploreServerError {
+        ExploreServerError(category: .command,
+                           httpStatus: 200,
+                           httpReason: "OK",
+                           code: .internalError,
+                           message: "internal command input parse error",
+                           logMessage: "unexpected parse error action=\(action) error=\(error.localizedDescription)")
     }
 
     /// 没有注册该 action 的 handler。

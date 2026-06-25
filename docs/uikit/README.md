@@ -20,7 +20,7 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 
 ## 贯穿全模块的两条铁律
 
-1. **typed factory**：UIKit 操作必须先在 Foundation-only typed query（如 `UIViewHierarchyQuery`、`UITapQuery`）里解析+校验，通过后才进入 `@MainActor` 域。UIKit 类型绝不穿过 public 边界。
+1. **typed factory**：UIKit 操作必须先在 Foundation-only typed input（如 `UIViewHierarchyInput`、`UITapInput`）里解析+校验，通过后才进入 `@MainActor` 域。UIKit 类型绝不穿过 public 边界。
 2. **`#if canImport(UIKit)`**：碰 UIKit 的文件整体包在该指令内；macOS 编译为空壳，UIKit 行为由 iOS framework 测试覆盖。
 
 ## 相关文档

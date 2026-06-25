@@ -30,7 +30,7 @@ public final class Router: Sendable {
     /// - Parameter command: 已完成 typed input 适配和日志归属配置的命令。
     public func register(_ command: AnyCommand) {
         handlers.withLock { $0[command.action] = command }
-        ExploreLogger.info(.router, "router registered action=\(command.action) schemaFields=\(command.inputSchema.fields.count)")
+        ExploreLogger.info(.router, "router registered action=\(command.action) schemaFields=\(command.inputSchema.fields.count) constraints=\(command.inputSchema.constraints.count)")
     }
 
     /// 注册一个 typed 闭包命令。
@@ -62,7 +62,7 @@ public final class Router: Sendable {
     /// `unknown_action`，输入解析失败和 handler 抛错由 `AnyCommand` 转换为业务失败
     /// envelope。
     func route(_ request: ExploreRequest) async -> ExploreResult {
-        ExploreLogger.debug(.router, "router route start action=\(request.action)")
+        ExploreLogger.debug(.router, "router route start action=\(request.action) payloadKeys=\(request.data.storage.count)")
         let command = handlers.withLock { $0[request.action] }
         guard let command else {
             let error = ExploreServerError.unknownAction(request.action)
@@ -82,10 +82,13 @@ public final class Router: Sendable {
     /// 返回当前已注册命令的元数据快照。
     ///
     /// `help` 命令用它生成工具列表。方法只在锁内读取字典并生成轻量元组，不执行任何
-    /// handler，也不保证返回顺序稳定。
+    /// handler，并按 action 排序，保证 `help` 输出和工具发现结果稳定。
     func commandMetadata() -> [(action: String, description: String, inputSchema: CommandInputSchema)] {
         let metadata = handlers.withLock { dict in
-            dict.values.map { ($0.action, $0.description, $0.inputSchema) }
+            let snapshot: [(action: String, description: String, inputSchema: CommandInputSchema)] = dict.values.map {
+                ($0.action, $0.description, $0.inputSchema)
+            }
+            return snapshot.sorted(by: { lhs, rhs in lhs.action < rhs.action })
         }
         ExploreLogger.debug(.router, "router metadata snapshot count=\(metadata.count)")
         return metadata

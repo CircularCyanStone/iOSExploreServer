@@ -33,7 +33,7 @@ public extension UIKitLocator {
     /// 从请求字段解析统一定位器。
     ///
     /// view 定位（identifier/path）与坐标定位（x/y）互斥；坐标必须成对提供。identifier/path
-    /// 部分复用既有 `UIKitViewLookupTarget.parse` 的文法（保持向后兼容），再映射为本枚举。
+    /// 部分复用 `UIKitViewLookupTarget.parse` 的 identifier/path 文法，再映射为本枚举。
     ///
     /// - Parameters:
     ///   - identifier: accessibilityIdentifier 字段。
@@ -41,16 +41,16 @@ public extension UIKitLocator {
     ///   - x: window 坐标 x，需与 y 同时提供。
     ///   - y: window 坐标 y，需与 x 同时提供。
     /// - Returns: 解析出的定位器。
-    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
+    /// - Throws: `UIKitLocatorParseError`，文案可直接放入 `invalid_data`。
     static func parse(identifier: String?, path: String?, x: Double?, y: Double?) throws -> UIKitLocator {
         let hasViewLocator = identifier != nil || path != nil
         let hasPointLocator = x != nil || y != nil
         if hasViewLocator, hasPointLocator {
-            throw QueryParseError("view locator and window point are mutually exclusive")
+            throw UIKitLocatorParseError("view locator and window point are mutually exclusive")
         }
         if hasPointLocator {
             guard let x, let y else {
-                throw QueryParseError("x and y must be provided together")
+                throw UIKitLocatorParseError("x and y must be provided together")
             }
             return .windowPoint(x: x, y: y)
         }

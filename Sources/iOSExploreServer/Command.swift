@@ -36,8 +36,9 @@ public protocol Command: Sendable {
 
 private enum CommandExecutionOutcome: Sendable {
     case completed(ExploreResult)
-    case parseFailed(message: String)
-    case handlerFailed(message: String, logMessage: String)
+    case parseFailed(ExploreServerError)
+    case parseUnexpected(ExploreServerError)
+    case handlerFailed(ExploreServerError)
 }
 
 /// 类型擦除后的命令。
@@ -71,15 +72,18 @@ public struct AnyCommand: Sendable {
         self.inputSchema = C.Input.inputSchema
         self.logCategory = logCategory
         self.executor = { request in
+            let input: C.Input
             do {
-                let input = try C.Input.parse(from: request.data)
-                let result = try await command.handle(input)
-                return .completed(result)
+                input = try C.Input.parse(from: request.data)
             } catch let error as CommandInputParseError {
-                return .parseFailed(message: error.message)
+                return .parseFailed(ExploreServerError.invalidData(action: command.action, message: error.message))
             } catch {
-                let serverError = ExploreServerError.handlerThrown(action: command.action, error: error)
-                return .handlerFailed(message: serverError.message, logMessage: serverError.logMessage)
+                return .parseUnexpected(ExploreServerError.unexpectedInputParseError(action: command.action, error: error))
+            }
+            do {
+                return .completed(try await command.handle(input))
+            } catch {
+                return .handlerFailed(ExploreServerError.handlerThrown(action: command.action, error: error))
             }
         }
     }
@@ -102,15 +106,18 @@ public struct AnyCommand: Sendable {
         self.inputSchema = Input.inputSchema
         self.logCategory = logCategory
         self.executor = { request in
+            let inputValue: Input
             do {
-                let input = try Input.parse(from: request.data)
-                let result = try await handler(input)
-                return .completed(result)
+                inputValue = try Input.parse(from: request.data)
             } catch let error as CommandInputParseError {
-                return .parseFailed(message: error.message)
+                return .parseFailed(ExploreServerError.invalidData(action: action, message: error.message))
             } catch {
-                let serverError = ExploreServerError.handlerThrown(action: action, error: error)
-                return .handlerFailed(message: serverError.message, logMessage: serverError.logMessage)
+                return .parseUnexpected(ExploreServerError.unexpectedInputParseError(action: action, error: error))
+            }
+            do {
+                return .completed(try await handler(inputValue))
+            } catch {
+                return .handlerFailed(ExploreServerError.handlerThrown(action: action, error: error))
             }
         }
     }
@@ -123,17 +130,20 @@ public struct AnyCommand: Sendable {
     /// - Parameter request: 已由 HTTP 层解析出的命令请求。
     /// - Returns: 业务成功或失败 envelope 的中间结果。
     public func handle(_ request: ExploreRequest) async -> ExploreResult {
-        emit(.debug, "command \(action) start schemaFields=\(inputSchema.fields.count)")
+        emit(.debug, "command \(action) start schemaFields=\(inputSchema.fields.count) payloadKeys=\(request.data.storage.count)")
         switch await executor(request) {
         case .completed(let result):
             logCompleted(result)
             return result
-        case .parseFailed(let message):
-            emit(.error, "command \(action) parse failed schemaFields=\(inputSchema.fields.count) error=\(message)")
-            return .failure(code: .invalidData, message: message)
-        case .handlerFailed(let message, let logMessage):
-            emit(.error, "command \(action) failed code=\(ExploreError.internalError.rawValue) message=\(logMessage)")
-            return .failure(code: .internalError, message: message)
+        case .parseFailed(let error):
+            emit(.error, "command \(action) parse failed code=\(error.code.rawValue) message=\(error.logMessage)")
+            return .failure(code: error.code, message: error.message)
+        case .parseUnexpected(let error):
+            emit(.error, "command \(action) parse unexpected code=\(error.code.rawValue) message=\(error.logMessage)")
+            return .failure(code: error.code, message: error.message)
+        case .handlerFailed(let error):
+            emit(.error, "command \(action) failed code=\(error.code.rawValue) message=\(error.logMessage)")
+            return .failure(code: error.code, message: error.message)
         }
     }
 

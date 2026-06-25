@@ -55,7 +55,7 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     )
 
     /// 目标控件定位方式。
-    public let target: UIControlSendActionTarget
+    public let target: UIKitViewLookupTarget
     /// 要发送的 UIControl 事件。
     public let event: UIControlSendActionEvent
     /// 可选的快照标识，用于对 `.path` 定位做陈旧校验。
@@ -67,7 +67,7 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     ///   - target: 目标控件定位方式。
     ///   - event: 要发送的 UIControl 事件。
     ///   - snapshotID: 可选 snapshotID，默认 nil。
-    public init(target: UIControlSendActionTarget, event: UIControlSendActionEvent, snapshotID: String? = nil) {
+    public init(target: UIKitViewLookupTarget, event: UIControlSendActionEvent, snapshotID: String? = nil) {
         self.target = target
         self.event = event
         self.snapshotID = snapshotID
@@ -91,6 +91,3 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
         return UIControlSendActionInput(target: target, event: event, snapshotID: snapshotID)
     }
 }
-
-/// 保留旧查询类型名，减少 executor 和既有测试的迁移面。
-public typealias UIControlSendActionQuery = UIControlSendActionInput

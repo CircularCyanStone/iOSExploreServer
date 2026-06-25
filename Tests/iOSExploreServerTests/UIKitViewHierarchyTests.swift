@@ -83,7 +83,7 @@ func viewHierarchyBuilderHonorsMaxDepth() {
     ])
 
     let node = UIViewHierarchyBuilder.build(from: root,
-                                            query: UIViewHierarchyQuery(maxDepth: 1))
+                                            query: UIViewHierarchyInput(maxDepth: 1))
 
     #expect(node.subviews.count == 1)
     #expect(node.subviews[0].path == "root/0")
@@ -117,19 +117,19 @@ func viewHierarchyBuilderFiltersByAccessibilityIdentifier() {
     ])
 
     let exact = UIViewHierarchyBuilder.matches(in: root,
-                                               query: UIViewHierarchyQuery(accessibilityIdentifier: "mine.header.avatar"))
+                                               query: UIViewHierarchyInput(accessibilityIdentifier: "mine.header.avatar"))
     #expect(exact.map(\.type) == ["Avatar"])
     #expect(exact.first?.path == "root/0")
 
     let prefixed = UIViewHierarchyBuilder.matches(in: root,
-                                                  query: UIViewHierarchyQuery(accessibilityIdentifierPrefix: "mine."))
+                                                  query: UIViewHierarchyInput(accessibilityIdentifierPrefix: "mine."))
     #expect(prefixed.map(\.type) == ["Avatar", "Settings"])
     #expect(prefixed.map(\.path) == ["root/0", "root/1"])
 }
 
-@Test("UIViewHierarchyQuery 从命令 data 解析详情级别和筛选参数")
+@Test("UIViewHierarchyInput 从命令 data 解析详情级别和筛选参数")
 func viewHierarchyQueryParsesCommandData() throws {
-    let query = try UIViewHierarchyQuery.parse(from: [
+    let query = try UIViewHierarchyInput.parse(from: [
         "detailLevel": "full",
         "maxDepth": 3,
         "includeHidden": true,
@@ -142,7 +142,7 @@ func viewHierarchyQueryParsesCommandData() throws {
     #expect(query.accessibilityIdentifierPrefix == "mine.")
 
     #expect(throws: CommandInputParseError.self) {
-        try UIViewHierarchyQuery.parse(from: ["detailLevel": "unknown"])
+        try UIViewHierarchyInput.parse(from: ["detailLevel": "unknown"])
     }
 }
 
@@ -158,10 +158,10 @@ func viewHierarchyInputSchemaUsesExpectedFieldOrder() {
 }
 
 #if !canImport(UIKit)
-@Test("UIViewHierarchyQuery 拒绝无法安全转换为 Int 的 maxDepth")
+@Test("UIViewHierarchyInput 拒绝无法安全转换为 Int 的 maxDepth")
 func viewHierarchyQueryRejectsOutOfRangeMaxDepth() {
     #expect(throws: CommandInputParseError.self) {
-        try UIViewHierarchyQuery.parse(from: [
+        try UIViewHierarchyInput.parse(from: [
             "maxDepth": .double(Double.greatestFiniteMagnitude),
         ])
     }

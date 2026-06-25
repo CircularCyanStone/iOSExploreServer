@@ -148,6 +148,35 @@ func optionalNonNegativeIntSchemaOutputsSafeIntegerMaximum() throws {
     #expect(limit["maximum"]?.doubleValue == 9_007_199_254_740_991)
 }
 
+@Test("exactlyOneOf 与 oneOf(branches) 共存时用 allOf 嵌套,不静默覆盖")
+func commandInputSchemaMixesExactlyOneOfAndOneOfBranches() throws {
+    let schema = CommandInputSchema(fields: [
+        CommandFields.optionalString("a", description: "a").erased,
+        CommandFields.optionalString("b", description: "b").erased,
+        CommandFields.optionalString("x", description: "x").erased,
+        CommandFields.optionalString("y", description: "y").erased,
+    ], constraints: [
+        .exactlyOneOf(["a", "b"]),
+        .oneOf([CommandInputOneOfBranch(required: ["x", "y"])]),
+    ])
+    let json = schema.toJSON()
+
+    // 两个 oneOf 单元必须用 allOf 嵌套,不能让后写单元覆盖顶层 oneOf。
+    guard case .array(let allOf)? = json["allOf"] else {
+        Issue.record("allOf missing when exactlyOneOf and oneOf(branches) coexist")
+        return
+    }
+    #expect(allOf.count == 2)
+    let oneOfCounts = allOf.compactMap { element -> Int? in
+        guard case .object(let obj) = element,
+              case .array(let oneOf)? = obj["oneOf"] else { return nil }
+        return oneOf.count
+    }
+    #expect(oneOfCounts == [2, 1])
+    // 不应残留被覆盖的顶层 oneOf。
+    #expect(json["oneOf"] == nil)
+}
+
 private func schemaProperties(_ json: JSON) throws -> JSON {
     guard case .object(let properties)? = json["properties"] else {
         throw CommandInputSchemaError("properties not object")

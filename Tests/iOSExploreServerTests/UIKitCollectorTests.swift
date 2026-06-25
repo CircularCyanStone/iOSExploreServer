@@ -72,7 +72,7 @@ func topViewHierarchyCollectsTreeInContext() throws {
         root.addSubview(button)
     }
 
-    let query = try UIViewHierarchyQuery.parse(from: [:])
+    let query = try UIViewHierarchyInput.parse(from: [:])
 
     let data = UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
     #expect(data["snapshotID"]?.stringValue != nil)

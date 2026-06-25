@@ -428,9 +428,6 @@ public struct UIViewHierarchyInput: CommandInput, Sendable, Equatable {
     }
 }
 
-/// 保留旧查询类型名，减少 collector 和既有测试的迁移面。
-public typealias UIViewHierarchyQuery = UIViewHierarchyInput
-
 /// 可被 `UIViewHierarchyBuilder` 转换为层级节点的抽象 UI 元素。
 ///
 /// 该协议让核心递归、路径生成和筛选逻辑脱离 UIKit；真实 UIKit 采集器和测试 fake 元素
@@ -575,7 +572,7 @@ public enum UIViewHierarchyBuilder {
     ///   - query: 采集参数。
     /// - Returns: 根节点。
     public static func build<Element: UIViewHierarchyElement>(from element: Element,
-                                                              query: UIViewHierarchyQuery) -> UIViewHierarchyNode {
+                                                              query: UIViewHierarchyInput) -> UIViewHierarchyNode {
         build(from: element, query: query, path: "root", depth: 0)
     }
 
@@ -586,7 +583,7 @@ public enum UIViewHierarchyBuilder {
     ///   - query: 筛选参数。
     /// - Returns: 按遍历顺序排列的匹配节点。
     public static func matches<Element: UIViewHierarchyElement>(in element: Element,
-                                                               query: UIViewHierarchyQuery) -> [UIViewHierarchyNode] {
+                                                               query: UIViewHierarchyInput) -> [UIViewHierarchyNode] {
         let root = build(from: element, query: query)
         var results: [UIViewHierarchyNode] = []
         collectMatches(from: root, query: query, into: &results)
@@ -595,7 +592,7 @@ public enum UIViewHierarchyBuilder {
 
     /// 递归构建节点。
     private static func build<Element: UIViewHierarchyElement>(from element: Element,
-                                                              query: UIViewHierarchyQuery,
+                                                              query: UIViewHierarchyInput,
                                                               path: String,
                                                               depth: Int) -> UIViewHierarchyNode {
         let childNodes: [UIViewHierarchyNode]
@@ -627,7 +624,7 @@ public enum UIViewHierarchyBuilder {
 
     /// 收集匹配节点。
     private static func collectMatches(from node: UIViewHierarchyNode,
-                                       query: UIViewHierarchyQuery,
+                                       query: UIViewHierarchyInput,
                                        into results: inout [UIViewHierarchyNode]) {
         if matches(node, query: query) {
             results.append(node)
@@ -638,7 +635,7 @@ public enum UIViewHierarchyBuilder {
     }
 
     /// 判断节点是否符合 identifier 条件。
-    private static func matches(_ node: UIViewHierarchyNode, query: UIViewHierarchyQuery) -> Bool {
+    private static func matches(_ node: UIViewHierarchyNode, query: UIViewHierarchyInput) -> Bool {
         guard query.hasIdentifierFilter else { return true }
         let identifier = node.accessibility.identifier
         if let expected = query.accessibilityIdentifier, identifier == expected {

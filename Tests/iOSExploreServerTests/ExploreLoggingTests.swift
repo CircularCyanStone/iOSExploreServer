@@ -82,13 +82,58 @@ struct ExploreLoggingTests {
         _ = await router.route(ExploreRequest(action: "boom"))
 
         let messages = records.withLock { $0.map(\.message) }
-        #expect(messages.contains("router registered action=ok schemaFields=0"))
-        #expect(messages.contains("router registered action=boom schemaFields=0"))
-        #expect(messages.contains("router route start action=ok"))
+        #expect(messages.contains("router registered action=ok schemaFields=0 constraints=0"))
+        #expect(messages.contains("router registered action=boom schemaFields=0 constraints=0"))
+        #expect(messages.contains("router route start action=ok payloadKeys=0"))
         #expect(messages.contains("router route success action=ok"))
         #expect(messages.contains("router route failed category=command message=unknown action=missing"))
         #expect(messages.contains { $0.hasPrefix("command boom failed code=internal_error message=handler threw action=boom") })
         #expect(messages.contains { $0.hasPrefix("router route business failure action=boom code=internal_error") })
+    }
+
+    @Test("AnyCommand 解析失败日志走统一错误工厂语义")
+    func commandParseFailuresUseErrorFactoryDiagnostics() async {
+        ExploreLogging.resetForTesting()
+        let records = Mutex<[ExploreLogRecord]>([])
+        ExploreLogging.setSinkForTesting { record in
+            records.withLock { $0.append(record) }
+        }
+        ExploreLogging.setEnabled(true)
+        defer { ExploreLogging.resetForTesting() }
+
+        struct NameInput: CommandInput {
+            static let name = CommandFields.requiredString("name", description: "名字")
+            static let inputSchema = CommandInputSchema(fields: [name.erased])
+
+            static func parse(decoding decoder: inout CommandInputDecoder) throws -> NameInput {
+                _ = try decoder.read(name)
+                return NameInput()
+            }
+        }
+        struct BrokenInput: CommandInput {
+            struct Boom: Error {}
+            static let inputSchema = CommandInputSchema.empty
+
+            static func parse(from data: JSON) throws -> BrokenInput { throw Boom() }
+            static func parse(decoding decoder: inout CommandInputDecoder) throws -> BrokenInput {
+                BrokenInput()
+            }
+        }
+
+        let router = Router()
+        router.register(action: "needsName", input: NameInput.self) { _ in .success([:]) }
+        router.register(action: "brokenParse", input: BrokenInput.self) { _ in .success([:]) }
+
+        _ = await router.route(ExploreRequest(action: "needsName"))
+        _ = await router.route(ExploreRequest(action: "brokenParse"))
+
+        let messages = records.withLock { $0.map(\.message) }
+        #expect(messages.contains {
+            $0.hasPrefix("command needsName parse failed code=invalid_data message=invalid data action=needsName")
+        })
+        #expect(messages.contains {
+            $0.hasPrefix("command brokenParse parse unexpected code=internal_error message=unexpected parse error action=brokenParse")
+        })
     }
 
     @Test("扩展日志进入既有 sink")

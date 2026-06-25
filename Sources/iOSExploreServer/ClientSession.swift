@@ -259,8 +259,11 @@ final class ClientSession: Sendable {
             return
         }
 
-        guard let exploreReq = HTTPParser.exploreRequest(from: request.body) else {
-            let error = ExploreServerError.invalidCommandBody(bodyBytes: request.body.count)
+        let exploreReq: ExploreRequest
+        switch HTTPParser.exploreRequest(from: request.body) {
+        case .success(let req):
+            exploreReq = req
+        case .failure(let error):
             ExploreLogger.error(.http, "http rejected session=\(sessionID) message=\(error.logMessage)")
             await send(HTTPParser.errorResponse(for: error), closeReason: "bad_request")
             onEvent(.responded(status: 400, ok: false))

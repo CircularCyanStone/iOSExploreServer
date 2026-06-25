@@ -48,7 +48,11 @@ public extension CommandInput {
     static func parse(from data: JSON) throws -> Self {
         var decoder = CommandInputDecoder(data, schema: inputSchema)
         try decoder.validateNoUnknownFields()
-        return try parse(decoding: &decoder)
+        let value = try parse(decoding: &decoder)
+        // 守卫：所有声明字段都必须在 parse(decoding:) 中被读取，避免“schema 暴露了字段
+        // 但 parse 没读、调用方传值永远不生效”的静默漂移。详见 CommandInputDecoder。
+        try decoder.assertAllDeclaredFieldsRead()
+        return value
     }
 }
 

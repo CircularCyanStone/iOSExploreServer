@@ -62,16 +62,16 @@ struct UIKitLocatorTests {
     }
 }
 
-/// 断言 parse 闭包抛出 `QueryParseError` 且对外文案精确匹配。
+/// 断言 parse 闭包抛出 `UIKitLocatorParseError` 且对外文案精确匹配。
 ///
 /// 保留对错误消息字符串的断言，确保 `invalid_data` envelope 文案不随重构漂移。
 private func expectQueryFailure<T>(_ message: String, _ body: () throws -> T) {
     do {
         _ = try body()
         Issue.record("expected parse failure: \(message)")
-    } catch let error as QueryParseError {
+    } catch let error as UIKitLocatorParseError {
         #expect(error.message == message)
     } catch {
-        Issue.record("expected QueryParseError, got: \(error)")
+        Issue.record("expected UIKitLocatorParseError, got: \(error)")
     }
 }

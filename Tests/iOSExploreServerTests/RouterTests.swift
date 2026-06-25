@@ -134,3 +134,14 @@ func commandMetadataIncludesInputSchemaProperties() {
     }
     #expect(order == [JSONValue.string("name")])
 }
+
+@Test("metadata 按 action 稳定排序")
+func commandMetadataSortsByAction() {
+    let router = Router()
+    router.register(action: "z.last", input: EmptyCommandInput.self) { _ in .success([:]) }
+    router.register(action: "a.first", input: EmptyCommandInput.self) { _ in .success([:]) }
+
+    let actions = router.commandMetadata().map(\.action)
+
+    #expect(actions == ["a.first", "z.last"])
+}

@@ -76,8 +76,8 @@ func unknownSnapshotIsStale() {
 
 @Test("交互命令解析可选 snapshotID")
 func actionQueriesParseSnapshotID() throws {
-    #expect(try UITapQuery.parse(from: ["path": "root/0", "snapshotID": "s1"]).snapshotID == "s1")
-    #expect(try UIControlSendActionQuery.parse(from: ["path": "root/0", "event": "touchUpInside", "snapshotID": "s1"]).snapshotID == "s1")
+    #expect(try UITapInput.parse(from: ["path": "root/0", "snapshotID": "s1"]).snapshotID == "s1")
+    #expect(try UIControlSendActionInput.parse(from: ["path": "root/0", "event": "touchUpInside", "snapshotID": "s1"]).snapshotID == "s1")
 }
 
 @Test("snapshot 签发成功映射 snapshotID 字段且原因为 null")

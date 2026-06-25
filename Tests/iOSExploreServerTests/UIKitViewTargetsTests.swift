@@ -2,9 +2,9 @@ import Testing
 @testable import iOSExploreServer
 @testable import iOSExploreUIKit
 
-@Test("UIViewTargetsQuery 解析默认值和筛选参数")
+@Test("UIViewTargetsInput 解析默认值和筛选参数")
 func viewTargetsQueryParsesDefaultsAndFilters() throws {
-    let query = try UIViewTargetsQuery.parse(from: [
+    let query = try UIViewTargetsInput.parse(from: [
         "includeHidden": true,
         "includeDisabled": false,
         "includeStaticText": true,
@@ -38,20 +38,20 @@ func viewTargetsInputSchemaUsesExpectedFieldOrder() {
     ])
 }
 
-@Test("UIViewTargetsQuery 拒绝非法 maxDepth 和 textLimit")
+@Test("UIViewTargetsInput 拒绝非法 maxDepth 和 textLimit")
 func viewTargetsQueryRejectsInvalidNumbers() {
-    #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: ["maxDepth": -1]) }
-    #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: ["maxDepth": 1.5]) }
-    #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: ["textLimit": 201]) }
-    #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: ["textLimit": 0]) }
+    #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: ["maxDepth": -1]) }
+    #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: ["maxDepth": 1.5]) }
+    #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: ["textLimit": 201]) }
+    #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: ["textLimit": 0]) }
 }
 
-@Test("UIViewTargetsQuery 解析 maxTargets 默认值和边界")
+@Test("UIViewTargetsInput 解析 maxTargets 默认值和边界")
 func viewTargetsQueryParsesMaxTargets() throws {
-    let defaultQuery = try UIViewTargetsQuery.parse(from: [:])
+    let defaultQuery = try UIViewTargetsInput.parse(from: [:])
     #expect(defaultQuery.maxTargets == 200)
 
-    let maximumQuery = try UIViewTargetsQuery.parse(from: ["maxTargets": 512])
+    let maximumQuery = try UIViewTargetsInput.parse(from: ["maxTargets": 512])
     #expect(maximumQuery.maxTargets == 512)
 
     for invalid: JSON in [
@@ -60,34 +60,34 @@ func viewTargetsQueryParsesMaxTargets() throws {
         ["maxTargets": 1.5],
         ["maxTargets": .double(Double.greatestFiniteMagnitude)],
     ] {
-        #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: invalid) }
+        #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: invalid) }
     }
 }
 
 #if !canImport(UIKit)
-@Test("UIViewTargetsQuery 拒绝无法安全转换为 Int 的数值")
+@Test("UIViewTargetsInput 拒绝无法安全转换为 Int 的数值")
 func viewTargetsQueryRejectsOutOfRangeNumbers() {
     for data: JSON in [
         ["maxDepth": .double(Double.greatestFiniteMagnitude)],
         ["textLimit": .double(Double.greatestFiniteMagnitude)],
     ] {
-        #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: data) }
+        #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: data) }
     }
 }
 #endif
 
-@Test("UIViewTargetsQuery include 策略覆盖可交互和可选节点")
+@Test("UIViewTargetsInput include 策略覆盖可交互和可选节点")
 func viewTargetsQueryShouldIncludeCandidates() {
-    let defaultQuery = UIViewTargetsQuery.default
+    let defaultQuery = UIViewTargetsInput.default
 
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isControl: true)) == true)
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isControl: true, isEnabled: false)) == true)
-    #expect(UIViewTargetsQuery(includeDisabled: false).shouldInclude(candidate: .testCandidate(isControl: true, isEnabled: false)) == false)
+    #expect(UIViewTargetsInput(includeDisabled: false).shouldInclude(candidate: .testCandidate(isControl: true, isEnabled: false)) == false)
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isHidden: true, isControl: true)) == false)
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(hasStaticText: true)) == false)
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(hasSubviews: true)) == false)
-    #expect(UIViewTargetsQuery(includeStaticText: true).shouldInclude(candidate: .testCandidate(hasStaticText: true)) == true)
-    #expect(UIViewTargetsQuery(includeContainers: true).shouldInclude(candidate: .testCandidate(hasSubviews: true)) == true)
+    #expect(UIViewTargetsInput(includeStaticText: true).shouldInclude(candidate: .testCandidate(hasStaticText: true)) == true)
+    #expect(UIViewTargetsInput(includeContainers: true).shouldInclude(candidate: .testCandidate(hasSubviews: true)) == true)
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isUserInteractionEnabled: true, hasGestureRecognizers: true)) == true)
 }
 

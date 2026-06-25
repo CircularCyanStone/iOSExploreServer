@@ -173,7 +173,7 @@ public enum CommandFields {
                                                 required: false,
                                                 description: description,
                                                 defaultValue: .bool(value))) { raw in
-            guard let raw = raw else { return value }
+            guard let raw = raw, raw != .null else { return value }
             guard let parsed = raw.boolValue else {
                 throw CommandInputParseError("\(name) must be a boolean")
             }
@@ -293,7 +293,7 @@ public enum CommandFields {
                                                        defaultValue: .double(Double(value)),
                                                        minimum: schemaMinimum,
                                                        maximum: schemaMaximum)) { raw in
-            guard let raw = raw else { return value }
+            guard let raw = raw, raw != .null else { return value }
             guard let parsed = try parseInteger(raw, name: name), range.contains(parsed) else {
                 throw CommandInputParseError("\(name) must be an integer between \(range.lowerBound) and \(range.upperBound)")
             }
@@ -301,7 +301,7 @@ public enum CommandFields {
         }
     }
 
-    /// 字符串枚举字段：缺失使用默认值，存在但为 null 或不在枚举 rawValue 集合中抛出解析错误。
+    /// 字符串枚举字段：缺失或 null 使用默认值，不在枚举 rawValue 集合中抛出解析错误。
     ///
     /// - Parameters:
     ///   - name: 字段名。
@@ -321,7 +321,7 @@ public enum CommandFields {
                                                        description: description,
                                                        defaultValue: .string(value.rawValue),
                                                        enumValues: enumValues)) { raw in
-            guard let raw = raw else { return value }
+            guard let raw = raw, raw != .null else { return value }
             guard let string = raw.stringValue, enumValues.contains(string), let parsed = E(rawValue: string) else {
                 throw CommandInputParseError("\(name) must be one of \(enumValues.joined(separator: ", "))")
             }

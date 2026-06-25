@@ -20,11 +20,23 @@ public enum UITapTarget: Sendable, Equatable {
         }
     }
 
+    /// 用于日志的脱敏摘要。
+    ///
+    /// identifier 定位只记录稳定 hash 与长度，避免把业务输入全文写入日志；坐标目标只记录
+    /// 数值摘要，便于排查 hit-test。
+    public var logSummary: String {
+        switch self {
+        case .view(let target):
+            return target.logSummary
+        case .windowPoint(let x, let y):
+            return "windowPoint=(\(x),\(y))"
+        }
+    }
+
     /// 转换为 `UIKitActionPlan.tap` 所需的统一定位器。
     ///
-    /// 既有 `UITapQuery` 持有 `UIKitViewLookupTarget`（identifier/path 兼容文法），构造
-    /// `UIKitActionPlan` 前经本属性桥接为 `UIKitLocator`，交由 executor 解析。windowPoint
-    /// 直接透传坐标。
+    /// view 目标持有 `UIKitViewLookupTarget`（identifier/path 文法），构造 `UIKitActionPlan`
+    /// 前经本属性桥接为 `UIKitLocator`，交由 executor 解析。windowPoint 直接透传坐标。
     public var locator: UIKitLocator {
         switch self {
         case .view(let target):
@@ -73,6 +85,20 @@ public struct UITapInput: CommandInput, Sendable, Equatable {
     public static let inputSchema = CommandInputSchema(
         fields: Fields.all,
         constraints: [
+            .oneOf([
+                CommandInputOneOfBranch(
+                    required: ["accessibilityIdentifier"],
+                    forbiddenAnyOf: [["path"], ["snapshotID"], ["x"], ["y"], ["coordinateSpace"]]
+                ),
+                CommandInputOneOfBranch(
+                    required: ["path"],
+                    forbiddenAnyOf: [["accessibilityIdentifier"], ["x"], ["y"], ["coordinateSpace"]]
+                ),
+                CommandInputOneOfBranch(
+                    required: ["x", "y"],
+                    forbiddenAnyOf: [["accessibilityIdentifier"], ["path"], ["snapshotID"]]
+                ),
+            ]),
             .extensionMessage("snapshotID is valid only with path"),
             .extensionMessage("coordinateSpace currently supports only window"),
         ]
@@ -128,7 +154,7 @@ public struct UITapInput: CommandInput, Sendable, Equatable {
             }
             return UITapInput(target: .windowPoint(x: x, y: y), snapshotID: nil)
         }
-        if hasPath, hasCoordinateSpace {
+        if hasCoordinateSpace, !hasPointTarget {
             throw CommandInputParseError("coordinateSpace is valid only with window point")
         }
         if snapshotID != nil, !hasPath {
@@ -138,7 +164,7 @@ public struct UITapInput: CommandInput, Sendable, Equatable {
         do {
             let target = try UIKitViewLookupTarget.parse(identifier: accessibilityIdentifier, rawPath: rawPath)
             return UITapInput(target: .view(target), snapshotID: snapshotID)
-        } catch let error as QueryParseError {
+        } catch let error as UIKitLocatorParseError {
             throw CommandInputParseError(error.message)
         }
     }
@@ -152,6 +178,3 @@ public enum UITapCoordinateSpace: String, Sendable, Equatable, CaseIterable {
     /// UIKit window 坐标系。
     case window
 }
-
-/// 保留旧查询类型名，减少 executor 和既有测试的迁移面。
-public typealias UITapQuery = UITapInput

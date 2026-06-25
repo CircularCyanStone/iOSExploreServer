@@ -6,7 +6,7 @@ func commandInputDecoderReadsFields() throws {
     let name = CommandFields.requiredString("name", description: "名字")
     let enabled = CommandFields.bool("enabled", default: true, description: "启用")
     let schema = CommandInputSchema(fields: [name.erased, enabled.erased])
-    let decoder = CommandInputDecoder(["name": "Ada"], schema: schema)
+    var decoder = CommandInputDecoder(["name": "Ada"], schema: schema)
     try decoder.validateNoUnknownFields()
 
     #expect(try decoder.read(name) == "Ada")
@@ -24,7 +24,7 @@ func commandInputDecoderRejectsUnknownAndUndeclaredFields() throws {
         try unknownDecoder.validateNoUnknownFields()
     }
 
-    let decoder = CommandInputDecoder([:], schema: schema)
+    var decoder = CommandInputDecoder([:], schema: schema)
     #expect(throws: CommandInputParseError.self) {
         _ = try decoder.read(undeclared)
     }
@@ -35,7 +35,7 @@ func commandInputDecoderRejectsSchemaMismatchForSameName() throws {
     let declared = CommandFields.optionalString("value", description: "字符串值")
     let mismatched = CommandFields.int("value", range: 1...10, default: 3, description: "整数值")
     let schema = CommandInputSchema(fields: [declared.erased])
-    let decoder = CommandInputDecoder(["value": 5], schema: schema)
+    var decoder = CommandInputDecoder(["value": 5], schema: schema)
 
     #expect(throws: CommandInputParseError.self) {
         _ = try decoder.read(mismatched)
@@ -51,23 +51,23 @@ func commandInputDecoderValidatesNumberIntegerEnum() throws {
     let mode = CommandFields.enumValue("mode", type: Mode.self, default: .window, description: "模式")
     let schema = CommandInputSchema(fields: [x.erased, count.erased, mode.erased])
 
-    let ok = CommandInputDecoder(["x": 3.5, "count": 3, "mode": "window"], schema: schema)
+    var ok = CommandInputDecoder(["x": 3.5, "count": 3, "mode": "window"], schema: schema)
     #expect(try ok.read(x) == 3.5)
     #expect(try ok.read(count) == 3)
     #expect(try ok.read(mode) == .window)
 
-    let nonInteger = CommandInputDecoder(["count": 1.5], schema: schema)
+    var nonInteger = CommandInputDecoder(["count": 1.5], schema: schema)
     #expect(throws: CommandInputParseError.self) { _ = try nonInteger.read(count) }
 
-    let outOfRange = CommandInputDecoder(["count": 4], schema: schema)
+    var outOfRange = CommandInputDecoder(["count": 4], schema: schema)
     #expect(throws: CommandInputParseError.self) { _ = try outOfRange.read(count) }
 
-    let badEnum = CommandInputDecoder(["mode": "screen"], schema: schema)
+    var badEnum = CommandInputDecoder(["mode": "screen"], schema: schema)
     #expect(throws: CommandInputParseError.self) { _ = try badEnum.read(mode) }
 }
 
-@Test("CommandInputDecoder 默认值字段拒绝显式 null")
-func commandInputDecoderRejectsNullForDefaultBackedFields() throws {
+@Test("CommandInputDecoder 默认值字段把显式 null 当作缺失")
+func commandInputDecoderTreatsNullAsMissingForDefaultBackedFields() throws {
     enum Mode: String, CaseIterable, Sendable { case window }
 
     let enabled = CommandFields.bool("enabled", default: true, description: "启用")
@@ -75,14 +75,14 @@ func commandInputDecoderRejectsNullForDefaultBackedFields() throws {
     let mode = CommandFields.enumValue("mode", type: Mode.self, default: .window, description: "模式")
     let schema = CommandInputSchema(fields: [enabled.erased, count.erased, mode.erased])
 
-    let nullBool = CommandInputDecoder(["enabled": nil], schema: schema)
-    #expect(throws: CommandInputParseError.self) { _ = try nullBool.read(enabled) }
+    var nullBool = CommandInputDecoder(["enabled": nil], schema: schema)
+    #expect(try nullBool.read(enabled) == true)
 
-    let nullInt = CommandInputDecoder(["count": nil], schema: schema)
-    #expect(throws: CommandInputParseError.self) { _ = try nullInt.read(count) }
+    var nullInt = CommandInputDecoder(["count": nil], schema: schema)
+    #expect(try nullInt.read(count) == 2)
 
-    let nullEnum = CommandInputDecoder(["mode": nil], schema: schema)
-    #expect(throws: CommandInputParseError.self) { _ = try nullEnum.read(mode) }
+    var nullEnum = CommandInputDecoder(["mode": nil], schema: schema)
+    #expect(try nullEnum.read(mode) == .window)
 }
 
 @Test("CommandInputDecoder 拒绝超过 JSON safe integer 的整数")
@@ -90,13 +90,13 @@ func commandInputDecoderRejectsUnsafeIntegerValue() throws {
     let count = CommandFields.int("count", range: 0...Int.max, default: 0, description: "数量")
     let limit = CommandFields.optionalNonNegativeInt("limit", description: "限制")
     let schema = CommandInputSchema(fields: [count.erased, limit.erased])
-    let decoder = CommandInputDecoder(["count": 9_007_199_254_740_992], schema: schema)
 
+    var decoder = CommandInputDecoder(["count": 9_007_199_254_740_992], schema: schema)
     #expect(throws: CommandInputParseError.self) {
         _ = try decoder.read(count)
     }
 
-    let optionalDecoder = CommandInputDecoder(["limit": 9_007_199_254_740_992], schema: schema)
+    var optionalDecoder = CommandInputDecoder(["limit": 9_007_199_254_740_992], schema: schema)
     #expect(throws: CommandInputParseError.self) {
         _ = try optionalDecoder.read(limit)
     }
@@ -106,7 +106,7 @@ func commandInputDecoderRejectsUnsafeIntegerValue() throws {
 func commandFieldsIntAcceptsDefaultInsideRange() throws {
     let count = CommandFields.int("count", range: 1...3, default: 2, description: "数量")
     let schema = CommandInputSchema(fields: [count.erased])
-    let decoder = CommandInputDecoder([:], schema: schema)
+    var decoder = CommandInputDecoder([:], schema: schema)
 
     #expect(try decoder.read(count) == 2)
     guard case .object(let properties)? = schema.toJSON()["properties"],
@@ -117,4 +117,48 @@ func commandFieldsIntAcceptsDefaultInsideRange() throws {
     #expect(countSchema["default"]?.doubleValue == 2)
     #expect(countSchema["minimum"]?.doubleValue == 1)
     #expect(countSchema["maximum"]?.doubleValue == 3)
+}
+
+@Test("CommandInputDecoder 全部声明字段读取后通过守卫")
+func commandInputDecoderPassesWhenAllDeclaredFieldsRead() throws {
+    let a = CommandFields.optionalString("a", description: "a")
+    let b = CommandFields.int("b", range: 1...3, default: 2, description: "b")
+    let schema = CommandInputSchema(fields: [a.erased, b.erased])
+    var decoder = CommandInputDecoder(["a": "x", "b": 2], schema: schema)
+    _ = try decoder.read(a)
+    _ = try decoder.read(b)
+    // 全部声明字段都已读取,守卫不应抛错。
+    try decoder.assertAllDeclaredFieldsRead()
+}
+
+@Test("CommandInputDecoder 存在声明但未读取字段时守卫抛错")
+func commandInputDecoderFailsWhenDeclaredFieldNotRead() throws {
+    let a = CommandFields.optionalString("a", description: "a")
+    let b = CommandFields.optionalString("b", description: "b")
+    let schema = CommandInputSchema(fields: [a.erased, b.erased])
+    var decoder = CommandInputDecoder(["a": "x"], schema: schema)
+    _ = try decoder.read(a)
+    // 故意不读 b,模拟“声明了但 parse 没读”的漂移。
+    #expect(throws: CommandInputParseError.self) {
+        try decoder.assertAllDeclaredFieldsRead()
+    }
+}
+
+@Test("CommandInput.parse 守卫:声明字段未读取则整体解析失败")
+func commandInputParseFailsWhenDeclaredFieldNotRead() throws {
+    struct PartialInput: CommandInput, Equatable {
+        static let a = CommandFields.optionalString("a", description: "a")
+        static let b = CommandFields.optionalString("b", description: "b")
+        static let inputSchema = CommandInputSchema(fields: [a.erased, b.erased])
+        let a: String?
+
+        static func parse(decoding decoder: inout CommandInputDecoder) throws -> PartialInput {
+            // 故意只读 a,漏读 b。默认 parse(from:) 入口的守卫必须捕获这种漂移。
+            PartialInput(a: try decoder.read(a))
+        }
+    }
+
+    #expect(throws: CommandInputParseError.self) {
+        _ = try PartialInput.parse(from: ["a": "x", "b": "y"])
+    }
 }

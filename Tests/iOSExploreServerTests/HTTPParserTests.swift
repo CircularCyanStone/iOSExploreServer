@@ -72,15 +72,33 @@ func parseBodyTooLargeResult() {
 @Test("从 body 提取 ExploreRequest")
 func exploreRequestFromBody() throws {
     let body = Data(#"{"action":"echo","data":{"x":1}}"#.utf8)
-    let req = try #require(HTTPParser.exploreRequest(from: body))
+    let req = try #require(try HTTPParser.exploreRequest(from: body).get())
     #expect(req.action == "echo")
     #expect(req.data["x"] == .double(1))
 }
 
-@Test("缺 action 返回 nil")
-func exploreRequestMissingAction() {
+@Test("缺 action 返回失败")
+func exploreRequestMissingAction() throws {
     let body = Data(#"{"data":{}}"#.utf8)
-    #expect(HTTPParser.exploreRequest(from: body) == nil)
+    let result = HTTPParser.exploreRequest(from: body)
+    if case .failure(let error) = result {
+        #expect(error.code == .badRequest)
+        #expect(error.message.contains("action"))
+    } else {
+        Issue.record("expected failure for missing action")
+    }
+}
+
+@Test("data 非 object 返回 invalidCommandData 失败")
+func exploreRequestRejectsNonObjectData() throws {
+    let body = Data(#"{"action":"echo","data":[1,2,3]}"#.utf8)
+    let result = HTTPParser.exploreRequest(from: body)
+    if case .failure(let error) = result {
+        #expect(error.code == .badRequest)
+        #expect(error.message.contains("data"))
+    } else {
+        Issue.record("expected failure for non-object data")
+    }
 }
 
 @Test("success 结果序列化为 ok:true envelope")

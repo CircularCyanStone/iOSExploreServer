@@ -41,9 +41,8 @@ public enum UIKitViewLookupTarget: Sendable, Equatable {
 
     /// 转换为统一定位器 `UIKitLocator`。
     ///
-    /// 本类型仅保留 identifier/path 两种语义，作为 path 文法的 compatibility wrapper；
-    /// 新代码应直接使用 `UIKitLocator`。既有模型（`UITapQuery`/`UIControlSendActionQuery`）
-    /// 仍持有本类型，交给 resolver 前通过本属性桥接为 `UIKitLocator`。
+    /// 本类型仅表达 identifier/path 两种 view 定位语义；交互执行前会桥接为
+    /// `UIKitLocator`，再交给 resolver/executor 解析。
     public var locator: UIKitLocator {
         switch self {
         case .accessibilityIdentifier(let value):
@@ -59,24 +58,24 @@ public enum UIKitViewLookupTarget: Sendable, Equatable {
     ///   - identifier: accessibilityIdentifier 字段。
     ///   - rawPath: path 字段。
     /// - Returns: 定位目标。
-    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
+    /// - Throws: `UIKitLocatorParseError`，文案可直接放入 `invalid_data`。
     public static func parse(identifier: String?, rawPath: String?) throws -> UIKitViewLookupTarget {
         if identifier != nil, rawPath != nil {
-            throw QueryParseError("accessibilityIdentifier and path are mutually exclusive")
+            throw UIKitLocatorParseError("accessibilityIdentifier and path are mutually exclusive")
         }
         if let identifier {
             if identifier.isEmpty {
-                throw QueryParseError("accessibilityIdentifier must not be empty")
+                throw UIKitLocatorParseError("accessibilityIdentifier must not be empty")
             }
             return .accessibilityIdentifier(identifier)
         }
         if let rawPath {
             guard let indexes = parsePath(rawPath) else {
-                throw QueryParseError("path must be root or root/<non-negative-index>/...")
+                throw UIKitLocatorParseError("path must be root or root/<non-negative-index>/...")
             }
             return .path(indexes)
         }
-        throw QueryParseError("either accessibilityIdentifier or path is required")
+        throw UIKitLocatorParseError("either accessibilityIdentifier or path is required")
     }
 
     /// 解析 `root/0/2/1` 路径为下标数组。
@@ -92,6 +91,3 @@ public enum UIKitViewLookupTarget: Sendable, Equatable {
         return indexes
     }
 }
-
-/// 保留 `ui.control.sendAction` 既有模型名，实际复用通用定位目标。
-public typealias UIControlSendActionTarget = UIKitViewLookupTarget

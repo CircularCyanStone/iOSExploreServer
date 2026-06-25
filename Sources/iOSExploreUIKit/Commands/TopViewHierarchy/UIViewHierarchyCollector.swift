@@ -14,7 +14,7 @@ enum UIViewHierarchyCollector {
     /// - Parameter query: 采集和筛选参数。
     /// - Returns: 层级 JSON。
     /// - Throws: `UIKitCommandError.hierarchyUnavailable`——UIKit 上下文不可用时。
-    static func collectTopViewHierarchy(query: UIViewHierarchyQuery) throws -> JSON {
+    static func collectTopViewHierarchy(query: UIViewHierarchyInput) throws -> JSON {
         UIKitCommandLogging.info("command", "ui hierarchy collect mainactor start detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
         let context = try UIKitContextProvider.currentContext(action: TopViewHierarchyCommand.actionName)
         return collectTopViewHierarchy(query: query, context: context)
@@ -29,7 +29,7 @@ enum UIViewHierarchyCollector {
     ///   - query: 采集和筛选参数。
     ///   - context: 当前 UIKit 查询上下文。
     /// - Returns: 层级 JSON。
-    static func collectTopViewHierarchy(query: UIViewHierarchyQuery, context: UIKitContextProvider.Context) -> JSON {
+    static func collectTopViewHierarchy(query: UIViewHierarchyInput, context: UIKitContextProvider.Context) -> JSON {
         let element = UIKitViewElement(view: context.rootView)
         let root = UIViewHierarchyBuilder.build(from: element, query: query)
         let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)

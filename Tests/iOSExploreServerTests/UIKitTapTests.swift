@@ -11,18 +11,18 @@ func viewLookupTargetParsesPath() throws {
     #expect(UIKitViewLookupTarget.pathString(from: [0, 2, 1]) == "root/0/2/1")
 }
 
-@Test("UITapQuery 从 accessibilityIdentifier 解析 view 目标")
+@Test("UITapInput 从 accessibilityIdentifier 解析 view 目标")
 func tapQueryParsesIdentifierTarget() throws {
-    let query = try UITapQuery.parse(from: [
+    let query = try UITapInput.parse(from: [
         "accessibilityIdentifier": "mine.header.avatar",
     ])
 
     #expect(query.target == .view(.accessibilityIdentifier("mine.header.avatar")))
 }
 
-@Test("UITapQuery 从 window 坐标解析点击目标")
+@Test("UITapInput 从 window 坐标解析点击目标")
 func tapQueryParsesWindowPointTarget() throws {
-    let query = try UITapQuery.parse(from: [
+    let query = try UITapInput.parse(from: [
         "x": 120,
         "y": 300,
         "coordinateSpace": "window",
@@ -31,10 +31,10 @@ func tapQueryParsesWindowPointTarget() throws {
     #expect(query.target == .windowPoint(x: 120, y: 300))
 }
 
-@Test("UITapQuery 拒绝 view 定位和坐标混用")
+@Test("UITapInput 拒绝 view 定位和坐标混用")
 func tapQueryRejectsMixedTargets() {
     #expect(throws: CommandInputParseError.self) {
-        try UITapQuery.parse(from: [
+        try UITapInput.parse(from: [
             "accessibilityIdentifier": "mine.header.avatar",
             "x": 120,
             "y": 300,
@@ -60,6 +60,12 @@ func tapInputSchemaUsesExpectedFieldsAndConstraints() {
     }
     #expect(constraints.map(\.stringValue).contains("snapshotID is valid only with path"))
     #expect(constraints.map(\.stringValue).contains("coordinateSpace currently supports only window"))
+
+    guard case .array(let oneOf)? = json["oneOf"] else {
+        Issue.record("oneOf not found")
+        return
+    }
+    #expect(oneOf.count == 3)
 }
 
 @Test("UITapInput 接受 identifier、path+snapshotID、window 坐标三类合法输入")
@@ -82,6 +88,7 @@ func tapInputRejectsInvalidMatrixAsCommandInputError() {
         ["x": 10],
         ["y": 20],
         ["accessibilityIdentifier": "home.submit", "path": "root/0"],
+        ["accessibilityIdentifier": "home.submit", "coordinateSpace": "window"],
         ["accessibilityIdentifier": "home.submit", "x": 10, "y": 20],
         ["path": "root/0", "coordinateSpace": "window"],
         ["snapshotID": "snap-1", "accessibilityIdentifier": "home.submit"],

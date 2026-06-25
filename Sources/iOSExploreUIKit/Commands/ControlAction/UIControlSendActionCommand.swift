@@ -29,13 +29,13 @@ struct UIControlSendActionCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的 control action 输入。
     /// - Returns: 成功时返回目标摘要；失败时返回 `invalid_data` 或 UI 不可用错误。
     func handle(_ input: UIControlSendActionInput) async throws -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start target=\(input.target.description) event=\(input.event.rawValue)")
+        UIKitCommandLogging.info("command", "command \(action) start target=\(input.target.logSummary) event=\(input.event.rawValue)")
         do {
             let plan = UIKitActionPlan.controlEvent(locator: input.target.locator,
                                                     event: input.event,
                                                     snapshotID: input.snapshotID)
             let data = try await UIKitActionExecutor.execute(plan)
-            UIKitCommandLogging.info("command", "command \(action) completed target=\(input.target.description) event=\(input.event.rawValue) type=\(data["type"]?.stringValue ?? "unknown")")
+            UIKitCommandLogging.info("command", "command \(action) completed target=\(input.target.logSummary) event=\(input.event.rawValue) type=\(data["type"]?.stringValue ?? "unknown")")
             return .success(data)
         } catch let error as UIKitCommandError {
             UIKitCommandLogging.error("command", error.failure.logMessage)
