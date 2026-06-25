@@ -348,7 +348,7 @@ public enum UIViewHierarchyDetailLevel: String, Sendable, CaseIterable {
 /// UI 层级采集和筛选参数。
 ///
 /// 命令会从请求 `data` 解析为该类型；测试中也直接用它约束递归和筛选行为。
-public struct UIViewHierarchyQuery: Sendable, Equatable {
+public struct UIViewHierarchyQuery: UIKitQueryParsing, Sendable, Equatable {
     /// 详情级别。
     public let detailLevel: UIViewHierarchyDetailLevel
     /// 最大递归深度，`nil` 表示不限制。
@@ -388,18 +388,8 @@ public struct UIViewHierarchyQuery: Sendable, Equatable {
         accessibilityIdentifier != nil || accessibilityIdentifierPrefix != nil
     }
 
-    /// 从命令 `data` 解析查询参数。
-    ///
-    /// - Parameter data: `ExploreRequest.data`。
-    /// - Returns: 解析出的查询对象。
-    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
-    public static func parse(from data: JSON) throws -> UIViewHierarchyQuery {
-        var d = QueryDecoder(data)
-        return try parse(decoding: &d)
-    }
-
     /// 按 `QueryDecoder` 读取字段（供一致性测试拿 `accessedKeys`）。
-    static func parse(decoding d: inout QueryDecoder) throws -> UIViewHierarchyQuery {
+    public static func parse(decoding d: inout QueryDecoder) throws -> UIViewHierarchyQuery {
         UIViewHierarchyQuery(
             detailLevel: try d.enumValue("detailLevel", default: .appearance),
             maxDepth: try d.optionalNonNegativeInt("maxDepth"),

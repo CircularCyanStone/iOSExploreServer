@@ -33,7 +33,7 @@
   - `Support/Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` + `UIKitViewLookupModels.swift` — 定位模型（query→identifier/path/snapshotID 的 Foundation-only 值）与仅 iOS 的真实 `UIView` 解析（`locate(...) throws`，notFound/ambiguous 由调用方工厂构造错误）。
   - `Support/Action/UIKitActionExecutor.swift` + `UIKitActionCapabilityResolver.swift` — `@MainActor` 动作执行（tap/control 路由）；`execute throws -> JSON`，失败 throw `UIKitCommandError`，handler 顶层 catch 转 envelope。
   - `Support/Snapshot/UIKitSnapshotStore.swift` + `UIKitFingerprintCollector.swift` — 快照与陈旧检测（容量 8 条快照 × 每条 512 指纹、TTL、LRU）；`isStale` 为 true 时 executor 抛 `invalid_data` + 固定陈旧消息。
-  - `Support/Parsing/` — `QueryDecoder`（声明式取值器）、`UIKitQueryNumber`（安全整数）、`QueryParseError`（解析错误，handler 单独 catch 转 `invalid_data`）。
+  - `Support/Parsing/` — `UIKitQueryParsing`（typed query 解析能力 public 协议，统一 `parse(from:)` 默认实现，业务方自定义命令复用入口）、`QueryDecoder`（声明式取值器，取值 API public）、`UIKitQueryNumber`（安全整数）、`QueryParseError`（解析错误，handler 单独 catch 转 `invalid_data`）。
   - `UIKitCommandLogging.swift` — 日志入口，复用 core `ExploreLogging.emitExtension`，category 统一 `command`。
   - `UIKitCommandError.swift` — UIKit 错误工厂（conform `Error`）。
   - `Commands/TopViewHierarchy/`、`Commands/ViewTargets/`、`Commands/Tap/`、`Commands/ControlAction/` — 四个 `ui.*` 命令（adapter + typed query 模型；查询命令含 collector）。

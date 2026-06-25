@@ -467,7 +467,7 @@ public enum UIControlSendActionEvent: String, Sendable, Equatable, CaseIterable 
     /// （互斥/path 文法）保留在 `UIKitViewLookupTarget.parse`。
     static func parse(decoding d: inout QueryDecoder) throws -> UIControlSendActionQuery {
         let snapshotID = d.string("snapshotID")
-        let event = try d.requiredEnum("event")
+        let event: UIControlSendActionEvent = try d.requiredEnum("event")
         let target = try UIKitViewLookupTarget.parse(identifier: d.data["accessibilityIdentifier"]?.stringValue,
                                                      rawPath: d.data["path"]?.stringValue)
         return UIControlSendActionQuery(target: target, event: event, snapshotID: snapshotID)

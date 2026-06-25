@@ -1,6 +1,6 @@
 # iOSExploreUIKit 文件档案
 
-> 这是 `Sources/iOSExploreUIKit/` 全部 27 个文件的查阅手册。
+> 这是 `Sources/iOSExploreUIKit/` 全部 28 个文件的查阅手册。
 > 想知道"从哪开始读"看 [reading-guide.md](./reading-guide.md)；这里按目录逐个登记每个文件的职责、关键点与依赖关系，用于定位与改动。
 > 约定：✅ = Foundation-only（macOS `swift test` 可覆盖）；🍎 = `#if canImport(UIKit)`，仅 iOS 编译。
 > 目录分两层：`Commands/` 是 4 个对外命令及其紧密配套（adapter + models + collector），`Support/` 是横切辅助（执行引擎 / 定位 / 上下文 / 快照 / 解析），根目录 3 个是模块级横切（注册 / 日志 / 错误）。
@@ -18,7 +18,7 @@
 | `Support/Locator/` | 3 | 定位语义 + 真实 view 解析 + view lookup 模型 |
 | `Support/Action/` | 4 | 动作执行引擎（tap / control，tap+control 共用） |
 | `Support/Snapshot/` | 3 | 陈旧检测（指纹快照） |
-| `Support/Parsing/` | 3 | 声明式取值器、安全数字、parse 错误类型 |
+| `Support/Parsing/` | 4 | typed query 解析约定、声明式取值器、安全数字、parse 错误类型 |
 
 ---
 
@@ -55,9 +55,15 @@
 
 ### `QueryDecoder.swift` ✅
 - **职责**：UIKit 命令参数的声明式取值器（builder）。
-- **关键点**：把 typed query parse 里重复的"按 key 取值 + 类型转换 + 默认值 + 范围/枚举校验 + 错误文案"封装成方法链（`bool`/`string`/`optionalNonNegativeInt`/`rangedInt`/`enumValue`/`requiredEnum`），失败统一抛 `QueryParseError`。`internal`（模块内 + `@testable` 测试，不进 public 表面）。每个读取方法记 key 到 `accessedKeys`，供一致性测试断言"走 builder 的 key ⊆ Command.parameters"防漏声明。`data` 为 internal let，供部分迁 query 的手写领域字段（互斥/成对/path 文法）直接 `d.data[...]` 访问（不进 accessedKeys）。不记日志（错误归 command handler 单一出口）。
+- **关键点**：把 typed query parse 里重复的"按 key 取值 + 类型转换 + 默认值 + 范围/枚举校验 + 错误文案"封装成方法链（`bool`/`string`/`optionalNonNegativeInt`/`rangedInt`/`enumValue`/`requiredEnum`），失败统一抛 `QueryParseError`。取值 API 为 `public`（库内 `ui.*` query 与业务方自定义命令的 typed query 复用，见 `UIKitQueryParsing`）；`data`/`accessedKeys` 保持 internal——每个读取方法记 key 到 `accessedKeys`，供一致性测试断言"走 builder 的 key ⊆ Command.parameters"防漏声明；`data` 为 internal let，供库内手写领域字段（互斥/成对/path 文法）直接 `d.data[...]` 访问（不进 accessedKeys，业务方用取值方法）。不记日志（错误归 command handler 单一出口）。
 - **依赖**：core `JSON`/`JSONValue`、`UIKitQueryNumber`、`QueryParseError`。
 - **被调用**：4 个 typed query 的 `parse(decoding:)`（`UIViewTargetsQuery`/`UIViewHierarchyQuery`/`UITapQuery`/`UIControlSendActionQuery`）。
+
+### `UIKitQueryParsing.swift` ✅
+- **职责**：UIKit typed query 的解析能力约定（public protocol）。
+- **关键点**：requirement 只有 `parse(decoding:) throws -> Self`；protocol extension 提供统一入口 `parse(from:) throws -> Self`（构造 `QueryDecoder` → 转交领域 `parse(decoding:)`），消除四个 `ui.*` query 各自重复的 `parse(from:)` 样板。四个 query adopt 本协议后只保留领域 `parse(decoding:)`（升 public），统一入口 `parse(from:)` 由协议默认实现提供。同时是业务方自定义命令复用 typed query 模式的 public 基建。Foundation-only、`Sendable`。静态分发抽象，无运行时日志点（解析失败日志在 handler 顶层 catch）。
+- **依赖**：`QueryDecoder`、core `JSON`。
+- **被调用**：四个 typed query 的 conformance；各命令 adapter 调 `parse(from:)`。
 
 ---
 
@@ -141,7 +147,7 @@
 ## `Commands/Tap/`（`ui.tap`）
 
 ### `UITapModels.swift` ✅
-- **职责**：`UITapQuery` + `UITapTarget`（view 目标 / windowPoint 目标）；`parse(from:) throws` 失败抛 `QueryParseError`。
+- **职责**：`UITapQuery` + `UITapTarget`（view 目标 / windowPoint 目标）；adopt `UIKitQueryParsing`，领域 `parse(decoding:) throws` 失败抛 `QueryParseError`，统一入口 `parse(from:)` 由协议提供。
 - **关键点**：view 目标与坐标目标互斥；`coordinateSpace` 第一版仅支持 `window`；解析出可选 snapshotID。
 - **依赖**：`UIKitViewLookupTarget`、`UIKitLocator`。
 
@@ -155,7 +161,7 @@
 ## `Commands/ControlAction/`（`ui.control.sendAction`）
 
 ### `UIControlSendActionModels.swift` ✅
-- **职责**：`UIControlSendActionQuery` + `UIControlSendActionEvent`；`parse(from:) throws` 失败抛 `QueryParseError`。
+- **职责**：`UIControlSendActionQuery` + `UIControlSendActionEvent`；adopt `UIKitQueryParsing`，领域 `parse(decoding:) throws` 失败抛 `QueryParseError`，统一入口 `parse(from:)` 由协议提供。
 - **关键点**：事件名 6 种（touchDown/UpInside/valueChanged/editing*）；`UIControlSendActionTarget` 是 `UIKitViewLookupTarget` 的 typealias（兼容旧名）。
 - **依赖**：`UIKitViewLookupTarget`。
 
@@ -209,7 +215,8 @@
 | 主题 | 文档 |
 |---|---|
 | 模块整体架构（typed factory、隔离边界） | `docs/superpowers/specs/2026-06-23-uikit-command-extension-architecture-design.md` |
-| throw 化 + 文件夹重组（本次） | `docs/superpowers/specs/2026-06-24-uikit-throw-and-folder-reorg-design.md` |
+| throw 化 + 文件夹重组 | `docs/superpowers/specs/2026-06-24-uikit-throw-and-folder-reorg-design.md` |
+| typed Query 解析入口抽象（`UIKitQueryParsing`） | `docs/superpowers/specs/2026-06-25-uikit-query-abstraction-design.md` |
 | `ui.topViewHierarchy` 设计 | `docs/superpowers/specs/2026-06-22-uikit-view-hierarchy-design.md` |
 | `ui.viewTargets` 设计 | `docs/superpowers/specs/2026-06-23-uikit-view-targets-design.md` |
 | view targets 加固（identifier 不截断、能力一致性） | `docs/superpowers/specs/2026-06-24-uikit-view-targets-hardening-design.md` |

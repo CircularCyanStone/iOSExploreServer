@@ -4,7 +4,7 @@ import iOSExploreServer
 /// 轻量 UI 目标查询参数。
 ///
 /// 该类型保持 Foundation-only，负责解析 `ui.viewTargets` 的 data，并约束响应规模。
-public struct UIViewTargetsQuery: Sendable, Equatable {
+public struct UIViewTargetsQuery: UIKitQueryParsing, Sendable, Equatable {
     /// 是否包含隐藏 view。
     public let includeHidden: Bool
     /// 是否包含 disabled control。
@@ -81,18 +81,8 @@ public struct UIViewTargetsQuery: Sendable, Equatable {
         return false
     }
 
-    /// 从命令 data 解析查询参数。
-    ///
-    /// - Parameter data: `ExploreRequest.data`。
-    /// - Returns: 解析出的查询对象。
-    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
-    public static func parse(from data: JSON) throws -> UIViewTargetsQuery {
-        var d = QueryDecoder(data)
-        return try parse(decoding: &d)
-    }
-
     /// 按 `QueryDecoder` 读取字段（供一致性测试拿 `accessedKeys`）。
-    static func parse(decoding d: inout QueryDecoder) throws -> UIViewTargetsQuery {
+    public static func parse(decoding d: inout QueryDecoder) throws -> UIViewTargetsQuery {
         UIViewTargetsQuery(
             includeHidden: d.bool("includeHidden", default: false),
             includeDisabled: d.bool("includeDisabled", default: true),

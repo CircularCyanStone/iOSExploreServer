@@ -39,7 +39,7 @@ public enum UITapTarget: Sendable, Equatable {
 ///
 /// 第一版支持两类输入：`accessibilityIdentifier`/`path` 定位 view，或 `x`/`y` 指定 window
 /// 坐标。两类输入不能混用，避免同一请求里出现不同目标。
-public struct UITapQuery: Sendable, Equatable {
+public struct UITapQuery: UIKitQueryParsing, Sendable, Equatable {
     /// 点击目标。
     public let target: UITapTarget
     /// 可选的快照标识，用于对 `.path` 定位做陈旧校验；查询类命令返回，交互命令回传。
@@ -55,19 +55,9 @@ public struct UITapQuery: Sendable, Equatable {
         self.snapshotID = snapshotID
     }
 
-    /// 从命令 `data` 解析查询参数。
-    ///
-    /// - Parameter data: `ExploreRequest.data`。
-    /// - Returns: 解析出的查询对象。
-    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
-    public static func parse(from data: JSON) throws -> UITapQuery {
-        var d = QueryDecoder(data)
-        return try parse(decoding: &d)
-    }
-
     /// snapshotID 走 builder；以下为领域逻辑（互斥/成对/coordinateSpace 单值校验），
     /// 保留手写，经 `d.data` 访问原始 data，不进 `accessedKeys`。
-    static func parse(decoding d: inout QueryDecoder) throws -> UITapQuery {
+    public static func parse(decoding d: inout QueryDecoder) throws -> UITapQuery {
         let snapshotID = d.string("snapshotID")
         let accessibilityIdentifier = d.data["accessibilityIdentifier"]?.stringValue
         let rawPath = d.data["path"]?.stringValue

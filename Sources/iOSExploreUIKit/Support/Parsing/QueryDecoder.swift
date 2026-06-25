@@ -7,38 +7,39 @@ import iOSExploreServer
 /// 取代各 parse 里重复的 if-let/guard/?? 样板。内部失败统一抛 `QueryParseError`，
 /// 文案可直接进入 `invalid_data` envelope。
 ///
-/// 另负责 key 一致性追踪：每个读取方法记录 key 到 `accessedKeys`，供一致性测试断言
-/// "走 builder 的 key ⊆ Command.parameters 声明的 key"（仅覆盖走 builder 的字段；
-/// 部分迁 query 的手写领域 key 不覆盖，靠人 + review）。
+/// 取值 API 为 public，供库内 `ui.*` query 与业务方自定义命令的 typed query 复用（见
+/// `UIKitQueryParsing`）。`data` 与 `accessedKeys` 为内部机制保持 internal：`data` 供
+/// 库内手写领域校验直接访问原始 JSON、绕过 `accessedKeys`；`accessedKeys` 供一致性测试
+/// 断言"走 builder 的 key ⊆ Command.parameters 声明的 key"（仅覆盖走 builder 的字段；
+/// 部分手写领域 key 不覆盖，靠人 + review）。
 ///
-/// `internal`：模块内 + `@testable` 测试使用，不进 public 表面。Foundation-only、`Sendable`，
-/// 不携带 UIKit 类型；message 单测可在 macOS `swift test` 覆盖，一致性测试因读
-/// `Command.parameters` 归 iOS framework test target。
-struct QueryDecoder: Sendable {
+/// Foundation-only、`Sendable`，不携带 UIKit 类型；message 单测可在 macOS `swift test`
+/// 覆盖，一致性测试因读 `Command.parameters` 归 iOS framework test target。
+public struct QueryDecoder: Sendable {
     /// 待解码的命令 data（internal，供 `parse(decoding:)` 的手写领域字段直接访问，不进 `accessedKeys`）。
-    let data: JSON
+    internal let data: JSON
     /// 累积已读取的 key，供一致性测试断言 ⊆ `Command.parameters`。
-    private(set) var accessedKeys: Set<String> = []
+    internal private(set) var accessedKeys: Set<String> = []
 
     /// 创建取值器。
     ///
     /// - Parameter data: `ExploreRequest.data`。
-    init(_ data: JSON) { self.data = data }
+    public init(_ data: JSON) { self.data = data }
 
     /// 布尔字段：缺失或非布尔都取默认值（保持现状语义，不抛错）。
-    mutating func bool(_ key: String, default value: Bool) -> Bool {
+    public mutating func bool(_ key: String, default value: Bool) -> Bool {
         accessedKeys.insert(key)
         return data[key]?.boolValue ?? value
     }
 
     /// 可选字符串字段：缺失返回 nil。
-    mutating func string(_ key: String) -> String? {
+    public mutating func string(_ key: String) -> String? {
         accessedKeys.insert(key)
         return data[key]?.stringValue
     }
 
     /// 可选非负整数：缺失返回 nil；存在但非有限/非整数/为负抛错。
-    mutating func optionalNonNegativeInt(_ key: String) throws -> Int? {
+    public mutating func optionalNonNegativeInt(_ key: String) throws -> Int? {
         accessedKeys.insert(key)
         guard let raw = data[key]?.doubleValue else { return nil }
         guard let value = UIKitQueryNumber.nonNegativeInteger(raw) else {
@@ -48,7 +49,7 @@ struct QueryDecoder: Sendable {
     }
 
     /// 限定范围整数：缺失取默认；存在但越界/非整数抛错。
-    mutating func rangedInt(_ key: String, in range: ClosedRange<Int>, default value: Int) throws -> Int {
+    public mutating func rangedInt(_ key: String, in range: ClosedRange<Int>, default value: Int) throws -> Int {
         accessedKeys.insert(key)
         guard let raw = data[key]?.doubleValue else { return value }
         guard let parsed = UIKitQueryNumber.integer(raw, in: range) else {
@@ -58,7 +59,7 @@ struct QueryDecoder: Sendable {
     }
 
     /// String 原始值枚举（带默认）：缺失取默认；存在但非合法抛错。
-    mutating func enumValue<E: RawRepresentable & CaseIterable>(_ key: String, default value: E) throws -> E
+    public mutating func enumValue<E: RawRepresentable & CaseIterable>(_ key: String, default value: E) throws -> E
         where E.RawValue == String {
         accessedKeys.insert(key)
         guard let raw = data[key]?.stringValue else { return value }
@@ -69,7 +70,7 @@ struct QueryDecoder: Sendable {
     }
 
     /// 必填 String 原始值枚举：缺失抛 "missing required parameter"；非合法抛 must be one of。
-    mutating func requiredEnum<E: RawRepresentable & CaseIterable>(_ key: String) throws -> E
+    public mutating func requiredEnum<E: RawRepresentable & CaseIterable>(_ key: String) throws -> E
         where E.RawValue == String {
         accessedKeys.insert(key)
         guard let raw = data[key]?.stringValue else {

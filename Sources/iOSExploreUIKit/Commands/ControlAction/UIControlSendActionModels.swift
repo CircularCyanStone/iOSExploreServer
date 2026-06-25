@@ -26,7 +26,7 @@ public enum UIControlSendActionEvent: String, Sendable, Equatable, CaseIterable 
 ///
 /// 命令要求调用方明确提供一个定位条件和一个事件名。定位条件只能二选一，避免同一请求里
 /// identifier 与 path 指向不同控件导致误触发。
-public struct UIControlSendActionQuery: Sendable, Equatable {
+public struct UIControlSendActionQuery: UIKitQueryParsing, Sendable, Equatable {
     /// 目标控件定位方式。
     public let target: UIControlSendActionTarget
     /// 要发送的 UIControl 事件。
@@ -46,19 +46,9 @@ public struct UIControlSendActionQuery: Sendable, Equatable {
         self.snapshotID = snapshotID
     }
 
-    /// 从命令 `data` 解析查询参数。
-    ///
-    /// - Parameter data: `ExploreRequest.data`。
-    /// - Returns: 解析出的查询对象。
-    /// - Throws: `QueryParseError`，文案可直接放入 `invalid_data`。
-    public static func parse(from data: JSON) throws -> UIControlSendActionQuery {
-        var d = QueryDecoder(data)
-        return try parse(decoding: &d)
-    }
-
     /// 按 `QueryDecoder` 读取 snapshotID/event；identifier/path 取值经 builder 但领域校验
     /// （互斥/path 文法）保留在 `UIKitViewLookupTarget.parse`。
-    static func parse(decoding d: inout QueryDecoder) throws -> UIControlSendActionQuery {
+    public static func parse(decoding d: inout QueryDecoder) throws -> UIControlSendActionQuery {
         let snapshotID = d.string("snapshotID")
         let event: UIControlSendActionEvent = try d.requiredEnum("event")
         let target = try UIKitViewLookupTarget.parse(identifier: d.data["accessibilityIdentifier"]?.stringValue,
