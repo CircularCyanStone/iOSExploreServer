@@ -121,13 +121,24 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"x":120,"y":
 
 库内或 App 内：
 ```swift
-await server.register(action: "greet") { req in
-    let name = req.data["name"]?.stringValue ?? "world"
-    return .success(["message": .string("Hello, \(name)")])
+struct GreetInput: CommandInput {
+    static let name = CommandFields.optionalString("name", description: "姓名")
+    static let inputSchema = CommandInputSchema(fields: [name.erased])
+
+    let nameValue: String
+
+    static func parse(decoding decoder: inout CommandInputDecoder) throws -> GreetInput {
+        GreetInput(nameValue: try decoder.read(name) ?? "world")
+    }
+}
+
+server.register(action: "greet", description: "按 name 打招呼", input: GreetInput.self) { input in
+    .success(["message": .string("Hello, \(input.nameValue)")])
 }
 ```
-- handler 签名：`@Sendable (ExploreRequest) async throws -> ExploreResult`
-- `req.data["key"]` 返回 `JSONValue?`，用 `.stringValue`/`.doubleValue`/`.boolValue` 取值。
+- handler 签名：`@Sendable (Input) async throws -> ExploreResult`，`Input` 必须 conform `CommandInput`。
+- 字段名、默认值、类型、范围和 `help.inputSchema` 由 `CommandFields`/`CommandInputSchema` 统一声明，避免 schema 与解析逻辑分叉。
+- 无参数命令使用 `EmptyCommandInput.self`；需要原样读取 `data` 的命令使用 `RawJSONInput.self`。
 - 需要 UIKit（如 `UIDevice`）时，在 handler 内 `await MainActor.run { ... }` 取值再返回（见 SPMExample 的 `device` handler）。
 
 ## Mac 侧调用（iproxy + curl）

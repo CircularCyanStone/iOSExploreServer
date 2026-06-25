@@ -31,9 +31,19 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 ### 注册自定义命令
 
 ```swift
-await server.register(action: "greet") { req in
-    let name = req.data["name"]?.stringValue ?? "world"
-    return .success(["message": .string("Hello, \(name)")])
+struct GreetInput: CommandInput {
+    static let name = CommandFields.optionalString("name", description: "姓名")
+    static let inputSchema = CommandInputSchema(fields: [name.erased])
+
+    let nameValue: String
+
+    static func parse(decoding decoder: inout CommandInputDecoder) throws -> GreetInput {
+        GreetInput(nameValue: try decoder.read(name) ?? "world")
+    }
+}
+
+server.register(action: "greet", description: "按 name 打招呼", input: GreetInput.self) { input in
+    .success(["message": .string("Hello, \(input.nameValue)")])
 }
 ```
 

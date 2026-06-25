@@ -44,14 +44,14 @@
               ┌────────────────────────┴───────────────────────┐
               │  两个 Foundation-only 层（macOS 可测，无 UIKit）  │
               ├────────────────────────────────────────────────┤
-              │  Models：UIKitLocator / UIViewHierarchyQuery …  │
-              │  Parsing：QueryDecoder / UIKitQueryNumber        │
+              │  Models：UIKitLocator / UIViewHierarchyInput …  │
+              │  Parsing：UIKitCommandFields / UIKitQueryNumber  │
               └────────────────────────────────────────────────┘
 ```
 
 **贯穿全模块的两条铁律**（看任何文件都要带着这两点）：
 
-1. **typed factory**：所有 UIKit 操作必须先在 Foundation-only 的 typed query（如 `UIViewHierarchyQuery`、`UITapQuery`）里解析+校验参数，通过后才进入 `@MainActor` 域。UIKit 类型（`UIView`/`UIControl`）**绝不穿过 public 边界**回到非隔离域——跨边界只传 `Sendable` 值（路径、类型名、指纹）。
+1. **typed input factory**：所有 UIKit 操作必须先在 Foundation-only 的 `CommandInput`（如 `UIViewHierarchyInput`、`UITapInput`）里解析+校验参数，通过后才进入 `@MainActor` 域。UIKit 类型（`UIView`/`UIControl`）**绝不穿过 public 边界**回到非隔离域——跨边界只传 `Sendable` 值（路径、类型名、指纹）。
 2. **`#if canImport(UIKit)`**：所有碰 UIKit 的文件整体包在这条指令里。macOS 编译时这些文件变成空壳，所以 macOS 上 `swift test` 只能测到 Foundation-only 层；真实 `UIView` 行为由 iOS framework 测试覆盖。
 
 ## 推荐阅读路线（按依赖，从入口往下）
@@ -67,12 +67,12 @@
 
 ### 第 1 步：两个查询命令（最容易上手，~750 行）
 查询命令是纯读、无副作用，最适合先读：
-- `Commands/ViewTargets/UIViewTargetsModels.swift`（381 行）——**重点读 `UIViewTargetsQuery.shouldInclude`**，这是整个目标发现的决策核心，而且全是 Foundation-only 逻辑。
+- `Commands/ViewTargets/UIViewTargetsModels.swift`（381 行）——**重点读 `UIViewTargetsInput.shouldInclude`**，这是整个目标发现的决策核心，而且全是 Foundation-only 逻辑。
 - `Commands/ViewTargets/UIViewTargetsCollector.swift`（270 行）——看 `collect(view:...)` 递归遍历 + 签发 snapshot 的主流程。
-- `Commands/ViewTargets/ViewTargetsCommand.swift`（81 行）——最薄的 adapter，看"解析参数 → 调 collector → 打日志"模板。
+- `Commands/ViewTargets/ViewTargetsCommand.swift`（81 行）——最薄的 adapter，看"typed input → 调 collector → 打日志"模板。
 - （可选）`Commands/TopViewHierarchy/` 三件套——结构类似，但多了完整树和 `UIViewHierarchyElement` 协议抽象，可略读。
 
-> 目标：吃透"adapter 解析参数 → MainActor collector 采集 → 返回 JSON + snapshotID"这套模板。后两个命令照搬。
+> 目标：吃透"AnyCommand 解析 typed input → adapter 调 MainActor collector → 返回 JSON + snapshotID"这套模板。后两个命令照搬。
 
 ### 第 2 步：定位与执行（核心难点，~700 行）
 两个交互命令（tap / sendAction）共享同一套执行引擎，**这是模块最值得读的部分**：
@@ -95,11 +95,11 @@
 - `Support/Context/UIKitContextProvider.swift`——怎么找前台 window 和顶部 VC（`currentContext(action:) throws`）。
 - `Support/Action/UIKitActionCapabilityResolver.swift`（91 行）——"什么 view 能做什么动作"的规则（collector 和 executor 共用）。
 - `UIKitCommandError.swift`——错误工厂（conform `Error`，可被 throw），**查的时候看**，不需要通读。
-- `Support/Parsing/`——声明式取值器与安全整数转换。
+- `Support/Parsing/`——UIKit 共享 command 字段、定位 input helper 与安全整数转换。
 
 ## 三个"如果你只想快速理解"的捷径
 
-- **只想知道命令怎么用** → 只读第 0 步 + 每个 `*Command.swift` 的 `parameters` 数组（参数 schema 即文档）。
+- **只想知道命令怎么用** → 只读第 0 步 + 每个 `*Input.inputSchema`；实际对外 JSON 可直接看 `help` 返回的 `inputSchema.properties`。
 - **只想理解架构设计** → 读第 0、2、3 步的文件头注释（`///` 块），每个文件的文档注释都写清了"为什么这样设计"。
 - **只想改某个命令** → 在 [uikit-file-reference.md](./uikit-file-reference.md) 里找到那个文件，看它依赖谁、被谁调用。
 
@@ -108,7 +108,7 @@
 这几个决策是理解代码的关键，建议带着它们去读：
 
 - **core 不依赖 UIKit** → UIKit 能力做成独立 product，宿主**显式** `registerUIKitCommands()`。core 初始化不自动注册任何 `ui.*`，未注册时 `help` 不含 UIKit action（这是回归保护点）。
-- **adapter 薄、executor 厚** → 所有"真实 UIKit 操作"集中在 `@MainActor` 的 executor/collector，adapter 只解析参数。这让执行逻辑可在 iOS 测试里用注入的 view 树驱动（看每个类型有没有 `execute(_:context:)` / `collect(query:context:)` 这种"注入入口"）。
+- **adapter 薄、executor 厚** → 所有"真实 UIKit 操作"集中在 `@MainActor` 的 executor/collector，adapter 只接收已解析的 typed input。这让执行逻辑可在 iOS 测试里用注入的 view 树驱动（看每个类型有没有 `execute(_:context:)` / `collect(query:context:)` 这种"注入入口"）。
 - **collector 与 executor 共用同一份能力规则** → `UIKitActionCapabilityResolver` 被 `ui.viewTargets`（声明 `availableActions`）和 executor（实际派发前校验）同时调用，避免"声明可点但实际点不动"的分叉。
 - **定位三选一、identifier 精确不截断** → 历史上有过截断 prefix 的 bug；现在 `identifier` 完整匹配，匹配多个返回 `ambiguous`。
 

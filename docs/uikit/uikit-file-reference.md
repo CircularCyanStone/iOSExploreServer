@@ -1,6 +1,6 @@
 # iOSExploreUIKit 文件档案
 
-> 这是 `Sources/iOSExploreUIKit/` 全部 28 个文件的查阅手册。
+> 这是 `Sources/iOSExploreUIKit/` 全部 27 个文件的查阅手册。
 > 想知道"从哪开始读"看 [reading-guide.md](./reading-guide.md)；这里按目录逐个登记每个文件的职责、关键点与依赖关系，用于定位与改动。
 > 约定：✅ = Foundation-only（macOS `swift test` 可覆盖）；🍎 = `#if canImport(UIKit)`，仅 iOS 编译。
 > 目录分两层：`Commands/` 是 4 个对外命令及其紧密配套（adapter + models + collector），`Support/` 是横切辅助（执行引擎 / 定位 / 上下文 / 快照 / 解析），根目录 3 个是模块级横切（注册 / 日志 / 错误）。
@@ -18,7 +18,7 @@
 | `Support/Locator/` | 3 | 定位语义 + 真实 view 解析 + view lookup 模型 |
 | `Support/Action/` | 4 | 动作执行引擎（tap / control，tap+control 共用） |
 | `Support/Snapshot/` | 3 | 陈旧检测（指纹快照） |
-| `Support/Parsing/` | 4 | typed query 解析约定、声明式取值器、安全数字、parse 错误类型 |
+| `Support/Parsing/` | 3 | UIKit command 共享字段、locator input helper、安全数字、底层 parse 错误类型 |
 
 ---
 
@@ -49,21 +49,15 @@
 - **依赖**：无。
 
 ### `QueryParseError.swift` ✅
-- **职责**：UIKit 命令参数解析失败的统一错误类型。
-- **关键点**：所有 typed query 的 `parse` 用普通 `throws` 抛出本类型；命令 handler 顶层 `catch` 它并转成 `UIKitCommandError.invalidData`，文案直接进 `invalid_data` envelope（与执行阶段的 `UIKitCommandError` 分开 catch）。Foundation-only、`Sendable`，可在 macOS `swift test` 覆盖解析失败断言。
+- **职责**：底层 locator/path 文法解析失败的错误类型。
+- **关键点**：命令输入主路径已经迁移到 core `CommandInputParseError`；本类型只保留给 `UIKitViewLookupTarget`、`UIKitLocator` 这类 Foundation-only helper。命令 input 层必须把它转换为 `CommandInputParseError`，再由 `AnyCommand` 转成 `invalid_data` envelope。
 - **依赖**：core `Foundation`。
 
-### `QueryDecoder.swift` ✅
-- **职责**：UIKit 命令参数的声明式取值器（builder）。
-- **关键点**：把 typed query parse 里重复的"按 key 取值 + 类型转换 + 默认值 + 范围/枚举校验 + 错误文案"封装成方法链（`bool`/`string`/`optionalNonNegativeInt`/`rangedInt`/`enumValue`/`requiredEnum`），失败统一抛 `QueryParseError`。取值 API 为 `public`（库内 `ui.*` query 与业务方自定义命令的 typed query 复用，见 `UIKitQueryParsing`）；`data`/`accessedKeys` 保持 internal——每个读取方法记 key 到 `accessedKeys`，供一致性测试断言"走 builder 的 key ⊆ Command.parameters"防漏声明；`data` 为 internal let，供库内手写领域字段（互斥/成对/path 文法）直接 `d.data[...]` 访问（不进 accessedKeys，业务方用取值方法）。不记日志（错误归 command handler 单一出口）。
-- **依赖**：core `JSON`/`JSONValue`、`UIKitQueryNumber`、`QueryParseError`。
-- **被调用**：4 个 typed query 的 `parse(decoding:)`（`UIViewTargetsQuery`/`UIViewHierarchyQuery`/`UITapQuery`/`UIControlSendActionQuery`）。
-
-### `UIKitQueryParsing.swift` ✅
-- **职责**：UIKit typed query 的解析能力约定（public protocol）。
-- **关键点**：requirement 只有 `parse(decoding:) throws -> Self`；protocol extension 提供统一入口 `parse(from:) throws -> Self`（构造 `QueryDecoder` → 转交领域 `parse(decoding:)`），消除四个 `ui.*` query 各自重复的 `parse(from:)` 样板。四个 query adopt 本协议后只保留领域 `parse(decoding:)`（升 public），统一入口 `parse(from:)` 由协议默认实现提供。同时是业务方自定义命令复用 typed query 模式的 public 基建。Foundation-only、`Sendable`。静态分发抽象，无运行时日志点（解析失败日志在 handler 顶层 catch）。
-- **依赖**：`QueryDecoder`、core `JSON`。
-- **被调用**：四个 typed query 的 conformance；各命令 adapter 调 `parse(from:)`。
+### `UIKitCommandFields.swift` ✅
+- **职责**：UIKit 命令复用的 `CommandField` 定义与 locator input helper。
+- **关键点**：`UIKitFilterFields` 只服务查询筛选字段，`UIKitLocatorFields` 只服务交互定位字段，避免同名 key 的 description 被硬套。`UIKitLocatorInput.parse` 通过 core `CommandInputDecoder.read` 读取字段，再复用底层 `UIKitViewLookupTarget.parse`，并把 `QueryParseError` 转成 `CommandInputParseError`。
+- **依赖**：core `CommandFields`/`CommandInputDecoder`/`CommandInputParseError`、`UIKitViewLookupTarget`。
+- **被调用**：`UIViewTargetsInput`、`UIViewHierarchyInput`、`UITapInput`、`UIControlSendActionInput`。
 
 ---
 
@@ -147,28 +141,28 @@
 ## `Commands/Tap/`（`ui.tap`）
 
 ### `UITapModels.swift` ✅
-- **职责**：`UITapQuery` + `UITapTarget`（view 目标 / windowPoint 目标）；adopt `UIKitQueryParsing`，领域 `parse(decoding:) throws` 失败抛 `QueryParseError`，统一入口 `parse(from:)` 由协议提供。
-- **关键点**：view 目标与坐标目标互斥；`coordinateSpace` 第一版仅支持 `window`；解析出可选 snapshotID。
-- **依赖**：`UIKitViewLookupTarget`、`UIKitLocator`。
+- **职责**：`UITapInput` + `UITapTarget`（view 目标 / windowPoint 目标）；`UITapQuery` 只是兼容旧模型名的 typealias。
+- **关键点**：conform core `CommandInput`；字段定义同时驱动解析和 `help.inputSchema`。view 目标与坐标目标互斥；`x/y` 必须成对；`coordinateSpace` 第一版仅支持 `window` 且只对坐标目标有效；`snapshotID` 只允许搭配 `path`。
+- **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitViewLookupTarget`、`UIKitLocator`。
 
 ### `UITapCommand.swift` 🍎
 - **职责**：`ui.tap` 命令 adapter。
-- **关键点**：薄 adapter——顶层 `do/catch`：`parse` query → 构造 `UIKitActionPlan.tap` → `try await executor.execute(plan)`；`catch UIKitCommandError` 取 `error.result`（记 `logMessage`），`catch QueryParseError` 转 `invalidData`。执行逻辑全在 executor。
-- **依赖**：`UITapQuery`、`UIKitActionPlan`、`UIKitActionExecutor`、`UIKitCommandError`、`UIKitCommandLogging`。
+- **关键点**：薄 adapter——typed input 已由 `AnyCommand` 解析完成；handler 构造 `UIKitActionPlan.tap` → `try await executor.execute(plan)`；只 catch `UIKitCommandError` 取 `error.result`（记 `logMessage`）。执行逻辑全在 executor。
+- **依赖**：`UITapInput`、`UIKitActionPlan`、`UIKitActionExecutor`、`UIKitCommandError`、`UIKitCommandLogging`。
 
 ---
 
 ## `Commands/ControlAction/`（`ui.control.sendAction`）
 
 ### `UIControlSendActionModels.swift` ✅
-- **职责**：`UIControlSendActionQuery` + `UIControlSendActionEvent`；adopt `UIKitQueryParsing`，领域 `parse(decoding:) throws` 失败抛 `QueryParseError`，统一入口 `parse(from:)` 由协议提供。
-- **关键点**：事件名 6 种（touchDown/UpInside/valueChanged/editing*）；`UIControlSendActionTarget` 是 `UIKitViewLookupTarget` 的 typealias（兼容旧名）。
-- **依赖**：`UIKitViewLookupTarget`。
+- **职责**：`UIControlSendActionInput` + `UIControlSendActionEvent`；`UIControlSendActionQuery` 只是兼容旧模型名的 typealias。
+- **关键点**：conform core `CommandInput`；`event` 必填且来自枚举；`accessibilityIdentifier` 与 `path` 必须二选一；`snapshotID` 只允许搭配 `path`。`UIControlSendActionTarget` 是 `UIKitViewLookupTarget` 的 typealias（兼容旧名）。
+- **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitViewLookupTarget`。
 
 ### `UIControlSendActionCommand.swift` 🍎
 - **职责**：`ui.control.sendAction` 命令 adapter。
-- **关键点**：薄 adapter——顶层 `do/catch`（同 `UITapCommand`）：`parse` → 构造 `UIKitActionPlan.controlEvent` → `try await executor.execute(plan)`。
-- **依赖**：`UIControlSendActionQuery`、`UIKitActionPlan`、`UIKitActionExecutor`、`UIKitCommandError`、`UIKitCommandLogging`。
+- **关键点**：薄 adapter——typed input 已由 `AnyCommand` 解析完成；handler 构造 `UIKitActionPlan.controlEvent` → `try await executor.execute(plan)`；只 catch `UIKitCommandError`。
+- **依赖**：`UIControlSendActionInput`、`UIKitActionPlan`、`UIKitActionExecutor`、`UIKitCommandError`、`UIKitCommandLogging`。
 
 ---
 
@@ -176,8 +170,8 @@
 
 ### `UIViewHierarchyModels.swift` ✅（最大文件）
 - **职责**：完整层级快照的全部模型——矩形/accessibility/状态/文本/外观/控件/图片/滚动 8 类验收字段 + 查询参数 + `UIViewHierarchyElement` 协议 + `UIViewHierarchyBuilder`。
-- **关键点**：`UIViewHierarchyElement` 协议把递归/路径/筛选逻辑与 UIKit 解耦（真实采集器和测试 fake 都复用同一套 builder）；`detailLevel`（basic/appearance/full）控制是否输出文本/颜色等高成本字段；支持 identifier 精确/前缀筛选。
-- **依赖**：core `JSON`/`JSONValue`、`UIKitQueryNumber`。
+- **关键点**：`UIViewHierarchyInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；`UIViewHierarchyQuery` 是兼容旧模型名的 typealias。`UIViewHierarchyElement` 协议把递归/路径/筛选逻辑与 UIKit 解耦（真实采集器和测试 fake 都复用同一套 builder）；`detailLevel`（basic/appearance/full）控制是否输出文本/颜色等高成本字段；支持 identifier 精确/前缀筛选。
+- **依赖**：core `CommandInput`/`CommandFields`/`JSON`/`JSONValue`、`UIKitCommandFields`。
 
 ### `UIViewHierarchyCollector.swift` 🍎
 - **职责**：`@MainActor`，从真实 `UIView` 递归读取属性生成完整快照。
@@ -186,8 +180,8 @@
 
 ### `TopViewHierarchyCommand.swift` 🍎
 - **职责**：`ui.topViewHierarchy` 命令 adapter。
-- **关键点**：薄 adapter——顶层 `do/catch`：`parse` `UIViewHierarchyQuery` → `try await collector`；有 identifier 筛选时返回 `matches` 列表，否则返回完整 `root` 树。
-- **依赖**：`UIViewHierarchyQuery`、`UIViewHierarchyCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
+- **关键点**：薄 adapter——typed input 已由 `AnyCommand` 解析完成；handler `try await collector`；有 identifier 筛选时返回 `matches` 列表，否则返回完整 `root` 树。
+- **依赖**：`UIViewHierarchyInput`、`UIViewHierarchyCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
 
 ---
 
@@ -195,8 +189,8 @@
 
 ### `UIViewTargetsModels.swift` ✅
 - **职责**：轻量目标的全部模型——`UIViewTargetsQuery` + `UIViewTargetCandidate` + `UIViewTargetSummary` + 角色/状态/文本裁剪。
-- **关键点**：**`UIViewTargetsQuery.shouldInclude` 是目标发现决策核心**，纯 Foundation-only 逻辑。默认包含策略：控件全部包含、有手势/有 identifier/有 label 的可交互节点包含；静态文本与容器默认排除。`maxTargets` 默认 200（上限 512），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本。
-- **依赖**：`UIKitQueryNumber`、`UIKitSnapshotLimits`、`UIKitActionAvailability`、`UIViewHierarchyRect`。
+- **关键点**：`UIViewTargetsInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；`UIViewTargetsQuery` 是兼容旧模型名的 typealias。**`UIViewTargetsInput.shouldInclude` 是目标发现决策核心**，纯 Foundation-only 逻辑。默认包含策略：控件全部包含、有手势/有 identifier/有 label 的可交互节点包含；静态文本与容器默认排除。`maxTargets` 默认 200（上限 512），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本。
+- **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitSnapshotLimits`、`UIKitActionAvailability`、`UIViewHierarchyRect`。
 
 ### `UIViewTargetsCollector.swift` 🍎
 - **职责**：`@MainActor`，递归遍历 view 树采集轻量目标摘要。
@@ -205,8 +199,8 @@
 
 ### `ViewTargetsCommand.swift` 🍎
 - **职责**：`ui.viewTargets` 命令 adapter。
-- **关键点**：薄 adapter——顶层 `do/catch`：`parse` `UIViewTargetsQuery` → `try await collector`。响应含 `targetCount`/`visitedNodeCount`/`truncated`/`snapshotID`。
-- **依赖**：`UIViewTargetsQuery`、`UIViewTargetsCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
+- **关键点**：薄 adapter——typed input 已由 `AnyCommand` 解析完成；handler `try await collector`。响应含 `targetCount`/`visitedNodeCount`/`truncated`/`snapshotID`。
+- **依赖**：`UIViewTargetsInput`、`UIViewTargetsCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
 
 ---
 
@@ -216,7 +210,7 @@
 |---|---|
 | 模块整体架构（typed factory、隔离边界） | `docs/superpowers/specs/2026-06-23-uikit-command-extension-architecture-design.md` |
 | throw 化 + 文件夹重组 | `docs/superpowers/specs/2026-06-24-uikit-throw-and-folder-reorg-design.md` |
-| typed Query 解析入口抽象（`UIKitQueryParsing`） | `docs/superpowers/specs/2026-06-25-uikit-query-abstraction-design.md` |
+| typed command input 与 inputSchema 重构 | `docs/superpowers/specs/2026-06-25-typed-command-input-schema-design.md` |
 | `ui.topViewHierarchy` 设计 | `docs/superpowers/specs/2026-06-22-uikit-view-hierarchy-design.md` |
 | `ui.viewTargets` 设计 | `docs/superpowers/specs/2026-06-23-uikit-view-targets-design.md` |
 | view targets 加固（identifier 不截断、能力一致性） | `docs/superpowers/specs/2026-06-24-uikit-view-targets-hardening-design.md` |
