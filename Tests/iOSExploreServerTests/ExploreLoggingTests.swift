@@ -74,20 +74,21 @@ struct ExploreLoggingTests {
 
         let router = Router()
         struct Boom: Error {}
-        router.register(action: "ok") { _ in .success([:]) }
-        router.register(action: "boom") { _ in throw Boom() }
+        router.register(action: "ok", input: EmptyCommandInput.self) { _ in .success([:]) }
+        router.register(action: "boom", input: EmptyCommandInput.self) { _ in throw Boom() }
 
         _ = await router.route(ExploreRequest(action: "ok"))
         _ = await router.route(ExploreRequest(action: "missing"))
         _ = await router.route(ExploreRequest(action: "boom"))
 
         let messages = records.withLock { $0.map(\.message) }
-        #expect(messages.contains("router registered action=ok"))
-        #expect(messages.contains("router registered action=boom"))
+        #expect(messages.contains("router registered action=ok schemaFields=0"))
+        #expect(messages.contains("router registered action=boom schemaFields=0"))
         #expect(messages.contains("router route start action=ok"))
         #expect(messages.contains("router route success action=ok"))
         #expect(messages.contains("router route failed category=command message=unknown action=missing"))
-        #expect(messages.contains { $0.hasPrefix("router route failed category=command message=handler threw action=boom") })
+        #expect(messages.contains { $0.hasPrefix("command boom failed code=internal_error message=handler threw action=boom") })
+        #expect(messages.contains { $0.hasPrefix("router route business failure action=boom code=internal_error") })
     }
 
     @Test("扩展日志进入既有 sink")

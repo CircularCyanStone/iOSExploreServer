@@ -6,6 +6,17 @@ import Network
 /// 集成测试用固定端口，避开生产默认 38321。
 private let testPort: UInt16 = 38399
 
+private struct IntegrationGreetingInput: CommandInput, Equatable {
+    static let nameField = CommandFields.requiredString("name", description: "名字")
+    static let inputSchema = CommandInputSchema(fields: [nameField.erased])
+
+    let name: String
+
+    static func parse(decoding decoder: inout CommandInputDecoder) throws -> IntegrationGreetingInput {
+        IntegrationGreetingInput(name: try decoder.read(nameField))
+    }
+}
+
 /// 4 个用例共享同一 TCP 端口 38399：Swift Testing 默认并行执行会让多个
 /// NWListener 同时 bind 同一端口，只有首个成功，其余静默失败，连接会被路由
 /// 到错误的服务器实例（缺少该测试注册的自定义命令）。`.serialized` 强制串行。
@@ -58,9 +69,8 @@ func endToEndUnknown() async throws {
 @Test("自定义注册命令经 HTTP 可达")
 func endToEndCustom() async throws {
     let server = ExploreServer(port: testPort)
-    server.register(action: "greet") { req in
-        let name = req.data["name"]?.stringValue ?? "world"
-        return .success(["message": .string("Hello, \(name)")])
+    server.register(action: "greet", input: IntegrationGreetingInput.self) { input in
+        .success(["message": .string("Hello, \(input.name)")])
     }
     try await startWithPortRetry(server)
     defer { server.stop() }
@@ -100,13 +110,16 @@ func endToEndHelp() async throws {
     #expect(text.contains(#""ok":true"#))
     #expect(text.contains(#""action":"ping""#))
     #expect(text.contains(#""action":"help""#))
+    #expect(text.contains(#""inputSchema""#))
+    #expect(text.contains(#""properties""#))
+    #expect(!text.contains(#""parameters""#))
 }
 
 @Test("命令超过配置超时时返回 internal_error 并关闭连接")
 func commandTimeoutReturnsErrorEnvelope() async throws {
     let server = ExploreServer(port: testPort,
                                listenerConfiguration: .testing(commandTimeoutNanoseconds: 50_000_000))
-    server.register(action: "slow") { _ in
+    server.register(action: "slow", input: EmptyCommandInput.self) { _ in
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         return .success(["done": true])
     }
@@ -124,7 +137,7 @@ func connectionLimitRejectsAdditionalConnection() async throws {
     let server = ExploreServer(port: testPort,
                                listenerConfiguration: .testing(maxConnections: 1,
                                                               commandTimeoutNanoseconds: 1_000_000_000))
-    server.register(action: "hold") { _ in
+    server.register(action: "hold", input: EmptyCommandInput.self) { _ in
         try? await Task.sleep(nanoseconds: 200_000_000)
         return .success(["done": true])
     }

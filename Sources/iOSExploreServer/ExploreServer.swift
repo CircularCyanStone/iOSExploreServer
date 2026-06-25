@@ -94,25 +94,41 @@ public final class ExploreServer: Sendable {
         ExploreLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil)")
     }
 
-    /// 注册一个协议命令对象。
+    /// 注册一个 typed 协议命令对象。
     ///
     /// 适合把能力封装成独立 `Command` struct，便于复用、测试和被 `help` 自省。
-    public func register(_ command: any Command) {
-        ExploreLogger.info(.server, "server register command action=\(command.action)")
-        router.register(command)
+    ///
+    /// - Parameters:
+    ///   - command: 具体命令对象。
+    ///   - logCategory: 命令执行日志归属。
+    public func register<C: Command>(_ command: C, logCategory: CommandLogCategory = .core) {
+        ExploreLogger.info(.server, "server register command action=\(command.action) schemaFields=\(C.Input.inputSchema.fields.count)")
+        router.register(command, logCategory: logCategory)
     }
 
-    /// 注册一个闭包命令。
+    /// 注册一个 typed 闭包命令。
     ///
     /// 适合宿主 App 在启动时快速注入能力，例如需要 UIKit 的设备信息 handler。库本身不
     /// 依赖 UIKit；如果 handler 需要访问 UIKit API，应由宿主 App 在闭包内切换到
     /// `MainActor`。
-    public func register(action: String,
-                         description: String = "",
-                         parameters: [CommandParameter] = [],
-                         _ handler: @escaping @Sendable (ExploreRequest) async throws -> ExploreResult) {
-        ExploreLogger.info(.server, "server register closure action=\(action) parameters=\(parameters.count)")
-        router.register(action: action, description: description, parameters: parameters, handler)
+    ///
+    /// - Parameters:
+    ///   - action: 命令名，也是请求 body 中 `action` 的匹配键。
+    ///   - description: 命令说明，供 `help` 输出。
+    ///   - input: 命令输入类型，负责 schema 暴露与 data 解析。
+    ///   - logCategory: 命令执行日志归属。
+    ///   - handler: 实际业务处理闭包，入参已经是 typed input。
+    public func register<Input: CommandInput>(action: String,
+                                              description: String = "",
+                                              input: Input.Type,
+                                              logCategory: CommandLogCategory = .core,
+                                              _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
+        ExploreLogger.info(.server, "server register closure action=\(action) schemaFields=\(Input.inputSchema.fields.count)")
+        router.register(action: action,
+                        description: description,
+                        input: input,
+                        logCategory: logCategory,
+                        handler)
     }
 
     /// 启动 TCP HTTP server。

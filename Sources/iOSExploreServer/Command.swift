@@ -1,119 +1,170 @@
 import Foundation
 
-/// 命令参数的 JSON 类型声明。
+/// 命令执行日志归属。
 ///
-/// 该枚举覆盖 `JSONValue` 中除 `null` 以外的类型，用于 `Router` 在进入 handler 前做
-/// 轻量参数校验，也用于 `help` 命令向 Mac 侧暴露工具 schema。
-public enum ParameterKind: String, Sendable {
-    /// JSON 字符串。
-    case string
-
-    /// JSON 数字，对应 `JSONValue.double`。
-    case number
-
-    /// JSON 布尔值。
-    case boolean
-
-    /// JSON 对象。
-    case object
-
-    /// JSON 数组。
-    case array
+/// core 内置命令使用 `.core`，扩展模块（如 UIKit 命令）使用自定义 category，把日志接入
+/// 同一套 `ExploreLogging` sink，同时避免 core 暴露内部 `ExploreLogCategory`。
+public enum CommandLogCategory: Sendable, Equatable {
+    /// core 命令日志，最终进入内部 `command` category。
+    case core
+    /// 扩展命令日志，category 由扩展模块指定。
+    case extensionCommand(category: String)
 }
 
-/// 单个命令参数的描述。
-///
-/// `Router` 只使用 `name`、`kind`、`required` 做存在性和类型校验；`description`
-/// 面向调用方展示，当前由 `help` 命令输出，后续 Mac 侧 MCP tools/list 也可以直接复用。
-public struct CommandParameter: Sendable, Equatable {
-    /// 参数名，对应请求 `data` 对象里的键。
-    public let name: String
-
-    /// 参数期望的 JSON 类型。
-    public let kind: ParameterKind
-
-    /// 是否必填。必填参数缺失或显式为 `null` 会返回 `invalid_data`。
-    public let required: Bool
-
-    /// 给人或工具客户端阅读的参数说明。
-    public let description: String
-
-    /// 创建一个命令参数描述。
-    ///
-    /// - Parameters:
-    ///   - name: 参数名。
-    ///   - kind: 参数 JSON 类型。
-    ///   - required: 是否必填。
-    ///   - description: 参数说明。
-    public init(name: String, kind: ParameterKind, required: Bool, description: String) {
-        self.name = name
-        self.kind = kind
-        self.required = required
-        self.description = description
-    }
-}
-
-/// 可被 `ExploreServer` 注册和路由的命令协议。
+/// 可被 `ExploreServer` 注册和路由的 typed 命令协议。
 ///
 /// 每个新增能力都应该实现为一个新的 `action`，并通过 `register` 注入，而不是修改 HTTP
-/// 协议。协议本身保持小而稳定：`action` 负责路由，`description` 和 `parameters`
-/// 负责自描述，`handle` 执行业务逻辑。
-///
-/// 扩展性靠协议扩展默认值：未来新增可选元数据时，应在 extension 中给默认实现，避免
-/// 破坏既有命令实现。
+/// 协议。命令输入先由 `Input` 从动态 JSON 解析成 Swift 值，再进入业务逻辑；`help`
+/// 通过 `Input.inputSchema` 暴露工具可读 schema。
 public protocol Command: Sendable {
+    /// 命令输入类型，负责 schema 暴露与 JSON data 解析。
+    associatedtype Input: CommandInput
+
     /// 命令名，也是 HTTP body 中 `action` 字段的匹配键。
     var action: String { get }
 
     /// 命令人类可读描述，由 `help` 输出给调用方。
     var description: String { get }
 
-    /// 命令参数 schema。路由层会在调用 `handle` 前执行轻量校验。
-    var parameters: [CommandParameter] { get }
-
     /// 执行命令。
     ///
-    /// - Parameter request: 已解析并通过参数校验的命令请求。
-    /// - Returns: 业务结果。抛出的异常会被 `Router` 捕获并转换为 `internal_error`。
-    func handle(_ request: ExploreRequest) async throws -> ExploreResult
+    /// - Parameter input: 已按 `Input.inputSchema` 解析并校验的 typed 输入。
+    /// - Returns: 业务结果。抛出的异常会由 `AnyCommand` 捕获并转换为 `internal_error`。
+    /// - Throws: 命令执行中出现的未转换异常。
+    func handle(_ input: Input) async throws -> ExploreResult
 }
 
-public extension Command {
-    /// 默认无参数，方便简单命令只声明 `action`、`description` 和 `handle`。
-    var parameters: [CommandParameter] { [] }
+private enum CommandExecutionOutcome: Sendable {
+    case completed(ExploreResult)
+    case parseFailed(message: String)
+    case handlerFailed(message: String, logMessage: String)
 }
 
-/// 闭包注册入口的内部适配器。
+/// 类型擦除后的命令。
 ///
-/// `ExploreServer.register(action:...)` 和 `Router.register(action:...)` 最终都会生成
-/// `ClosureCommand`，再走协议对象注册路径。这样闭包命令与结构体命令共享同一套参数校验、
-/// 自省和错误转换逻辑。
-struct ClosureCommand: Command {
-    /// 命令名。
-    let action: String
+/// `Router` 只保存 `AnyCommand`，因此无需关心每个命令的具体 `Input` 类型。该适配器负责
+/// typed input 解析、handler 异常兜底和命令级日志，确保协议对象注册与闭包注册走同一条
+/// 执行路径。
+public struct AnyCommand: Sendable {
+    /// 命令名，也是 HTTP body 中 `action` 字段的匹配键。
+    public let action: String
 
-    /// 命令描述。
-    let description: String
+    /// 命令人类可读描述，由 `help` 输出给调用方。
+    public let description: String
 
-    /// 参数 schema。
-    let parameters: [CommandParameter]
+    /// 命令输入 schema，由 `help` 输出给调用方和工具客户端。
+    public let inputSchema: CommandInputSchema
 
-    /// 调用方提供的实际处理闭包。
-    let handler: @Sendable (ExploreRequest) async throws -> ExploreResult
+    /// 命令执行日志归属。
+    public let logCategory: CommandLogCategory
 
-    /// 创建一个闭包命令适配器。
-    init(action: String,
-         description: String = "",
-         parameters: [CommandParameter] = [],
-         handler: @escaping @Sendable (ExploreRequest) async throws -> ExploreResult) {
-        self.action = action
-        self.description = description
-        self.parameters = parameters
-        self.handler = handler
+    private let executor: @Sendable (ExploreRequest) async -> CommandExecutionOutcome
+
+    /// 包装一个协议命令对象。
+    ///
+    /// - Parameters:
+    ///   - command: 具体命令对象。
+    ///   - logCategory: 命令日志归属；core 命令默认走内部 `command` category。
+    public init<C: Command>(_ command: C, logCategory: CommandLogCategory = .core) {
+        self.action = command.action
+        self.description = command.description
+        self.inputSchema = C.Input.inputSchema
+        self.logCategory = logCategory
+        self.executor = { request in
+            do {
+                let input = try C.Input.parse(from: request.data)
+                let result = try await command.handle(input)
+                return .completed(result)
+            } catch let error as CommandInputParseError {
+                return .parseFailed(message: error.message)
+            } catch {
+                let serverError = ExploreServerError.handlerThrown(action: command.action, error: error)
+                return .handlerFailed(message: serverError.message, logMessage: serverError.logMessage)
+            }
+        }
     }
 
-    /// 转发给底层闭包执行。
-    func handle(_ request: ExploreRequest) async throws -> ExploreResult {
-        try await handler(request)
+    /// 创建一个 typed 闭包命令。
+    ///
+    /// - Parameters:
+    ///   - action: 命令名，也是 HTTP body 中 `action` 字段的匹配键。
+    ///   - description: 命令人类可读描述，由 `help` 输出。
+    ///   - input: 命令输入类型。
+    ///   - logCategory: 命令日志归属；core 命令默认走内部 `command` category。
+    ///   - handler: 已拿到 typed 输入后的业务处理闭包。
+    public init<Input: CommandInput>(action: String,
+                                     description: String = "",
+                                     input: Input.Type,
+                                     logCategory: CommandLogCategory = .core,
+                                     handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
+        self.action = action
+        self.description = description
+        self.inputSchema = Input.inputSchema
+        self.logCategory = logCategory
+        self.executor = { request in
+            do {
+                let input = try Input.parse(from: request.data)
+                let result = try await handler(input)
+                return .completed(result)
+            } catch let error as CommandInputParseError {
+                return .parseFailed(message: error.message)
+            } catch {
+                let serverError = ExploreServerError.handlerThrown(action: action, error: error)
+                return .handlerFailed(message: serverError.message, logMessage: serverError.logMessage)
+            }
+        }
+    }
+
+    /// 解析请求 data 并执行命令。
+    ///
+    /// 方法不会向路由层抛错：输入解析失败映射为 `invalid_data`，handler 未转换异常映射为
+    /// `internal_error`。日志只记录 action、schema 字段数和错误摘要，不输出完整 payload。
+    ///
+    /// - Parameter request: 已由 HTTP 层解析出的命令请求。
+    /// - Returns: 业务成功或失败 envelope 的中间结果。
+    public func handle(_ request: ExploreRequest) async -> ExploreResult {
+        emit(.debug, "command \(action) start schemaFields=\(inputSchema.fields.count)")
+        switch await executor(request) {
+        case .completed(let result):
+            logCompleted(result)
+            return result
+        case .parseFailed(let message):
+            emit(.error, "command \(action) parse failed schemaFields=\(inputSchema.fields.count) error=\(message)")
+            return .failure(code: .invalidData, message: message)
+        case .handlerFailed(let message, let logMessage):
+            emit(.error, "command \(action) failed code=\(ExploreError.internalError.rawValue) message=\(logMessage)")
+            return .failure(code: .internalError, message: message)
+        }
+    }
+
+    private func logCompleted(_ result: ExploreResult) {
+        switch result {
+        case .success(let data):
+            emit(.info, "command \(action) completed ok=true resultKeys=\(data.storage.count)")
+        case .failure(let code, let message):
+            emit(.error, "command \(action) failed code=\(code.rawValue) message=\(message)")
+        }
+    }
+
+    private func emit(_ level: ExploreLogLevel, _ message: String) {
+        switch logCategory {
+        case .core:
+            Self.emitCore(level, message)
+        case .extensionCommand(let category):
+            ExploreLogging.emitExtension(level: level, category: category, message: message)
+        }
+    }
+
+    private static func emitCore(_ level: ExploreLogLevel, _ message: String) {
+        switch level {
+        case .debug:
+            ExploreLogger.debug(.command, message)
+        case .info:
+            ExploreLogger.info(.command, message)
+        case .error:
+            ExploreLogger.error(.command, message)
+        case .fault:
+            ExploreLogger.fault(.command, message)
+        }
     }
 }

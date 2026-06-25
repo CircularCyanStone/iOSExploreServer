@@ -136,7 +136,7 @@ public enum ExploreError: String, Sendable {
     /// `Router` 没有找到请求 action 对应的命令。
     case unknownAction = "unknown_action"
 
-    /// 请求 data 缺少必填参数，或参数类型和 `CommandParameter` 声明不匹配。
+    /// 请求 data 无法按命令 `CommandInput` schema 解析。
     case invalidData = "invalid_data"
 
     /// handler 抛出异常，路由层将其兜底转换为内部错误。

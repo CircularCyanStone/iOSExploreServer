@@ -9,6 +9,17 @@ import UIKit
 import iOSExploreServer
 import iOSExploreUIKit
 
+private struct ExampleGreetingInput: CommandInput {
+    static let nameField = CommandFields.optionalString("name", description: "名字；缺省时返回 world")
+    static let inputSchema = CommandInputSchema(fields: [nameField.erased])
+
+    let name: String
+
+    static func parse(decoding decoder: inout CommandInputDecoder) throws -> ExampleGreetingInput {
+        ExampleGreetingInput(name: try decoder.read(nameField) ?? "world")
+    }
+}
+
 final class ViewController: UIViewController {
     private let server = ExploreServer()
     private var logLines: [String] = []
@@ -34,11 +45,10 @@ final class ViewController: UIViewController {
         )
 
         // 演示自定义命令 + UIKit 信息注入(register 同步,无需 Task)
-        server.register(action: "greet", description: "按 name 打招呼") { req in
-            let name = req.data["name"]?.stringValue ?? "world"
-            return .success(["message": .string("Hello, \(name)")])
+        server.register(action: "greet", description: "按 name 打招呼", input: ExampleGreetingInput.self) { input in
+            .success(["message": .string("Hello, \(input.name)")])
         }
-        server.register(action: "device", description: "返回设备机型与名称(UIKit 注入)") { _ in
+        server.register(action: "device", description: "返回设备机型与名称(UIKit 注入)", input: EmptyCommandInput.self) { _ in
             return await MainActor.run {
                 .success(["model": .string(UIDevice.current.model),
                           "name": .string(UIDevice.current.name)])
