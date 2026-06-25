@@ -23,12 +23,27 @@ func viewTargetsQueryParsesDefaultsAndFilters() throws {
     #expect(query.textLimit == 120)
 }
 
+@Test("UIViewTargetsInput schema 按工具展示顺序声明字段")
+func viewTargetsInputSchemaUsesExpectedFieldOrder() {
+    #expect(UIViewTargetsInput.inputSchema.fields.map(\.name) == [
+        "includeHidden",
+        "includeDisabled",
+        "includeStaticText",
+        "includeContainers",
+        "maxDepth",
+        "accessibilityIdentifier",
+        "accessibilityIdentifierPrefix",
+        "textLimit",
+        "maxTargets",
+    ])
+}
+
 @Test("UIViewTargetsQuery 拒绝非法 maxDepth 和 textLimit")
 func viewTargetsQueryRejectsInvalidNumbers() {
-    #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: ["maxDepth": -1]) }
-    #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: ["maxDepth": 1.5]) }
-    #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: ["textLimit": 201]) }
-    #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: ["textLimit": 0]) }
+    #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: ["maxDepth": -1]) }
+    #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: ["maxDepth": 1.5]) }
+    #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: ["textLimit": 201]) }
+    #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: ["textLimit": 0]) }
 }
 
 @Test("UIViewTargetsQuery 解析 maxTargets 默认值和边界")
@@ -45,7 +60,7 @@ func viewTargetsQueryParsesMaxTargets() throws {
         ["maxTargets": 1.5],
         ["maxTargets": .double(Double.greatestFiniteMagnitude)],
     ] {
-        #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: invalid) }
+        #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: invalid) }
     }
 }
 
@@ -56,7 +71,7 @@ func viewTargetsQueryRejectsOutOfRangeNumbers() {
         ["maxDepth": .double(Double.greatestFiniteMagnitude)],
         ["textLimit": .double(Double.greatestFiniteMagnitude)],
     ] {
-        #expect(throws: QueryParseError.self) { try UIViewTargetsQuery.parse(from: data) }
+        #expect(throws: CommandInputParseError.self) { try UIViewTargetsQuery.parse(from: data) }
     }
 }
 #endif

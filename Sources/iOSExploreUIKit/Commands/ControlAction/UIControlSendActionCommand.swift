@@ -10,6 +10,9 @@ import UIKit
 /// （取 Context、resolve locator、校验 `UIControl`、`sendActions(for:)`）全部收敛在
 /// `UIKitActionExecutor` 中，本命令不再内联执行逻辑。
 struct UIControlSendActionCommand: Command {
+    /// typed 输入模型，负责 schema 暴露和 data 解析。
+    typealias Input = UIControlSendActionInput
+
     /// 固定 action 名。
     static let actionName = "ui.control.sendAction"
 
@@ -19,47 +22,22 @@ struct UIControlSendActionCommand: Command {
     /// `help` 命令展示的说明。
     let description = "向指定 UIControl 发送 target-action 事件"
 
-    /// 可选参数 schema。
-    let parameters: [CommandParameter] = [
-        CommandParameter(name: "accessibilityIdentifier",
-                         kind: .string,
-                         required: false,
-                         description: "按 accessibilityIdentifier 精确定位目标控件, 与 path 二选一"),
-        CommandParameter(name: "path",
-                         kind: .string,
-                         required: false,
-                         description: "按 ui.viewTargets 或 ui.topViewHierarchy 返回的 root/0/1 路径定位目标控件, 与 accessibilityIdentifier 二选一"),
-        CommandParameter(name: "event",
-                         kind: .string,
-                         required: true,
-                         description: "事件名: touchDown / touchUpInside / valueChanged / editingChanged / editingDidBegin / editingDidEnd"),
-        CommandParameter(name: "snapshotID",
-                         kind: .string,
-                         required: false,
-                         description: "快照标识, 用于 path 定位的陈旧校验"),
-    ]
-
     /// 执行 sendAction。
     ///
     /// 解析请求构造 `UIKitActionPlan.controlEvent`，在 MainActor 上 `await` executor。
     ///
-    /// - Parameter request: 已通过顶层类型校验的命令请求。
+    /// - Parameter input: 已通过 typed schema 校验的 control action 输入。
     /// - Returns: 成功时返回目标摘要；失败时返回 `invalid_data` 或 UI 不可用错误。
-    func handle(_ request: ExploreRequest) async throws -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start payloadKeys=\(request.data.storage.count)")
+    func handle(_ input: UIControlSendActionInput) async throws -> ExploreResult {
+        UIKitCommandLogging.info("command", "command \(action) start target=\(input.target.description) event=\(input.event.rawValue)")
         do {
-            let query = try UIControlSendActionQuery.parse(from: request.data)
-            let plan = UIKitActionPlan.controlEvent(locator: query.target.locator,
-                                                    event: query.event,
-                                                    snapshotID: query.snapshotID)
+            let plan = UIKitActionPlan.controlEvent(locator: input.target.locator,
+                                                    event: input.event,
+                                                    snapshotID: input.snapshotID)
             let data = try await UIKitActionExecutor.execute(plan)
-            UIKitCommandLogging.info("command", "command \(action) completed target=\(query.target.description) event=\(query.event.rawValue) type=\(data["type"]?.stringValue ?? "unknown")")
+            UIKitCommandLogging.info("command", "command \(action) completed target=\(input.target.description) event=\(input.event.rawValue) type=\(data["type"]?.stringValue ?? "unknown")")
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
-            return error.result
-        } catch let parseError as QueryParseError {
-            let error = UIKitCommandError.invalidData(action: action, message: parseError.message)
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
         }

@@ -49,4 +49,23 @@ public struct CommandInputDecoder: Sendable {
         }
         return try field.decode(data[field.name])
     }
+
+    /// 判断请求 data 是否显式携带声明字段。
+    ///
+    /// 该方法用于少数需要区分“缺省值生效”和“调用方显式传入默认值”的命令规则，例如
+    /// UIKit tap 中 `coordinateSpace` 只允许和 window 坐标一起出现。方法会复用字段声明校验，
+    /// 避免调用方绕开 schema 直接访问原始 JSON。
+    ///
+    /// - Parameter field: 必须已包含在当前 schema 中，且 schema 与声明完全一致的 typed 字段。
+    /// - Returns: 请求 data 中是否包含该字段名。
+    /// - Throws: 字段未声明或同名字段 schema 不一致时抛出 `CommandInputParseError`。
+    public func contains<Value>(_ field: CommandField<Value>) throws -> Bool {
+        guard let declaredField = schema.fields.first(where: { $0.name == field.name }) else {
+            throw CommandInputParseError("command input field '\(field.name)' is not declared in schema")
+        }
+        guard declaredField.schema == field.schema else {
+            throw CommandInputParseError("command input field '\(field.name)' schema does not match declaration")
+        }
+        return data.storage.keys.contains(field.name)
+    }
 }

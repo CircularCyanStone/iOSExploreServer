@@ -4,7 +4,56 @@ import iOSExploreServer
 /// 轻量 UI 目标查询参数。
 ///
 /// 该类型保持 Foundation-only，负责解析 `ui.viewTargets` 的 data，并约束响应规模。
-public struct UIViewTargetsQuery: UIKitQueryParsing, Sendable, Equatable {
+public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
+    private enum Fields {
+        static let includeHidden = UIKitFilterFields.includeHidden
+        static let includeDisabled = CommandFields.bool(
+            "includeDisabled",
+            default: true,
+            description: "是否包含 disabled control, 默认 true"
+        )
+        static let includeStaticText = CommandFields.bool(
+            "includeStaticText",
+            default: false,
+            description: "是否包含仅展示文本的节点, 默认 false"
+        )
+        static let includeContainers = CommandFields.bool(
+            "includeContainers",
+            default: false,
+            description: "是否包含普通容器 view, 默认 false"
+        )
+        static let maxDepth = UIKitFilterFields.maxDepth
+        static let accessibilityIdentifier = UIKitFilterFields.accessibilityIdentifier
+        static let accessibilityIdentifierPrefix = UIKitFilterFields.accessibilityIdentifierPrefix
+        static let textLimit = CommandFields.int(
+            "textLimit",
+            range: 1...200,
+            default: 80,
+            description: "title/text/placeholder/value 最大字符数, 默认 80, 上限 200"
+        )
+        static let maxTargets = CommandFields.int(
+            "maxTargets",
+            range: 1...UIKitSnapshotLimits.maxFingerprints,
+            default: 200,
+            description: "单次响应最多返回的目标数, 默认 200, 上限 512"
+        )
+
+        static let all: [AnyCommandField] = [
+            includeHidden.erased,
+            includeDisabled.erased,
+            includeStaticText.erased,
+            includeContainers.erased,
+            maxDepth.erased,
+            accessibilityIdentifier.erased,
+            accessibilityIdentifierPrefix.erased,
+            textLimit.erased,
+            maxTargets.erased,
+        ]
+    }
+
+    /// `ui.viewTargets` 暴露给 help 和工具客户端的输入 schema。
+    public static let inputSchema = CommandInputSchema(fields: Fields.all)
+
     /// 是否包含隐藏 view。
     public let includeHidden: Bool
     /// 是否包含 disabled control。
@@ -25,7 +74,7 @@ public struct UIViewTargetsQuery: UIKitQueryParsing, Sendable, Equatable {
     public let maxTargets: Int
 
     /// 默认查询：面向事件下发前的低成本目标发现。
-    public static let `default` = UIViewTargetsQuery()
+    public static let `default` = UIViewTargetsInput()
 
     /// 创建查询参数。
     ///
@@ -81,21 +130,28 @@ public struct UIViewTargetsQuery: UIKitQueryParsing, Sendable, Equatable {
         return false
     }
 
-    /// 按 `QueryDecoder` 读取字段（供一致性测试拿 `accessedKeys`）。
-    public static func parse(decoding d: inout QueryDecoder) throws -> UIViewTargetsQuery {
-        UIViewTargetsQuery(
-            includeHidden: d.bool("includeHidden", default: false),
-            includeDisabled: d.bool("includeDisabled", default: true),
-            includeStaticText: d.bool("includeStaticText", default: false),
-            includeContainers: d.bool("includeContainers", default: false),
-            maxDepth: try d.optionalNonNegativeInt("maxDepth"),
-            accessibilityIdentifier: d.string("accessibilityIdentifier"),
-            accessibilityIdentifierPrefix: d.string("accessibilityIdentifierPrefix"),
-            textLimit: try d.rangedInt("textLimit", in: 1...200, default: 80),
-            maxTargets: try d.rangedInt("maxTargets", in: 1...UIKitSnapshotLimits.maxFingerprints, default: 200)
+    /// 按 `CommandInputDecoder` 读取声明字段并构造 typed input。
+    ///
+    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Returns: 已完成默认值填充和范围校验的查询参数。
+    /// - Throws: 字段类型或范围非法时抛出 `CommandInputParseError`。
+    public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIViewTargetsInput {
+        UIViewTargetsInput(
+            includeHidden: try decoder.read(Fields.includeHidden),
+            includeDisabled: try decoder.read(Fields.includeDisabled),
+            includeStaticText: try decoder.read(Fields.includeStaticText),
+            includeContainers: try decoder.read(Fields.includeContainers),
+            maxDepth: try decoder.read(Fields.maxDepth),
+            accessibilityIdentifier: try decoder.read(Fields.accessibilityIdentifier),
+            accessibilityIdentifierPrefix: try decoder.read(Fields.accessibilityIdentifierPrefix),
+            textLimit: try decoder.read(Fields.textLimit),
+            maxTargets: try decoder.read(Fields.maxTargets)
         )
     }
 }
+
+/// 保留旧查询类型名，减少 collector 和既有测试的迁移面。
+public typealias UIViewTargetsQuery = UIViewTargetsInput
 
 /// `ui.viewTargets` 输出策略使用的 Foundation-only 候选摘要。
 ///

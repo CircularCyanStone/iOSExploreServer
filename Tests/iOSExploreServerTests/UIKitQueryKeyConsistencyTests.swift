@@ -3,35 +3,23 @@ import Testing
 @testable import iOSExploreServer
 @testable import iOSExploreUIKit
 
-@Test("ui.viewTargets parse 读取的 builder key 全部声明在 parameters")
-func viewTargetsKeysCoveredByParameters() throws {
-    var d = QueryDecoder([:])
-    _ = try UIViewTargetsQuery.parse(decoding: &d)
-    let params = Set(ViewTargetsCommand().parameters.map(\.name))
-    #expect(d.accessedKeys.isSubset(of: params))
+@Test("ui.viewTargets 命令 schema 声明 typed input 字段")
+func viewTargetsCommandSchemaMatchesInputFields() {
+    #expect(ViewTargetsCommand.Input.inputSchema.fields.map(\.name) == UIViewTargetsInput.inputSchema.fields.map(\.name))
 }
 
-@Test("ui.topViewHierarchy parse 读取的 builder key 全部声明在 parameters")
-func topViewHierarchyKeysCoveredByParameters() throws {
-    var d = QueryDecoder([:])
-    _ = try UIViewHierarchyQuery.parse(decoding: &d)
-    let params = Set(TopViewHierarchyCommand().parameters.map(\.name))
-    #expect(d.accessedKeys.isSubset(of: params))
+@Test("ui.topViewHierarchy 命令 schema 声明 typed input 字段")
+func topViewHierarchyCommandSchemaMatchesInputFields() {
+    #expect(TopViewHierarchyCommand.Input.inputSchema.fields.map(\.name) == UIViewHierarchyInput.inputSchema.fields.map(\.name))
 }
 
-@Test("ui.control.sendAction parse 读取的 builder key 全部声明在 parameters")
-func controlSendActionKeysCoveredByParameters() throws {
-    var d = QueryDecoder(["event": "touchUpInside", "path": "root"])
-    _ = try UIControlSendActionQuery.parse(decoding: &d)
-    let params = Set(UIControlSendActionCommand().parameters.map(\.name))
-    #expect(d.accessedKeys.isSubset(of: params))
+@Test("ui.control.sendAction 命令 schema 声明 typed input 字段")
+func controlSendActionCommandSchemaMatchesInputFields() {
+    #expect(UIControlSendActionCommand.Input.inputSchema.fields.map(\.name) == UIControlSendActionInput.inputSchema.fields.map(\.name))
 }
 
-@Test("ui.tap parse 读取的 builder key 全部声明在 parameters")
-func tapKeysCoveredByParameters() throws {
-    var d = QueryDecoder(["path": "root"])
-    _ = try UITapQuery.parse(decoding: &d)
-    let params = Set(UITapCommand().parameters.map(\.name))
-    #expect(d.accessedKeys.isSubset(of: params))
+@Test("ui.tap 命令 schema 声明 typed input 字段")
+func tapCommandSchemaMatchesInputFields() {
+    #expect(UITapCommand.Input.inputSchema.fields.map(\.name) == UITapInput.inputSchema.fields.map(\.name))
 }
 #endif

@@ -39,7 +39,45 @@ public enum UITapTarget: Sendable, Equatable {
 ///
 /// 第一版支持两类输入：`accessibilityIdentifier`/`path` 定位 view，或 `x`/`y` 指定 window
 /// 坐标。两类输入不能混用，避免同一请求里出现不同目标。
-public struct UITapQuery: UIKitQueryParsing, Sendable, Equatable {
+public struct UITapInput: CommandInput, Sendable, Equatable {
+    private enum Fields {
+        static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
+        static let path = UIKitLocatorFields.path
+        static let snapshotID = UIKitLocatorFields.snapshotID
+        static let x = CommandFields.optionalFiniteNumber(
+            "x",
+            description: "window 坐标 x, 需要与 y 同时提供"
+        )
+        static let y = CommandFields.optionalFiniteNumber(
+            "y",
+            description: "window 坐标 y, 需要与 x 同时提供"
+        )
+        static let coordinateSpace = CommandFields.enumValue(
+            "coordinateSpace",
+            type: UITapCoordinateSpace.self,
+            default: .window,
+            description: "坐标空间, 第一版仅支持 window"
+        )
+
+        static let all: [AnyCommandField] = [
+            accessibilityIdentifier.erased,
+            path.erased,
+            snapshotID.erased,
+            x.erased,
+            y.erased,
+            coordinateSpace.erased,
+        ]
+    }
+
+    /// `ui.tap` 暴露给 help 和工具客户端的输入 schema。
+    public static let inputSchema = CommandInputSchema(
+        fields: Fields.all,
+        constraints: [
+            .extensionMessage("snapshotID is valid only with path"),
+            .extensionMessage("coordinateSpace currently supports only window"),
+        ]
+    )
+
     /// 点击目标。
     public let target: UITapTarget
     /// 可选的快照标识，用于对 `.path` 定位做陈旧校验；查询类命令返回，交互命令回传。
@@ -55,33 +93,65 @@ public struct UITapQuery: UIKitQueryParsing, Sendable, Equatable {
         self.snapshotID = snapshotID
     }
 
-    /// snapshotID 走 builder；以下为领域逻辑（互斥/成对/coordinateSpace 单值校验），
-    /// 保留手写，经 `d.data` 访问原始 data，不进 `accessedKeys`。
-    public static func parse(decoding d: inout QueryDecoder) throws -> UITapQuery {
-        let snapshotID = d.string("snapshotID")
-        let accessibilityIdentifier = d.data["accessibilityIdentifier"]?.stringValue
-        let rawPath = d.data["path"]?.stringValue
-        let x = d.data["x"]?.doubleValue
-        let y = d.data["y"]?.doubleValue
-        let coordinateSpace = d.data["coordinateSpace"]?.stringValue ?? "window"
+    /// 按 `CommandInputDecoder` 读取字段并执行 tap 目标互斥校验。
+    ///
+    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Returns: 已解析的 tap 命令输入。
+    /// - Throws: 字段类型、坐标成对关系、目标互斥关系或 snapshotID 搭配非法时抛出
+    ///   `CommandInputParseError`。
+    public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UITapInput {
+        let accessibilityIdentifier = try decoder.read(Fields.accessibilityIdentifier)
+        let rawPath = try decoder.read(Fields.path)
+        let snapshotID = try decoder.read(Fields.snapshotID)
+        let x = try decoder.read(Fields.x)
+        let y = try decoder.read(Fields.y)
+        _ = try decoder.read(Fields.coordinateSpace)
+        let hasCoordinateSpace = try decoder.contains(Fields.coordinateSpace)
 
-        let hasViewTarget = accessibilityIdentifier != nil || rawPath != nil
+        let hasIdentifier = accessibilityIdentifier != nil
+        let hasPath = rawPath != nil
+        let hasViewTarget = hasIdentifier || hasPath
         let hasPointTarget = x != nil || y != nil
 
+        if hasIdentifier, hasPath {
+            throw CommandInputParseError("accessibilityIdentifier and path are mutually exclusive")
+        }
         if hasViewTarget, hasPointTarget {
-            throw QueryParseError("view target and coordinate target are mutually exclusive")
+            throw CommandInputParseError("view target and coordinate target are mutually exclusive")
         }
         if hasPointTarget {
             guard let x, let y else {
-                throw QueryParseError("x and y must be provided together")
+                throw CommandInputParseError("x and y must be provided together")
             }
-            guard coordinateSpace == "window" else {
-                throw QueryParseError("coordinateSpace must be window")
+            if snapshotID != nil {
+                throw CommandInputParseError("snapshotID is valid only with path")
             }
-            return UITapQuery(target: .windowPoint(x: x, y: y), snapshotID: snapshotID)
+            return UITapInput(target: .windowPoint(x: x, y: y), snapshotID: nil)
+        }
+        if hasPath, hasCoordinateSpace {
+            throw CommandInputParseError("coordinateSpace is valid only with window point")
+        }
+        if snapshotID != nil, !hasPath {
+            throw CommandInputParseError("snapshotID is valid only with path")
         }
 
-        let target = try UIKitViewLookupTarget.parse(identifier: accessibilityIdentifier, rawPath: rawPath)
-        return UITapQuery(target: .view(target), snapshotID: snapshotID)
+        do {
+            let target = try UIKitViewLookupTarget.parse(identifier: accessibilityIdentifier, rawPath: rawPath)
+            return UITapInput(target: .view(target), snapshotID: snapshotID)
+        } catch let error as QueryParseError {
+            throw CommandInputParseError(error.message)
+        }
     }
 }
+
+/// `ui.tap` 支持的坐标空间。
+///
+/// 当前仅允许 window 坐标，保留 enum 是为了让 schema 明确暴露唯一合法值，并给后续扩展留出
+/// typed input 兼容点。
+public enum UITapCoordinateSpace: String, Sendable, Equatable, CaseIterable {
+    /// UIKit window 坐标系。
+    case window
+}
+
+/// 保留旧查询类型名，减少 executor 和既有测试的迁移面。
+public typealias UITapQuery = UITapInput

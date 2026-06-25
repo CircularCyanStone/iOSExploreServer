@@ -348,7 +348,31 @@ public enum UIViewHierarchyDetailLevel: String, Sendable, CaseIterable {
 /// UI 层级采集和筛选参数。
 ///
 /// 命令会从请求 `data` 解析为该类型；测试中也直接用它约束递归和筛选行为。
-public struct UIViewHierarchyQuery: UIKitQueryParsing, Sendable, Equatable {
+public struct UIViewHierarchyInput: CommandInput, Sendable, Equatable {
+    private enum Fields {
+        static let detailLevel = CommandFields.enumValue(
+            "detailLevel",
+            type: UIViewHierarchyDetailLevel.self,
+            default: .appearance,
+            description: "详情级别: basic / appearance / full, 默认 appearance"
+        )
+        static let maxDepth = UIKitFilterFields.maxDepth
+        static let includeHidden = UIKitFilterFields.includeHidden
+        static let accessibilityIdentifier = UIKitFilterFields.accessibilityIdentifier
+        static let accessibilityIdentifierPrefix = UIKitFilterFields.accessibilityIdentifierPrefix
+
+        static let all: [AnyCommandField] = [
+            detailLevel.erased,
+            maxDepth.erased,
+            includeHidden.erased,
+            accessibilityIdentifier.erased,
+            accessibilityIdentifierPrefix.erased,
+        ]
+    }
+
+    /// `ui.topViewHierarchy` 暴露给 help 和工具客户端的输入 schema。
+    public static let inputSchema = CommandInputSchema(fields: Fields.all)
+
     /// 详情级别。
     public let detailLevel: UIViewHierarchyDetailLevel
     /// 最大递归深度，`nil` 表示不限制。
@@ -361,7 +385,7 @@ public struct UIViewHierarchyQuery: UIKitQueryParsing, Sendable, Equatable {
     public let accessibilityIdentifierPrefix: String?
 
     /// 默认查询：返回非隐藏视图的 appearance 级完整树。
-    public static let `default` = UIViewHierarchyQuery()
+    public static let `default` = UIViewHierarchyInput()
 
     /// 创建查询参数。
     ///
@@ -388,17 +412,24 @@ public struct UIViewHierarchyQuery: UIKitQueryParsing, Sendable, Equatable {
         accessibilityIdentifier != nil || accessibilityIdentifierPrefix != nil
     }
 
-    /// 按 `QueryDecoder` 读取字段（供一致性测试拿 `accessedKeys`）。
-    public static func parse(decoding d: inout QueryDecoder) throws -> UIViewHierarchyQuery {
-        UIViewHierarchyQuery(
-            detailLevel: try d.enumValue("detailLevel", default: .appearance),
-            maxDepth: try d.optionalNonNegativeInt("maxDepth"),
-            includeHidden: d.bool("includeHidden", default: false),
-            accessibilityIdentifier: d.string("accessibilityIdentifier"),
-            accessibilityIdentifierPrefix: d.string("accessibilityIdentifierPrefix")
+    /// 按 `CommandInputDecoder` 读取字段并构造 typed input。
+    ///
+    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Returns: 已完成默认值填充和范围校验的层级查询参数。
+    /// - Throws: 字段类型、枚举值或范围非法时抛出 `CommandInputParseError`。
+    public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIViewHierarchyInput {
+        UIViewHierarchyInput(
+            detailLevel: try decoder.read(Fields.detailLevel),
+            maxDepth: try decoder.read(Fields.maxDepth),
+            includeHidden: try decoder.read(Fields.includeHidden),
+            accessibilityIdentifier: try decoder.read(Fields.accessibilityIdentifier),
+            accessibilityIdentifierPrefix: try decoder.read(Fields.accessibilityIdentifierPrefix)
         )
     }
 }
+
+/// 保留旧查询类型名，减少 collector 和既有测试的迁移面。
+public typealias UIViewHierarchyQuery = UIViewHierarchyInput
 
 /// 可被 `UIViewHierarchyBuilder` 转换为层级节点的抽象 UI 元素。
 ///

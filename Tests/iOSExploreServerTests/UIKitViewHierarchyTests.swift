@@ -141,15 +141,26 @@ func viewHierarchyQueryParsesCommandData() throws {
     #expect(query.includeHidden == true)
     #expect(query.accessibilityIdentifierPrefix == "mine.")
 
-    #expect(throws: QueryParseError.self) {
+    #expect(throws: CommandInputParseError.self) {
         try UIViewHierarchyQuery.parse(from: ["detailLevel": "unknown"])
     }
+}
+
+@Test("UIViewHierarchyInput schema 按工具展示顺序声明字段")
+func viewHierarchyInputSchemaUsesExpectedFieldOrder() {
+    #expect(UIViewHierarchyInput.inputSchema.fields.map(\.name) == [
+        "detailLevel",
+        "maxDepth",
+        "includeHidden",
+        "accessibilityIdentifier",
+        "accessibilityIdentifierPrefix",
+    ])
 }
 
 #if !canImport(UIKit)
 @Test("UIViewHierarchyQuery 拒绝无法安全转换为 Int 的 maxDepth")
 func viewHierarchyQueryRejectsOutOfRangeMaxDepth() {
-    #expect(throws: QueryParseError.self) {
+    #expect(throws: CommandInputParseError.self) {
         try UIViewHierarchyQuery.parse(from: [
             "maxDepth": .double(Double.greatestFiniteMagnitude),
         ])

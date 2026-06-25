@@ -18,10 +18,10 @@ public extension ExploreServer {
     /// `ExploreServer.init` 之后、`start()` 之前调用一次。
     func registerUIKitCommands() {
         UIKitCommandLogging.info("uikit.registrar", "registration started")
-        register(TopViewHierarchyCommand())
-        register(ViewTargetsCommand())
-        register(UIControlSendActionCommand())
-        register(UITapCommand())
+        register(TopViewHierarchyCommand(), logCategory: .extensionCommand(category: "command"))
+        register(ViewTargetsCommand(), logCategory: .extensionCommand(category: "command"))
+        register(UIControlSendActionCommand(), logCategory: .extensionCommand(category: "command"))
+        register(UITapCommand(), logCategory: .extensionCommand(category: "command"))
         UIKitCommandLogging.info("uikit.registrar", "registration completed count=4")
     }
 }
