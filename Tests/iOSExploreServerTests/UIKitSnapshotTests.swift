@@ -101,10 +101,12 @@ func hiddenStateChangesFingerprint() {
     button.accessibilityIdentifier = "settings.save"
     let visible = UIKitFingerprintCollector.fingerprint(for: button,
                                                         path: "root/0",
+                                                        rootView: button,
                                                         digest: "SettingsViewController")
     button.isHidden = true
     let hidden = UIKitFingerprintCollector.fingerprint(for: button,
                                                        path: "root/0",
+                                                       rootView: button,
                                                        digest: "SettingsViewController")
     #expect(visible != hidden)
 }
@@ -114,10 +116,12 @@ func alphaChangesFingerprint() {
     let button = UIButton(type: .system)
     let original = UIKitFingerprintCollector.fingerprint(for: button,
                                                          path: "root/0",
+                                                         rootView: button,
                                                          digest: "SettingsViewController")
     button.alpha = 0
     let changed = UIKitFingerprintCollector.fingerprint(for: button,
                                                         path: "root/0",
+                                                        rootView: button,
                                                         digest: "SettingsViewController")
     #expect(original != changed)
 }
@@ -127,10 +131,12 @@ func interactionEnabledChangesFingerprint() {
     let button = UIButton(type: .system)
     let original = UIKitFingerprintCollector.fingerprint(for: button,
                                                          path: "root/0",
+                                                         rootView: button,
                                                          digest: "SettingsViewController")
     button.isUserInteractionEnabled = false
     let changed = UIKitFingerprintCollector.fingerprint(for: button,
                                                         path: "root/0",
+                                                        rootView: button,
                                                         digest: "SettingsViewController")
     #expect(original != changed)
 }
