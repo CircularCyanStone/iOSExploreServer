@@ -132,15 +132,14 @@ enum HTTPParser {
     /// 把业务结果包装为统一 HTTP 响应。
     ///
     /// `ExploreResult.failure` 表示业务失败，不是通信失败，因此仍返回 HTTP 200，并在 body
-    /// 中使用 `{"ok": false, "error": ...}` 表达。
+    /// 顶层 `code` 中表达失败原因。成功响应使用 `code: "ok"`。
     static func response(for result: ExploreResult) -> HTTPResponse {
         switch result {
         case .success(let data):
-            let body: JSON = ["ok": .bool(true), "data": .object(data)]
+            let body: JSON = ["code": .string("ok"), "data": .object(data)]
             return HTTPResponse(status: 200, reason: "OK", body: JSONCoder.encode(body))
         case .failure(let code, let message):
-            let error: JSON = ["code": .string(code.rawValue), "message": .string(message)]
-            let body: JSON = ["ok": .bool(false), "error": .object(error)]
+            let body: JSON = ["code": .string(code.rawValue), "message": .string(message)]
             return HTTPResponse(status: 200, reason: "OK", body: JSONCoder.encode(body))
         }
     }
@@ -148,11 +147,10 @@ enum HTTPParser {
     /// 构造通信层错误响应。
     ///
     /// 非 `POST /`、非法 JSON、缺少 action 等问题无法进入业务路由，因此用非 200 HTTP
-    /// 状态码配合同样的 envelope 结构返回。
+    /// 状态码配合同样的顶层 `code/message` envelope 结构返回。
     private static func errorResponse(status: Int, reason: String,
                                       code: ExploreError, message: String) -> HTTPResponse {
-        let error: JSON = ["code": .string(code.rawValue), "message": .string(message)]
-        let body: JSON = ["ok": .bool(false), "error": .object(error)]
+        let body: JSON = ["code": .string(code.rawValue), "message": .string(message)]
         return HTTPResponse(status: status, reason: reason, body: JSONCoder.encode(body))
     }
 

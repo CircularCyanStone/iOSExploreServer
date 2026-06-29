@@ -34,7 +34,7 @@ struct ExploreServerError: Error, Sendable, Equatable {
     /// 对应 HTTP reason phrase。
     let httpReason: String
 
-    /// envelope 里的业务错误码。
+    /// envelope 顶层的业务错误码。
     let code: ExploreError
 
     /// 对外（envelope）展示的错误信息。
@@ -160,7 +160,7 @@ struct ExploreServerError: Error, Sendable, Equatable {
                            logMessage: "read timed out")
     }
 
-    /// 命令执行超时。仍以 HTTP 200 + envelope `internal_error` 返回，不断开传输层。
+    /// 命令执行超时。仍以 HTTP 200 + 顶层 `internal_error` 返回，不断开传输层。
     static func commandTimeout(action: String) -> ExploreServerError {
         ExploreServerError(category: .timeout,
                            httpStatus: 200,

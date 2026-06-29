@@ -23,9 +23,9 @@ lsof -iTCP:38321 -sTCP:LISTEN -n -P # 应看到 iproxy 在监听 *:38321
 
 ## 设备返回错误 envelope
 
-- `{"ok":false,"error":{"code":"unknown_action",...}}` → action 名拼错或没注册。检查 `register(action:)` 拼写。
-- `{"ok":false,"error":{"code":"bad_request",...}}` → body 非合法 JSON 或缺 `action` 字段。检查 curl 的 `-d` JSON。
-- `{"ok":false,"error":{"code":"internal_error",...}}` → handler 抛异常。看 App 控制台日志定位。
+- `{"code":"unknown_action",...}` → action 名拼错或没注册。检查 `register(action:)` 拼写。
+- `{"code":"bad_request",...}` → body 非合法 JSON 或缺 `action` 字段。检查 curl 的 `-d` JSON。
+- `{"code":"internal_error",...}` → handler 抛异常。看 App 控制台日志定位。
 - `HTTP/1.1 503 Service Unavailable` → 活跃连接数达到 server 上限。确认 Mac 侧没有悬挂的 curl/MCP 连接，或等待已有请求结束后重试。
 - `message` 包含 `command timed out` → handler 执行超过命令超时。检查是否在 handler 内做了截图、UI tree 遍历或其他耗时操作；这类能力后续应做限频/分页/缓存。
 

@@ -101,20 +101,23 @@ func exploreRequestRejectsNonObjectData() throws {
     }
 }
 
-@Test("success 结果序列化为 ok:true envelope")
+@Test("success 结果序列化为顶层 code envelope")
 func responseForSuccess() {
     let resp = HTTPParser.response(for: .success(["pong": true]))
     let text = String(data: resp.body, encoding: .utf8) ?? ""
-    #expect(text.contains(#""ok":true"#))
+    #expect(text.contains(#""code":"ok""#))
     #expect(text.contains(#""data":{"pong":true}"#))
+    #expect(!text.contains(#""ok":"#))
+    #expect(!text.contains(#""error":"#))
     #expect(resp.status == 200)
 }
 
-@Test("failure 结果序列化为 ok:false envelope")
+@Test("failure 结果序列化为顶层 code envelope")
 func responseForFailure() {
     let resp = HTTPParser.response(for: .failure(code: .unknownAction, message: "no handler"))
     let text = String(data: resp.body, encoding: .utf8) ?? ""
-    #expect(text.contains(#""ok":false"#))
     #expect(text.contains(#""code":"unknown_action""#))
     #expect(text.contains(#""message":"no handler""#))
+    #expect(!text.contains(#""ok":"#))
+    #expect(!text.contains(#""error":"#))
 }

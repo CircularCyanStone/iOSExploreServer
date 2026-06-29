@@ -16,7 +16,7 @@ curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ :38321 ──
                                                               │     ├─ Router.route (Mutex-protected registry)
                                                               │     └─ write response + close
                                                               ▼
-                                                      { "ok": true, "data": {...} }
+                                                      { "code": "ok", "data": {...} }
 ```
 
 方向：Mac 是客户端，iPhone 是服务端，一次请求/响应往返。传输刻意用明文 HTTP——经 iproxy 的 USB 隧道，无需 TLS；Mac 侧 `curl` 即客户端，零 SDK 依赖。
@@ -76,16 +76,16 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 
 ## 资源限制
 
-- 默认在线 session 上限为 4；超出后返回 HTTP 503 + `ok:false` envelope。
+- 默认在线 session 上限为 4；超出后返回 HTTP 503 + 顶层 `code/message` envelope。
 - 默认 header 上限 16 KB，body/request 上限 1 MB；非法或超限请求通过 parser 三态返回 `bad_request`。
 - 默认读请求超时和命令执行超时均为 10 秒。命令超时会返回 `internal_error` envelope，避免单个 handler 长时间占住连接。
 
 ## envelope 协议
 
-- 成功：`{"ok":true,"data":{...}}`
-- 业务失败：`{"ok":false,"error":{"code":"...","message":"..."}}`
+- 成功：`{"code":"ok","data":{...}}`
+- 业务失败：`{"code":"...","message":"..."}`
 - 错误码：`unknown_action` / `invalid_data` / `internal_error` / `bad_request`
-- 通信层错误（非 POST、非法 JSON）用 HTTP 400/500 + `ok:false`；业务失败用 HTTP 200 + `ok:false`——区分"通信失败"与"业务失败"。
+- 通信层错误（非 POST、非法 JSON）用 HTTP 400/500 + 顶层失败 `code/message`；业务失败用 HTTP 200 + 顶层失败 `code/message`——区分"通信失败"与"业务失败"。
 
 ## 错误模型
 
@@ -115,7 +115,7 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 
 - `identifier`：按业务层设置的 `accessibilityIdentifier` 精确定位。**完整匹配、不截断**（历史 bug 曾截断 prefix）；匹配多个 view 返回 `invalid_data`。
 - `path`：来自 `ui.viewTargets`/`ui.topViewHierarchy` 的只读路径（如 `root/0/2`），仅描述快照内位置。
-- `snapshotID` + `path`：交互命令携带 `ui.viewTargets` 或 `ui.topViewHierarchy` 返回的 `snapshotID` 时，executor 会重新采集当前 view 树指纹并逐字段比对；类型、identifier、enabled/selected、hidden、alpha、交互开关或祖先结构任一不同，或 snapshot 已淘汰/过期，都会判定陈旧，返回 HTTP 200 + `ok:false` + `invalid_data` + **固定陈旧消息**。无 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
+- `snapshotID` + `path`：交互命令携带 `ui.viewTargets` 或 `ui.topViewHierarchy` 返回的 `snapshotID` 时，executor 会重新采集当前 view 树指纹并逐字段比对；类型、identifier、enabled/selected、hidden、alpha、交互开关或祖先结构任一不同，或 snapshot 已淘汰/过期，都会判定陈旧，返回 HTTP 200 + 顶层 `code:"invalid_data"` + **固定陈旧消息**。无 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
 
 `ui.control.sendAction` 复用同一套顶部控制器根 view 和 `path` 规则，按 `accessibilityIdentifier` 或 `path` 定位目标，校验目标是 `UIControl` 且请求 event 位于该目标 `availableActions` 后，才在 `MainActor` 调用 `sendActions(for:)`。该命令触发 target-action，不模拟真实触摸坐标、命中测试或高亮过程。
 

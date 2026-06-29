@@ -4,14 +4,15 @@ import Foundation
 ///
 /// core 库本身不依赖 UIKit，但需要给上层 UIKit 扩展暴露一个最小的失败构造缝：扩展
 /// handler 失败时不应在调用点散写错误码、消息和日志，而应集中由本结构表达。本结构只
-/// 持有错误码、对外消息和内部日志消息三段，分别对应 envelope `error` 字段与排障日志。
+/// 持有错误码、对外消息和内部日志消息三段，分别对应 envelope 顶层 `code/message`
+/// 与排障日志。
 ///
 /// 该类型为 `Sendable` 值类型，可安全跨并发边界传递；`Equatable` 便于测试精确断言。
 public struct ExploreCommandFailure: Sendable, Equatable {
-    /// 业务失败码，序列化进响应 envelope 的 `error.code`。
+    /// 业务失败码，序列化进响应 envelope 的顶层 `code`。
     public let code: ExploreError
 
-    /// 对外暴露的失败说明，序列化进响应 envelope 的 `error.message`。
+    /// 对外暴露的失败说明，序列化进响应 envelope 的顶层 `message`。
     public let message: String
 
     /// 仅用于日志的详细说明，不会进入响应 envelope。
@@ -23,8 +24,8 @@ public struct ExploreCommandFailure: Sendable, Equatable {
     /// 创建一条扩展命令失败描述。
     ///
     /// - Parameters:
-    ///   - code: 业务失败码，对应 envelope `error.code`。
-    ///   - message: 对外失败说明，对应 envelope `error.message`。
+    ///   - code: 业务失败码，对应 envelope 顶层 `code`。
+    ///   - message: 对外失败说明，对应 envelope 顶层 `message`。
     ///   - logMessage: 仅用于日志的内部说明，不进响应。
     public init(code: ExploreError, message: String, logMessage: String) {
         self.code = code

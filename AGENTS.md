@@ -6,7 +6,7 @@
 
 - 库 `iOSExploreServer` **只依赖 `Foundation` + `Network`，不依赖 UIKit**；需要 UIKit 的信息（如设备机型）由集成方 App 注册额外 handler 注入，不进库。
 - Swift 6.2 严格并发：跨边界模型 `Sendable`，共享状态用 `Mutex`（全库唯一 `@unchecked` 边界，锁内禁 `await`），闭包 `@Sendable`。
-- 唯一命令端点 `POST /`，body `{"action":"...","data":{...}}`，响应统一 envelope `{"ok":bool,"data"?,"error"?}`。**新增能力 = 注册新 action，不改协议**。
+- 唯一命令端点 `POST /`，body `{"action":"...","data":{...}}`，响应统一 envelope `{"code":"ok","data"?}` 或 `{"code":"...","message":"..."}`。**新增能力 = 注册新 action，不改协议**。
 - 默认端口 **38321**（构造可配）。MVP 不强制鉴权（USB 物理连接隔离），`ExploreServer(authToken:)` 是预留钩子，当前不校验。
 - SPM 包（根 `Sources/`）与 framework 工程（`iOSExploreServer/iOSExploreServer.xcodeproj`）**共享同一份 `Sources/iOSExploreServer/`**，不要维护两份源码。
 - 库源码必须同时兼容 SPM（Swift 6.2）与 framework 工程（`SWIFT_VERSION=5.0`）：避免 Swift-6-only 语法。
@@ -60,7 +60,7 @@
 
 - 改完代码先 `swift test` 再说完成；集成测试串行（`@Suite(.serialized)`，端口 38399 不能并行）；iOS 模拟器 framework 测试用 `startWithPortRetry` 规避 cancel 异步释放端口的竞态。
 - 内置命令在 `ExploreServer.init` 同步注册一次；不要在每次 `start()` 重注册。**UIKit 命令不在此列**——core 不自动注册任何 `ui.*`，宿主必须显式 `server.registerUIKitCommands()`。
-- 通信失败用 HTTP 状态码（400/500），业务失败用 envelope `ok:false`，二者要区分。
+- 通信失败用 HTTP 状态码（400/500），业务失败用 HTTP 200 + body 顶层失败 `code/message`，二者要区分。
 - 所有新增错误出口必须先建 `ExploreServerError`（core）/ `UIKitCommandError`（UIKit）工厂，再由该对象生成 HTTP response /业务 failure /日志，不要在调用点散写 status、reason、code、message。
 - `Router` 是锁保护的 `final class`（非 actor）：`register` 同步、`route` 锁内取命令+锁外校验/`await handle`（锁内禁 await）；`ExploreServer` 是真 `Sendable`，`@unchecked` 只在 `Mutex` 一处。
 - **typed factory**：UIKit 命令入参先经 Foundation-only typed query 解析校验，UIKit 类型不穿 public 边界；定位统一 `identifier` 精确（不截断）→ `path` 只读 → 可选 `snapshotID` 陈旧防护。

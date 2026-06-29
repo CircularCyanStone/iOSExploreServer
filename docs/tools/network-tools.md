@@ -11,12 +11,12 @@
 
 **成功响应**：
 ```json
-{ "ok": true, "data": { "pong": true } }
+{ "code": "ok", "data": { "pong": true } }
 ```
 
 **业务失败响应**：
 ```json
-{ "ok": false, "error": { "code": "unknown_action", "message": "no handler for 'foo'" } }
+{ "code": "unknown_action", "message": "no handler for 'foo'" }
 ```
 
 错误码：`unknown_action` / `invalid_data` / `internal_error` / `bad_request`。
@@ -43,7 +43,7 @@
 
 - `accessibilityIdentifier`（优先）：按业务层 identifier **精确匹配，不截断、不做 prefix 匹配**。匹配多个 view 返回 `invalid_data`，避免误触发。
 - `path`：来自 `ui.viewTargets` / `ui.topViewHierarchy` 的只读路径（`root/0/2`），仅描述快照内位置，不写回业务 UI。
-- `snapshotID`（可选，配合 `path`）：携带 `ui.viewTargets` 或 `ui.topViewHierarchy` 返回的 `snapshotID` 时，命令会重新采集当前 view 树指纹并逐字段比对（context 类型、path、view 类型、identifier 哈希、enabled/selected、hidden、alpha、交互开关与祖先结构摘要）。页面已变动，或 snapshot 已淘汰/过期而无法验证时，均返回 **HTTP 200 + `ok:false` + `invalid_data` + 固定陈旧消息**。不带 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
+- `snapshotID`（可选，配合 `path`）：携带 `ui.viewTargets` 或 `ui.topViewHierarchy` 返回的 `snapshotID` 时，命令会重新采集当前 view 树指纹并逐字段比对（context 类型、path、view 类型、identifier 哈希、enabled/selected、hidden、alpha、交互开关与祖先结构摘要）。页面已变动，或 snapshot 已淘汰/过期而无法验证时，均返回 **HTTP 200 + 顶层 `code:"invalid_data"` + 固定陈旧消息**。不带 `snapshotID` 时跳过陈旧检查，按当前树直接定位。
 
 ### `ui.topViewHierarchy`
 

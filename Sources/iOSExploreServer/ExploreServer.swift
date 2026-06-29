@@ -20,7 +20,7 @@ public enum ServerEvent: Sendable {
 
     /// 已发送响应。
     ///
-    /// `status` 是 HTTP 状态码；`ok` 是 envelope 里的业务成功标记。
+    /// `status` 是 HTTP 状态码；`ok` 是响应结果摘要，供宿主日志面板显示。
     case responded(status: Int, ok: Bool)
 
     /// 预留的错误事件，供未来监听器或接入层上报不可恢复问题。

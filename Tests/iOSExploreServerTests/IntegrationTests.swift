@@ -41,7 +41,7 @@ func endToEndPing() async throws {
     defer { server.stop() }
 
     let text = try await send(action: "ping")
-    #expect(text.contains(#""ok":true"#))
+    #expect(text.contains(#""code":"ok""#))
     #expect(text.contains(#""pong":true"#))
 }
 
@@ -62,8 +62,9 @@ func endToEndUnknown() async throws {
     defer { server.stop() }
 
     let text = try await send(action: "nope")
-    #expect(text.contains(#""ok":false"#))
     #expect(text.contains(#""code":"unknown_action""#))
+    #expect(!text.contains(#""ok":"#))
+    #expect(!text.contains(#""error":"#))
 }
 
 @Test("自定义注册命令经 HTTP 可达")
@@ -107,7 +108,7 @@ func endToEndHelp() async throws {
     defer { server.stop() }
 
     let text = try await send(action: "help")
-    #expect(text.contains(#""ok":true"#))
+    #expect(text.contains(#""code":"ok""#))
     #expect(text.contains(#""action":"ping""#))
     #expect(text.contains(#""action":"help""#))
     #expect(text.contains(#""inputSchema""#))
@@ -127,9 +128,10 @@ func commandTimeoutReturnsErrorEnvelope() async throws {
     defer { server.stop() }
 
     let text = try await send(action: "slow")
-    #expect(text.contains(#""ok":false"#))
     #expect(text.contains(#""code":"internal_error""#))
     #expect(text.contains("timed out"))
+    #expect(!text.contains(#""ok":"#))
+    #expect(!text.contains(#""error":"#))
 }
 
 @Test("超过连接上限时拒绝新连接并返回 503")
@@ -149,7 +151,9 @@ func connectionLimitRejectsAdditionalConnection() async throws {
     let second = try await send(action: "ping")
 
     #expect(second.contains("503 Service Unavailable"))
-    #expect(second.contains(#""ok":false"#))
+    #expect(second.contains(#""code":"internal_error""#))
+    #expect(!second.contains(#""ok":"#))
+    #expect(!second.contains(#""error":"#))
     _ = try await first
 }
 

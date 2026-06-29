@@ -24,7 +24,7 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 ## 命令协议
 
 请求：`POST /`，body `{"action":"<name>","data":{...}}`。
-响应：`{"ok":true,"data":{...}}` 或 `{"ok":false,"error":{"code":"...","message":"..."}}`。
+响应：`{"code":"ok","data":{...}}` 或 `{"code":"...","message":"..."}`。
 
 内置命令：`ping`、`echo`、`info`、`help`。
 

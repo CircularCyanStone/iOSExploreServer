@@ -124,14 +124,14 @@ public struct ExploreRequest: Sendable, Equatable {
 /// JSON 无法解析，不会通过 `ExploreResult` 返回，而是由 HTTP 层直接生成 400/500
 /// envelope。
 public enum ExploreResult: Sendable, Equatable {
-    /// 业务成功，`JSON` 会被序列化进响应 envelope 的 `data` 字段。
+    /// 业务成功，`JSON` 会被序列化进响应 envelope 的 `data` 字段，顶层 `code` 为 `ok`。
     case success(JSON)
 
-    /// 业务失败，错误码和说明会被序列化进响应 envelope 的 `error` 字段。
+    /// 业务失败，错误码和说明会被序列化进响应 envelope 的顶层 `code/message` 字段。
     case failure(code: ExploreError, message: String)
 }
 
-/// 统一 envelope 中 `error.code` 的取值。
+/// 统一 envelope 中失败 `code` 的取值。
 public enum ExploreError: String, Sendable {
     /// `Router` 没有找到请求 action 对应的命令。
     case unknownAction = "unknown_action"

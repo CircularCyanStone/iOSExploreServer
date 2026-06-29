@@ -247,8 +247,8 @@ final class ClientSession: Sendable {
 
     /// 处理一条已解析的 HTTP 请求：校验端点与 body、路由命令、回写响应。
     ///
-    /// 通信层失败（方法/路径/body 非法）用 HTTP 400；命令执行失败统一用 200 + envelope
-    /// `ok:false`，二者在此显式区分。命令执行受 `commandTimeout` 保护。
+    /// 通信层失败（方法/路径/body 非法）用 HTTP 400；命令执行失败统一用 200 +
+    /// 顶层失败 `code/message`，二者在此显式区分。命令执行受 `commandTimeout` 保护。
     /// - Parameter request: 已解析的 HTTP 请求。
     private func process(request: HTTPRequest) async {
         guard request.method == "POST", request.path == "/" else {

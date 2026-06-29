@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import iOSExploreServer
 
-@Test("统一错误对象同时描述 HTTP、envelope 和日志信息")
+@Test("统一错误对象同时描述 HTTP、响应 code/message 和日志信息")
 func serverErrorCarriesTransportEnvelopeAndLogFields() {
     let error = ExploreServerError.tooManyConnections(limit: 4)
 
@@ -22,9 +22,10 @@ func errorResponseUsesUnifiedServerError() {
 
     #expect(response.status == 400)
     #expect(response.reason == "Bad Request")
-    #expect(text.contains(#""ok":false"#))
     #expect(text.contains(#""code":"bad_request""#))
     #expect(text.contains("invalid Content-Length"))
+    #expect(!text.contains(#""ok":"#))
+    #expect(!text.contains(#""error":"#))
 }
 
 @Test("parser invalid 结果返回统一错误对象")
