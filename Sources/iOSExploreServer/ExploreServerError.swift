@@ -160,12 +160,16 @@ struct ExploreServerError: Error, Sendable, Equatable {
                            logMessage: "read timed out")
     }
 
-    /// 命令执行超时。仍以 HTTP 200 + 顶层 `internal_error` 返回，不断开传输层。
+    /// 命令执行超时。以 HTTP 200 + 顶层 `timeout` 返回，不断开传输层。
+    ///
+    /// 与 `handlerThrown` 的 `internal_error` 区分：超时是可预期的业务终态（命令自声明
+    /// 或全局上限触发），客户端可据此决定重试，而非当作服务端 bug。category 仍是
+    /// `.timeout`，与 `readTimeout` 共享，但 read 走传输层失败（408）。
     static func commandTimeout(action: String) -> ExploreServerError {
         ExploreServerError(category: .timeout,
                            httpStatus: 200,
                            httpReason: "OK",
-                           code: .internalError,
+                           code: .timeout,
                            message: "command timed out",
                            logMessage: "command timed out action=\(action)")
     }

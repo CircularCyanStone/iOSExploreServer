@@ -116,7 +116,7 @@ func endToEndHelp() async throws {
     #expect(!text.contains(#""parameters""#))
 }
 
-@Test("命令超过配置超时时返回 internal_error 并关闭连接")
+@Test("命令超过配置超时时返回 timeout 业务码（HTTP 200 envelope）")
 func commandTimeoutReturnsErrorEnvelope() async throws {
     let server = ExploreServer(port: testPort,
                                listenerConfiguration: .testing(commandTimeoutNanoseconds: 50_000_000))
@@ -128,7 +128,7 @@ func commandTimeoutReturnsErrorEnvelope() async throws {
     defer { server.stop() }
 
     let text = try await send(action: "slow")
-    #expect(text.contains(#""code":"internal_error""#))
+    #expect(text.contains(#""code":"timeout""#))
     #expect(text.contains("timed out"))
     #expect(!text.contains(#""ok":"#))
     #expect(!text.contains(#""error":"#))

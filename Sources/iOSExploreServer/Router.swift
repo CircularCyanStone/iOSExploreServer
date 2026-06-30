@@ -79,6 +79,20 @@ public final class Router: Sendable {
         return result
     }
 
+    /// 按 action 查表返回命令自声明的执行超时（纳秒）。
+    ///
+    /// 供 `ClientSession.process` 在 `withTimeout` 包裹 `route` **之前**调用：超时上限
+    /// 必须在路由前确定，而命令的 timeout 又只有锁内取到 `AnyCommand` 后才能读到，故
+    /// 单独提供此轻量查表入口。方法只在锁内读取 `timeoutNanoseconds` 字段，不执行任何
+    /// handler，无 `await`，符合「锁内禁止 await」约束。返回 nil 表示该命令未自声明，
+    /// 由调用方回退到全局 `commandTimeoutNanoseconds`。
+    ///
+    /// - Parameter action: HTTP body 中的 `action` 字段。
+    /// - Returns: 命令自声明超时（纳秒），未注册或未自声明时为 nil。
+    func commandTimeout(for action: String) -> UInt64? {
+        handlers.withLock { $0[action]?.timeoutNanoseconds }
+    }
+
     /// 返回当前已注册命令的元数据快照。
     ///
     /// `help` 命令用它生成工具列表。方法只在锁内读取字典并生成轻量元组，不执行任何

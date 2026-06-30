@@ -32,6 +32,19 @@ public protocol Command: Sendable {
     /// - Returns: 业务结果。抛出的异常会由 `AnyCommand` 捕获并转换为 `internal_error`。
     /// - Throws: 命令执行中出现的未转换异常。
     func handle(_ input: Input) async throws -> ExploreResult
+
+    /// 命令自声明的执行超时（纳秒）。
+    ///
+    /// nil 表示沿用全局 `ClientSession.Configuration.commandTimeoutNanoseconds`；
+    /// 高耗时命令（如截图）可返回具体值覆盖全局上限。类型对齐
+    /// `commandTimeoutNanoseconds: UInt64` 与 `withTimeout(nanoseconds: UInt64)`，
+    /// 不使用 `Duration`，避免在路由查表路径引入额外单位换算。默认 nil 由协议扩展提供。
+    var timeoutNanoseconds: UInt64? { get }
+}
+
+public extension Command {
+    /// 默认不自声明超时，所有命令沿用全局 `commandTimeoutNanoseconds`。
+    var timeoutNanoseconds: UInt64? { nil }
 }
 
 private enum CommandExecutionOutcome: Sendable {
@@ -59,6 +72,12 @@ public struct AnyCommand: Sendable {
     /// 命令执行日志归属。
     public let logCategory: CommandLogCategory
 
+    /// 命令自声明的执行超时（纳秒）。
+    ///
+    /// 透传自协议命令的 `Command.timeoutNanoseconds`；闭包命令构造时为 nil。由
+    /// `Router.commandTimeout(for:)` 在路由前查表读取，决定 `withTimeout` 包裹的上限。
+    public let timeoutNanoseconds: UInt64?
+
     private let executor: @Sendable (ExploreRequest) async -> CommandExecutionOutcome
 
     /// 包装一个协议命令对象。
@@ -71,6 +90,7 @@ public struct AnyCommand: Sendable {
         self.description = command.description
         self.inputSchema = C.Input.inputSchema
         self.logCategory = logCategory
+        self.timeoutNanoseconds = command.timeoutNanoseconds
         self.executor = { request in
             let input: C.Input
             do {
@@ -105,6 +125,7 @@ public struct AnyCommand: Sendable {
         self.description = description
         self.inputSchema = Input.inputSchema
         self.logCategory = logCategory
+        self.timeoutNanoseconds = nil
         self.executor = { request in
             let inputValue: Input
             do {

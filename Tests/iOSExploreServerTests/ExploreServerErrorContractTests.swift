@@ -53,9 +53,9 @@ func transportErrorsCarryHttpStatus() {
 func envelopeCodeMapping() {
     #expect(ExploreServerError.unknownAction("a").code == .unknownAction)
     #expect(ExploreServerError.invalidData(action: "a", message: "m").code == .invalidData)
+    #expect(ExploreServerError.commandTimeout(action: "a").code == .timeout)
 
     let internalErrors: [ExploreServerError] = [
-        .commandTimeout(action: "a"),
         .handlerThrown(action: "a", error: NSError(domain: "x", code: 1)),
         .unexpectedInputParseError(action: "a", error: NSError(domain: "x", code: 2)),
         .invalidPort(65535),
@@ -89,7 +89,7 @@ func envelopeCodeMapping() {
 func timeoutSplitBetweenBusinessAndTransport() {
     let command = ExploreServerError.commandTimeout(action: "ui.tap")
     #expect(command.httpStatus == 200)
-    #expect(command.code == .internalError)
+    #expect(command.code == .timeout)
     #expect(command.category == .timeout)
 
     let read = ExploreServerError.readTimeout()

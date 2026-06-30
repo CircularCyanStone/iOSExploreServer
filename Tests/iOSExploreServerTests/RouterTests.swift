@@ -135,6 +135,36 @@ func commandMetadataIncludesInputSchemaProperties() {
     #expect(order == [JSONValue.string("name")])
 }
 
+@Test("Router.commandTimeout 返回命令自声明 timeoutNanoseconds，缺省 nil")
+func commandTimeoutLookup() async {
+    let router = Router()
+    router.register(action: "defaultTimeout", input: EmptyCommandInput.self) { _ in .success([:]) }
+    #expect(await router.commandTimeout(for: "defaultTimeout") == nil)
+    #expect(await router.commandTimeout(for: "unregistered") == nil)
+}
+
+@Test("协议命令自声明 timeoutNanoseconds 透传到 Router.commandTimeout")
+func commandTimeoutLookupForProtocolCommand() async {
+    struct SlowCommand: Command {
+        typealias Input = EmptyCommandInput
+        let action = "slow"
+        let description = ""
+        var timeoutNanoseconds: UInt64? { 30_000_000_000 }
+        func handle(_ input: EmptyCommandInput) async throws -> ExploreResult { .success([:]) }
+    }
+    let router = Router()
+    router.register(SlowCommand())
+    #expect(await router.commandTimeout(for: "slow") == 30_000_000_000)
+    #expect(await router.commandTimeout(for: "slow") != nil)
+}
+
+@Test("闭包命令默认 timeoutNanoseconds 为 nil（无自声明超时）")
+func commandTimeoutLookupForClosureCommand() async {
+    let router = Router()
+    router.register(action: "closureCmd", input: EmptyCommandInput.self) { _ in .success([:]) }
+    #expect(await router.commandTimeout(for: "closureCmd") == nil)
+}
+
 @Test("metadata 按 action 稳定排序")
 func commandMetadataSortsByAction() {
     let router = Router()

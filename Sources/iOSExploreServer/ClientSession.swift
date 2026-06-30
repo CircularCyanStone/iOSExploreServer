@@ -275,7 +275,12 @@ final class ClientSession: Sendable {
 
         let result: ExploreResult
         do {
-            result = try await withTimeout(nanoseconds: configuration.commandTimeoutNanoseconds,
+            // 两步查表：超时上限须在 withTimeout 包裹 route 之前确定，而命令自声明
+            // timeout 只有锁内取到 AnyCommand 后才读到，故先查 router.commandTimeout，
+            // 缺省时回退全局 commandTimeoutNanoseconds。
+            let timeoutNanos = router.commandTimeout(for: exploreReq.action)
+                ?? configuration.commandTimeoutNanoseconds
+            result = try await withTimeout(nanoseconds: timeoutNanos,
                                            timeoutError: .commandTimeout(action: exploreReq.action)) { [router] in
                 await router.route(exploreReq)
             }
