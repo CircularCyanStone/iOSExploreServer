@@ -2,6 +2,9 @@ import Testing
 import Foundation
 import Network
 @testable import iOSExploreServer
+#if canImport(UIKit)
+@testable import iOSExploreUIKit
+#endif
 
 /// 集成测试用固定端口，避开生产默认 38321。
 private let testPort: UInt16 = 38399
@@ -157,6 +160,102 @@ func connectionLimitRejectsAdditionalConnection() async throws {
     _ = try await first
 }
 
+#if canImport(UIKit)
+// MARK: - UIKit 操作三件套（screenshot/input/scroll）端到端
+//
+// 以下三个用例与同 suite 的其它用例共享 TCP 端口 38399。本 suite 整体 `.serialized`，
+// 故它们与上面的 core 用例串行执行，不会并发 bind 同一端口（曾尝试拆成独立
+// `@Suite(.serialized)` struct，但 Swift Testing 会在不同 suite 之间并发，导致端口冲突；
+// 合并进同一 suite 是唯一安全的写法）。仅在 iOS（framework 工程 `xcodebuild ... test`）
+// 下编译运行；macOS SPM 下 `canImport(UIKit)` 为 false，三段代码不参与编译。
+//
+// **宿主 UI 限制（重要）：** unit/framework test 进程没有真实 `UIApplication` 前台 scene，
+// `UIKitContextProvider.currentContext` 会抛 `hierarchyUnavailable`。因此：
+// - 真实的 screenshot base64 往返（解码出合法 PNG + 维度）需宿主 App 上屏，只能在
+//   `Examples/SPMExample` 真机/模拟器手测（见 task-10-report）；
+// - `ui.input`/`ui.scroll` 的正向交互同样需可交互 view，亦在 SPMExample 手测；
+// - 这里覆盖的是「命令经 HTTP 可达 + 失败 envelope 形态正确」这一层契约，以及
+//   `ClientSession` 体积上限改发 `response_too_large` 的负向契约（生产中会改发超大
+//   截图响应的同一条代码路径；UIKit 侧 base64 前置拦截由
+//   `UIScreenshotTests.screenshotRejectsTooLargeResponse` 单测覆盖）。
+
+    /// 截图命令经真实 TCP 可达，失败时返回 `internal_error` + hierarchy 不可用语义。
+    ///
+    /// test 进程无前台 scene，`currentContext` 抛 `hierarchyUnavailable`，handler 顶层
+    /// catch 转 `.internalError` envelope（HTTP 200 + `code=internal_error`）。该用例锁定：
+    /// `ui.screenshot` 已被 `registerUIKitCommands` 注册、经 HTTP 路由可达、且失败 envelope
+    /// 形态稳定（顶层 `code/message`，无遗留 `ok`/`error` 字段）。
+    @Test("ui.screenshot 经 HTTP 可达,无前台 scene 时返回 internal_error envelope")
+    func screenshotReachableViaHTTP() async throws {
+        let server = ExploreServer(port: testPort, maxResponseBodyBytes: 8 * 1024 * 1024)
+        server.registerUIKitCommands(maxResponseBodyBytes: 8 * 1024 * 1024)
+        try await startWithPortRetry(server)
+        defer { server.stop() }
+
+        let text = try await send(action: "ui.screenshot")
+        let code = envelopeCode(text)
+        // 无前台 scene → hierarchyUnavailable → internal_error。
+        #expect(code == "internal_error")
+        #expect(text.contains("UI hierarchy unavailable"))
+        // envelope 形态：失败只走顶层 code/message，不应出现遗留字段。
+        #expect(!text.contains(#""ok":"#))
+        #expect(!text.contains(#""error":"#))
+    }
+
+    /// 显式注册后 `help` 必须经 HTTP 列出全部七个 UIKit action（registrar count=7）。
+    ///
+    /// 这是 registrar 计数的端到端回归点：经真实 HTTP `help` 取回命令列表，断言三件套
+    /// （screenshot/input/scroll）在内的全部七个 `ui.*` action 都已注册并可被发现。
+    @Test("registerUIKitCommands 后 help 经 HTTP 含 7 个 ui.* action")
+    func helpListsAllUIKitActions() async throws {
+        let server = ExploreServer(port: testPort)
+        server.registerUIKitCommands()
+        try await startWithPortRetry(server)
+        defer { server.stop() }
+
+        let text = try await send(action: "help")
+        #expect(envelopeCode(text) == "ok")
+        // 四个旧命令 + 三件套（screenshot/input/scroll）。
+        #expect(text.contains(#""action":"ui.topViewHierarchy""#))
+        #expect(text.contains(#""action":"ui.viewTargets""#))
+        #expect(text.contains(#""action":"ui.control.sendAction""#))
+        #expect(text.contains(#""action":"ui.tap""#))
+        #expect(text.contains(#""action":"ui.screenshot""#))
+        #expect(text.contains(#""action":"ui.input""#))
+        #expect(text.contains(#""action":"ui.scroll""#))
+        // help 输出每个命令的 inputSchema。
+        #expect(text.contains(#""inputSchema""#))
+    }
+
+    /// 响应 body 超过 `maxResponseBodyBytes` 时改发 `response_too_large` envelope。
+    ///
+    /// 这是 `ClientSession.send` 体积上限路径的负向契约：注册一个返回超大 body 的自定义
+    /// 命令，server 以 1MB 上限启动，断言响应被改写为 HTTP 200 + `code=response_too_large`，
+    /// 原 body 被丢弃（不出现在响应中）。生产中UIKit 截图响应过大正是走这条路径被拦截，
+    /// UIKit 侧 base64 前置估算拦截则由 `UIScreenshotTests.screenshotRejectsTooLargeResponse`
+    /// 单测覆盖；两条路径合并即构成 `response_too_large` 的完整覆盖。
+    @Test("响应 body 超限时改发 response_too_large envelope")
+    func responseTooLargeWhenBodyExceedsLimit() async throws {
+        // 1MB 上限：超过即改发，无需 UIKit 截图参与。
+        let server = ExploreServer(port: testPort, maxResponseBodyBytes: 1 * 1024 * 1024)
+        server.register(action: "big", input: EmptyCommandInput.self) { _ in
+            // 2MB body，稳超 1MB 上限。
+            let payload = String(repeating: "x", count: 2 * 1024 * 1024)
+            return .success(["blob": .string(payload)])
+        }
+        try await startWithPortRetry(server)
+        defer { server.stop() }
+
+        let text = try await send(action: "big")
+        #expect(envelopeCode(text) == "response_too_large")
+        #expect(text.contains("response body too large"))
+        // 改发后原 body 被丢弃：2MB 的 'x' 串不应出现在响应里。
+        #expect(!text.contains(String(repeating: "x", count: 1024)))
+        #expect(!text.contains(#""ok":"#))
+        #expect(!text.contains(#""error":"#))
+    }
+#endif
+
 }
 
 /// 发送一条命令并返回响应文本。
@@ -236,4 +335,20 @@ private extension NWError {
         default: return false
         }
     }
+}
+
+/// 从 HTTP 响应文本中解出 envelope 顶层 `code` 字段值。
+///
+/// `send` helper 返回的是完整 HTTP 响应文本（含 status line + body）。本函数只取 body
+/// 部分按 JSON 解码为 `JSON` 对象（envelope 顶层必为对象），再用 `JSON.subscript` 取出
+/// 顶层 `code` 的字符串值。解析失败返回 `nil`，由调用方决定如何断言。
+///
+/// - Parameter text: `send` 返回的完整 HTTP 响应文本。
+/// - Returns: envelope 顶层 `code` 值（如 `"ok"`/`"internal_error"`/`"response_too_large"`）；
+///   body 缺失或非 JSON 对象时返回 `nil`。
+private func envelopeCode(_ text: String) -> String? {
+    guard let bodyStart = text.range(of: "\r\n\r\n") else { return nil }
+    let body = String(text[bodyStart.upperBound...])
+    guard let envelope = JSONCoder.decode(Data(body.utf8)) else { return nil }
+    return envelope["code"]?.stringValue
 }
