@@ -8,7 +8,7 @@ struct UIKitCommandErrorTests {
     @Test("陈旧 locator 使用既有 invalid_data")
     func staleLocatorUsesExistingErrorCode() {
         let error = UIKitCommandError.staleLocator(action: "ui.tap", snapshotID: "s")
-        #expect(error.result == .failure(code: .invalidData, message: "locator is stale; re-query"))
+        #expect(error.result == .failure(code: .invalidData, message: "snapshot expired or target changed; call ui.screenshot first, then retry with the new snapshotID"))
         #expect(error.failure.logMessage.contains("action=ui.tap"))
         #expect(error.failure.logMessage.contains("snapshot=s"))
     }

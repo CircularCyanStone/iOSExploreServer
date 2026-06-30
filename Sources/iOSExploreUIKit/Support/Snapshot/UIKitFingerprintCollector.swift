@@ -255,6 +255,95 @@ enum UIKitFingerprintCollector {
         return digest
     }
 
+    // MARK: - Query-driven Fingerprint Collection
+
+    /// 按 `UIViewTargetsInput` 筛选条件遍历 rootView，生成与 `ui.viewTargets` 输出**同源同筛选**的
+    /// 目标指纹表（`path → fingerprint`）。
+    ///
+    /// 这是 `ui.viewTargets` 与 `ui.screenshot` 共享的指纹签发入口（spec §3.2/§3.6）：
+    /// - screenshot 用 `UIViewTargetsInput.default` 签发指纹集；
+    /// - viewTargets 用调用方传入的 query 签发；
+    /// - 两者筛选口径完全一致，保证"截图拿 snapshotID → tap 带 snapshotID"跨命令校验成立，
+    ///   不会因筛选不同导致 `path missing` 被误判为 stale。
+    ///
+    /// 筛选规则与 `UIViewTargetsCollector` 逐字对齐：
+    /// - `includeHidden=false` 时 hidden 节点整棵子树剪枝；
+    /// - 通过 `query.shouldInclude` + `matchesIdentifier` 的节点才签发指纹；
+    /// - `maxDepth` 限制递归深度（`nil` 不限）；
+    /// - **不受** `maxTargets` 约束（指纹表是内部陈旧校验用，不进 HTTP 响应；签发越多越能拦截
+    ///   陈旧 path，且 snapshot store 自身有 512 条上限保护）。
+    ///
+    /// - Parameters:
+    ///   - rootView: 本次 snapshot 的根节点。
+    ///   - query: 与 viewTargets 同口径的筛选参数。
+    ///   - digest: 顶部控制器等页面上下文摘要。
+    /// - Returns: 命中筛选的节点的 `path → fingerprint` 表。
+    static func collectFingerprints(
+        rootView: UIView,
+        query: UIViewTargetsInput,
+        digest: String
+    ) -> [String: UIKitTargetFingerprint] {
+        var result: [String: UIKitTargetFingerprint] = [:]
+        collectMatching(
+            view: rootView,
+            rootView: rootView,
+            path: [],
+            depth: 0,
+            query: query,
+            digest: digest,
+            result: &result
+        )
+        return result
+    }
+
+    /// 递归遍历并按 query 筛选签发指纹。
+    ///
+    /// 与 `UIViewTargetsCollector.collect` 共用同一套 `shouldInclude` / `matchesIdentifier` /
+    /// `includeHidden` / `maxDepth` 决策，确保指纹表与目标输出**逐字同筛选**。`maxTargets` 在此
+    /// 不参与（指纹签发独立于响应规模限制）。
+    private static func collectMatching(
+        view: UIView,
+        rootView: UIView,
+        path: [Int],
+        depth: Int,
+        query: UIViewTargetsInput,
+        digest: String,
+        result: inout [String: UIKitTargetFingerprint]
+    ) {
+        // includeHidden=false 时 hidden 节点整棵子树剪枝（与 collector 一致）。
+        if !query.includeHidden, view.isHidden {
+            return
+        }
+
+        // 只为命中筛选的节点签发指纹；筛选逻辑与 UIViewTargetsCollector 完全相同。
+        if UIViewTargetsCollector.shouldInclude(view: view, query: query),
+           UIViewTargetsCollector.matchesIdentifier(view: view, query: query) {
+            let pathString = UIKitViewLookupTarget.pathString(from: path)
+            result[pathString] = fingerprint(
+                for: view,
+                path: pathString,
+                rootView: rootView,
+                digest: digest
+            )
+        }
+
+        if let maxDepth = query.maxDepth, depth >= maxDepth {
+            return
+        }
+
+        for (index, child) in view.subviews.enumerated() {
+            collectMatching(
+                view: child,
+                rootView: rootView,
+                path: path + [index],
+                depth: depth + 1,
+                query: query,
+                digest: digest,
+                result: &result
+            )
+        }
+    }
+
     // MARK: - Tree Traversal
 
     /// 递归遍历 rootView 下的 view 树，生成：

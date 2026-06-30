@@ -32,7 +32,6 @@ enum UIViewTargetsCollector {
     static func collect(query: UIViewTargetsInput, context: UIKitContextProvider.Context) -> JSON {
         var visitedNodeCount = 0
         var targets: [UIViewTargetSummary] = []
-        var fingerprints: [String: UIKitTargetFingerprint] = [:]
         let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
         let truncated = collect(view: context.rootView,
                 rootView: context.rootView,
@@ -42,9 +41,15 @@ enum UIViewTargetsCollector {
                 query: query,
                 visitedNodeCount: &visitedNodeCount,
                 targets: &targets,
-                fingerprints: &fingerprints,
                 digest: digest)
 
+        // 指纹表与 ui.screenshot 共用同一签发入口（collectFingerprints 收 UIViewTargetsInput，
+        // 与目标输出同筛选），保证"截图拿 snapshotID → tap 带 snapshotID"跨命令校验成立。
+        let fingerprints = UIKitFingerprintCollector.collectFingerprints(
+            rootView: context.rootView,
+            query: query,
+            digest: digest
+        )
         let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
                                                           targets: fingerprints)
         let snapshotFields = UIKitSnapshotResponse.fields(for: snapshotID)
@@ -69,6 +74,9 @@ enum UIViewTargetsCollector {
     ///
     /// identifier 筛选只影响当前节点是否输出，不会提前剪枝子树，避免漏掉深层控件。
     /// 隐藏节点在 `includeHidden=false` 时会剪枝整棵子树，避免隐藏容器下的控件被误返回。
+    ///
+    /// 指纹签发已下沉到 `UIKitFingerprintCollector.collectFingerprints`（与目标输出同筛选），
+    /// 此处只负责生成目标摘要与统计 `visitedNodeCount`、`maxTargets` 截断。
     private static func collect(view: UIView,
                                 rootView: UIView,
                                 window: UIWindow,
@@ -77,7 +85,6 @@ enum UIViewTargetsCollector {
                                 query: UIViewTargetsInput,
                                 visitedNodeCount: inout Int,
                                 targets: inout [UIViewTargetSummary],
-                                fingerprints: inout [String: UIKitTargetFingerprint],
                                 digest: String) -> Bool {
         visitedNodeCount += 1
         if !query.includeHidden, view.isHidden {
@@ -88,7 +95,6 @@ enum UIViewTargetsCollector {
            matchesIdentifier(view: view, query: query) {
             let summary = summary(for: view, rootView: rootView, window: window, path: path, query: query)
             targets.append(summary)
-            fingerprints[summary.path] = UIKitFingerprintCollector.fingerprint(for: view, path: summary.path, rootView: rootView, digest: digest)
             if targets.count >= query.maxTargets { return true }
         }
 
@@ -105,14 +111,16 @@ enum UIViewTargetsCollector {
                     query: query,
                     visitedNodeCount: &visitedNodeCount,
                     targets: &targets,
-                    fingerprints: &fingerprints,
                     digest: digest) { return true }
         }
         return false
     }
 
     /// 判断 view 是否符合默认或可选输出策略。
-    private static func shouldInclude(view: UIView, query: UIViewTargetsInput) -> Bool {
+    ///
+    /// 对 `UIKitFingerprintCollector.collectFingerprints` 可见：指纹签发必须与目标输出
+    /// 共用同一套筛选，保证跨命令 snapshotID 校验成立。
+    static func shouldInclude(view: UIView, query: UIViewTargetsInput) -> Bool {
         let control = view as? UIControl
         let candidate = UIViewTargetCandidate(
             isHidden: view.isHidden,
@@ -129,7 +137,9 @@ enum UIViewTargetsCollector {
     }
 
     /// 判断当前 view 是否通过 identifier 输出筛选。
-    private static func matchesIdentifier(view: UIView, query: UIViewTargetsInput) -> Bool {
+    ///
+    /// 对 `UIKitFingerprintCollector.collectFingerprints` 可见（与 `shouldInclude` 同理）。
+    static func matchesIdentifier(view: UIView, query: UIViewTargetsInput) -> Bool {
         guard query.hasIdentifierFilter else { return true }
         let identifier = view.accessibilityIdentifier
         if let expected = query.accessibilityIdentifier, identifier == expected {

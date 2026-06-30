@@ -157,12 +157,13 @@ public struct UIKitSnapshotContext: Sendable, Equatable {
 /// 解决"path 陈旧"问题：`ui.viewTargets`/`ui.topViewHierarchy` 查询时对当前 view 树生成
 /// 轻量指纹并签发一个 snapshotID 返回给调用方；交互命令（tap/control.sendAction）携带该
 /// snapshotID 时，executor 在执行前校验对应 path 的指纹是否仍匹配，不匹配则返回
-/// `invalid_data`（"locator is stale; re-query"），避免页面变化后 path 指向错误 view 造成误操作。
+/// `invalid_data`（"snapshot expired or target changed; call ui.screenshot first..."），避免页面
+/// 变化后 path 指向错误 view 造成误操作。
 ///
 /// 容量与淘汰策略：
 /// - 最多 **8 条**快照（不同 snapshotID）；
 /// - 每条快照最多 **512** 条指纹（path→fingerprint）；超过 512 不签发（返回 nil）；
-/// - **TTL 10 秒**：查询时先清过期，再按 LRU 淘汰至容量上限。
+/// - **TTL 30 秒**（spec §3.6：匹配 LLM 推理节奏）：查询时先清过期，再按 LRU 淘汰至容量上限。
 ///
 /// 该类型是 `@MainActor`：与 UIKit collector/executor 同一隔离域，避免并发读写。但其内部逻辑
 /// 是纯计算（无 UIKit 调用），所以 **macOS 下可测**（测试函数标 `@MainActor`）。时间通过注入
@@ -177,7 +178,10 @@ public final class UIKitSnapshotStore {
     /// 单条快照最大指纹数；超过则不签发。
     static let maxFingerprints = UIKitSnapshotLimits.maxFingerprints
     /// 快照存活秒数。
-    static let ttlSeconds: TimeInterval = 10
+    ///
+    /// spec §3.6：30s 匹配 LLM 推理节奏（agent 在 viewTargets/screenshot 与 tap 之间常需 3-30s
+    /// 思考），原 10s 易在推理期间过期导致 snapshotID 失效。
+    static let ttlSeconds: TimeInterval = 30
 
     /// 单条快照记录。
     private struct Entry {

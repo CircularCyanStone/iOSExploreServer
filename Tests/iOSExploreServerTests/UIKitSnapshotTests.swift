@@ -13,13 +13,29 @@ import UIKit
 /// 虽 `@MainActor` 但无 UIKit 调用），可在 macOS 测试覆盖。这组测试验证容量/TTL/LRU 与
 /// query 解析，对应 brief Task 6。
 
+@Test("snapshot TTL=30s：25s 仍有效，35s 过期") @MainActor
+func snapshotTTL30sBoundary() {
+    // spec §3.6：TTL 30s 匹配 LLM 推理节奏。25s 不应过期、35s 必须过期。
+    let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
+    guard let id = store.insert(context: .test, targets: ["root/0": .test]) else {
+        Issue.record("small snapshot should be stored"); return
+    }
+    // 25s：仍在 TTL 窗口内，指纹匹配 → 非陈旧
+    store.setNow(Date(timeIntervalSince1970: 125))
+    #expect(store.isStale(snapshotID: id, path: "root/0", current: .test) == false)
+
+    // 35s：超过 30s TTL → 陈旧
+    store.setNow(Date(timeIntervalSince1970: 135))
+    #expect(store.isStale(snapshotID: id, path: "root/0", current: .test))
+}
+
 @Test("超过 TTL 的 snapshot 被判定陈旧") @MainActor
 func expiredSnapshotIsStale() {
     let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
     guard let id = store.insert(context: .test, targets: ["root/0": .test]) else {
         Issue.record("small snapshot should be stored"); return
     }
-    store.setNow(Date(timeIntervalSince1970: 111))
+    store.setNow(Date(timeIntervalSince1970: 131))
     #expect(store.isStale(snapshotID: id, path: "root/0", current: .test))
 }
 

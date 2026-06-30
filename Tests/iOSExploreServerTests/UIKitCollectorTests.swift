@@ -63,6 +63,57 @@ func viewTargetsCollectsTargetsInContext() {
     #expect(taggedActions.isEmpty)
 }
 
+@Test("viewTargets 指纹采集重构后输出契约不变") @MainActor
+func viewTargetsFingerprintContractUnchanged() throws {
+    // 重构基线：固定一棵覆盖多种候选（control / 有 identifier / 有 accessibilityLabel / 容器）
+    // 的 view 树，断言默认查询下的 targetCount、各 path 与 role 与重构前逐字一致。
+    // 注：UILabel 仅 text 不自带 accessibilityLabel，includeStaticText=false 时被过滤——
+    // 此处用显式 accessibilityLabel 的 view 作为第三个默认采集目标，避免依赖静态文本策略。
+    let context = UIKitTestHost.context { root in
+        let button = UIButton(type: .system)
+        button.accessibilityIdentifier = "submit"
+        button.frame = CGRect(x: 10, y: 10, width: 80, height: 40)
+        root.addSubview(button) // root/0 button
+
+        let tagged = UIView()
+        tagged.accessibilityIdentifier = "banner"
+        tagged.frame = CGRect(x: 10, y: 60, width: 80, height: 20)
+        root.addSubview(tagged) // root/1 view
+
+        let labeled = UIView()
+        labeled.accessibilityLabel = "Hello"
+        labeled.frame = CGRect(x: 10, y: 90, width: 80, height: 20)
+        root.addSubview(labeled) // root/2 view (有 accessibilityLabel，默认采集)
+
+        let plain = UIView(frame: CGRect(x: 0, y: 120, width: 100, height: 50))
+        root.addSubview(plain) // root/3 plain，默认策略被过滤
+    }
+
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+
+    // 默认策略下采集 3 个：button / tagged / labeled(有 a11y label)；plain 无语义被过滤
+    #expect(data["targetCount"]?.doubleValue == 3)
+    #expect(data["truncated"]?.boolValue == false)
+    #expect(data["snapshotID"]?.stringValue != nil)
+
+    guard case .array(let targets)? = data["targets"] else {
+        Issue.record("targets not array")
+        return
+    }
+    var paths: [String] = []
+    var roles: [String] = []
+    for target in targets {
+        guard case .object(let fields) = target else {
+            Issue.record("target not object")
+            return
+        }
+        if case .string(let p)? = fields["path"] { paths.append(p) }
+        if case .string(let r)? = fields["role"] { roles.append(r) }
+    }
+    #expect(paths == ["root/0", "root/1", "root/2"])
+    #expect(roles == ["button", "view", "view"])
+}
+
 @Test("topViewHierarchy 采集注入 view 树的层级结构") @MainActor
 func topViewHierarchyCollectsTreeInContext() throws {
     let context = UIKitTestHost.context { root in

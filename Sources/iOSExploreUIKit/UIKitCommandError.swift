@@ -27,7 +27,9 @@ struct UIKitCommandError: Error, Sendable, Equatable {
         self.failure = ExploreCommandFailure(code: code, message: message, logMessage: logMessage)
     }
 
-    /// locator 陈旧（snapshot 已过期），需重新查询后重试。
+    /// locator 陈旧（snapshot 已过期或目标指纹变化），需重新查询后重试。
+    ///
+    /// spec §3.6：提示调用方先 `ui.screenshot` 拿到新 snapshotID 再下发交互。
     ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名，用于日志关联。
@@ -35,7 +37,7 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// - Returns: `invalid_data` 失败描述。
     static func staleLocator(action: String, snapshotID: String) -> UIKitCommandError {
         UIKitCommandError(code: .invalidData,
-                          message: "locator is stale; re-query",
+                          message: "snapshot expired or target changed; call ui.screenshot first, then retry with the new snapshotID",
                           logMessage: "uikit locator stale action=\(action) snapshot=\(snapshotID)")
     }
 
