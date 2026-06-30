@@ -182,4 +182,26 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           message: message,
                           logMessage: "invalid data action=\(action) message=\(message)")
     }
+
+    /// 截图渲染失败（`drawHierarchy` 返回 false、cgImage 丢失、PNG 编码失败等）。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名，用于日志关联。
+    ///   - reason: 渲染失败的具体原因摘要（如 "drawHierarchy returned false"），不含图像内容。
+    /// - Returns: `rendering_failed` 失败描述。
+    static func renderingFailed(action: String, reason: String) -> UIKitCommandError {
+        UIKitCommandError(code: .renderingFailed,
+                          message: "screenshot rendering failed: \(reason)",
+                          logMessage: "ui screenshot rendering failed action=\(action) reason=\(reason)")
+    }
+
+    /// 截图时顶部控制器正处于过渡态（push/present/modal 动画中），当前帧不可靠。
+    ///
+    /// - Parameter action: 触发失败的 action 名。
+    /// - Returns: `transition_in_progress` 失败描述，提示调用方稍后重试。
+    static func transitionInProgress(action: String) -> UIKitCommandError {
+        UIKitCommandError(code: .transitionInProgress,
+                          message: "view controller transition in progress; retry",
+                          logMessage: "ui screenshot transition in progress action=\(action)")
+    }
 }

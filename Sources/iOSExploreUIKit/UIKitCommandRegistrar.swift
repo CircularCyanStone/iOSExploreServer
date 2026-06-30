@@ -6,7 +6,7 @@ import UIKit
 ///
 /// 重构后 core 不再自动注册 UIKit 命令；宿主 App 在初始化 `ExploreServer` 后，
 /// 调用 `server.registerUIKitCommands()` 把 `ui.topViewHierarchy`、`ui.viewTargets`、
-/// `ui.control.sendAction`、`ui.tap` 四个命令显式挂到 router 上。
+/// `ui.control.sendAction`、`ui.tap`、`ui.screenshot` 五个命令显式挂到 router 上。
 ///
 /// 该扩展整体位于 `#if canImport(UIKit)` 内：macOS 下不参与编译，iOS 下提供注册
 /// 实现。注册前后通过 `UIKitCommandLogging` 记录进入与完成（含注册数量），便于
@@ -16,13 +16,18 @@ public extension ExploreServer {
     ///
     /// 幂等调用安全：重复注册同一 action 会覆盖旧 handler，不会报错。建议在
     /// `ExploreServer.init` 之后、`start()` 之前调用一次。
-    func registerUIKitCommands() {
+    ///
+    /// - Parameter maxResponseBodyBytes: 响应 body 字节上限，透传给 `ui.screenshot`，
+    ///   截图 base64 估算超限即返回 `responseTooLarge`。默认 6MB，与 `ExploreServer` 默认一致。
+    func registerUIKitCommands(maxResponseBodyBytes: Int = 6 * 1024 * 1024) {
         UIKitCommandLogging.info("uikit.registrar", "registration started")
         register(TopViewHierarchyCommand(), logCategory: .extensionCommand(category: "command"))
         register(ViewTargetsCommand(), logCategory: .extensionCommand(category: "command"))
         register(UIControlSendActionCommand(), logCategory: .extensionCommand(category: "command"))
         register(UITapCommand(), logCategory: .extensionCommand(category: "command"))
-        UIKitCommandLogging.info("uikit.registrar", "registration completed count=4")
+        register(ScreenshotCommand(maxResponseBodyBytes: maxResponseBodyBytes),
+                 logCategory: .extensionCommand(category: "command"))
+        UIKitCommandLogging.info("uikit.registrar", "registration completed count=5")
     }
 }
 #endif

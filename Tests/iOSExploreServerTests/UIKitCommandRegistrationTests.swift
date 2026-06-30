@@ -34,6 +34,7 @@ struct UIKitCommandRegistrationTests {
         #expect(result.commandActions.contains("ui.viewTargets"))
         #expect(result.commandActions.contains("ui.control.sendAction"))
         #expect(result.commandActions.contains("ui.tap"))
+        #expect(result.commandActions.contains("ui.screenshot"))
     }
 #endif
 }
