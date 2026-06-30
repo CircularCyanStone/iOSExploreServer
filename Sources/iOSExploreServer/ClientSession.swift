@@ -24,6 +24,10 @@ final class ClientSession: Sendable {
         /// 单次 `NWConnection.receive` 拉取的最大字节数。
         let receiveMaximumLength: Int
 
+        /// 响应 body 软上限（字节）。超过此值的响应会被替换为 `responseTooLarge` envelope，
+        /// 避免单条命令（如截图，可能数 MB）回写过大的产物压垮 USB 传输或对端缓冲。
+        let maxResponseBodyBytes: Int
+
         /// 创建单连接配置。
         ///
         /// - Parameters:
@@ -31,14 +35,17 @@ final class ClientSession: Sendable {
         ///   - readTimeoutNanoseconds: 读请求超时，默认 10s。
         ///   - commandTimeoutNanoseconds: 命令执行超时，默认 10s。
         ///   - receiveMaximumLength: 单次读上限，默认 64KB。
+        ///   - maxResponseBodyBytes: 响应 body 软上限，默认 6MB。
         init(parseLimits: HTTPParseLimits = HTTPParseLimits(),
              readTimeoutNanoseconds: UInt64 = 10_000_000_000,
              commandTimeoutNanoseconds: UInt64 = 10_000_000_000,
-             receiveMaximumLength: Int = 64 * 1024) {
+             receiveMaximumLength: Int = 64 * 1024,
+             maxResponseBodyBytes: Int = 6 * 1024 * 1024) {
             self.parseLimits = parseLimits
             self.readTimeoutNanoseconds = readTimeoutNanoseconds
             self.commandTimeoutNanoseconds = commandTimeoutNanoseconds
             self.receiveMaximumLength = receiveMaximumLength
+            self.maxResponseBodyBytes = maxResponseBodyBytes
         }
     }
 
@@ -184,7 +191,7 @@ final class ClientSession: Sendable {
             await process(request: request)
         } catch SessionError.server(let error) {
             ExploreLogger.error(.listener, "session error id=\(sessionID) category=\(error.category.rawValue) message=\(error.logMessage)")
-            await send(HTTPParser.errorResponse(for: error), closeReason: "read_timeout")
+            await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "read_timeout")
         } catch SessionError.closed {
             close(reason: "connection_closed")
         } catch {
@@ -214,7 +221,7 @@ final class ClientSession: Sendable {
                 continue
             case .invalid(let error):
                 ExploreLogger.error(.http, "http parse failed session=\(sessionID) category=\(error.category.rawValue) message=\(error.logMessage)")
-                await send(HTTPParser.errorResponse(for: error), closeReason: "bad_request")
+                await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "bad_request")
                 throw SessionError.closed
             }
         }
@@ -254,7 +261,7 @@ final class ClientSession: Sendable {
         guard request.method == "POST", request.path == "/" else {
             let error = ExploreServerError.invalidMethod(method: request.method, path: request.path)
             ExploreLogger.error(.http, "http rejected session=\(sessionID) message=\(error.logMessage)")
-            await send(HTTPParser.errorResponse(for: error), closeReason: "bad_request")
+            await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "bad_request")
             onEvent(.responded(status: 400, ok: false))
             return
         }
@@ -265,7 +272,7 @@ final class ClientSession: Sendable {
             exploreReq = req
         case .failure(let error):
             ExploreLogger.error(.http, "http rejected session=\(sessionID) message=\(error.logMessage)")
-            await send(HTTPParser.errorResponse(for: error), closeReason: "bad_request")
+            await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "bad_request")
             onEvent(.responded(status: 400, ok: false))
             return
         }
@@ -293,7 +300,7 @@ final class ClientSession: Sendable {
             result = .failure(code: serverError.code, message: serverError.message)
         }
 
-        await send(HTTPParser.response(for: result), closeReason: "response_sent")
+        await send(HTTPParser.response(for: result), action: exploreReq.action, closeReason: "response_sent")
         let ok: Bool
         if case .success = result { ok = true } else { ok = false }
         onEvent(.responded(status: 200, ok: ok))
@@ -302,11 +309,24 @@ final class ClientSession: Sendable {
 
     /// 发送 HTTP 响应并随后关闭连接。
     ///
-    /// 发送错误只记录（对端可能已断开），无论成功与否都按 `closeReason` 收敛到 `close`。
+    /// 响应 body 超过 `maxResponseBodyBytes` 时改发 `responseTooLarge` envelope（HTTP 200 +
+    /// `response_too_large`），并把原 body 丢弃——日志只记大小不记内容。发送错误只记录
+    /// （对端可能已断开），无论成功与否都按 `closeReason` 收敛到 `close`。
     /// - Parameters:
     ///   - response: 待发送的 HTTP 响应。
+    ///   - action: 触发该响应的命令名；早于命令解析的通信层失败传 `nil`，业务响应传
+    ///     `exploreReq.action`，仅用于日志关联与错误 envelope 上下文。
     ///   - closeReason: 发送完成后的关闭原因，写入日志。
-    private func send(_ response: HTTPResponse, closeReason: String) async {
+    private func send(_ response: HTTPResponse, action: String?, closeReason: String) async {
+        if response.body.count > configuration.maxResponseBodyBytes {
+            let resolvedAction = action ?? "unknown"
+            let error = ExploreServerError.responseTooLarge(action: resolvedAction,
+                                                            bytes: response.body.count,
+                                                            limit: configuration.maxResponseBodyBytes)
+            ExploreLogger.error(.listener, "session response too large id=\(sessionID) action=\(action ?? "?") bytes=\(response.body.count) limit=\(configuration.maxResponseBodyBytes)")
+            await send(HTTPParser.errorResponse(for: error), action: action, closeReason: "response_too_large")
+            return
+        }
         ExploreLogger.debug(.http, "http send session=\(sessionID) status=\(response.status) bodyBytes=\(response.body.count)")
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             connection.send(content: response.serialized(), completion: .contentProcessed { error in

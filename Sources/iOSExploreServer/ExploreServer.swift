@@ -67,16 +67,28 @@ public final class ExploreServer: Sendable {
     /// - Parameters:
     ///   - port: TCP 监听端口，默认 38321。
     ///   - authToken: 预留鉴权令牌，当前版本不校验。
-    public init(port: UInt16 = 38321, authToken: String? = nil) {
+    ///   - maxResponseBodyBytes: 单条响应 body 软上限（字节），默认 6MB；超过此值的响应
+    ///     会被替换为 `response_too_large` envelope，避免大产物（如截图）压垮传输。
+    public init(port: UInt16 = 38321,
+                authToken: String? = nil,
+                maxResponseBodyBytes: Int = 6 * 1024 * 1024) {
         self.port = port
         self.authToken = authToken
-        self.listenerConfiguration = .default
+        let baseConfig = HTTPListener.Configuration.default
+        self.listenerConfiguration = HTTPListener.Configuration(
+            maxConnections: baseConfig.maxConnections,
+            session: ClientSession.Configuration(
+                parseLimits: baseConfig.session.parseLimits,
+                readTimeoutNanoseconds: baseConfig.session.readTimeoutNanoseconds,
+                commandTimeoutNanoseconds: baseConfig.session.commandTimeoutNanoseconds,
+                receiveMaximumLength: baseConfig.session.receiveMaximumLength,
+                maxResponseBodyBytes: maxResponseBodyBytes))
         self.router = Router()
         var continuation: AsyncStream<ServerEvent>.Continuation!
         self.eventStream = AsyncStream { continuation = $0 }
         self.eventContinuation = continuation
         BuiltinHandlers.registerAll(into: router)
-        ExploreLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil)")
+        ExploreLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil) maxResponseBodyBytes=\(maxResponseBodyBytes)")
     }
 
     /// 测试/内部入口：允许注入 listener 资源限制配置。

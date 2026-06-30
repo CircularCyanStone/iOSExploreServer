@@ -248,6 +248,25 @@ struct ExploreServerError: Error, Sendable, Equatable {
                            logMessage: "invalid data action=\(action) message=\(message)")
     }
 
+    /// 响应 body 超过软上限。
+    ///
+    /// 业务失败而非传输失败：命令本身执行成功，但产物（如截图数 MB）超过
+    /// `maxResponseBodyBytes`，无法安全回写。以 HTTP 200 + `response_too_large` envelope
+    /// 返回，客户端可据此降级（如改请求更小的快照）。category 为 `.command`（命令产物
+    /// 超限），与读/请求方向的 `requestTooLarge`（`.resourceLimit` + 400）区分。
+    /// - Parameters:
+    ///   - action: 触发该响应的命令名，用于日志关联。
+    ///   - bytes: 实际响应 body 字节数。
+    ///   - limit: 当前响应 body 上限（`maxResponseBodyBytes`）。
+    static func responseTooLarge(action: String, bytes: Int, limit: Int) -> ExploreServerError {
+        ExploreServerError(category: .command,
+                           httpStatus: 200,
+                           httpReason: "OK",
+                           code: .responseTooLarge,
+                           message: "response body too large",
+                           logMessage: "response too large action=\(action) bytes=\(bytes) limit=\(limit)")
+    }
+
     /// 鉴权失败（预留，当前 USB 物理隔离未启用校验）。
     static func unauthorized() -> ExploreServerError {
         ExploreServerError(category: .auth,

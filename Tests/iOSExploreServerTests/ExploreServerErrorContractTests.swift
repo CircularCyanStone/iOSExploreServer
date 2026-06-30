@@ -18,6 +18,7 @@ func businessErrorsReturnHttp200() {
         .commandTimeout(action: "ui.tap"),
         .handlerThrown(action: "ui.tap", error: NSError(domain: "x", code: 1)),
         .unexpectedInputParseError(action: "ui.tap", error: NSError(domain: "x", code: 2)),
+        .responseTooLarge(action: "ui.screenshot", bytes: 7_000_000, limit: 6_000_000),
     ]
     for error in errors {
         #expect(error.httpStatus == 200, "business error must stay on HTTP 200: \(error)")
@@ -54,6 +55,7 @@ func envelopeCodeMapping() {
     #expect(ExploreServerError.unknownAction("a").code == .unknownAction)
     #expect(ExploreServerError.invalidData(action: "a", message: "m").code == .invalidData)
     #expect(ExploreServerError.commandTimeout(action: "a").code == .timeout)
+    #expect(ExploreServerError.responseTooLarge(action: "a", bytes: 1, limit: 2).code == .responseTooLarge)
 
     let internalErrors: [ExploreServerError] = [
         .handlerThrown(action: "a", error: NSError(domain: "x", code: 1)),
@@ -83,6 +85,19 @@ func envelopeCodeMapping() {
     for error in badRequestErrors {
         #expect(error.code == .badRequest, "expected bad_request: \(error)")
     }
+}
+
+@Test("responseTooLarge: HTTP 200 + response_too_large，记 bytes/limit 不泄露 body")
+func responseTooLargeEnvelope() throws {
+    let error = ExploreServerError.responseTooLarge(action: "ui.screenshot", bytes: 7_000_000, limit: 6_000_000)
+    #expect(error.code == .responseTooLarge)
+    #expect(error.httpStatus == 200)
+    #expect(error.httpReason == "OK")
+    #expect(error.category == .command)
+    #expect(error.message == "response body too large")
+    #expect(error.logMessage.contains("ui.screenshot"))
+    #expect(error.logMessage.contains("7000000"))
+    #expect(error.logMessage.contains("6000000"))
 }
 
 @Test("超时二分：commandTimeout 不断开传输层(200)，readTimeout 关闭传输层(408)")
