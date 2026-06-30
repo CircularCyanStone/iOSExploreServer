@@ -183,6 +183,22 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           logMessage: "invalid data action=\(action) message=\(message)")
     }
 
+    /// `ui.scroll` 在目标（或其祖先链）及 keyWindow 最前 view 中都找不到可滚动容器。
+    ///
+    /// 仅 `UIScrollView` 系（含 `UICollectionView`/`UITableView`/`UITextView`）可滚动，
+    /// 但 `UITextView` 是 `UIScrollView` 子类且其内部长文滚动语义不同——executor 显式排除
+    /// 它，命中本错误。当定位字段缺省且回退扫描 keyWindow 也无 scrollView 时同样命中。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名，用于日志关联。
+    ///   - target: 目标定位摘要（identifier/path 或 "keyWindow"），不含大块 payload。
+    /// - Returns: `scroll_container_unavailable` 失败描述。
+    static func scrollContainerUnavailable(action: String, target: String) -> UIKitCommandError {
+        UIKitCommandError(code: .scrollContainerUnavailable,
+                          message: "no UIScrollView ancestor (UITextView excluded)",
+                          logMessage: "ui scroll container unavailable action=\(action) target=\(target)")
+    }
+
     /// 截图渲染失败（`drawHierarchy` 返回 false、cgImage 丢失、PNG 编码失败等）。
     ///
     /// - Parameters:
