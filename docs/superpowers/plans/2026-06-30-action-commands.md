@@ -243,7 +243,7 @@ if response.body.count > configuration.maxResponseBodyBytes {
 }
 ```
 
-`ClientSession` **所有** `send(...)` 调用补 `action:`：`process` 内传 `exploreReq.action`；`run`（`ClientSession.swift:187`）和 `readRequest`（`:217` bad_request 分支）传 `action: nil`（codex 复审：这两处也调 send，漏改会编译失败）。
+`ClientSession` **所有** `send(...)` 调用补 `action:`（codex 第三轮全 callsite 清单）：`run` catch（`:187`）、`readRequest` invalid（`:217`）、`process` 的 invalid method（`:253-260`）/invalid body（`:262-271`）这些**早于 exploreReq** 的分支传 `action: nil`；`process` 最终响应（`:291`）传 `action: exploreReq.action`。
 
 `ExploreServer` public init 加 `maxResponseBodyBytes: Int = 6 * 1024 * 1024`。
 
@@ -366,6 +366,7 @@ func capabilityDeclarations() {
     #expect(UIKitActionCapabilityResolver.resolve(view: textField, rootView: root, nearestControl: textField).actions.contains(.input))
     #expect(UIKitActionCapabilityResolver.resolve(view: scrollView, rootView: root, nearestControl: nil).actions.contains(.scroll))
     #expect(!UIKitActionCapabilityResolver.resolve(view: textView, rootView: root, nearestControl: nil).actions.contains(.scroll))
+    #expect(UIKitActionCapabilityResolver.resolve(view: textView, rootView: root, nearestControl: nil).actions.contains(.input))   // UITextView conform UITextInput（codex 第三轮补）
     #expect(UIKitActionCapabilityResolver.resolve(view: plain, rootView: root, nearestControl: nil).actions.isEmpty)
 }
 ```
@@ -689,7 +690,7 @@ func screenshotProducesValidImage() throws {
 
 - [ ] **Step 8: 运行测试 + 注册（count→5，传 maxResponseBodyBytes）**
 
-`UIKitCommandRegistrar.registerUIKitCommands(maxResponseBodyBytes:)`（或从 ExploreServer 暴露只读配置）：
+`UIKitCommandRegistrar.registerUIKitCommands(maxResponseBodyBytes: Int = 6 * 1024 * 1024)`（**带默认值**，不破坏现有 `registerUIKitCommands()` 调用——codex 第三轮）：
 
 ```swift
 register(ScreenshotCommand(maxResponseBodyBytes: maxResponseBodyBytes), logCategory: .extensionCommand(category: "command"))
@@ -1032,7 +1033,7 @@ enum UIScrollExecutor {
             let located = try UIKitLocatorResolver.locate(
                 locator: locator.locator, in: context.rootView,
                 notFound: { UIKitCommandError.invalidData(action: action, message: "target not found") },
-                ambiguous: { _, n in UIKitCommandError.invalidData(action: action, message: "ambiguous count=\(n)") })
+                ambiguous: { n inUIKitCommandError.invalidData(action: action, message: "ambiguous count=\(n)") })
             if let snapshotID = input.snapshotID, case .path = locator {
                 let cur = UIKitFingerprintCollector.fingerprint(for: located.view, path: located.pathString, rootView: context.rootView, digest: UIKitFingerprintCollector.digest(topViewController: context.topViewController))
                 let snapCtx = UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController)
@@ -1056,6 +1057,8 @@ enum UIScrollExecutor {
         let dist = input.amount ?? (input.direction.isVertical ? visibleH * 0.5 : visibleW * 0.5)
         let before = scrollView.contentOffset
         let delta = delta(for: input.direction, amount: dist)
+        // 注意（codex 第三轮）：animated:true 时 contentOffset 会动画插值，立即读 after/reachedExtent 是中间值；
+        // 命令默认 animated:false（确定性），animated:true 仅调试用，after 语义为"动画启动目标值"。
         scrollView.setContentOffset(CGPoint(x: before.x + delta.x, y: before.y + delta.y), animated: input.animated)
         let after = scrollView.contentOffset
         let extent = reachedExtent(scrollView: scrollView)
@@ -1065,7 +1068,7 @@ enum UIScrollExecutor {
             "offsetBefore": .object(JSON(["x": .double(before.x), "y": .double(before.y)])),
             "offsetAfter": .object(JSON(["x": .double(after.x), "y": .double(after.y)])),
             "reachedExtent": extent.map { .string($0.rawValue) } ?? .null,
-            "adjustedContentInset": .object(JSON(["top": .double(adjusted.top), "bottom": .double(adjusted.bottom)])),
+            "adjustedContentInset": .object(JSON(["top": .double(adjusted.top), "bottom": .double(adjusted.bottom), "left": .double(adjusted.left), "right": .double(adjusted.right)])),
         ]
     }
 
@@ -1181,11 +1184,11 @@ struct ActionCommandsIntegrationTests {
         let server = ExploreServer(port: 38399, maxResponseBodyBytes: 8 * 1024 * 1024)
         server.registerUIKitCommands(maxResponseBodyBytes: 8 * 1024 * 1024)
         try await server.start(); defer { Task { await server.stop() } }
-        // envelope 解包：JSONValue 无下标，按现有 IntegrationTests 的解包模式
-        // （case .object(let body) = resp 取 code；data 再 case .object 解包取 image）。
+        // 复用现有 IntegrationTests 的 postJSON + envelope 解包 helper；若现有测试无这些 helper，
+        // 本 Task 先加（JSONValue 无下标，用 case .object(let body) 链式解包取 code/data/image）——codex 第三轮。
         let resp = try await postJSON(port: 38399, action: "ui.screenshot", data: [:])
-        #expect(envelopeCode(resp) == "ok")                       // 测试辅助：case .object 链式解包
-        let img = try #require(envelopeImageBase64(resp))         // 同上，提取 data.image 的 base64
+        #expect(envelopeCode(resp) == "ok")
+        let img = try #require(envelopeImageBase64(resp))
         #expect(Data(base64Encoded: img)?.count ?? 0 > 100)
     }
     @Test("默认上限下超大图 → response_too_large（负向契约）")
