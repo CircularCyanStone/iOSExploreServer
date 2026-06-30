@@ -20,7 +20,7 @@ struct UIKitCommandRegistrationTests {
     }
 
 #if canImport(UIKit)
-    /// 显式注册后，`help` 必须列出全部四个 UIKit action。
+    /// 显式注册后，`help` 必须列出全部六个 UIKit action。
     ///
     /// 该测试仅在 iOS（framework 工程 `xcodebuild ... test`）下编译运行；macOS SPM 下
     /// `canImport(UIKit)` 为 false，整个方法不参与编译。它是 UIKit 命令"显式注册"语义
@@ -35,6 +35,7 @@ struct UIKitCommandRegistrationTests {
         #expect(result.commandActions.contains("ui.control.sendAction"))
         #expect(result.commandActions.contains("ui.tap"))
         #expect(result.commandActions.contains("ui.screenshot"))
+        #expect(result.commandActions.contains("ui.input"))
     }
 #endif
 }

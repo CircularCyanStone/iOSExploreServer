@@ -6,7 +6,7 @@ import UIKit
 ///
 /// 重构后 core 不再自动注册 UIKit 命令；宿主 App 在初始化 `ExploreServer` 后，
 /// 调用 `server.registerUIKitCommands()` 把 `ui.topViewHierarchy`、`ui.viewTargets`、
-/// `ui.control.sendAction`、`ui.tap`、`ui.screenshot` 五个命令显式挂到 router 上。
+/// `ui.control.sendAction`、`ui.tap`、`ui.screenshot`、`ui.input` 六个命令显式挂到 router 上。
 ///
 /// 该扩展整体位于 `#if canImport(UIKit)` 内：macOS 下不参与编译，iOS 下提供注册
 /// 实现。注册前后通过 `UIKitCommandLogging` 记录进入与完成（含注册数量），便于
@@ -27,7 +27,8 @@ public extension ExploreServer {
         register(UITapCommand(), logCategory: .extensionCommand(category: "command"))
         register(ScreenshotCommand(maxResponseBodyBytes: maxResponseBodyBytes),
                  logCategory: .extensionCommand(category: "command"))
-        UIKitCommandLogging.info("uikit.registrar", "registration completed count=5")
+        register(InputCommand(), logCategory: .extensionCommand(category: "command"))
+        UIKitCommandLogging.info("uikit.registrar", "registration completed count=6")
     }
 }
 #endif

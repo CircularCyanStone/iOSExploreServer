@@ -204,4 +204,52 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           message: "view controller transition in progress; retry",
                           logMessage: "ui screenshot transition in progress action=\(action)")
     }
+
+    /// `ui.input` 的目标不是受支持的文本输入控件。
+    ///
+    /// 仅 `UITextField` / `UITextView` / `UISearchTextField` 三类走 `UITextInput.insertText`
+    /// 注入路径；其它类型（如 `UILabel`）命中本错误。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名，用于日志关联。
+    ///   - type: 实际命中的 view 运行时类型名（`String(describing: type(of:))`），便于排障。
+    /// - Returns: `unsupported_text_input_type` 失败描述。
+    static func unsupportedTextInputType(action: String, type: String) -> UIKitCommandError {
+        UIKitCommandError(code: .unsupportedTextInputType,
+                          message: "target is not a supported text input",
+                          logMessage: "ui input unsupported type action=\(action) type=\(type)")
+    }
+
+    /// `ui.input` 让目标成为 first responder 失败，无法进入编辑/焦点状态。
+    ///
+    /// `becomeFirstResponder()` 返回 false，或调用后 `isFirstResponder` / `selectedTextRange`
+    /// 仍不可用时命中本错误。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - target: 目标定位摘要（identifier/path），不含大块 payload。
+    /// - Returns: `become_first_responder_failed` 失败描述。
+    static func becomeFirstResponderFailed(action: String, target: String) -> UIKitCommandError {
+        UIKitCommandError(code: .becomeFirstResponderFailed,
+                          message: "failed to become first responder",
+                          logMessage: "ui input becomeFirstResponder failed action=\(action) target=\(target)")
+    }
+
+    /// `ui.input` 注入的文本被委托拒绝或被输入代理改写。
+    ///
+    /// 通过比对注入后期望文本与实际 `text` 不一致判定：replace 模式期望等于 `input.text`，
+    /// append 模式期望等于 `旧文本 + input.text`。差异通常源于 `textField(_:shouldChangeCharactersIn:)`
+    /// 返回 false、输入过滤（如数字键盘删掉非数字字符）、或 formatter 改写。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - expectedLen: 期望文本长度。
+    ///   - finalLen: 实际文本长度。
+    ///   - secure: 目标是否为密码输入（`isSecureTextEntry`），决定是否对响应脱敏。
+    /// - Returns: `input_rejected` 失败描述；**日志与 message 都不回原文**，只回长度与 secure 标记。
+    static func inputRejected(action: String, expectedLen: Int, finalLen: Int, secure: Bool) -> UIKitCommandError {
+        UIKitCommandError(code: .inputRejected,
+                          message: "text input was rejected or altered by delegate",
+                          logMessage: "ui input rejected action=\(action) expectedLen=\(expectedLen) finalLen=\(finalLen) secure=\(secure)")
+    }
 }

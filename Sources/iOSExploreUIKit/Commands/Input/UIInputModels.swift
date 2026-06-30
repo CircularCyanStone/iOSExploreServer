@@ -1,0 +1,115 @@
+import Foundation
+import iOSExploreServer
+
+/// `ui.input` 的文本写入模式。
+///
+/// 保持 Foundation-only，UIKit 平台据此决定是先清空再写（`replace`）还是追加（`append`）。
+///
+/// - Note: case 声明顺序即 `CaseIterable.allCases` 顺序，被 `CommandFields.enumValue`
+///   的 "must be one of ..." 错误文案依赖，勿随意重排。
+public enum InputMode: String, Sendable, Equatable, CaseIterable {
+    /// 先清空原内容（selectAll + deleteBackward），再写入新文本。
+    case replace
+    /// 在原内容末尾追加新文本，不改动已有字符。
+    case append
+}
+
+/// `ui.input` 的命令参数。
+///
+/// 命令要求调用方明确提供一个定位条件（`accessibilityIdentifier` 或 `path` 二选一）和
+/// 必填的 `text`。`mode` 默认 `replace`（先清空），`submit` 默认 `true`（写完
+/// `resignFirstResponder`）。`snapshotID` 仅允许与 `path` 搭配用于陈旧校验。
+///
+/// 该类型整体 Foundation-only：字段声明与解析不依赖 UIKit，便于在 macOS 上做 schema
+/// 单测；UIKit 类型只在 executor 内部出现，不穿过 public 边界。
+public struct UIInputInput: CommandInput, Sendable, Equatable {
+    private enum Fields {
+        static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
+        static let path = UIKitLocatorFields.path
+        static let snapshotID = UIKitLocatorFields.snapshotID
+        static let text = CommandFields.requiredString(
+            "text",
+            description: "要输入的文本 (任意 Unicode, 含中文/emoji)"
+        )
+        static let mode = CommandFields.enumValue(
+            "mode",
+            type: InputMode.self,
+            default: .replace,
+            description: "replace(默认, 先清空原内容) / append(在末尾追加)"
+        )
+        static let submit = CommandFields.bool(
+            "submit",
+            default: true,
+            description: "输入完成后是否 resignFirstResponder (默认 true)"
+        )
+
+        static let all: [AnyCommandField] = [
+            accessibilityIdentifier.erased,
+            path.erased,
+            snapshotID.erased,
+            text.erased,
+            mode.erased,
+            submit.erased,
+        ]
+    }
+
+    /// `ui.input` 暴露给 help 和工具客户端的输入 schema。
+    public static let inputSchema = CommandInputSchema(
+        fields: Fields.all,
+        constraints: [
+            .exactlyOneOf(["accessibilityIdentifier", "path"]),
+            .extensionMessage("snapshotID is valid only with path"),
+        ]
+    )
+
+    /// 目标控件定位方式。
+    public let target: UIKitViewLookupTarget
+    /// 要注入的文本（任意 Unicode）。
+    public let text: String
+    /// 写入模式：replace（默认）或 append。
+    public let mode: InputMode
+    /// 写完后是否 resignFirstResponder。
+    public let submit: Bool
+    /// 可选快照标识，仅允许与 `.path` 定位一起用于陈旧校验。
+    public let snapshotID: String?
+
+    /// 创建一条 input 查询。
+    ///
+    /// - Parameters:
+    ///   - target: 目标文本控件定位方式。
+    ///   - text: 要注入的文本。
+    ///   - mode: 写入模式，默认 `.replace`。
+    ///   - submit: 写完后是否 resignFirstResponder，默认 `true`。
+    ///   - snapshotID: 可选 snapshotID，默认 nil。
+    public init(target: UIKitViewLookupTarget,
+                text: String,
+                mode: InputMode = .replace,
+                submit: Bool = true,
+                snapshotID: String? = nil) {
+        self.target = target
+        self.text = text
+        self.mode = mode
+        self.submit = submit
+        self.snapshotID = snapshotID
+    }
+
+    /// 按 `CommandInputDecoder` 读取字段并执行定位/snapshotID 组合校验。
+    ///
+    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Returns: 已解析的 input 输入。
+    /// - Throws: 字段类型、定位互斥关系或 snapshotID 搭配非法时抛出 `CommandInputParseError`。
+    public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIInputInput {
+        let snapshotID = try decoder.read(Fields.snapshotID)
+        let mode = try decoder.read(Fields.mode)
+        let submit = try decoder.read(Fields.submit)
+        let text = try decoder.read(Fields.text)
+        let target = try UIKitLocatorInput.parse(decoder: &decoder,
+                                                  identifierField: Fields.accessibilityIdentifier,
+                                                  pathField: Fields.path)
+        // snapshotID 仅允许与 path 搭配：identifier 定位不带结构路径，无法做指纹陈旧校验。
+        if snapshotID != nil, case .accessibilityIdentifier = target {
+            throw CommandInputParseError("snapshotID is valid only with path")
+        }
+        return UIInputInput(target: target, text: text, mode: mode, submit: submit, snapshotID: snapshotID)
+    }
+}

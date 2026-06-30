@@ -86,4 +86,33 @@ struct UIKitCommandErrorTests {
             throw UIKitCommandError.targetNotFound(action: "ui.tap", targetDescription: "root/0")
         }
     }
+
+    @Test("ui.input 非文本控件映射为 unsupported_text_input_type")
+    func unsupportedTextInputTypeMapsToCode() {
+        let error = UIKitCommandError.unsupportedTextInputType(action: "ui.input", type: "UILabel")
+        #expect(error.result == .failure(code: .unsupportedTextInputType,
+                                        message: "target is not a supported text input"))
+        #expect(error.failure.logMessage.contains("action=ui.input"))
+        #expect(error.failure.logMessage.contains("type=UILabel"))
+    }
+
+    @Test("ui.input first responder 失败映射为 become_first_responder_failed")
+    func becomeFirstResponderFailedMapsToCode() {
+        let error = UIKitCommandError.becomeFirstResponderFailed(action: "ui.input", target: "path=root/0")
+        #expect(error.result == .failure(code: .becomeFirstResponderFailed,
+                                        message: "failed to become first responder"))
+        #expect(error.failure.logMessage.contains("target=path=root/0"))
+    }
+
+    @Test("ui.input 委托拒绝映射为 input_rejected 且不回原文")
+    func inputRejectedMapsToCodeWithoutPlaintext() {
+        let error = UIKitCommandError.inputRejected(action: "ui.input", expectedLen: 8, finalLen: 0, secure: true)
+        #expect(error.result == .failure(code: .inputRejected,
+                                        message: "text input was rejected or altered by delegate"))
+        // message 与 logMessage 都不得含期望长度之外的明文输入；只回长度与 secure 标记。
+        let log = error.failure.logMessage
+        #expect(log.contains("expectedLen=8"))
+        #expect(log.contains("finalLen=0"))
+        #expect(log.contains("secure=true"))
+    }
 }
