@@ -195,8 +195,8 @@ func connectionLimitRejectsAdditionalConnection() async throws {
         let text = try await send(action: "ui.screenshot")
         let code = envelopeCode(text)
         // 无前台 scene → hierarchyUnavailable → internal_error。
+        // 仅断言 code 契约,不耦合 UIKit 内部 message 文案（final review I-1）。
         #expect(code == "internal_error")
-        #expect(text.contains("UI hierarchy unavailable"))
         // envelope 形态：失败只走顶层 code/message，不应出现遗留字段。
         #expect(!text.contains(#""ok":"#))
         #expect(!text.contains(#""error":"#))
