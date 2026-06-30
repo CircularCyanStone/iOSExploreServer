@@ -10,6 +10,13 @@ import Foundation
 /// `UIKitActionKind` 描述 executor 真正能派发的动作，由 `UIKitActionCapabilityResolver`
 /// 按真实 view/控件状态生成；命令响应中的 `availableActions` 即由本类型序列化，是 agent
 /// 判断目标可执行性的唯一动作依据（`role` 仅作类型提示，不再派生动作建议）。
+///
+/// 动作语义分为两组：
+/// - `tap` 与 `control.*`：面向 `UIControl`，由 `UIKitActionExecutor` 的 tap / sendAction 路径派发；
+/// - `input` / `scroll`：面向非 `UIControl` 的可输入/可滚动目标（如 `UITextView`、`UIScrollView`），
+///   为 Task 8（ui.input）/ Task 9（ui.scroll）等扩展命令预留的声明位。resolver 通过协议
+///   conform 判定（`UITextInput`/`UIScrollView`）声明这两个动作，让 `ui.viewTargets` 提前告知
+///   agent “这个字段可输入 / 这个 scroll view 可滚动”。
 public enum UIKitActionKind: String, Sendable, Equatable {
     /// 点击语义。executor 对 `UIControl` 派发 `touchUpInside`。
     case tap
@@ -25,6 +32,12 @@ public enum UIKitActionKind: String, Sendable, Equatable {
     case controlEditingDidBegin = "control.editingDidBegin"
     /// 文本输入控件结束编辑事件。
     case controlEditingDidEnd = "control.editingDidEnd"
+    /// 文本输入语义。resolver 对 conform `UITextInput` 的 view 声明（`UITextField`/
+    /// `UITextView`/`UISearchTextField`），表示该目标可被 `ui.input` 类命令赋值/编辑。
+    case input
+    /// 滚动语义。resolver 对 `UIScrollView` 系（`UIScrollView`/`UICollectionView`/`UITableView`）
+    /// 声明；`UITextView` 虽是其子类但显式排除（内部长文滚动留待后续版本）。
+    case scroll
 }
 
 /// 某个 UI 目标当前可执行的 UIKit 动作集合。

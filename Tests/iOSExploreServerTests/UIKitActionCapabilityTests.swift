@@ -33,18 +33,49 @@ func availabilityPreservesActionOrder() {
 }
 
 #if canImport(UIKit)
-@Test("文本输入框声明与 executor 一致的编辑动作") @MainActor
+@Test("文本输入框声明与 executor 一致的编辑动作及 input") @MainActor
 func textFieldDeclaresEditingActions() {
     let textField = UITextField()
     let availability = UIKitActionCapabilityResolver.resolve(view: textField,
                                                                rootView: textField,
                                                                nearestControl: textField)
-    #expect(availability.rawValues == [
-        "tap",
-        "control.editingChanged",
-        "control.editingDidBegin",
-        "control.editingDidEnd",
-    ])
+    // UITextField 既是 UIControl（保留 tap + control.editing* 编辑事件），又 conform UITextInput
+    // → 追加 input。两条路径并列累加，覆盖 executor 后续的 ui.input 命令。
+    #expect(availability.actions.contains(.tap))
+    #expect(availability.actions.contains(.controlEditingChanged))
+    #expect(availability.actions.contains(.controlEditingDidBegin))
+    #expect(availability.actions.contains(.controlEditingDidEnd))
+    #expect(availability.actions.contains(.input))
+}
+
+@Test("capability: input/scroll 声明 + UITextView 排除 scroll") @MainActor
+func capabilityDeclarationsForInputAndScroll() {
+    let root = UIView()
+    let textField = UITextField(); root.addSubview(textField)
+    let scrollView = UIScrollView(); root.addSubview(scrollView)
+    let textView = UITextView(); root.addSubview(textView)
+    let plain = UIView(); root.addSubview(plain)
+
+    // UITextField（UIControl 子类）声明 input（UITextInput conform）。
+    #expect(UIKitActionCapabilityResolver
+            .resolve(view: textField, rootView: root, nearestControl: textField)
+            .actions.contains(.input))
+    // UIScrollView 声明 scroll。
+    #expect(UIKitActionCapabilityResolver
+            .resolve(view: scrollView, rootView: root, nearestControl: nil)
+            .actions.contains(.scroll))
+    // UITextView 虽是 UIScrollView 子类，但内部长文滚动留 v2——显式排除 scroll，避免误暴露。
+    #expect(!UIKitActionCapabilityResolver
+            .resolve(view: textView, rootView: root, nearestControl: nil)
+            .actions.contains(.scroll))
+    // UITextView conform UITextInput，仍声明 input（codex 第三轮补的正确性断言）。
+    #expect(UIKitActionCapabilityResolver
+            .resolve(view: textView, rootView: root, nearestControl: nil)
+            .actions.contains(.input))
+    // 既非 control、又非 UITextInput/UIScrollView 的普通 view 不声明任何动作。
+    #expect(UIKitActionCapabilityResolver
+            .resolve(view: plain, rootView: root, nearestControl: nil)
+            .actions.isEmpty)
 }
 
 @Test("禁用控件不声明可执行动作") @MainActor
