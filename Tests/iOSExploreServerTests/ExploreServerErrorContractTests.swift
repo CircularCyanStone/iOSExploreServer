@@ -124,6 +124,19 @@ func logMessagesCarryDiagnosticContext() {
     #expect(ExploreServerError.unknownAction("ui.tap").logMessage.contains("ui.tap"))
 }
 
+@Test("新增 ExploreError code 的 rawValue 契约（ui.screenshot/input/scroll 业务码落点）")
+func newErrorCodesRawValues() {
+    #expect(ExploreError.timeout.rawValue == "timeout")
+    #expect(ExploreError.responseTooLarge.rawValue == "response_too_large")
+    #expect(ExploreError.staleLocator.rawValue == "stale_locator")
+    #expect(ExploreError.inputRejected.rawValue == "input_rejected")
+    #expect(ExploreError.transitionInProgress.rawValue == "transition_in_progress")
+    #expect(ExploreError.unsupportedTextInputType.rawValue == "unsupported_text_input_type")
+    #expect(ExploreError.becomeFirstResponderFailed.rawValue == "become_first_responder_failed")
+    #expect(ExploreError.renderingFailed.rawValue == "rendering_failed")
+    #expect(ExploreError.scrollContainerUnavailable.rawValue == "scroll_container_unavailable")
+}
+
 @Test("handlerThrown 透传底层错误文案便于排障；unexpectedInputParseError 收敛为通用文案不泄露实现")
 func handlerThrownVsUnexpectedParseErrorMessages() {
     struct Boom: Error, LocalizedError {

@@ -203,7 +203,7 @@ iOSExploreServer 已有 8 个 action（core：`ping`/`echo`/`info`/`help`；UIKi
 |---|---|
 | `code:"ok"` + screenshot data | `isError:false`，`content=[{type:"image", data:<base64>, mimeType:"image/png"}]`（字段名对齐 MCP） |
 | `code:"ok"` + input/scroll data | `isError:false`，`content=[{type:"text", text: <JSON>}]` |
-| `code` ∈ {`invalid_data`,`stale_locator`,`inputRejected`,...} | `isError:true`，`content=[{type:"text", text: message}]`，**message 必须是 LLM 可执行恢复提示** |
+| `code` ∈ {`invalid_data`,`stale_locator`,`input_rejected`,...} | `isError:true`，`content=[{type:"text", text: message}]`，**message 必须是 LLM 可执行恢复提示** |
 | `code:"timeout"` | Mac 层静默重试一次后再上抛 |
 | `code:"internal_error"` | `isError:true`（实现 bug 信号） |
 

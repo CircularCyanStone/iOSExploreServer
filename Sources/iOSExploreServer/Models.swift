@@ -132,6 +132,10 @@ public enum ExploreResult: Sendable, Equatable {
 }
 
 /// 统一 envelope 中失败 `code` 的取值。
+///
+/// 通信失败用 HTTP 状态码表达，业务失败统一 HTTP 200 + 顶层 `code`。新增能力（如 UIKit
+/// 扩展命令）的业务错误码必须先在此枚举落点，再由对应错误工厂（`ExploreServerError` /
+/// `UIKitCommandError`）引用，避免在调用点散写字符串。
 public enum ExploreError: String, Sendable {
     /// `Router` 没有找到请求 action 对应的命令。
     case unknownAction = "unknown_action"
@@ -144,4 +148,34 @@ public enum ExploreError: String, Sendable {
 
     /// HTTP 请求本身不符合协议，例如不是 `POST /` 或 body 不是合法命令 JSON。
     case badRequest = "bad_request"
+
+    /// 命令执行超时（业务侧超时，区别于传输层 `readTimeout` 的 408）。
+    ///
+    /// 由 `ExploreServerError.commandTimeout` 引用；以 HTTP 200 + 顶层 `timeout` 返回，
+    /// 不断开传输层。
+    case timeout = "timeout"
+
+    /// 命令产生的响应体超过最大尺寸（如截图/快照过大无法封装）。
+    case responseTooLarge = "response_too_large"
+
+    /// 定位器指向的元素已陈旧（snapshot 失效或视图树变化），无法可靠执行动作。
+    case staleLocator = "stale_locator"
+
+    /// 输入被业务规则拒绝（如非法文本、不可编辑元素），区别于 schema 解析失败的 `invalid_data`。
+    case inputRejected = "input_rejected"
+
+    /// 视图正处于过渡态（如动画/页面切换中），当前动作无法安全执行。
+    case transitionInProgress = "transition_in_progress"
+
+    /// 文本输入类型不被支持（如向非文本控件输入、不支持的键盘类型）。
+    case unsupportedTextInputType = "unsupported_text_input_type"
+
+    /// 让目标视图成为 first responder 失败，无法进入编辑/焦点状态。
+    case becomeFirstResponderFailed = "become_first_responder_failed"
+
+    /// 渲染失败（如截图/快照采集时图层合成失败、上下文丢失）。
+    case renderingFailed = "rendering_failed"
+
+    /// 找不到可滚动的容器视图，无法执行滚动命令。
+    case scrollContainerUnavailable = "scroll_container_unavailable"
 }
