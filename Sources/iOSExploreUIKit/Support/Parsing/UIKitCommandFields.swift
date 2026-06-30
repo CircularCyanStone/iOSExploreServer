@@ -80,4 +80,29 @@ public enum UIKitLocatorInput {
             throw CommandInputParseError(error.message)
         }
     }
+
+    /// 从 command input decoder 读取定位字段并解析为通用 view 定位目标，定位字段都缺时返回 nil。
+    ///
+    /// 与 `parse(decoder:identifierField:pathField:)` 行为一致，唯一差异：当 `accessibilityIdentifier`
+    /// 与 `path` 同时缺失时返回 `nil`（供 `ui.scroll` 等命令在两者都缺时回退到"最前 scrollView"
+    /// 的默认语义），而非抛错。互斥、空值、路径文法等校验规则保持不变。
+    ///
+    /// - Parameters:
+    ///   - decoder: 已绑定命令 schema 的 typed input decoder。
+    ///   - identifierField: identifier 字段声明，默认使用 `accessibilityIdentifier`。
+    ///   - pathField: path 字段声明，默认使用 `path`。
+    /// - Returns: 可交给 UIKit resolver/executor 的定位目标；两个字段都缺时返回 `nil`。
+    /// - Throws: 字段读取失败或定位规则失败（如两者同时给出、identifier 为空、path 文法非法）时抛出 `CommandInputParseError`。
+    public static func parseOptional(decoder: inout CommandInputDecoder,
+                                     identifierField: CommandField<String?> = UIKitLocatorFields.accessibilityIdentifier,
+                                     pathField: CommandField<String?> = UIKitLocatorFields.path) throws -> UIKitViewLookupTarget? {
+        let identifier = try decoder.read(identifierField)
+        let rawPath = try decoder.read(pathField)
+        guard identifier != nil || rawPath != nil else { return nil }
+        do {
+            return try UIKitViewLookupTarget.parse(identifier: identifier, rawPath: rawPath)
+        } catch let error as UIKitLocatorParseError {
+            throw CommandInputParseError(error.message)
+        }
+    }
 }
