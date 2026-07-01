@@ -246,7 +246,7 @@
 ### `Support/Wait/`
 
 - **`UIKitVisibleTextCollector.swift`** 🍎 — `@MainActor`，递归采集可见文本（UILabel.text/UIButton.currentTitle/UITextField.placeholder/accessibilityLabel/非编辑态 accessibilityValue）。**有意不收集 UITextField.text/UITextView.text**（用户输入，防泄露），与 `UIViewHierarchyCollector.textInfo` 分工。被 `UIWaitExecutor` 的 textExists/idle 用。
-- **`UIWaitExecutor.swift`** 🍎 — `@MainActor async`，按 intervalMs 轮询至满足或 deadline。`DispatchTime.uptimeNanoseconds` 做 deadline；sleep clamp 到剩余 deadline（业务 waitTimeout 先于命令级 35s）；`try? Task.sleep` 吞 cancellation + `Task.isCancelled` 收敛到 waitTimeout。5 模式：idle（活动签名连续 stableMs 不变）/ targetExists·targetGone（resolver.contains）/ textExists（VisibleTextCollector）/ snapshotChanged（store.contextMatches 检测页面身份变化）。注入 contextProvider 便于测试。
+- **`UIWaitExecutor.swift`** 🍎 — `@MainActor async`，按 intervalMs 轮询至满足或 deadline。`DispatchTime.uptimeNanoseconds` 做 deadline；sleep clamp 到剩余 deadline（业务 waitTimeout 先于命令级 35s）；`try? Task.sleep` 吞 cancellation + `Task.isCancelled` 收敛到 waitTimeout。5 模式：idle（活动签名连续 stableMs 不变）/ targetExists·targetGone（resolver.contains）/ textExists（VisibleTextCollector）/ snapshotChanged（store.matchesWholeTable 整体指纹表比较，检测 view 结构/控件状态变化；不含 text，文本变化用 textExists）。注入 contextProvider 便于测试。
 
 ### `Support/Action/` 新增
 
