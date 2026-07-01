@@ -4,7 +4,7 @@
 > 想知道"从哪开始读"看 [reading-guide.md](./reading-guide.md)；这里按目录逐个登记每个文件的职责、关键点与依赖关系，用于定位与改动。
 > 约定：✅ = Foundation-only（macOS `swift test` 可覆盖）；🍎 = `#if canImport(UIKit)`，仅 iOS 编译。
 > 目录分两层：`Commands/` 是 12 个对外命令及其紧密配套（adapter + models + collector），`Support/` 是横切辅助（执行引擎 / 定位 / 上下文 / 快照 / 解析 / 等待 / 文本采集），根目录 3 个是模块级横切（注册 / 日志 / 错误）。
-> **覆盖范围说明**：下方总览与逐文件档案最初建于 4 命令时期；keyboard / navigation / wait / scrollToElement / alert 五个新命令，以及 `UIScrollResolver` / `UIScrollGeometry` scroll 原语、`UIKitVisibleTextCollector`、`UIAlertInspector` 等的逐文件档案待补——参见各源码文件头 `///` 注释与 [reading-guide.md](./reading-guide.md) 的命令清单。
+> **覆盖范围说明**：keyboard / navigation / wait / scrollToElement / alert 五个新命令、scroll 原语与 wait/alert 辅助类型的逐文件档案见文末「新增命令档案（Task 2-7）」节。`ui.screenshot` / `ui.input` / `ui.scroll` 三个较早命令的逐文件档案仍待补（总览已列），参见各自源码头 `///` 注释。
 
 ## 总览
 
@@ -13,13 +13,22 @@
 | 根目录 | 3 | 注册入口、日志、错误工厂（被所有层依赖） |
 | `Commands/TopViewHierarchy/` | 3 | `ui.topViewHierarchy` 命令（adapter + models + collector） |
 | `Commands/ViewTargets/` | 3 | `ui.viewTargets` 命令（adapter + models + collector） |
+| `Commands/Screenshot/` | 3 | `ui.screenshot` 命令（adapter + models + collector） |
 | `Commands/Tap/` | 2 | `ui.tap` 命令（adapter + models） |
 | `Commands/ControlAction/` | 2 | `ui.control.sendAction` 命令（adapter + models） |
+| `Commands/Input/` | 2 | `ui.input` 命令（adapter + models） |
+| `Commands/Scroll/` | 2 | `ui.scroll` 命令（adapter + models） |
+| `Commands/Keyboard/` | 2 | `ui.keyboard.dismiss` 命令（adapter + models） |
+| `Commands/Navigation/` | 2 | `ui.navigation.back` 命令（adapter + models） |
+| `Commands/Wait/` | 2 | `ui.wait` 命令（adapter + models） |
+| `Commands/ScrollToElement/` | 2 | `ui.scrollToElement` 命令（adapter + models） |
+| `Commands/Alert/` | 2 | `ui.alert.respond` 命令（adapter + models） |
 | `Support/Context/` | 1 | 前台 window / 顶部控制器 |
 | `Support/Locator/` | 3 | 定位语义 + 真实 view 解析 + view lookup 模型 |
-| `Support/Action/` | 4 | 动作执行引擎（tap / control，tap+control 共用） |
+| `Support/Action/` | 13 | 动作执行引擎 + scroll 原语 + 各命令 executor |
 | `Support/Snapshot/` | 3 | 陈旧检测（指纹快照） |
 | `Support/Parsing/` | 3 | UIKit command 共享字段、locator input helper、安全数字、底层 parse 错误类型 |
+| `Support/Wait/` | 2 | wait 执行核心 + 可见文本采集 |
 
 ---
 
@@ -202,6 +211,52 @@
 - **职责**：`ui.viewTargets` 命令 adapter。
 - **关键点**：薄 adapter——typed input 已由 `AnyCommand` 解析完成；handler `try await collector`。响应含 `targetCount`/`visitedNodeCount`/`truncated`/`snapshotID`。
 - **依赖**：`UIViewTargetsInput`、`UIViewTargetsCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
+
+---
+
+## 新增命令档案（Task 2-7）
+
+> 以下为 agent 常用命令 v2（`docs/superpowers/plans/2026-07-01-agent-common-commands.md`）新增文件。adapter/models 保持 Foundation-only（✅），executor/inspector/collector 整体 `#if canImport(UIKit)`（🍎）。
+
+### `Commands/Keyboard/`（`ui.keyboard.dismiss`）
+
+- **`UIKeyboardDismissModels.swift`** ✅ — `KeyboardDismissStrategy`（auto/resignFirstResponder/endEditing）+ `UIKeyboardDismissInput`。strategy 用 `CommandFields.enumValue`、waitAfterMs 用 `CommandFields.int(range: 0...3000, default: 200)`；parse 读全 `Fields.all`。
+- **`UIKeyboardDismissCommand.swift`** 🍎 — 薄 adapter：`MainActor.run` 取 context → 同步 executor；顶层 catch `UIKitCommandError` 转 envelope。
+
+### `Commands/Navigation/`（`ui.navigation.back`）
+
+- **`UINavigationBackModels.swift`** ✅ — `NavigationBackStrategy`（auto/navigationController/dismiss）+ `UINavigationBackInput`（animated 默认 false，waitAfterMs 默认 300）。
+- **`UINavigationBackCommand.swift`** 🍎 — 薄 adapter，模式同 keyboard。
+
+### `Commands/Wait/`（`ui.wait`）
+
+- **`UIWaitModels.swift`** ✅ — `WaitMode`（idle/targetExists/targetGone/textExists/snapshotChanged）+ `UIWaitInput`。mode 决定字段需求（targetExists/targetGone 需 locator、textExists 需 text、snapshotChanged 需 snapshotID）；timeoutMs 0...30000、intervalMs 50...5000、stableMs 0...10000；target 复用 `UIKitLocatorInput.parseOptional`。
+- **`UIWaitCommand.swift`** 🍎 — adapter，`timeoutNanoseconds = 35s`（命令级兜底高于最大业务 timeoutMs）；executor 是 `@MainActor async`，adapter 直接 `await`（不用 `MainActor.run`）。
+
+### `Commands/ScrollToElement/`（`ui.scrollToElement`）
+
+- **`UIScrollToElementModels.swift`** ✅ — `ScrollToElementMatch`（text/accessibilityIdentifier）+ `UIScrollToElementInput`（value 必填，container 可选）。
+- **`UIScrollToElementCommand.swift`** 🍎 — 薄 adapter，`MainActor.run` 取 context → 同步 executor。
+
+### `Commands/Alert/`（`ui.alert.respond`）
+
+- **`UIAlertRespondModels.swift`** ✅ — `AlertButtonRole`（default/cancel/destructive）+ `UIAlertRespondInput`（dryRun 默认 true，buttonTitle/buttonIndex/role 互斥）。
+- **`UIAlertRespondCommand.swift`** 🍎 — 薄 adapter，`MainActor.run` 取 context → 同步 executor。
+
+### `Support/Wait/`
+
+- **`UIKitVisibleTextCollector.swift`** 🍎 — `@MainActor`，递归采集可见文本（UILabel.text/UIButton.currentTitle/UITextField.placeholder/accessibilityLabel/非编辑态 accessibilityValue）。**有意不收集 UITextField.text/UITextView.text**（用户输入，防泄露），与 `UIViewHierarchyCollector.textInfo` 分工。被 `UIWaitExecutor` 的 textExists/idle 用。
+- **`UIWaitExecutor.swift`** 🍎 — `@MainActor async`，按 intervalMs 轮询至满足或 deadline。`DispatchTime.uptimeNanoseconds` 做 deadline；sleep clamp 到剩余 deadline（业务 waitTimeout 先于命令级 35s）；`try? Task.sleep` 吞 cancellation + `Task.isCancelled` 收敛到 waitTimeout。5 模式：idle（活动签名连续 stableMs 不变）/ targetExists·targetGone（resolver.contains）/ textExists（VisibleTextCollector）/ snapshotChanged（store.contextMatches 检测页面身份变化）。注入 contextProvider 便于测试。
+
+### `Support/Action/` 新增
+
+- **`UIScrollResolver.swift`** 🍎 — `@MainActor`，滚动容器解析（ui.scroll/scrollToElement 共享）。`resolveFromTarget`（locator=target → 最近 scrollView 祖先）+ `resolveContainer`（locator=容器自身，scrollToElement）；都排除 UITextView。`Resolved` 持 UIScrollView，**仅 @MainActor 不 Sendable**。
+- **`UIScrollGeometry.swift`** 🍎 — `@MainActor`，滚动几何（defaultDistance/delta/reachedExtent/step + `UIScrollStepResult.toJSON`），全基于 `adjustedContentInset` + 1pt 容差。ui.scroll 与 scrollToElement 共享，防行为漂移。
+- **`UIKeyboardDismissExecutor.swift`** 🍎 — `@MainActor`，first responder 查找与收起。无 responder 时 success noop（dismissed=false）；auto 先 resign 再 endEditing(true)；失败 throw `keyboardDismissFailed`；settle 用 RunLoop。
+- **`UINavigationBackExecutor.swift`** 🍎 — `@MainActor`，dismiss/pop 决策。auto 先 dismiss（presenting!=nil）再 navigationController pop（count>1）；返回**实际生效策略**；不可用 throw `navigationBackUnavailable`。
+- **`UIScrollToElementExecutor.swift`** 🍎 — `@MainActor`，容器内 findTarget + `scrollRectToVisible`。用 UIKit 原生（自动最短滚动、保证可见），替代循环小步 scroll 避免污染 snapshot store（评审 M3）；不签 snapshot（agent 应重新 screenshot）。
+- **`UIAlertInspector.swift`** 🍎 — `@MainActor`，`findAlert`（cast topViewController）+ `summarize`（actions 的 index/title/role）。不依赖 present 转场（评审 M7），logic test 可靠。
+- **`UIAlertRespondExecutor.swift`** 🍎 — `@MainActor`，query-first。dryRun=true 返回 alert 信息；dryRun=false 暂抛 `alertButtonRequired`（UIAlertAction 点击私有路径未 spike，不直接点）。
 
 ---
 
