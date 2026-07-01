@@ -160,6 +160,22 @@ func connectionLimitRejectsAdditionalConnection() async throws {
     _ = try await first
 }
 
+@Test("短连接快速连续请求完成后释放连接槽")
+func rapidSequentialRequestsReleaseConnectionSlots() async throws {
+    let server = ExploreServer(port: testPort,
+                               listenerConfiguration: .testing(maxConnections: 1))
+    try await startWithPortRetry(server)
+    defer { server.stop() }
+
+    var lastResponse = ""
+    for _ in 0..<6 {
+        lastResponse = try await send(action: "ping", timeoutNanoseconds: 1_000_000_000)
+    }
+
+    #expect(envelopeCode(lastResponse) == "ok")
+    #expect(lastResponse.contains(#""pong":true"#))
+}
+
 #if canImport(UIKit)
 // MARK: - UIKit 操作三件套（screenshot/input/scroll）端到端
 //
@@ -259,7 +275,9 @@ func connectionLimitRejectsAdditionalConnection() async throws {
 }
 
 /// 发送一条命令并返回响应文本。
-private func send(action: String, data: JSON = [:]) async throws -> String {
+private func send(action: String,
+                  data: JSON = [:],
+                  timeoutNanoseconds: UInt64 = 5_000_000_000) async throws -> String {
     let payload: JSON = ["action": .string(action), "data": .object(data)]
     let body = JSONCoder.encode(payload)
     let request = Data("POST / HTTP/1.1\r\nContent-Length: \(body.count)\r\n\r\n".utf8) + body
@@ -267,34 +285,74 @@ private func send(action: String, data: JSON = [:]) async throws -> String {
     let conn = NWConnection(host: .ipv4(.loopback),
                             port: NWEndpoint.Port(rawValue: testPort)!,
                             using: .tcp)
-    conn.start(queue: .global())
-    try await waitUntilReady(conn)
+    try await startClientConnection(conn, timeoutNanoseconds: timeoutNanoseconds)
+    defer { conn.cancel() }
 
     return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+        let didResume = Mutex(false)
+        let resume: @Sendable (Result<String, Error>) -> Void = { result in
+            guard didResume.withLock({ value in
+                if value { return false }
+                value = true
+                return true
+            }) else { return }
+            conn.cancel()
+            switch result {
+            case .success(let text):
+                cont.resume(returning: text)
+            case .failure(let error):
+                cont.resume(throwing: error)
+            }
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + .nanoseconds(Int(timeoutNanoseconds))) {
+            resume(.failure(TestTimeoutError.timedOut))
+        }
         conn.send(content: request, completion: .contentProcessed { _ in
             conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, _, error in
-                if let error { cont.resume(throwing: error); return }
-                cont.resume(returning: String(data: data ?? Data(), encoding: .utf8) ?? "")
+                if let error { resume(.failure(error)); return }
+                resume(.success(String(data: data ?? Data(), encoding: .utf8) ?? ""))
             }
         })
     }
 }
 
-private func waitUntilReady(_ conn: NWConnection) async throws {
+private func startClientConnection(_ conn: NWConnection, timeoutNanoseconds: UInt64) async throws {
     try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+        let didResume = Mutex(false)
+        let resume: @Sendable (Result<Void, Error>) -> Void = { result in
+            guard didResume.withLock({ value in
+                if value { return false }
+                value = true
+                return true
+            }) else { return }
+            conn.stateUpdateHandler = nil
+            switch result {
+            case .success:
+                cont.resume()
+            case .failure(let error):
+                conn.cancel()
+                cont.resume(throwing: error)
+            }
+        }
         conn.stateUpdateHandler = { state in
             switch state {
             case .ready:
-                cont.resume()
-                conn.stateUpdateHandler = nil   // 防止后续 cancelled 回调重复 resume
+                resume(.success(()))
             case .failed(let err):
-                cont.resume(throwing: err)
-                conn.stateUpdateHandler = nil
+                resume(.failure(err))
             default:
                 break
             }
         }
+        DispatchQueue.global().asyncAfter(deadline: .now() + .nanoseconds(Int(timeoutNanoseconds))) {
+            resume(.failure(TestTimeoutError.timedOut))
+        }
+        conn.start(queue: .global())
     }
+}
+
+private enum TestTimeoutError: Error {
+    case timedOut
 }
 
 /// 启动 server，遇到端口占用时短暂重试。

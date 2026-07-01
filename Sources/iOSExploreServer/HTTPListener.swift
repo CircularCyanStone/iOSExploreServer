@@ -86,8 +86,7 @@ final class HTTPListener: @unchecked Sendable {
             throw error.nsError
         }
         self.listener = try NWListener(using: .tcp, on: nwPort)
-        self.listener?.newConnectionLimit = max(configuration.maxConnections + 1, 2)
-        ExploreLogger.debug(.listener, "listener initialized port=\(port)")
+        ExploreLogger.debug(.listener, "listener initialized port=\(port) maxConnections=\(configuration.maxConnections)")
     }
 
     /// 启动监听并等待端口 ready。
@@ -187,18 +186,18 @@ final class HTTPListener: @unchecked Sendable {
     /// 当前协议是一请求一响应：读取到完整 HTTP 请求后立即处理并关闭连接，不支持 keep-alive、
     /// pipelining 或 chunked transfer encoding。
     private func handle(_ conn: NWConnection) {
-        ExploreLogger.debug(.listener, "connection accepted")
-        let sessionID = state.withLock { state -> String? in
+        let sessionInfo = state.withLock { state -> (String, Int)? in
             guard state.sessions.count < configuration.maxConnections else { return nil }
             state.nextSessionNumber += 1
-            return "s\(state.nextSessionNumber)"
+            return ("s\(state.nextSessionNumber)", state.sessions.count + 1)
         }
-        guard let sessionID else {
+        guard let (sessionID, activeAfterAccept) = sessionInfo else {
             let error = ExploreServerError.tooManyConnections(limit: configuration.maxConnections)
             ExploreLogger.error(.listener, error.logMessage)
             Self.reject(conn, queue: networkQueue, error: error)
             return
         }
+        ExploreLogger.debug(.listener, "connection accepted session=\(sessionID) active=\(activeAfterAccept) limit=\(configuration.maxConnections)")
         let session = ClientSession(sessionID: sessionID,
                                     connection: conn,
                                     router: router,
