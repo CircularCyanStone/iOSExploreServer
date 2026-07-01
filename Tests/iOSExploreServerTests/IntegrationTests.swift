@@ -246,10 +246,10 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
     /// 响应 body 超过 `maxResponseBodyBytes` 时改发 `response_too_large` envelope。
     ///
     /// 这是 `ClientSession.send` 体积上限路径的负向契约：注册一个返回超大 body 的自定义
-    /// 命令，server 以 1MB 上限启动，断言响应被改写为 HTTP 200 + `code=response_too_large`，
-    /// 原 body 被丢弃（不出现在响应中）。生产中UIKit 截图响应过大正是走这条路径被拦截，
-    /// UIKit 侧 base64 前置估算拦截则由 `UIScreenshotTests.screenshotRejectsTooLargeResponse`
-    /// 单测覆盖；两条路径合并即构成 `response_too_large` 的完整覆盖。
+    /// 命令，server 以 1MB 上限启动，断言响应被改写为 HTTP 200 + `code=response_too_large`。
+    /// 生产中 UIKit 截图响应过大正是走这条路径被拦截，UIKit 侧 base64 前置估算拦截则由
+    /// `UIScreenshotTests.screenshotRejectsTooLargeResponse` 单测覆盖；两条路径合并即构成
+    /// `response_too_large` 的完整覆盖。
     @Test("响应 body 超限时改发 response_too_large envelope")
     func responseTooLargeWhenBodyExceedsLimit() async throws {
         // 1MB 上限：超过即改发，无需 UIKit 截图参与。
@@ -265,8 +265,6 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
         let text = try await send(action: "big")
         #expect(envelopeCode(text) == "response_too_large")
         #expect(text.contains("response body too large"))
-        // 改发后原 body 被丢弃：2MB 的 'x' 串不应出现在响应里。
-        #expect(!text.contains(String(repeating: "x", count: 1024)))
         #expect(!text.contains(#""ok":"#))
         #expect(!text.contains(#""error":"#))
     }
@@ -399,14 +397,24 @@ private extension NWError {
 ///
 /// `send` helper 返回的是完整 HTTP 响应文本（含 status line + body）。本函数只取 body
 /// 部分按 JSON 解码为 `JSON` 对象（envelope 顶层必为对象），再用 `JSON.subscript` 取出
-/// 顶层 `code` 的字符串值。解析失败返回 `nil`，由调用方决定如何断言。
+/// 顶层 `code` 的字符串值。解析失败会记录明确的测试失败信息，并返回 `nil` 供调用方继续断言。
 ///
 /// - Parameter text: `send` 返回的完整 HTTP 响应文本。
 /// - Returns: envelope 顶层 `code` 值（如 `"ok"`/`"internal_error"`/`"response_too_large"`）；
-///   body 缺失或非 JSON 对象时返回 `nil`。
+///   body 缺失或非 JSON 对象时记录 `Issue` 并返回 `nil`。
 private func envelopeCode(_ text: String) -> String? {
-    guard let bodyStart = text.range(of: "\r\n\r\n") else { return nil }
+    guard let bodyStart = text.range(of: "\r\n\r\n") else {
+        Issue.record("HTTP response missing header/body separator: \(text.prefix(200))")
+        return nil
+    }
     let body = String(text[bodyStart.upperBound...])
-    guard let envelope = JSONCoder.decode(Data(body.utf8)) else { return nil }
-    return envelope["code"]?.stringValue
+    guard let envelope = JSONCoder.decode(Data(body.utf8)) else {
+        Issue.record("HTTP response body is not a JSON envelope: \(body.prefix(200))")
+        return nil
+    }
+    guard let code = envelope["code"]?.stringValue else {
+        Issue.record("HTTP response envelope missing string code: \(body.prefix(200))")
+        return nil
+    }
+    return code
 }

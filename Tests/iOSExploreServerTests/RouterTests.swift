@@ -1,6 +1,8 @@
 import Testing
 @testable import iOSExploreServer
 
+private let thirtySecondCommandTimeoutNanoseconds: UInt64 = 30 * 1_000_000_000
+
 private struct RouterGreetingInput: CommandInput, Equatable {
     static let nameField = CommandFields.requiredString("name", description: "名字")
     static let inputSchema = CommandInputSchema(fields: [nameField.erased])
@@ -139,8 +141,8 @@ func commandMetadataIncludesInputSchemaProperties() {
 func commandTimeoutLookup() async {
     let router = Router()
     router.register(action: "defaultTimeout", input: EmptyCommandInput.self) { _ in .success([:]) }
-    #expect(await router.commandTimeout(for: "defaultTimeout") == nil)
-    #expect(await router.commandTimeout(for: "unregistered") == nil)
+    #expect(router.commandTimeout(for: "defaultTimeout") == nil)
+    #expect(router.commandTimeout(for: "unregistered") == nil)
 }
 
 @Test("协议命令自声明 timeoutNanoseconds 透传到 Router.commandTimeout")
@@ -149,20 +151,19 @@ func commandTimeoutLookupForProtocolCommand() async {
         typealias Input = EmptyCommandInput
         let action = "slow"
         let description = ""
-        var timeoutNanoseconds: UInt64? { 30_000_000_000 }
+        var timeoutNanoseconds: UInt64? { thirtySecondCommandTimeoutNanoseconds }
         func handle(_ input: EmptyCommandInput) async throws -> ExploreResult { .success([:]) }
     }
     let router = Router()
     router.register(SlowCommand())
-    #expect(await router.commandTimeout(for: "slow") == 30_000_000_000)
-    #expect(await router.commandTimeout(for: "slow") != nil)
+    #expect(router.commandTimeout(for: "slow") == thirtySecondCommandTimeoutNanoseconds)
 }
 
 @Test("闭包命令默认 timeoutNanoseconds 为 nil（无自声明超时）")
 func commandTimeoutLookupForClosureCommand() async {
     let router = Router()
     router.register(action: "closureCmd", input: EmptyCommandInput.self) { _ in .success([:]) }
-    #expect(await router.commandTimeout(for: "closureCmd") == nil)
+    #expect(router.commandTimeout(for: "closureCmd") == nil)
 }
 
 @Test("metadata 按 action 稳定排序")
