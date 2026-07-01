@@ -143,20 +143,20 @@ enum UIScreenshotCollector {
     /// - Throws: `UIKitCommandError.renderingFailed`——三种渲染路径全部失败时。
     private static func renderWindow(_ window: UIWindow, action: String) throws -> UIImage {
         let renderer = UIGraphicsImageRenderer(size: window.bounds.size)
-        var renderOK = false
+        var attemptedRender = false
         let image = renderer.image { context in
             // false 优先（避免副作用），失败再 true（强制渲染），均失败则 layer.render 兜底。
-            renderOK = window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+            attemptedRender = window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
                 || window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-            if !renderOK {
+            if !attemptedRender {
                 // layer.render：CPU 侧合成，不依赖 render server。覆盖无 scene 的场景。
                 context.cgContext.saveGState()
                 window.layer.render(in: context.cgContext)
                 context.cgContext.restoreGState()
-                renderOK = true
+                attemptedRender = true
             }
         }
-        guard renderOK, image.cgImage != nil else {
+        guard attemptedRender, image.cgImage != nil else {
             throw UIKitCommandError.renderingFailed(action: action, reason: "drawHierarchy and layer render both failed")
         }
         return image

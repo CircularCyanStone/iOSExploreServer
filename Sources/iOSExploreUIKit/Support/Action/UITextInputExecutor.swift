@@ -77,12 +77,12 @@ enum UITextInputExecutor {
 
         // 5. 成为 first responder；失败立即抛错。
         guard responder.becomeFirstResponder() else {
-            throw UIKitCommandError.becomeFirstResponderFailed(action: action, target: input.target.description)
+            throw UIKitCommandError.becomeFirstResponderFailed(action: action, target: input.target.logSummary)
         }
         // 等一帧，让 first responder / selectedTextRange 在没有真实事件循环时也生效。
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
         guard responder.isFirstResponder, textInput.selectedTextRange != nil else {
-            throw UIKitCommandError.becomeFirstResponderFailed(action: action, target: input.target.description)
+            throw UIKitCommandError.becomeFirstResponderFailed(action: action, target: input.target.logSummary)
         }
 
         // 6. replace 模式先清空原内容：selectAll(_:) 按具体控件调用，再 deleteBackward。

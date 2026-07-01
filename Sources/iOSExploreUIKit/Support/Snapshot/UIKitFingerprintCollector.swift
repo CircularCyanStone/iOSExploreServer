@@ -277,7 +277,7 @@ enum UIKitFingerprintCollector {
     ///   - rootView: 本次 snapshot 的根节点。
     ///   - query: 与 viewTargets 同口径的筛选参数。
     ///   - digest: 顶部控制器等页面上下文摘要。
-    /// - Returns: 命中筛选的节点的 `path → fingerprint` 表。
+    /// - Returns: 命中筛选的节点的 `path → fingerprint` 表；该入口不受 `maxTargets` 限制。
     static func collectFingerprints(
         rootView: UIView,
         query: UIViewTargetsInput,

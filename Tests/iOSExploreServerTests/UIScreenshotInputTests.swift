@@ -17,3 +17,17 @@ func screenshotInputDefaults() throws {
         _ = try UIScreenshotInput.parse(from: JSON(["maxDimension": 99999]))
     }
 }
+
+@Test("UIScreenshotInput schema 暴露 maxDimension 的默认值与 1-4096 范围")
+func screenshotInputSchemaMatchesParserRange() throws {
+    let schema = UIScreenshotInput.inputSchema.toJSON()
+    guard case .object(let properties)? = schema["properties"],
+          case .object(let maxDimension)? = properties["maxDimension"] else {
+        Issue.record("maxDimension schema missing")
+        return
+    }
+
+    #expect(maxDimension["default"]?.doubleValue == 1280)
+    #expect(maxDimension["minimum"]?.doubleValue == 1)
+    #expect(maxDimension["maximum"]?.doubleValue == 4096)
+}

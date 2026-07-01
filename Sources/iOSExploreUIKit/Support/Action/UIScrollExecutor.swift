@@ -83,7 +83,7 @@ enum UIScrollExecutor {
         let after = scrollView.contentOffset
         let extent = reachedExtent(scrollView: scrollView)
 
-        UIKitCommandLogging.info("command", "ui scroll completed container=\(String(describing: type(of: scrollView))) beforeY=\(before.y) afterY=\(after.y) extent=\(extent?.rawValue ?? "nil")")
+        UIKitCommandLogging.info("command", "ui scroll completed container=\(String(describing: type(of: scrollView))) beforeX=\(before.x) beforeY=\(before.y) afterX=\(after.x) afterY=\(after.y) extent=\(extent?.rawValue ?? "nil")")
 
         return [
             "container": .string(String(describing: type(of: scrollView))),

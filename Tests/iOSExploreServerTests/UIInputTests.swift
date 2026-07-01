@@ -179,7 +179,8 @@ func executorStaleSnapshotThrows() {
         Issue.record("expected failure, got success")
     } catch let error as UIKitCommandError {
         #expect(error.failure.code == .invalidData)
-        #expect(error.failure.logMessage.contains("stale"))
+        #expect(error.failure.message == "snapshot expired or target changed; call ui.screenshot first, then retry with the new snapshotID")
+        #expect(error.failure.logMessage == "uikit locator stale action=ui.input snapshot=snap-nonexistent")
     } catch {
         Issue.record("unexpected error: \(error)")
     }

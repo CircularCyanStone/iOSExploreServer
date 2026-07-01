@@ -33,7 +33,7 @@ func availabilityPreservesActionOrder() {
 }
 
 #if canImport(UIKit)
-@Test("文本输入框声明与 executor 一致的编辑动作及 input") @MainActor
+@Test("UITextField 声明编辑事件与 input 动作") @MainActor
 func textFieldDeclaresEditingActions() {
     let textField = UITextField()
     let availability = UIKitActionCapabilityResolver.resolve(view: textField,

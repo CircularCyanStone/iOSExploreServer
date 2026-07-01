@@ -11,8 +11,10 @@ import iOSExploreServer
 /// 判断最长边并降采样，避免 Retina 屏 point 上限导致像素体积失控。
 public struct UIScreenshotInput: CommandInput, Sendable, Equatable {
     private enum Fields {
-        static let maxDimension = CommandFields.optionalNonNegativeInt(
+        static let maxDimension = CommandFields.int(
             "maxDimension",
+            range: 1...4096,
+            default: 1280,
             description: "截图长边像素上限(1-4096), 默认 1280"
         )
 
@@ -41,11 +43,6 @@ public struct UIScreenshotInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已完成默认值填充与范围校验的截图输入。
     /// - Throws: `maxDimension` 不在 1-4096 时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIScreenshotInput {
-        let raw = try decoder.read(Fields.maxDimension)
-        let dim = raw ?? 1280
-        guard (1...4096).contains(dim) else {
-            throw CommandInputParseError("maxDimension must be in 1...4096")
-        }
-        return UIScreenshotInput(maxDimension: dim)
+        UIScreenshotInput(maxDimension: try decoder.read(Fields.maxDimension))
     }
 }
