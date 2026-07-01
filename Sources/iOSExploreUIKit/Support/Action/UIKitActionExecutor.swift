@@ -22,7 +22,7 @@ import UIKit
 ///
 /// 陈旧校验（Task 6）：当 plan 携带 `.path + snapshotID` 时，执行器从当前 view 树重采该
 /// path 的指纹，与 `UIKitSnapshotStore` 保存的比对；陈旧（TTL 过期或指纹不匹配）时抛出
-/// `UIKitCommandError.staleLocator`（`invalid_data`）。identifier 定位、windowPoint 或无
+/// `UIKitCommandError.staleLocator`（`stale_locator`）。identifier 定位、windowPoint 或无
 /// snapshotID 时不校验。失败日志不在本执行器内记录——统一由 handler 顶层 catch 后记录
 /// `error.failure.logMessage`；本执行器仅记录进入、hit-test、sendActions 等成功路径摘要，
 /// 不写完整 payload。
@@ -79,7 +79,7 @@ enum UIKitActionExecutor {
     /// 仅在 `.path + snapshotID` 同时存在时做陈旧校验。
     ///
     /// 复用调用方已 locate 的 `LocatedView`（避免对同一 path 二次遍历），重新采集该 path 的
-    /// 指纹，与 store 中保存的比对。陈旧时抛出 `UIKitCommandError.staleLocator`（`invalid_data`）；
+    /// 指纹，与 store 中保存的比对。陈旧时抛出 `UIKitCommandError.staleLocator`（`stale_locator`）；
     /// 无 snapshotID 时不校验（直接返回）。"仅对 `.path` 校验"由调用方
     /// （`executeTap`/`executeControlEvent`）在调用前用 `if case .path` 把关。
     ///

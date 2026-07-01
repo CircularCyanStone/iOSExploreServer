@@ -30,8 +30,8 @@ enum UIKitLocatorResolver {
     ///
     /// 仅解析 `accessibilityIdentifier` 与 `path` 变体；`windowPoint` 不应传入本方法（传入会抛
     /// `notFound()`，作为防御）。`notFound` / `ambiguous` 两个工厂由调用方提供——因为 tap 与
-    /// control 命令对「未找到 / 歧义」映射到不同业务错误码（`targetNotFound` vs
-    /// `controlTargetNotFound`），定位器本身不持有调用语境，交由调用方决定。
+    /// control 命令对「未找到 / 歧义」使用不同 message/log 语境（`targetNotFound` vs
+    /// `controlTargetNotFound` 工厂），定位器本身不持有调用语境，交由调用方决定。
     ///
     /// - Parameters:
     ///   - locator: 统一定位器。

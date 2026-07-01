@@ -8,8 +8,8 @@ import iOSExploreServer
 /// 散写 `code`/`message`/`logMessage`，也避免依赖 core 的 `ExploreServerError`
 /// （该类型对扩展模块不可见）。
 ///
-/// 错误码语义与既有行为保持一致：定位/命中类失败用 `.invalidData`，UIKit 上下文不可用
-/// 用 `.internalError`。
+/// 错误码语义集中在这里：schema/能力类失败用 `.invalidData`，目标缺失用 `.targetNotFound`，
+/// UIKit 上下文不可用用 `.internalError`。
 struct UIKitCommandError: Error, Sendable, Equatable {
     /// 被包装的扩展失败描述。
     let failure: ExploreCommandFailure
@@ -34,9 +34,9 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// - Parameters:
     ///   - action: 触发失败的 action 名，用于日志关联。
     ///   - snapshotID: 过期的 snapshot 标识摘要。
-    /// - Returns: `invalid_data` 失败描述。
+    /// - Returns: `stale_locator` 失败描述。
     static func staleLocator(action: String, snapshotID: String) -> UIKitCommandError {
-        UIKitCommandError(code: .invalidData,
+        UIKitCommandError(code: .staleLocator,
                           message: "snapshot expired or target changed; call ui.screenshot first, then retry with the new snapshotID",
                           logMessage: "uikit locator stale action=\(action) snapshot=\(snapshotID)")
     }
@@ -58,11 +58,26 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// - Parameters:
     ///   - action: 触发失败的 action 名。
     ///   - targetDescription: 目标摘要（identifier/path），不含大块 payload。
-    /// - Returns: `invalid_data` 失败描述。
+    /// - Returns: `target_not_found` 失败描述。
     static func targetNotFound(action: String, targetDescription: String) -> UIKitCommandError {
-        UIKitCommandError(code: .invalidData,
+        UIKitCommandError(code: .targetNotFound,
                           message: "tap target not found",
                           logMessage: "ui tap target not found action=\(action) target=\(targetDescription)")
+    }
+
+    /// 目标在当前 UI 树或滚动搜索后仍未找到。
+    ///
+    /// 供新增命令复用自定义 message/logMessage，同时保持目标缺失统一映射到 `target_not_found`。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - message: 对外失败说明，进入 envelope。
+    ///   - logMessage: 仅用于日志的内部说明，不进 envelope。
+    /// - Returns: `target_not_found` 失败描述。
+    static func targetNotFound(action: String, message: String, logMessage: String) -> UIKitCommandError {
+        UIKitCommandError(code: .targetNotFound,
+                          message: message,
+                          logMessage: logMessage)
     }
 
     /// ui.tap 目标匹配到多个 view，可能误触发。
@@ -138,11 +153,80 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// - Parameters:
     ///   - action: 触发失败的 action 名。
     ///   - targetDescription: 目标摘要。
-    /// - Returns: `invalid_data` 失败描述。
+    /// - Returns: `target_not_found` 失败描述。
     static func controlTargetNotFound(action: String, targetDescription: String) -> UIKitCommandError {
-        UIKitCommandError(code: .invalidData,
+        UIKitCommandError(code: .targetNotFound,
                           message: "UIControl target not found",
                           logMessage: "ui control target not found action=\(action) target=\(targetDescription)")
+    }
+
+    /// `ui.wait` 的业务等待条件在输入 deadline 内未满足。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - mode: 等待模式摘要。
+    ///   - elapsedMs: 已等待毫秒数。
+    /// - Returns: `wait_timeout` 失败描述。
+    static func waitTimeout(action: String, mode: String, elapsedMs: Int) -> UIKitCommandError {
+        UIKitCommandError(code: .waitTimeout,
+                          message: "wait timed out mode=\(mode) elapsedMs=\(elapsedMs)",
+                          logMessage: "ui wait timeout action=\(action) mode=\(mode) elapsedMs=\(elapsedMs)")
+    }
+
+    /// 当前页面没有可返回的导航路径。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - top: 当前顶部控制器类型摘要。
+    /// - Returns: `navigation_back_unavailable` 失败描述。
+    static func navigationBackUnavailable(action: String, top: String) -> UIKitCommandError {
+        UIKitCommandError(code: .navigationBackUnavailable,
+                          message: "navigation back unavailable",
+                          logMessage: "ui navigation back unavailable action=\(action) top=\(top)")
+    }
+
+    /// 当前没有可处理的 `UIAlertController`。
+    ///
+    /// - Parameter action: 触发失败的 action 名。
+    /// - Returns: `alert_unavailable` 失败描述。
+    static func alertUnavailable(action: String) -> UIKitCommandError {
+        UIKitCommandError(code: .alertUnavailable,
+                          message: "alert unavailable",
+                          logMessage: "ui alert unavailable action=\(action)")
+    }
+
+    /// 指定的 alert 按钮不存在。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - selector: 调用方提供的按钮选择条件摘要。
+    /// - Returns: `alert_button_not_found` 失败描述。
+    static func alertButtonNotFound(action: String, selector: String) -> UIKitCommandError {
+        UIKitCommandError(code: .alertButtonNotFound,
+                          message: "alert button not found",
+                          logMessage: "ui alert button not found action=\(action) selector=\(selector)")
+    }
+
+    /// 当前 alert 不能安全默认选择按钮，需要调用方明确指定。
+    ///
+    /// - Parameter action: 触发失败的 action 名。
+    /// - Returns: `alert_button_required` 失败描述。
+    static func alertButtonRequired(action: String) -> UIKitCommandError {
+        UIKitCommandError(code: .alertButtonRequired,
+                          message: "alert button is required",
+                          logMessage: "ui alert button required action=\(action)")
+    }
+
+    /// 键盘或 first responder 收起失败。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - strategy: 使用的收起策略。
+    /// - Returns: `keyboard_dismiss_failed` 失败描述。
+    static func keyboardDismissFailed(action: String, strategy: String) -> UIKitCommandError {
+        UIKitCommandError(code: .keyboardDismissFailed,
+                          message: "keyboard dismiss failed",
+                          logMessage: "ui keyboard dismiss failed action=\(action) strategy=\(strategy)")
     }
 
     /// UIControl sendAction 目标匹配到多个视图，可能误触发。

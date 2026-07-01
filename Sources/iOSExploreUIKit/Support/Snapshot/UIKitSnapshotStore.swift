@@ -157,7 +157,7 @@ public struct UIKitSnapshotContext: Sendable, Equatable {
 /// 解决"path 陈旧"问题：`ui.viewTargets`/`ui.topViewHierarchy` 查询时对当前 view 树生成
 /// 轻量指纹并签发一个 snapshotID 返回给调用方；交互命令（tap/control.sendAction）携带该
 /// snapshotID 时，executor 在执行前校验对应 path 的指纹是否仍匹配，不匹配则返回
-/// `invalid_data`（"snapshot expired or target changed; call ui.screenshot first..."），避免页面
+/// `stale_locator`（"snapshot expired or target changed; call ui.screenshot first..."），避免页面
 /// 变化后 path 指向错误 view 造成误操作。
 ///
 /// 容量与淘汰策略：

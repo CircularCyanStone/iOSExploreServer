@@ -161,6 +161,27 @@ public enum ExploreError: String, Sendable {
     /// 定位器指向的元素已陈旧（snapshot 失效或视图树变化），无法可靠执行动作。
     case staleLocator = "stale_locator"
 
+    /// 等待条件在业务 deadline 内未满足。
+    case waitTimeout = "wait_timeout"
+
+    /// 当前页面没有可返回的导航路径。
+    case navigationBackUnavailable = "navigation_back_unavailable"
+
+    /// 当前没有可处理的 UIAlertController。
+    case alertUnavailable = "alert_unavailable"
+
+    /// 指定的 alert 按钮不存在。
+    case alertButtonNotFound = "alert_button_not_found"
+
+    /// 当前 alert 不能安全默认选择按钮，需要调用方明确指定。
+    case alertButtonRequired = "alert_button_required"
+
+    /// 键盘或 first responder 收起失败。
+    case keyboardDismissFailed = "keyboard_dismiss_failed"
+
+    /// 目标在当前 UI 树或滚动搜索后仍未找到。
+    case targetNotFound = "target_not_found"
+
     /// 输入被业务规则拒绝（如非法文本、不可编辑元素），区别于 schema 解析失败的 `invalid_data`。
     case inputRejected = "input_rejected"
 

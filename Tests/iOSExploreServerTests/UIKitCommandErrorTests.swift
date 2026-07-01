@@ -5,12 +5,24 @@ import iOSExploreServer
 
 @Suite
 struct UIKitCommandErrorTests {
-    @Test("陈旧 locator 使用既有 invalid_data")
-    func staleLocatorUsesExistingErrorCode() {
-        let error = UIKitCommandError.staleLocator(action: "ui.tap", snapshotID: "s")
-        #expect(error.result == .failure(code: .invalidData, message: "snapshot expired or target changed; call ui.screenshot first, then retry with the new snapshotID"))
+    @Test("staleLocator 使用 stale_locator code")
+    func staleLocatorUsesDedicatedCode() {
+        let error = UIKitCommandError.staleLocator(action: "ui.tap", snapshotID: "snap-1")
+        #expect(error.failure.code == .staleLocator)
+        #expect(error.failure.message.contains("ui.screenshot"))
         #expect(error.failure.logMessage.contains("action=ui.tap"))
-        #expect(error.failure.logMessage.contains("snapshot=s"))
+        #expect(error.failure.logMessage.contains("snapshot=snap-1"))
+    }
+
+    @Test("agent common command error code raw values")
+    func agentCommonCommandErrorCodes() {
+        #expect(ExploreError.waitTimeout.rawValue == "wait_timeout")
+        #expect(ExploreError.navigationBackUnavailable.rawValue == "navigation_back_unavailable")
+        #expect(ExploreError.alertUnavailable.rawValue == "alert_unavailable")
+        #expect(ExploreError.alertButtonNotFound.rawValue == "alert_button_not_found")
+        #expect(ExploreError.alertButtonRequired.rawValue == "alert_button_required")
+        #expect(ExploreError.keyboardDismissFailed.rawValue == "keyboard_dismiss_failed")
+        #expect(ExploreError.targetNotFound.rawValue == "target_not_found")
     }
 
     @Test("UIKit 上下文不可用映射为 internal_error")
@@ -21,10 +33,10 @@ struct UIKitCommandErrorTests {
         #expect(error.failure.logMessage.contains("reason=active window not found"))
     }
 
-    @Test("目标未找到使用 invalid_data")
-    func targetNotFoundMapsToInvalidData() {
+    @Test("目标未找到使用 target_not_found")
+    func targetNotFoundMapsToDedicatedCode() {
         let error = UIKitCommandError.targetNotFound(action: "ui.tap", targetDescription: "accessibilityIdentifier=home")
-        #expect(error.result == .failure(code: .invalidData, message: "tap target not found"))
+        #expect(error.result == .failure(code: .targetNotFound, message: "tap target not found"))
         #expect(error.failure.logMessage.contains("target=accessibilityIdentifier=home"))
     }
 
@@ -57,11 +69,11 @@ struct UIKitCommandErrorTests {
         #expect(error.failure.logMessage.contains("type=UILabel"))
     }
 
-    @Test("control 目标未找到使用 invalid_data")
-    func controlTargetNotFoundMapsToInvalidData() {
+    @Test("control 目标未找到使用 target_not_found")
+    func controlTargetNotFoundMapsToDedicatedCode() {
         let error = UIKitCommandError.controlTargetNotFound(action: "ui.control.sendAction",
                                                              targetDescription: "accessibilityIdentifier=submit")
-        #expect(error.result == .failure(code: .invalidData, message: "UIControl target not found"))
+        #expect(error.result == .failure(code: .targetNotFound, message: "UIControl target not found"))
     }
 
     @Test("control 目标歧义使用 invalid_data")

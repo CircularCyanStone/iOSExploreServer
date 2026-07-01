@@ -14,7 +14,7 @@ import Foundation
 ///
 /// 当前携带可选 snapshotID：adapter 从查询解析出 snapshotID 后随 plan 传入，executor 在
 /// `.path + snapshotID` 同时存在时校验指纹是否陈旧（`UIKitSnapshotStore.validation`），
-/// 失败通过 `UIKitCommandError.staleLocator` 返回 `invalid_data`。identifier 定位或无
+/// 失败通过 `UIKitCommandError.staleLocator` 返回 `stale_locator`。identifier 定位或无
 /// snapshotID 时不校验。
 public enum UIKitActionPlan: Sendable, Equatable {
     /// 点击动作。executor 会按 locator 取得目标（坐标则直接 hit-test），命中校验后对

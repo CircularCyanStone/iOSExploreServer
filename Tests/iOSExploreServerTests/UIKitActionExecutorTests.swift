@@ -147,8 +147,8 @@ func executorControlSendActionUnsupportedEventReturnsInvalidData() {
     }
 }
 
-@Test("executor path tap 携带陈旧 snapshotID 抛 invalid_data") @MainActor
-func executorTapStaleSnapshotReturnsInvalidData() {
+@Test("executor path tap 携带陈旧 snapshotID 抛 stale_locator") @MainActor
+func executorTapStaleSnapshotReturnsStaleLocator() {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
@@ -169,7 +169,7 @@ func executorTapStaleSnapshotReturnsInvalidData() {
                                             context: context)
         Issue.record("expected failure, got success")
     } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .invalidData)
+        #expect(error.failure.code == .staleLocator)
     } catch {
         Issue.record("unexpected error: \(error)")
     }
