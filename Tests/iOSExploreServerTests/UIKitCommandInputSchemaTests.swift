@@ -27,4 +27,9 @@ func tapCommandSchemaMatchesInputFields() {
 func keyboardDismissCommandSchemaMatchesInputFields() {
     #expect(KeyboardDismissCommand.Input.inputSchema.fields.map(\.name) == UIKeyboardDismissInput.inputSchema.fields.map(\.name))
 }
+
+@Test("ui.navigation.back 命令 schema 声明 typed input 字段")
+func navigationBackCommandSchemaMatchesInputFields() {
+    #expect(NavigationBackCommand.Input.inputSchema.fields.map(\.name) == UINavigationBackInput.inputSchema.fields.map(\.name))
+}
 #endif

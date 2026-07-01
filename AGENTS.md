@@ -36,7 +36,7 @@
   - `Support/Parsing/` — UIKit 命令复用的 Foundation-only 字段声明与定位解析入口：`UIKitCommandFields`（筛选字段/定位字段）、`UIKitLocatorInput`（identifier/path 二选一与 path 文法桥接）；单字段取值统一走 core `CommandInputDecoder`，解析错误统一为 `CommandInputParseError`，由 `AnyCommand` 转 `invalid_data`。
   - `UIKitCommandLogging.swift` — 日志入口，复用 core `ExploreLogging.emitExtension`，category 统一 `command`。
   - `UIKitCommandError.swift` — UIKit 错误工厂（conform `Error`）。
-  - `Commands/TopViewHierarchy/`、`Commands/ViewTargets/`、`Commands/Tap/`、`Commands/ControlAction/`、`Commands/Screenshot/`、`Commands/Input/`、`Commands/Scroll/`、`Commands/Keyboard/` — 8 个 `ui.*` 命令（adapter + typed query 模型；查询命令含 collector）。
+  - `Commands/TopViewHierarchy/`、`Commands/ViewTargets/`、`Commands/Tap/`、`Commands/ControlAction/`、`Commands/Screenshot/`、`Commands/Input/`、`Commands/Scroll/`、`Commands/Keyboard/`、`Commands/Navigation/` — 9 个 `ui.*` 命令（adapter + typed query 模型；查询命令含 collector）。
 - `iOSExploreServer/iOSExploreServer.xcodeproj/` — framework 工程，两个 target：`iOSExploreServer.framework`（`PBXFileSystemSynchronizedRootGroup` 指向 `../Sources/iOSExploreServer/`）与 `iOSExploreUIKit.framework`（指向 `../Sources/iOSExploreUIKit/`，链接并依赖 core framework）；测试 target 同时链接两个 framework。Debug/Release 均 `SWIFT_VERSION=5.0`、`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`（Swift 6.2 工具链要求，详见 runbooks）。
 - `Examples/SPMExample/` — UIKit 测试 App，本地 SPM 依赖同时选 core 与 `iOSExploreUIKit` product；`ViewController` 显式 `server.registerUIKitCommands()` 开放 UIKit 命令；启动/停止按钮 + 请求日志面板 + `greet`/`device` 自定义命令演示。
 - `scripts/proxy.sh` — iproxy 一键转发（`iproxy 38321 38321`）。

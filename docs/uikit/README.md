@@ -1,6 +1,6 @@
 # iOSExploreUIKit 知识库
 
-`Sources/iOSExploreUIKit/`（UIKit 扩展模块，8 个 `ui.*` 命令）的阅读与参考文档。
+`Sources/iOSExploreUIKit/`（UIKit 扩展模块，9 个 `ui.*` 命令）的阅读与参考文档。
 
 core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 App **显式** `server.registerUIKitCommands()` 注册。
 
@@ -9,7 +9,7 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 - **[reading-guide.md](./reading-guide.md)** — 阅读指南。回答"代码这么多，从哪看、整个设计长什么样"。给一张全局心智模型 + 一条按依赖排序的阅读路线（约 1500 行精选阅读量，不是全部 3840 行）。**第一次读从这份开始。**
 - **[uikit-file-reference.md](./uikit-file-reference.md)** — 文件档案。逐个登记 25 个文件的职责、关键点与依赖关系，当查阅手册或改某个文件时用。
 
-## 8 个命令一览
+## 9 个命令一览
 
 | action | 作用 | adapter | 执行核心 |
 |---|---|---|---|
@@ -21,6 +21,7 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 | `ui.input` | 向文本控件注入文本 | `InputCommand` | `UITextInputExecutor` |
 | `ui.keyboard.dismiss` | 收起当前 first responder / 键盘 | `KeyboardDismissCommand` | `UIKeyboardDismissExecutor` |
 | `ui.scroll` | 在 UIScrollView 上按方向 + 距离滚动 | `ScrollCommand` | `UIScrollExecutor` |
+| `ui.navigation.back` | 返回上一页（auto 先 dismiss 再 navigation pop） | `NavigationBackCommand` | `UINavigationBackExecutor` |
 
 ## 贯穿全模块的两条铁律
 
