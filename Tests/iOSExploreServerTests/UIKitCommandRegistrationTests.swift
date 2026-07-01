@@ -39,6 +39,7 @@ struct UIKitCommandRegistrationTests {
         #expect(result.commandActions.contains("ui.keyboard.dismiss"))
         #expect(result.commandActions.contains("ui.scroll"))
         #expect(result.commandActions.contains("ui.navigation.back"))
+        #expect(result.commandActions.contains("ui.wait"))
     }
 #endif
 }

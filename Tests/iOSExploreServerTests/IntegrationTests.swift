@@ -241,6 +241,7 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
         #expect(text.contains(#""action":"ui.keyboard.dismiss""#))
         #expect(text.contains(#""action":"ui.scroll""#))
         #expect(text.contains(#""action":"ui.navigation.back""#))
+        #expect(text.contains(#""action":"ui.wait""#))
         // help 输出每个命令的 inputSchema。
         #expect(text.contains(#""inputSchema""#))
     }

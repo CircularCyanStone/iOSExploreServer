@@ -97,6 +97,26 @@ enum UIKitLocatorResolver {
         findView(at: indexes, in: rootView)?.view
     }
 
+    /// 判断 `rootView` 中是否存在匹配 `locator` 的 view（至少一个），不抛错。
+    ///
+    /// 供 `ui.wait` 的 targetExists / targetGone 判断存在性：与 `locate(...)` 不同，本方法
+    /// 把"未找到 / 多个匹配"都视为存在性结果而非错误。`windowPoint` 不表达 view 存在性，返回 false。
+    ///
+    /// - Parameters:
+    ///   - locator: 统一定位器（仅 accessibilityIdentifier / path 有意义）。
+    ///   - rootView: 顶部控制器根 view。
+    /// - Returns: 是否存在至少一个匹配 view。
+    static func contains(locator: UIKitLocator, in rootView: UIView) -> Bool {
+        switch locator {
+        case .accessibilityIdentifier(let identifier):
+            return !findViews(withAccessibilityIdentifier: identifier, in: rootView, path: []).isEmpty
+        case .path(let indexes):
+            return findView(at: indexes, in: rootView) != nil
+        case .windowPoint:
+            return false
+        }
+    }
+
     /// 按 path 下标定位 view。
     private static func findView(at indexes: [Int], in root: UIView) -> LocatedView? {
         var current = root
