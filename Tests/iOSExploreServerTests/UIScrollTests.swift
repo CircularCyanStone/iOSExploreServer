@@ -148,6 +148,25 @@ func scrollExcludesUITextView() {
     }
 }
 
+@Test("scroll: amount 缺省时按可见区一半滚动") @MainActor
+func scrollDefaultAmountIsHalfVisible() throws {
+    let context = UIKitTestHost.context { root in
+        let scrollView = UIScrollView()
+        scrollView.frame = CGRect(x: 0, y: 0, width: 320, height: 568)
+        scrollView.contentSize = CGSize(width: 320, height: 2000)
+        root.addSubview(scrollView)
+    }
+    // amount 缺省：垂直方向应滚 visibleHeight × 0.5。
+    let input = try UIScrollInput.parse(from: ["direction": "down", "path": "root/0"])
+    let data = try UIScrollExecutor.execute(input: input, context: context)
+    let beforeY = try #require(nestedDouble(data, "offsetBefore", "y"))
+    let afterY = try #require(nestedDouble(data, "offsetAfter", "y"))
+    let insetTop = try #require(nestedDouble(data, "adjustedContentInset", "top"))
+    let insetBottom = try #require(nestedDouble(data, "adjustedContentInset", "bottom"))
+    let visibleHeight = 568.0 - insetTop - insetBottom
+    #expect(afterY - beforeY == visibleHeight * 0.5)
+}
+
 /// 从 JSON 响应里取「对象键 → 数字字段」的二级嵌套 Double。
 private func nestedDouble(_ json: JSON, _ outer: String, _ inner: String) -> Double? {
     guard case .object(let innerJSON)? = json[outer] else { return nil }
