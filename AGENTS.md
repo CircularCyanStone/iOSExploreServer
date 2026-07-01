@@ -32,11 +32,11 @@
   - `Support/Context/UIKitContextProvider.swift` — `@MainActor` 上下文（前台 window/顶部控制器/根 view）；`currentContext(action:) throws` 失败抛 `hierarchyUnavailable`。
   - `Support/Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` + `UIKitViewLookupModels.swift` — 定位模型（query→identifier/path/snapshotID 的 Foundation-only 值）与仅 iOS 的真实 `UIView` 解析（`locate(...) throws`，notFound/ambiguous 由调用方工厂构造错误）。
   - `Support/Action/UIKitActionExecutor.swift` + `UIKitActionCapabilityResolver.swift` — `@MainActor` 动作执行（tap/control 路由）；`execute throws -> JSON`，失败 throw `UIKitCommandError`，handler 顶层 catch 转 envelope。
-  - `Support/Snapshot/UIKitSnapshotStore.swift` + `UIKitFingerprintCollector.swift` — 快照与陈旧检测（容量 8 条快照 × 每条 512 指纹、TTL、LRU）；`isStale` 为 true 时 executor 抛 `invalid_data` + 固定陈旧消息。
+  - `Support/Snapshot/UIKitSnapshotStore.swift` + `UIKitFingerprintCollector.swift` — 快照与陈旧检测（容量 8 条快照 × 每条 512 指纹、TTL、LRU）；`isStale` 为 true 时 executor 抛 `stale_locator` + 固定陈旧消息。
   - `Support/Parsing/` — UIKit 命令复用的 Foundation-only 字段声明与定位解析入口：`UIKitCommandFields`（筛选字段/定位字段）、`UIKitLocatorInput`（identifier/path 二选一与 path 文法桥接）；单字段取值统一走 core `CommandInputDecoder`，解析错误统一为 `CommandInputParseError`，由 `AnyCommand` 转 `invalid_data`。
   - `UIKitCommandLogging.swift` — 日志入口，复用 core `ExploreLogging.emitExtension`，category 统一 `command`。
   - `UIKitCommandError.swift` — UIKit 错误工厂（conform `Error`）。
-  - `Commands/TopViewHierarchy/`、`Commands/ViewTargets/`、`Commands/Tap/`、`Commands/ControlAction/` — 四个 `ui.*` 命令（adapter + typed query 模型；查询命令含 collector）。
+  - `Commands/TopViewHierarchy/`、`Commands/ViewTargets/`、`Commands/Tap/`、`Commands/ControlAction/`、`Commands/Screenshot/`、`Commands/Input/`、`Commands/Scroll/`、`Commands/Keyboard/` — 8 个 `ui.*` 命令（adapter + typed query 模型；查询命令含 collector）。
 - `iOSExploreServer/iOSExploreServer.xcodeproj/` — framework 工程，两个 target：`iOSExploreServer.framework`（`PBXFileSystemSynchronizedRootGroup` 指向 `../Sources/iOSExploreServer/`）与 `iOSExploreUIKit.framework`（指向 `../Sources/iOSExploreUIKit/`，链接并依赖 core framework）；测试 target 同时链接两个 framework。Debug/Release 均 `SWIFT_VERSION=5.0`、`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`（Swift 6.2 工具链要求，详见 runbooks）。
 - `Examples/SPMExample/` — UIKit 测试 App，本地 SPM 依赖同时选 core 与 `iOSExploreUIKit` product；`ViewController` 显式 `server.registerUIKitCommands()` 开放 UIKit 命令；启动/停止按钮 + 请求日志面板 + `greet`/`device` 自定义命令演示。
 - `scripts/proxy.sh` — iproxy 一键转发（`iproxy 38321 38321`）。

@@ -48,6 +48,7 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 | `ui.control.sendAction` | 向 UIControl 发 target-action 事件 |
 | `ui.screenshot` | 截屏（PNG base64，降采样 + 签发 snapshotID） |
 | `ui.input` | 向 UITextField / UITextView 注入文本（UITextInput.insertText） |
+| `ui.keyboard.dismiss` | 收起当前 first responder / 键盘 |
 | `ui.scroll` | 在 UIScrollView 上按方向 + 距离滚动 |
 
 UIKit 命令不会自动注册，宿主 App 须显式开启：
@@ -57,10 +58,10 @@ import iOSExploreServer
 import iOSExploreUIKit
 
 let server = ExploreServer()
-server.registerUIKitCommands()   // 一次性注册 7 个 ui.* 命令
+server.registerUIKitCommands()   // 一次性注册 8 个 ui.* 命令
 ```
 
-`ui.*` 典型闭环：先 `ui.viewTargets`（或 `topViewHierarchy`）拿到目标的 `path` 和 `snapshotID` → 用 `path` + `snapshotID` 调 `ui.tap` / `ui.input` / `ui.scroll`（snapshotID 做陈旧防护，防画面已变还按旧坐标操作）→ `ui.screenshot` 截图看效果。这就是 AI agent 驱动 UI 的完整循环。
+`ui.*` 典型闭环：先 `ui.viewTargets`（或 `topViewHierarchy`）拿到目标的 `path` 和 `snapshotID` → 用 `path` + `snapshotID` 调 `ui.tap` / `ui.input` / `ui.scroll`（snapshotID 做陈旧防护，防画面已变还按旧坐标操作）→ 必要时用 `ui.keyboard.dismiss` 收起键盘 → `ui.screenshot` 截图看效果。这就是 AI agent 驱动 UI 的完整循环。
 
 ### 注册自定义命令
 

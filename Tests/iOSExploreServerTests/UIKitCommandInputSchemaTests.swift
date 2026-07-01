@@ -22,4 +22,9 @@ func controlSendActionCommandSchemaMatchesInputFields() {
 func tapCommandSchemaMatchesInputFields() {
     #expect(UITapCommand.Input.inputSchema.fields.map(\.name) == UITapInput.inputSchema.fields.map(\.name))
 }
+
+@Test("ui.keyboard.dismiss 命令 schema 声明 typed input 字段")
+func keyboardDismissCommandSchemaMatchesInputFields() {
+    #expect(KeyboardDismissCommand.Input.inputSchema.fields.map(\.name) == UIKeyboardDismissInput.inputSchema.fields.map(\.name))
+}
 #endif

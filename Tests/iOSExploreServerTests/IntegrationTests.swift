@@ -218,11 +218,11 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
         #expect(!text.contains(#""error":"#))
     }
 
-    /// 显式注册后 `help` 必须经 HTTP 列出全部七个 UIKit action（registrar count=7）。
+    /// 显式注册后 `help` 必须经 HTTP 列出全部 8 个 UIKit action（registrar count=8）。
     ///
     /// 这是 registrar 计数的端到端回归点：经真实 HTTP `help` 取回命令列表，断言三件套
-    /// （screenshot/input/scroll）在内的全部七个 `ui.*` action 都已注册并可被发现。
-    @Test("registerUIKitCommands 后 help 经 HTTP 含 7 个 ui.* action")
+    /// （screenshot/input/keyboard.dismiss/scroll）在内的全部 8 个 `ui.*` action 都已注册并可被发现。
+    @Test("registerUIKitCommands 后 help 经 HTTP 含 8 个 ui.* action")
     func helpListsAllUIKitActions() async throws {
         let server = ExploreServer(port: testPort)
         server.registerUIKitCommands()
@@ -238,6 +238,7 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
         #expect(text.contains(#""action":"ui.tap""#))
         #expect(text.contains(#""action":"ui.screenshot""#))
         #expect(text.contains(#""action":"ui.input""#))
+        #expect(text.contains(#""action":"ui.keyboard.dismiss""#))
         #expect(text.contains(#""action":"ui.scroll""#))
         // help 输出每个命令的 inputSchema。
         #expect(text.contains(#""inputSchema""#))
