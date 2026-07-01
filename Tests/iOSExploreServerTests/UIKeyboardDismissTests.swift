@@ -30,4 +30,36 @@ func autoDismissesCurrentFirstResponder() throws {
     #expect(data["strategy"]?.stringValue == "auto")
     #expect(field.isFirstResponder == false)
 }
+
+@Test("resignFirstResponder 策略收起 first responder") @MainActor
+func resignFirstResponderStrategyDismisses() throws {
+    var field: UITextField!
+    let context = UIKitTestHost.context { root in
+        field = UITextField()
+        field.frame = CGRect(x: 10, y: 10, width: 200, height: 40)
+        root.addSubview(field)
+    }
+    #expect(field.becomeFirstResponder())
+    let input = UIKeyboardDismissInput(strategy: .resignFirstResponder, waitAfterMs: 0)
+    let data = try UIKeyboardDismissExecutor.execute(input: input, context: context)
+    #expect(data["dismissed"]?.boolValue == true)
+    #expect(data["strategy"]?.stringValue == "resignFirstResponder")
+    #expect(field.isFirstResponder == false)
+}
+
+@Test("endEditing 策略收起 first responder") @MainActor
+func endEditingStrategyDismisses() throws {
+    var field: UITextField!
+    let context = UIKitTestHost.context { root in
+        field = UITextField()
+        field.frame = CGRect(x: 10, y: 10, width: 200, height: 40)
+        root.addSubview(field)
+    }
+    #expect(field.becomeFirstResponder())
+    let input = UIKeyboardDismissInput(strategy: .endEditing, waitAfterMs: 0)
+    let data = try UIKeyboardDismissExecutor.execute(input: input, context: context)
+    #expect(data["dismissed"]?.boolValue == true)
+    #expect(data["strategy"]?.stringValue == "endEditing")
+    #expect(field.isFirstResponder == false)
+}
 #endif

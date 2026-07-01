@@ -9,23 +9,29 @@ import iOSExploreServer
 
 @Test("scrollToElement text 找到 UILabel 并滚到可见") @MainActor
 func scrollToElementFindsLabel() throws {
+    var scrollView: UIScrollView!
     let context = UIKitTestHost.context { root in
-        let scrollView = UIScrollView()
-        scrollView.accessibilityIdentifier = "list"
-        scrollView.frame = CGRect(x: 0, y: 0, width: 320, height: 568)
-        scrollView.contentSize = CGSize(width: 320, height: 2000)
+        let sv = UIScrollView()
+        sv.accessibilityIdentifier = "list"
+        sv.frame = CGRect(x: 0, y: 0, width: 320, height: 568)
+        sv.contentSize = CGSize(width: 320, height: 2000)
         // 目标 label 在 contentSize 底部（滚出可见区）。
         let label = UILabel()
         label.text = "订单详情"
         label.frame = CGRect(x: 0, y: 1500, width: 200, height: 40)
-        scrollView.addSubview(label)
-        root.addSubview(scrollView)
+        sv.addSubview(label)
+        root.addSubview(sv)
+        scrollView = sv
     }
+    let beforeY = scrollView.contentOffset.y
     let input = UIScrollToElementInput(value: "订单", container: .accessibilityIdentifier("list"))
     let data = try UIScrollToElementExecutor.execute(input: input, context: context)
+    let afterY = scrollView.contentOffset.y
     #expect(data["found"]?.boolValue == true)
     #expect(data["match"]?.stringValue == "text")
     #expect(data["targetType"]?.stringValue == "UILabel")
+    // 验证 scrollRectToVisible 真的滚动了（目标在 y=1500，必须向下滚）。
+    #expect(afterY > beforeY)
 }
 
 @Test("scrollToElement 目标缺失抛 targetNotFound") @MainActor

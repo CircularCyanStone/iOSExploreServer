@@ -17,7 +17,7 @@ struct AlertRespondCommand: Command {
     let action = AlertRespondCommand.actionName
 
     /// `help` 命令展示的说明。
-    let description = "查询/响应当前 UIAlertController（第一版 dryRun 只查询）"
+    let description = "查询当前 UIAlertController（dryRun=true 返回按钮列表；dryRun=false 当前版本不实现点击)"
 
     /// 执行 alert 查询/响应。
     ///

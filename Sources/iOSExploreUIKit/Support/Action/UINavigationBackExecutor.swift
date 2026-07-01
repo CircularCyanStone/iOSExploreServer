@@ -33,31 +33,47 @@ enum UINavigationBackExecutor {
         let topBeforeDescription = describe(topBefore)
 
         var resolvedTop: UIViewController?
-        var usedStrategy: NavigationBackStrategy = input.strategy
+        var usedStrategy: NavigationBackStrategy?
+        var dismissHappened = false
 
         switch input.strategy {
         case .dismiss:
-            resolvedTop = performDismiss(topBefore, animated: input.animated)
-            usedStrategy = .dismiss
-        case .navigationController:
-            resolvedTop = performPop(topBefore, animated: input.animated)
-            usedStrategy = .navigationController
-        case .auto:
-            if let dismissed = performDismiss(topBefore, animated: input.animated) {
-                resolvedTop = dismissed
+            if performDismiss(topBefore, animated: input.animated) {
                 usedStrategy = .dismiss
+                dismissHappened = true
+            }
+        case .navigationController:
+            if let popped = performPop(topBefore, animated: input.animated) {
+                resolvedTop = popped
+                usedStrategy = .navigationController
+            }
+        case .auto:
+            if performDismiss(topBefore, animated: input.animated) {
+                usedStrategy = .dismiss
+                dismissHappened = true
             } else if let popped = performPop(topBefore, animated: input.animated) {
                 resolvedTop = popped
                 usedStrategy = .navigationController
             }
         }
 
-        guard let topAfter = resolvedTop else {
+        guard let usedStrategy else {
             throw UIKitCommandError.navigationBackUnavailable(action: NavigationBackCommand.actionName,
                                                               top: topBeforeDescription)
         }
 
+        // settle 提前到读 topAfter 之前：dismiss/pop 转场在 MainActor run loop 上完成，
+        // settle 后再读顶部，animated 与非 animated 行为一致（修 performDismiss 竞态）。
         settle(milliseconds: input.waitAfterMs)
+
+        let topAfter: UIViewController
+        if let resolved = resolvedTop {
+            topAfter = resolved
+        } else if dismissHappened, let presenting = topBefore.presentingViewController {
+            topAfter = presenting
+        } else {
+            topAfter = topBefore
+        }
         let topAfterDescription = describe(topAfter)
         UIKitCommandLogging.info("command", "ui navigation back complete performed=true strategy=\(usedStrategy.rawValue) animated=\(input.animated)")
         return response(strategy: usedStrategy,
@@ -65,11 +81,14 @@ enum UINavigationBackExecutor {
                         topAfter: topAfterDescription)
     }
 
-    /// dismiss 被 present 的控制器，返回 dismiss 后的新顶部控制器；不可 dismiss 时返回 nil。
-    private static func performDismiss(_ controller: UIViewController, animated: Bool) -> UIViewController? {
-        guard controller.presentingViewController != nil else { return nil }
+    /// dismiss 被 present 的控制器；不可 dismiss（无 presenting）时返回 false。
+    ///
+    /// 只返回是否触发 dismiss，不返回新顶部——dismiss 后立即读 `presentingViewController` 在
+    /// `animated=true` 时取决于 UIKit 内部转场时序。调用方在 `settle` 之后再读新顶部。
+    private static func performDismiss(_ controller: UIViewController, animated: Bool) -> Bool {
+        guard controller.presentingViewController != nil else { return false }
         controller.dismiss(animated: animated)
-        return controller.presentingViewController
+        return true
     }
 
     /// pop 导航栈顶层控制器，返回 pop 后的栈顶；不可 pop（无导航栈或仅一层）时返回 nil。

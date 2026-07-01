@@ -9,9 +9,13 @@ import UIKit
 /// 目标 view（文本/identifier）→ 用 `UIScrollView.scrollRectToVisible` 一次性滚到目标可见。
 ///
 /// 刻意采用 `scrollRectToVisible` 而非「循环小步 scroll + 每轮采集可见候选」：前者是 UIKit
-/// 原生方法，自动计算最短滚动并保证目标进入可见区；后者每轮用 `UIViewTargetsCollector.collect`
+/// 原生方法，自动计算最短滚动让目标进入可见区；后者每轮用 `UIViewTargetsCollector.collect`
 /// 会签发新 snapshot 污染 store（评审 M3），且需要手写可见性/bounds 判断。代价是失去 `scrolls`
 /// 步数计数，但 agent 只关心「目标是否可见」，步数无业务意义。
+///
+/// 嵌套 scrollView（如外层 UITableView 内嵌 UICollectionView）：`scrollRectToVisible` 是否
+/// 联动外层取决于 UIKit 的祖先链转发；若外层未联动而目标仍被裁切，agent 可显式传 `container`
+/// 指向外层 scrollView 再调一次。
 ///
 /// 不签发 snapshot：滚动后画面变化，旧 snapshotID 失效，agent 应重新 `ui.screenshot`。
 @MainActor

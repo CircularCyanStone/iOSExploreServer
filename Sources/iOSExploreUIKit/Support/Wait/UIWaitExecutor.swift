@@ -14,7 +14,7 @@ import UIKit
 /// - `idle`：连续 `stableMs` 内画面活动签名（可见文本片段拼接 + 片段数）不变。
 /// - `targetExists` / `targetGone`：目标 view 出现 / 消失（`UIKitLocatorResolver.contains`）。
 /// - `textExists`：可见文本包含目标片段（`UIKitVisibleTextCollector`，不含用户输入）。
-/// - `snapshotChanged`：页面身份（window + 顶部控制器实例）变化（`UIKitSnapshotStore.contextMatches`）。
+/// - `snapshotChanged`：页面整体指纹表变化（path→fingerprint 表整体比对，含同页面内容变化；`UIKitSnapshotStore.matchesWholeTable`）。
 ///
 /// 日志点：满足时记录 mode/attempts/elapsedMs；超时失败日志由 command adapter 顶层统一记录。
 @MainActor
@@ -39,6 +39,14 @@ enum UIWaitExecutor {
         var snapshotUnavailableReason: String?
 
         while true {
+            // 循环顶部检查 cancel：覆盖 cancel 落在非-sleep 同步段（contextProvider/UIKit 遍历）的情形，
+            // 避免 cancel 响应延迟一轮或（未来 contextProvider 改 async 时）CancellationError 泄漏成 internal_error。
+            if Task.isCancelled {
+                let elapsedMs = Int((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
+                throw UIKitCommandError.waitTimeout(action: WaitCommand.actionName,
+                                                    mode: input.mode.rawValue,
+                                                    elapsedMs: elapsedMs)
+            }
             attempts += 1
             let context = try contextProvider()
             let now = DispatchTime.now().uptimeNanoseconds
@@ -70,9 +78,20 @@ enum UIWaitExecutor {
                 }
             case .snapshotChanged:
                 if let snapshotID = input.snapshotID {
+                    // whole table 比较（spec §6）：采集当前 path→fingerprint 表，与 snapshot 签发时
+                    // 存的表整体比对。任一 path 的 fingerprint 变化或 path 集合变化都判为「已变化」。
+                    // 注意：采集 query 应与签发时一致（默认 viewTargets/screenshot 用 .default）。
+                    let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
+                    let currentTable = UIKitFingerprintCollector.collectFingerprints(
+                        rootView: context.rootView,
+                        query: UIViewTargetsInput.default,
+                        digest: digest
+                    )
                     let snapshotContext = UIKitFingerprintCollector.context(window: context.window,
                                                                             topViewController: context.topViewController)
-                    if let matched = UIKitSnapshotStore.shared.contextMatches(snapshotID: snapshotID, context: snapshotContext) {
+                    if let matched = UIKitSnapshotStore.shared.matchesWholeTable(snapshotID: snapshotID,
+                                                                                  context: snapshotContext,
+                                                                                  currentTable: currentTable) {
                         satisfied = !matched
                     } else if snapshotUnavailableReason == nil {
                         snapshotUnavailableReason = "snapshot unknown or expired"

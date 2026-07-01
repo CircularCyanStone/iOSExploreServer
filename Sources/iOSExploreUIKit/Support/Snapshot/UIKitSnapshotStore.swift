@@ -296,17 +296,21 @@ public final class UIKitSnapshotStore {
         isStale(snapshotID: snapshotID, path: path, context: .test, current: current)
     }
 
-    /// 比较指定 snapshot 的页面身份是否与当前一致（供 `ui.wait` 的 snapshotChanged）。
+    /// 比较指定 snapshot 的完整指纹表是否与当前一致（供 `ui.wait` 的 snapshotChanged）。
     ///
-    /// 与单 path 的 `isStale` 不同：本方法只比较签发时记录的 `UIKitSnapshotContext`（window +
-    /// 顶部控制器实例身份）与当前 context，用于检测"页面是否切换"，不比较指纹表内容变化。
-    /// snapshot 未知或过期返回 nil，调用方据 `snapshotUnavailableReason` 决定继续等待或失败。
+    /// 按 spec §6 比较「whole snapshot tables」：取出 snapshot 签发时存的 path→fingerprint 表，
+    /// 与调用方当前采集的表整体比对。表不同（path 集合变或任一 fingerprint 变）或页面身份
+    /// （window + topVC 实例）变化都视为「已变化」。snapshot 未知/过期返回 nil，调用方据
+    /// `snapshotUnavailableReason` 处理。
     ///
     /// - Parameters:
     ///   - snapshotID: 参照快照标识。
     ///   - context: 当前页面身份摘要。
-    /// - Returns: nil=snapshot 未知/过期；true=页面身份一致（未变化）；false=身份变化（已切换）。
-    func contextMatches(snapshotID: String, context: UIKitSnapshotContext) -> Bool? {
+    ///   - currentTable: 当前重新采集的 path→fingerprint 表（应与签发时同 query）。
+    /// - Returns: nil=snapshot 未知/过期；true=表与身份均一致（未变化）；false=已变化。
+    func matchesWholeTable(snapshotID: String,
+                           context: UIKitSnapshotContext,
+                           currentTable: [String: UIKitTargetFingerprint]) -> Bool? {
         guard var entry = entries[snapshotID] else { return nil }
         if isExpired(entry: entry) {
             entries.removeValue(forKey: snapshotID)
@@ -315,9 +319,13 @@ public final class UIKitSnapshotStore {
         }
         entry.lastAccessedAt = now()
         entries[snapshotID] = entry
-        let matches = entry.context == context
-        if !matches {
+        if entry.context != context {
             UIKitCommandLogging.info("command", "ui snapshot context changed id=\(snapshotID) wait=snapshotChanged")
+            return false
+        }
+        let matches = entry.fingerprints == currentTable
+        if !matches {
+            UIKitCommandLogging.info("command", "ui snapshot table changed id=\(snapshotID) wait=snapshotChanged stored=\(entry.fingerprints.count) current=\(currentTable.count)")
         }
         return matches
     }
