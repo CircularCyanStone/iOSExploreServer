@@ -113,5 +113,42 @@ enum UIScrollResolver {
         walk(window)
         return found
     }
+
+    /// `ui.scrollToElement` 语义：locator 是滚动容器自身。
+    ///
+    /// 与 `resolveFromTarget` 不同：locator 非 nil 时，解析出的 view **本身**必须是
+    /// `UIScrollView`（排除 `UITextView`），而非其子孙。locator 缺省时回退到 foremost
+    /// scrollView。这样 scrollToElement 只在明确限定的容器内查找目标。
+    ///
+    /// - Parameters:
+    ///   - locator: 滚动容器定位（identifier/path），nil 表示 foremost scrollView。
+    ///   - context: 当前 MainActor 查询上下文。
+    ///   - action: 触发 action 名（错误工厂日志关联）。
+    /// - Returns: 解析到的 scrollView 容器及摘要。
+    /// - Throws: `UIKitCommandError`——容器未找到/歧义/非 scrollView。
+    static func resolveContainer(locator: UIKitViewLookupTarget?,
+                                 context: UIKitContextProvider.Context,
+                                 action: String) throws -> Resolved {
+        guard let locator = locator else {
+            guard let candidate = foremostScrollView(in: context.window) else {
+                throw UIKitCommandError.scrollContainerUnavailable(action: action, target: "keyWindow")
+            }
+            return Resolved(scrollView: candidate, targetDescription: "keyWindow", targetPath: nil)
+        }
+        let located = try UIKitLocatorResolver.locate(
+            locator: locator.locator,
+            in: context.rootView,
+            notFound: { UIKitCommandError.invalidData(action: action, message: "scroll container not found") },
+            ambiguous: { count in
+                UIKitCommandError.invalidData(action: action, message: "scroll container is ambiguous count=\(count)")
+            }
+        )
+        guard let scrollView = located.view as? UIScrollView, !(located.view is UITextView) else {
+            throw UIKitCommandError.scrollContainerUnavailable(action: action, target: locator.description)
+        }
+        return Resolved(scrollView: scrollView,
+                        targetDescription: locator.description,
+                        targetPath: located.pathString)
+    }
 }
 #endif

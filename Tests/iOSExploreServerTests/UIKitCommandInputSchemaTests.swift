@@ -37,4 +37,14 @@ func navigationBackCommandSchemaMatchesInputFields() {
 func waitCommandSchemaMatchesInputFields() {
     #expect(WaitCommand.Input.inputSchema.fields.map(\.name) == UIWaitInput.inputSchema.fields.map(\.name))
 }
+
+@Test("ui.scrollToElement 命令 schema 声明 typed input 字段")
+func scrollToElementCommandSchemaMatchesInputFields() {
+    #expect(ScrollToElementCommand.Input.inputSchema.fields.map(\.name) == UIScrollToElementInput.inputSchema.fields.map(\.name))
+}
+
+@Test("ui.alert.respond 命令 schema 声明 typed input 字段")
+func alertRespondCommandSchemaMatchesInputFields() {
+    #expect(AlertRespondCommand.Input.inputSchema.fields.map(\.name) == UIAlertRespondInput.inputSchema.fields.map(\.name))
+}
 #endif

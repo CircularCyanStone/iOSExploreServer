@@ -40,6 +40,8 @@ struct UIKitCommandRegistrationTests {
         #expect(result.commandActions.contains("ui.scroll"))
         #expect(result.commandActions.contains("ui.navigation.back"))
         #expect(result.commandActions.contains("ui.wait"))
+        #expect(result.commandActions.contains("ui.scrollToElement"))
+        #expect(result.commandActions.contains("ui.alert.respond"))
     }
 #endif
 }
