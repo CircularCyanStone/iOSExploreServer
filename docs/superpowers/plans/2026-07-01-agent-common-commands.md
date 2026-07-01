@@ -21,6 +21,8 @@
 - 日志只记录 action、字段摘要、长度、类型、耗时、error code，不记录完整输入文本、截图或大块 payload。
 - 每个 public 类型、属性、方法补中文 `///` 注释；关键 internal executor/helper 也写职责与日志点。
 - 每个任务先写失败测试，再实现，再跑局部测试。
+- 本计划必须串行执行。多个任务会触碰 `UIKitCommandRegistrar.swift`、错误工厂和共享测试，不能并行派多个 worker 改同一工作区；如果使用 subagent-driven development，也是一轮一个任务，完成 review 后再派下一轮。
+- 每个新 `CommandInput.parse(decoding:)` 必须读取 `Fields.all` 中声明的全部字段；默认 `CommandInput.parse(from:)` 会调用 `assertAllDeclaredFieldsRead()`，漏读字段会导致运行时断言失败。
 
 ## File Map
 
@@ -62,7 +64,7 @@
 - Modify: `Tests/iOSExploreServerTests/UIKitCommandErrorTests.swift`
 - Modify: `Tests/iOSExploreServerTests/UIKitCommandRegistrationTests.swift`
 - Modify: `Tests/iOSExploreServerTests/UIKitCommandInputSchemaTests.swift`
-- Modify docs: `README.md`, `AGENTS.md`, `docs/agent_instructions.md`, `docs/uikit/README.md`, `docs/uikit/reading-guide.md`, `docs/uikit/uikit-file-reference.md`
+- Modify docs: `README.md`, `AGENTS.md`, `docs/agent_instructions.md`, `docs/architecture/index.md`, `docs/runbooks/build-and-test.md`, `docs/uikit/README.md`, `docs/uikit/reading-guide.md`, `docs/uikit/uikit-file-reference.md`
 
 ---
 
@@ -75,7 +77,7 @@
 
 - [ ] **Step 1: Write failing error contract tests**
 
-Add assertions to `UIKitCommandErrorTests.swift`:
+Rewrite the existing `staleLocatorUsesExistingErrorCode` test in `UIKitCommandErrorTests.swift` into the dedicated-code assertion below, instead of adding a second stale test with conflicting expectations. Also update existing target-not-found tests to expect `.targetNotFound` instead of `.invalidData`.
 
 ```swift
 @Test("staleLocator 使用 stale_locator code")
@@ -100,7 +102,7 @@ func agentCommonCommandErrorCodes() {
 - [ ] **Step 2: Run focused test and confirm failure**
 
 Run: `swift test --filter UIKitCommandErrorTests`  
-Expected: FAIL because new `ExploreError` cases do not exist and `staleLocator` currently returns `.invalidData`.
+Expected: FAIL because new `ExploreError` cases do not exist, `staleLocator` currently returns `.invalidData`, and existing target-not-found tests still expect `.invalidData`.
 
 - [ ] **Step 3: Add core error cases**
 
@@ -131,7 +133,7 @@ case targetNotFound = "target_not_found"
 
 - [ ] **Step 4: Update UIKitCommandError factories**
 
-Change `staleLocator` to use `.staleLocator`. Add factories:
+Change `staleLocator` to use `.staleLocator`. Change the existing `targetNotFound(action:targetDescription:)` factory to use `.targetNotFound`; do not leave two target-not-found factories with different codes. Add factories:
 
 ```swift
 static func waitTimeout(action: String, mode: String, elapsedMs: Int) -> UIKitCommandError {
@@ -175,6 +177,8 @@ static func targetNotFound(action: String, message: String, logMessage: String) 
 }
 ```
 
+Update any `UIKitSnapshotStore` or docs comments that still say stale locator returns `invalid_data`; after this task, stale locator code is `stale_locator`.
+
 - [ ] **Step 5: Verify**
 
 Run: `swift test --filter UIKitCommandErrorTests`  
@@ -183,7 +187,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Sources/iOSExploreServer/Models.swift Sources/iOSExploreUIKit/UIKitCommandError.swift Tests/iOSExploreServerTests/UIKitCommandErrorTests.swift
+git add Sources/iOSExploreServer/Models.swift Sources/iOSExploreUIKit/UIKitCommandError.swift Sources/iOSExploreUIKit/Support/Snapshot/UIKitSnapshotStore.swift Tests/iOSExploreServerTests/UIKitCommandErrorTests.swift
 git commit -m "feat(uikit): add agent command error contracts"
 ```
 
@@ -231,7 +235,7 @@ func keyboardDismissRejectsInvalidWait() {
 
 - [ ] **Step 2: Implement model**
 
-Use `CommandFields.enumValue` and an Int field helper if available. If no bounded Int helper exists, use `optionalFiniteNumber` and check integer/range in `parse`.
+Use `CommandFields.enumValue` for `strategy` and the existing integer range helper (`CommandFields.int` or `UIKitQueryNumber.integer(_:in:)`, matching local style) for `waitAfterMs`. Do not hand-roll `Double -> Int` parsing with `optionalFiniteNumber`.
 
 ```swift
 public enum KeyboardDismissStrategy: String, Sendable, Equatable, CaseIterable {
@@ -353,7 +357,6 @@ func navigationBackRejectsWaitAfterOutOfRange() {
 public enum NavigationBackStrategy: String, Sendable, Equatable, CaseIterable {
     case auto
     case navigationController
-    case barButton
     case dismiss
 }
 
@@ -399,8 +402,9 @@ Executor order:
 
 1. `.dismiss`: if `topViewController.presentingViewController != nil`, dismiss.
 2. `.navigationController`: if `topViewController.navigationController?.viewControllers.count ?? 0 > 1`, pop.
-3. `.barButton`: best-effort only; locate visible navigation bar left-side UIControl and dispatch through existing action primitives if practical.
-4. `.auto`: dismiss -> navigationController -> barButton.
+3. `.auto`: dismiss -> navigationController.
+
+Do not expose `barButton` in the first version. Navigation bar back buttons are not guaranteed to be stable `UIControl` paths; add a future spike before making it a public strategy.
 
 Return `performed`, `strategy`, `topBefore`, `topAfter`.
 
@@ -481,7 +485,7 @@ struct WaitCommand: Command {
     static let actionName = "ui.wait"
     let action = WaitCommand.actionName
     let description = "等待 UI 稳定或等待目标/文本/快照变化"
-    var timeoutNanoseconds: UInt64? { 31_000_000_000 }
+    var timeoutNanoseconds: UInt64? { 35_000_000_000 }
 }
 ```
 
@@ -492,6 +496,7 @@ Create `UIKitVisibleTextCollector`:
 - recursively walk `UIView`;
 - skip hidden views when `includeHidden == false`;
 - collect `UILabel.text`, `UIButton.currentTitle`, `UITextField.placeholder`, `accessibilityLabel`, and non-editing `accessibilityValue`;
+- intentionally do not collect `UITextField.text` / `UITextView.text` by default, to avoid leaking user input; this differs from full hierarchy inspection and must be documented in the helper comment;
 - do not log collected text;
 - return path/type/text fragments for matching and optional response summary.
 
@@ -524,9 +529,13 @@ Implementation rules:
 - loop while now < deadline;
 - each attempt fetches context via injected provider;
 - check mode condition;
-- sleep `intervalMs` between attempts with `Task.sleep`;
+- sleep between attempts with `Task.sleep`, but clamp sleep duration to the remaining deadline so `wait_timeout` wins before the 35s command-level fallback;
+- handle cancellation deliberately: use `try? Task.sleep(nanoseconds: clampedSleepNanos)` or catch `CancellationError`, then check `Task.isCancelled` and return a controlled `waitTimeout`/failure path rather than leaking `CancellationError` into `internal_error`;
+- implement `snapshotChanged` with a new internal `UIKitSnapshotStore` comparison helper for whole snapshot tables; do not misuse the existing single-path `isStale(snapshotID:path:context:current:)`;
 - return success JSON with `satisfied`, `mode`, `elapsedMs`, `attempts`, `snapshotID`, `snapshotUnavailableReason`;
 - on deadline throw `UIKitCommandError.waitTimeout`.
+
+Add a test with `timeoutMs=30000` and `intervalMs=1000` that asserts the command-level timeout is not the observed failure path; the executor should return `wait_timeout` under its own deadline.
 
 - [ ] **Step 6: Register, verify, commit**
 
@@ -570,20 +579,25 @@ Create `UIScrollResolver` with:
 ```swift
 @MainActor
 enum UIScrollResolver {
-    struct Resolved: Sendable {
+    struct Resolved {
         let scrollView: UIScrollView
         let targetDescription: String
         let targetPath: String?
     }
 
-    static func resolve(locator: UIKitViewLookupTarget?,
-                        snapshotID: String?,
-                        context: UIKitContextProvider.Context,
-                        action: String) throws -> Resolved
+    static func resolveFromTarget(locator: UIKitViewLookupTarget?,
+                                  snapshotID: String?,
+                                  context: UIKitContextProvider.Context,
+                                  action: String) throws -> Resolved
+
+    static func resolveContainer(locator: UIKitViewLookupTarget?,
+                                 snapshotID: String?,
+                                 context: UIKitContextProvider.Context,
+                                 action: String) throws -> Resolved
 }
 ```
 
-Rules: preserve current `nearestScrollView`, `foremostScrollView`, stale path validation, and `UITextView` exclusion.
+Rules: `Resolved` is MainActor-only and must not conform to `Sendable`, because it holds `UIScrollView`. `resolveFromTarget` preserves current `ui.scroll` semantics: locate target view, validate stale path when applicable, then find nearest scrollView ancestor. `resolveContainer` is for `ui.scrollToElement`: locator nil means foremost scrollView; non-nil locator must resolve to a scrollView container itself, not an arbitrary descendant. Both paths preserve `UITextView` exclusion.
 
 - [ ] **Step 3: Extract geometry**
 
@@ -690,18 +704,20 @@ iOS-gated tests:
 
 - found visible text without scrolling returns `found=true`, `scrolls=0`;
 - list requires one or more scroll steps then finds target;
-- target missing returns `.targetNotFound`;
+- target missing returns `.targetNotFound` after Task 1 upgrades all target-not-found semantics to `target_not_found`;
 - container missing returns `.scrollContainerUnavailable`.
 
 - [ ] **Step 4: Implement executor**
 
 Loop:
 
-1. collect visible targets from current context;
-2. match by identifier exact or text contains;
+1. collect visible candidates without calling `UIViewTargetsCollector.collect`, because that method signs a snapshot on each call and would churn `UIKitSnapshotStore`;
+2. match by identifier exact or text contains. `match=text` must use `UIKitVisibleTextCollector`; if using view-target-style filtering anywhere, force `includeStaticText=true` and `includeContainers=false`;
 3. if visible intersection with window bounds, return target/container/snapshot JSON;
 4. else perform `UIScrollGeometry.step` with default ratio 0.7;
 5. break on reached extent matching direction or `maxScrolls`.
+
+When returning success, sign a snapshot that includes the matched target path. For text matches on `UILabel` or other static text, either sign with `includeStaticText=true` or manually merge the matched target fingerprint into the snapshot table. Add a test that the returned snapshotID does not make the returned target path stale immediately.
 
 Do not support `WKWebView` DOM.
 
@@ -742,10 +758,10 @@ Create `UIAlertRespondInputTests.swift`:
 import Testing
 @testable import iOSExploreUIKit
 
-@Test("alert respond 默认 dryRun false")
+@Test("alert respond 默认 dryRun true")
 func alertRespondDefaults() throws {
     let input = try UIAlertRespondInput.parse(from: [:])
-    #expect(input.dryRun == false)
+    #expect(input.dryRun == true)
     #expect(input.buttonTitle == nil)
     #expect(input.buttonIndex == nil)
     #expect(input.role == nil)
@@ -776,6 +792,8 @@ public struct UIAlertRespondInput: CommandInput, Sendable, Equatable {
 
 In `parse(decoding:)`, count non-nil `buttonTitle` / `buttonIndex` / `role`; if count > 1, throw `CommandInputParseError("buttonTitle/buttonIndex/role are mutually exclusive")`.
 
+If `dryRun == false` and no selector is provided, parse may succeed, but executor must return `alertButtonRequired`; do not silently default to cancel in v1.
+
 - [ ] **Step 3: Write spike tests**
 
 Create iOS-gated test:
@@ -797,7 +815,7 @@ func alertInspectorListsActions() throws {
 }
 ```
 
-Add a second spike assertion only if button view path can be found by public hierarchy traversal. If it is not stable, assert `buttonPath == nil` and keep command query-only.
+The inspector must also work when passed `alert.view` directly, without relying on `present` completing in a logic-test window. Add a second spike assertion only if button view path can be found by public hierarchy traversal. If it is not stable, assert `buttonPath == nil` and keep command query-only.
 
 - [ ] **Step 4: Implement query-first inspector and command**
 
@@ -808,6 +826,7 @@ Rules:
 - return title/message/buttons;
 - for each action return index/title/role and optional `path`;
 - if `dryRun == true`, do not act;
+- if `dryRun == false` and no selector is present, return `alertButtonRequired`;
 - if selector is present and path is available, optionally dispatch through existing tap path only after spike passes;
 - if selector is present but path is unavailable, return failure with `alertUnavailable` or `invalid_data` per spec, not fake success.
 
@@ -839,6 +858,8 @@ git commit -m "feat(uikit): add alert respond query command"
 - Modify: `README.md`
 - Modify: `AGENTS.md`
 - Modify: `docs/agent_instructions.md`
+- Modify: `docs/architecture/index.md`
+- Modify: `docs/runbooks/build-and-test.md`
 - Modify: `docs/uikit/README.md`
 - Modify: `docs/uikit/reading-guide.md`
 - Modify: `docs/uikit/uikit-file-reference.md`
@@ -887,7 +908,7 @@ func keyboardDismissCommandSchemaMatchesInputFields() {
 }
 ```
 
-Repeat for `NavigationBackCommand`, `WaitCommand`, `ScrollToElementCommand`, `AlertRespondCommand`.
+Repeat for all 12 UIKit commands: the existing four query/action commands, the current three screenshot/input/scroll commands, and the new five commands. This closes the existing gap where `ui.screenshot`, `ui.input`, and `ui.scroll` are registered but not covered by this schema test file.
 
 - [ ] **Step 4: Update docs**
 
@@ -898,6 +919,8 @@ Update command count:
 - `docs/uikit/README.md`: replace “4 个命令” with current 12 and table.
 - `docs/uikit/reading-guide.md`: add new command family reading order.
 - `docs/uikit/uikit-file-reference.md`: add new files and responsibilities.
+- `docs/architecture/index.md`: update UIKit command count, Support responsibility, and `stale_locator` code text.
+- `docs/runbooks/build-and-test.md`: update expected test counts after the final successful run, and document that iOS framework tests are mandatory for UIKit executor changes.
 
 - [ ] **Step 5: Run full verification**
 
@@ -915,7 +938,7 @@ Expected:
 - framework build PASS.
 - `git diff --check` no output.
 
-If framework tests are required, first run:
+Framework tests are required for this feature. First run:
 
 ```bash
 xcrun simctl list devices available
@@ -923,10 +946,18 @@ xcrun simctl list devices available
 
 Then select an available simulator destination explicitly.
 
+Run:
+
+```bash
+xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator -destination 'platform=iOS Simulator,name=<AVAILABLE_IPHONE_NAME>' test
+```
+
+Expected: PASS. Record the exact simulator name in the final execution summary.
+
 - [ ] **Step 6: Commit**
 
 ```bash
-git add Sources/iOSExploreUIKit/UIKitCommandRegistrar.swift Tests/iOSExploreServerTests/UIKitCommandRegistrationTests.swift Tests/iOSExploreServerTests/UIKitCommandInputSchemaTests.swift README.md AGENTS.md docs/agent_instructions.md docs/uikit/README.md docs/uikit/reading-guide.md docs/uikit/uikit-file-reference.md
+git add Sources/iOSExploreUIKit/UIKitCommandRegistrar.swift Tests/iOSExploreServerTests/UIKitCommandRegistrationTests.swift Tests/iOSExploreServerTests/UIKitCommandInputSchemaTests.swift README.md AGENTS.md docs/agent_instructions.md docs/architecture/index.md docs/runbooks/build-and-test.md docs/uikit/README.md docs/uikit/reading-guide.md docs/uikit/uikit-file-reference.md
 git commit -m "docs: update UIKit command catalog"
 ```
 
@@ -938,4 +969,4 @@ git commit -m "docs: update UIKit command catalog"
 - No unresolved implementation choice remains except the alert spike outcome, which is intentionally represented as a test-gated branch.
 - Task order follows agreed risk order: keyboard, navigation, wait, scroll primitives, scrollToElement, alert.
 - Core remains UIKit-free; UIKit code stays in `iOSExploreUIKit`.
-- Verification uses `generic/platform=iOS Simulator` build and avoids hard-coding a simulator name.
+- Verification uses `generic/platform=iOS Simulator` build plus a mandatory real simulator framework test selected from `xcrun simctl list devices available`.
