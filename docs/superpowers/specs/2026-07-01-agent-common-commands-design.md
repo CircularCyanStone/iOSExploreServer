@@ -1,7 +1,7 @@
 # Agent 常用 UIKit 命令 v2 设计
 
 - **日期**: 2026-07-01
-- **状态**: 初稿，待用户审阅
+- **状态**: 交叉评审后修订稿 v2，待用户审阅
 - **范围**: 先补 iOS 端常用命令，再做 Mac 侧 MCP server
 - **上游设计**: `docs/superpowers/specs/2026-06-30-action-commands-design.md`
 
@@ -59,6 +59,7 @@
 - 通用辅助放 `Sources/iOSExploreUIKit/Support/` 下按职责拆分，不把复杂逻辑塞进 command adapter。
 - typed input 必须是 Foundation-only；UIKit 类型只能出现在 `@MainActor` 执行核心内部。
 - 每个命令失败先通过 `UIKitCommandError` 工厂生成业务失败，再转 `ExploreResult`。
+- 新增 envelope code 前先检查 `ExploreError`：它是固定 enum，不是自由字符串。只有 agent 恢复策略确实不同的失败才新增 code；否则复用现有 code 并把具体原因写进 message/logMessage。
 - 每个命令记录 start / complete / failed 日志，至少包含 action、关键参数摘要、耗时、错误 code。
 - 新增 public 类型、关键 internal 类型和生命周期方法写 `///` 中文注释。
 - 注册入口 `registerUIKitCommands()` 更新注册数量；help schema、README、UIKit 文档同步更新。
@@ -105,15 +106,16 @@
 - 每轮在 MainActor 取当前 context。
 - `idle`：连续采集轻量指纹，连续 `stableMs` 内 digest 不变即成功。
 - `targetExists` / `targetGone`：复用定位解析和 resolver，不触发点击。
-- `textExists`：复用 hierarchy/viewTargets 里的文本采集逻辑，contains 匹配。
+- `textExists`：新增可复用文本采集 helper，基于 hierarchy/viewTargets 现有遍历与文本提取规则实现 contains 匹配。当前没有“所有可见文本扁平列表”的现成入口：`viewTargets` 只输出 target 摘要字段，且默认不返回可编辑输入内容；`topViewHierarchy` 的文本提取覆盖更广但绑定在层级构建内。
 - `snapshotChanged`：从 `UIKitSnapshotStore` 取旧 snapshot，与当前指纹 digest 比较；旧 snapshot 不存在或过期返回 stale 类错误。
-- 超时不抛 transport error，返回业务失败 `waitTimeout`，message 写清 mode 和 elapsedMs。
+- 轮询 deadline 到达时不抛 transport error，返回业务失败 `waitTimeout`，message 写清 mode 和 elapsedMs；命令级 `timeoutNanoseconds` 只做兜底保护。
+- `ui.wait` 必须自声明固定命令级超时 `timeoutNanoseconds = 31_000_000_000`（略高于 `timeoutMs` 最大 30000ms）。`ClientSession` 会在 `router.route` 外层先套命令级 `withTimeout`，且 `Router.commandTimeout(for:)` 只能按 action 查表，无法读取 input 动态超时；因此业务轮询 deadline 必须在 adapter/executor 内自管，避免全局 10s 先返回通用 `timeout`。
 
 ### 错误
 
 - `invalid_data`：mode 与字段组合非法。
 - `waitTimeout`：等待条件未满足。
-- `staleLocator`：snapshotID 不存在或过期。
+- `stale_locator`：snapshotID 不存在或过期。
 - `hierarchyUnavailable`：无前台 window/root view。
 
 ### 日志
@@ -156,7 +158,7 @@
 - `auto` 顺序：
   1. 如果 top controller 有 presented controller，且当前就是 presented 栈，先 `dismiss(animated:)`。
   2. 如果存在 `UINavigationController` 且 viewControllers 数量 > 1，调用 `popViewController(animated:)`。
-  3. 尝试定位导航栏左侧可交互 back item/button，走现有 tap/control 能力。
+  3. best-effort 尝试定位导航栏左侧可交互 back item/button，再走现有 tap/control 能力。导航栏 back button 不保证一定是稳定 `UIControl` path，因此该策略只能作为兜底，不作为主成功路径。
   4. 都不可用则返回 `navigationBackUnavailable`。
 - 默认 `animated=false`，便于后续马上 `ui.wait` / `ui.screenshot`。
 - `waitAfterMs` 只做短暂 settle，不替代 `ui.wait`。
@@ -217,9 +219,8 @@
 
 - 只支持当前前台 controller 正在 presented 的 `UIAlertController`。
 - `dryRun=true` 时不执行 action，供 agent 先观察。
-- 点击通过 `UIAlertAction` 的可用公开路径有限，优先实现策略应评估：
-  - 如果能稳定拿到 alert 内部 button view，则使用现有 tap path。
-  - 如果无法公开触发 action，则命令可以先落地为“alert 查询 + button view path 返回”，点击仍交给 `ui.tap`。
+- 点击通过 `UIAlertAction` 的可用公开路径有限：公开 API 可以读取 `UIAlertController.actions`，但没有公开入口直接执行某个 action handler。默认实现路径改为“查询当前 alert + 返回按钮元数据 + 尽量返回可点击 button view path”；直接点击能力必须先做 spike 验证。
+- spike 要在 SPMExample 里弹出 `UIAlertController`，验证能否稳定拿到 button view path，并用现有 `ui.tap` 点中。只有 spike 通过，`buttonTitle` / `buttonIndex` / `role` 才允许在同命令内直接点击；否则第一版只返回 alert 查询结果和 path 建议，不伪造成功。
 - 不处理系统级权限弹窗的私有 API。若系统弹窗不在 App view hierarchy 中，返回 `alertUnavailable`，由外部工具或人工处理。
 
 ### 错误
@@ -227,7 +228,7 @@
 - `alertUnavailable`：当前没有可处理的 `UIAlertController`。
 - `alertButtonNotFound`：指定 title/index/role 不存在。
 - `alertButtonRequired`：不允许猜默认按钮。
-- `unsupportedAlertType`：不是 `UIAlertController` 或无法安全操作。
+- `invalid_data`：选择字段组合非法；若 spike 证明存在“有 alert 但公开路径无法安全操作”的独立可恢复分支，再新增 unsupported alert 类型错误码。
 
 ### 日志
 
@@ -327,17 +328,29 @@
 
 - 每轮先采集可见 targets，按 `match/value` 查找目标。
 - 找到目标且 frame 与当前 window 有可见交集即成功。
-- 未找到则按 direction/stepAmount 调用 scroll executor 的同款 offset 计算。
+- 未找到则按 direction/stepAmount 调用 scroll 共享原语做一次滚动。
 - 每次滚动后短暂 yield，再进入下一轮。
-- 达到边界或 `maxScrolls` 后仍找不到，返回 `targetNotFoundAfterScroll`。
+- 达到边界或 `maxScrolls` 后仍找不到，返回 target-not-found 语义的业务失败，message/logMessage 写清 scroll 次数与 reachedExtent。
 - 成功后签发新的 snapshotID，方便 agent 后续按 target path 调 `ui.tap`。
 - 默认不支持 `WKWebView` 内部 DOM，只看 native view hierarchy。
 
+### scroll 原语抽取
+
+`UIScrollExecutor.execute(input:context:)` 当前是“定位 -> nearest scrollView -> 陈旧校验 -> 算 delta -> setContentOffset -> reachedExtent”的同步整体方法，不适合被 `ui.scrollToElement` 每轮整体调用；直接复制其 private 逻辑又会让边界判断分叉。
+
+实现本命令前必须先抽取共享原语，例如：
+
+- `UIScrollResolver`：按可选容器 locator 找 scrollView，复用“排除 UITextView”和 foremost scrollView 规则。
+- `UIScrollGeometry`：计算默认步长、direction delta、`adjustedContentInset` 边界、`reachedExtent`。
+- `UIScrollStepResult`：统一 offsetBefore/offsetAfter/reachedExtent/adjustedContentInset 响应字段。
+
+`ui.scroll` 与 `ui.scrollToElement` 都调用这些原语；`ui.scroll` 仍保持单步命令，`ui.scrollToElement` 只负责循环采集、匹配和终止条件。
+
 ### 错误
 
-- `targetNotFoundAfterScroll`：滚动结束仍未找到。
+- `target_not_found`：滚动结束仍未找到。不要新增独立 `targetNotFoundAfterScroll` code，具体 scroll 次数与 reachedExtent 放 message/logMessage。
 - `scrollContainerUnavailable`：找不到滚动容器。
-- `staleLocator`：containerPath + snapshotID 陈旧。
+- `stale_locator`：containerPath + snapshotID 陈旧。
 - `invalid_data`：match/value 或容器字段组合非法。
 
 ### 日志
@@ -347,26 +360,33 @@
 - complete：found、scrolls、target path、snapshotID 是否签发。
 - failed：code、scrolls、reachedExtent。
 
-## 11. 错误码新增建议
+## 11. 错误码策略
 
-放在 `UIKitCommandError` 工厂中，保持业务失败 HTTP 200 + envelope：
+新增错误工厂都放在 `UIKitCommandError`，但 envelope code 必须来自 core `ExploreError` enum。新增 code 只保留 agent 需要不同恢复策略的场景。
 
-- `waitTimeout`
-- `navigationBackUnavailable`
-- `alertUnavailable`
-- `alertButtonNotFound`
-- `alertButtonRequired`
-- `unsupportedAlertType`
-- `keyboardDismissFailed`
-- `targetNotFoundAfterScroll`
+建议新增 `ExploreError` case：
+
+- `waitTimeout = "wait_timeout"`：等待条件未满足；若实现时决定复用现有 `timeout`，必须在实现计划里说明 MCP/agent 如何区分 wait 业务超时与命令级兜底超时。
+- `navigationBackUnavailable = "navigation_back_unavailable"`：没有可返回路径。
+- `alertUnavailable = "alert_unavailable"`：当前没有可处理 alert。
+- `alertButtonNotFound = "alert_button_not_found"`：指定 title/index/role 不存在。
+- `alertButtonRequired = "alert_button_required"`：调用方未指定按钮，且不能安全默认选择。
+- `keyboardDismissFailed = "keyboard_dismiss_failed"`：尝试后 first responder 未变化。
+
+暂不新增：
+
+- `targetNotFoundAfterScroll`：复用/新增通用 `target_not_found` 工厂更合理，scroll 次数放 message/logMessage。
+- `unsupportedAlertType`：先由 alert spike 决定。第一版可复用 `alert_unavailable` 或 `invalid_data`；只有确实存在“有 alert 但公开路径不支持”的可恢复分支，才新增独立 code。
 
 若已有语义可复用，优先复用：
 
 - `invalid_data`
 - `hierarchyUnavailable`
-- `staleLocator`
+- `stale_locator`
 - `transitionInProgress`
 - `scrollContainerUnavailable`
+
+现有不一致也要在实现前处理：`ExploreError` 已有 `stale_locator`，但当前 `UIKitCommandError.staleLocator` 返回的是 `.invalidData`。本轮新增命令依赖 snapshot 恢复语义，实施计划应先统一 stale 工厂的 code，或明确继续用 `invalid_data` 的理由。
 
 ## 12. 测试策略
 
@@ -388,11 +408,13 @@
 - `ui.alert.respond`：dryRun 列按钮、按 index/title 选择、按钮不存在。
 - `ui.keyboard.dismiss`：有 first responder、无 first responder。
 - `ui.scrollToElement`：列表中向下找到目标、达到底部仍找不到、容器限定。
+- `ui.alert.respond` 先做 spike 测试：验证 alert button view path 是否可稳定返回并被 `ui.tap` 触发；未通过时只实现 query/path 建议，不实现直接点击。
 
 ### 集成验证
 
 - `swift test`
-- `xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17' test`
+- `xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build`
+- 若需要跑 iOS framework 测试，先用 `xcrun simctl list devices available` 确认本机存在的 simulator 名称，再指定 `-destination`；不要在实现计划里写死某个可能不存在的设备名。
 - 更新 README/docs 后跑 `git diff --check`。
 
 ## 13. 文档更新要求
@@ -417,10 +439,19 @@
 
 MCP server 放在第一批命令稳定之后做：读取 `help`，把 action/inputSchema 映射为 MCP tools，并处理 `ui.screenshot` 的 image content 映射。
 
+建议实施顺序按风险从低到高，而不是按 P0/P1：
+
+1. `ui.keyboard.dismiss`
+2. `ui.navigation.back`
+3. `ui.wait`
+4. `ui.scrollToElement`
+5. `ui.alert.respond`（spike 先行）
+
 ## 15. 自查
 
 - 无未定稿语句。
 - 第一批只包含 5 个命令，未把 MCP server 混入实现范围。
 - 每个命令都有 input、output、行为、错误、日志。
+- 已吸收交叉评审：`ui.wait` 双层超时、scroll 原语抽取、alert 点击 spike、文本采集 helper、错误码收敛。
 - 保持 core 不依赖 UIKit。
 - 复用现有 typed input、locator、snapshot、logging、error factory 边界。
