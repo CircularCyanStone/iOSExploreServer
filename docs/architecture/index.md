@@ -107,7 +107,7 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 
 `ui.viewTargets` 是事件下发前的轻量目标发现命令，返回扁平 targets 列表，不返回完整 `subviews` 树，也不承担视觉验收职责。每个 target 包含 `path`、运行时类型、轻量 role、`accessibilityIdentifier`、短文本、window 坐标 frame、基础交互状态和 `availableActions`；`availableActions` 仅在目标自身为可用 `UIControl` 时非空（与第一版 `ui.tap`/`ui.control.sendAction` 只对 `UIControl` 派发一致），其中 `tap` 对应 `ui.tap`，`control.<event>` 对应 `ui.control.sendAction` 的 `<event>` 参数。agent 应优先按该能力表选择后续事件命令。
 
-`Support/`（`iOSExploreUIKit` 内）集中保存 UIKit 横切能力：定位（`Support/Locator/`，前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、祖先关系判断）、动作执行（`Support/Action/`）、快照陈旧检测（`Support/Snapshot/`）、command input 共享字段与安全数字（`Support/Parsing/`）。9 个命令在 `Commands/` 下按领域分子目录组织：`TopViewHierarchy`、`ViewTargets`、`Tap`、`ControlAction`、`Screenshot`、`Input`、`Scroll`、`Keyboard`、`Navigation`。后续 UIKit 命令应复用 `Support/`，不要各自重新实现路径解析和遍历。
+`Support/`（`iOSExploreUIKit` 内）集中保存 UIKit 横切能力：定位（`Support/Locator/`，前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、祖先关系判断）、动作执行（`Support/Action/`）、快照陈旧检测（`Support/Snapshot/`）、command input 共享字段与安全数字（`Support/Parsing/`）。12 个命令在 `Commands/` 下按领域分子目录组织：`TopViewHierarchy`、`ViewTargets`、`Tap`、`ControlAction`、`Screenshot`、`Input`、`Scroll`、`Keyboard`、`Navigation`、`Wait`、`ScrollToElement`、`Alert`。后续 UIKit 命令应复用 `Support/`，不要各自重新实现路径解析和遍历。
 
 ## UIKit 定位语义
 

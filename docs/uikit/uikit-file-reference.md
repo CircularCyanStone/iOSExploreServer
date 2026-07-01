@@ -1,9 +1,10 @@
 # iOSExploreUIKit 文件档案
 
-> 这是 `Sources/iOSExploreUIKit/` 全部 27 个文件的查阅手册。
+> 这是 `Sources/iOSExploreUIKit/` 全部 55 个文件的查阅手册。
 > 想知道"从哪开始读"看 [reading-guide.md](./reading-guide.md)；这里按目录逐个登记每个文件的职责、关键点与依赖关系，用于定位与改动。
 > 约定：✅ = Foundation-only（macOS `swift test` 可覆盖）；🍎 = `#if canImport(UIKit)`，仅 iOS 编译。
-> 目录分两层：`Commands/` 是 4 个对外命令及其紧密配套（adapter + models + collector），`Support/` 是横切辅助（执行引擎 / 定位 / 上下文 / 快照 / 解析），根目录 3 个是模块级横切（注册 / 日志 / 错误）。
+> 目录分两层：`Commands/` 是 12 个对外命令及其紧密配套（adapter + models + collector），`Support/` 是横切辅助（执行引擎 / 定位 / 上下文 / 快照 / 解析 / 等待 / 文本采集），根目录 3 个是模块级横切（注册 / 日志 / 错误）。
+> **覆盖范围说明**：下方总览与逐文件档案最初建于 4 命令时期；keyboard / navigation / wait / scrollToElement / alert 五个新命令，以及 `UIScrollResolver` / `UIScrollGeometry` scroll 原语、`UIKitVisibleTextCollector`、`UIAlertInspector` 等的逐文件档案待补——参见各源码文件头 `///` 注释与 [reading-guide.md](./reading-guide.md) 的命令清单。
 
 ## 总览
 

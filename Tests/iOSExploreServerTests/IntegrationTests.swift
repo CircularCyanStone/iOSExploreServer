@@ -218,11 +218,10 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
         #expect(!text.contains(#""error":"#))
     }
 
-    /// 显式注册后 `help` 必须经 HTTP 列出全部 9 个 UIKit action（registrar count=9）。
+    /// 显式注册后 `help` 必须经 HTTP 列出全部 12 个 UIKit action（registrar count=12）。
     ///
-    /// 这是 registrar 计数的端到端回归点：经真实 HTTP `help` 取回命令列表，断言
-    /// screenshot/input/keyboard.dismiss/scroll/navigation.back 在内的全部 9 个 `ui.*` action 都已注册并可被发现。
-    @Test("registerUIKitCommands 后 help 经 HTTP 含 9 个 ui.* action")
+    /// 这是 registrar 计数的端到端回归点：经真实 HTTP `help` 取回命令列表，断言全部 12 个 `ui.*` action 都已注册并可被发现。
+    @Test("registerUIKitCommands 后 help 经 HTTP 含 12 个 ui.* action")
     func helpListsAllUIKitActions() async throws {
         let server = ExploreServer(port: testPort)
         server.registerUIKitCommands()

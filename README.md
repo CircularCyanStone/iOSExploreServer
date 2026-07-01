@@ -58,7 +58,7 @@ import iOSExploreServer
 import iOSExploreUIKit
 
 let server = ExploreServer()
-server.registerUIKitCommands()   // 一次性注册 9 个 ui.* 命令
+server.registerUIKitCommands()   // 一次性注册 12 个 ui.* 命令
 ```
 
 `ui.*` 典型闭环：先 `ui.viewTargets`（或 `topViewHierarchy`）拿到目标的 `path` 和 `snapshotID` → 用 `path` + `snapshotID` 调 `ui.tap` / `ui.input` / `ui.scroll`（snapshotID 做陈旧防护，防画面已变还按旧坐标操作）→ 必要时用 `ui.keyboard.dismiss` 收起键盘 / `ui.navigation.back` 返回上一页 → `ui.screenshot` 截图看效果。这就是 AI agent 驱动 UI 的完整循环。

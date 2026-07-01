@@ -10,7 +10,7 @@
 
 整个模块只做一件事：**把"Mac 发来的 JSON 命令"翻译成"在 iPhone 当前页面上对真实 `UIView` 的读/写操作"**。
 
-它由 **9 个对外命令**和一组**内部基础设施**组成：
+它由 **12 个对外命令**和一组**内部基础设施**组成：
 
 | 命令 | 一句话作用 |
 |---|---|
@@ -23,15 +23,18 @@
 | `ui.keyboard.dismiss` | 收起当前 first responder / 键盘 |
 | `ui.scroll` | 在 `UIScrollView` 上按方向 + 距离滚动 |
 | `ui.navigation.back` | 返回上一页（auto 先 dismiss 再 navigation pop） |
+| `ui.wait` | 等待 UI 稳定或目标/文本/快照变化 |
+| `ui.scrollToElement` | 滚动到包含指定文本/identifier 的元素可见 |
+| `ui.alert.respond` | 查询/响应当前 UIAlertController（第一版 dryRun 查询） |
 
-这 9 个命令共享同一套底层能力：**定位（Locator）→ 能力判定（Capability）→ 陈旧防护（Snapshot）→ 执行（Executor）**。理解了这套共享基础设施，各命令的 adapter 都只是薄薄的"解析参数 + 调用"。
+这 12 个命令共享同一套底层能力：**定位（Locator）→ 能力判定（Capability）→ 陈旧防护（Snapshot）→ 执行（Executor）**。理解了这套共享基础设施，各命令的 adapter 都只是薄薄的"解析参数 + 调用"。
 
 ## 一张图看懂分层
 
 ```
                     ┌─────────────────────────────────────────┐
    Mac curl         │  UIKitCommandRegistrar  (注册入口)        │
-  命令 JSON   ──►  │  9 个 Command adapter（解析参数 + 打日志） │
+  命令 JSON   ──►  │  12 个 Command adapter（解析参数 + 打日志） │
                     └──────────────────┬──────────────────────┘
                                        │  adapter 只解析请求、构造 Plan/Query
                                        │  真正的 UIKit 操作全部下沉 ↓
@@ -65,10 +68,10 @@
 
 ### 第 0 步：骨架（5 分钟，~60 行）
 先建立整体印象，**不要纠结细节**：
-- `UIKitCommandRegistrar.swift`——入口，看 9 个命令怎么被注册。
+- `UIKitCommandRegistrar.swift`——入口，看 12 个命令怎么被注册。
 - `UIKitCommandLogging.swift`（29 行）——日志怎么复用 core 的缝。
 
-> 目标：知道"9 个命令 + 一套日志"。
+> 目标：知道"12 个命令 + 一套日志"。
 
 ### 第 1 步：两个查询命令（最容易上手，~750 行）
 查询命令是纯读、无副作用，最适合先读：
