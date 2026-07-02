@@ -42,6 +42,12 @@ enum UIScrollToElementExecutor {
             )
         }
 
+        // 容器禁用滚动或已脱离 window 时 scrollRectToVisible 是 no-op 却仍返回 found=true，
+        // agent 会被误导以为已滚到目标。先校验，不可滚时显式失败。
+        guard scrollView.isScrollEnabled, scrollView.window != nil else {
+            throw UIKitCommandError.scrollContainerUnavailable(action: action,
+                                                               target: "container disabled or detached")
+        }
         // 把目标 bounds 转到 scrollView 坐标，让 UIKit 滚到它可见。
         let targetRect = target.convert(target.bounds, to: scrollView)
         scrollView.scrollRectToVisible(targetRect, animated: input.animated)

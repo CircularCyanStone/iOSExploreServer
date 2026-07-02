@@ -31,6 +31,9 @@ enum UINavigationBackExecutor {
     static func execute(input: UINavigationBackInput, context: UIKitContextProvider.Context) throws -> JSON {
         let topBefore = context.topViewController
         let topBeforeDescription = describe(topBefore)
+        // dismiss 转场完成后 UIKit 会清空被 dismiss 控制器的 presentingViewController，故在 dismiss
+        // 之前先捕获，settle 之后用它作 topAfter，避免读到 nil 回退成刚 dismiss 的死 VC。
+        let presentingBeforeDismiss = topBefore.presentingViewController
 
         var resolvedTop: UIViewController?
         var usedStrategy: NavigationBackStrategy?
@@ -69,7 +72,7 @@ enum UINavigationBackExecutor {
         let topAfter: UIViewController
         if let resolved = resolvedTop {
             topAfter = resolved
-        } else if dismissHappened, let presenting = topBefore.presentingViewController {
+        } else if dismissHappened, let presenting = presentingBeforeDismiss {
             topAfter = presenting
         } else {
             topAfter = topBefore

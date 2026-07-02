@@ -209,11 +209,14 @@ struct UIKitCommandError: Error, Sendable, Equatable {
 
     /// 当前 alert 不能安全默认选择按钮，需要调用方明确指定。
     ///
+    /// 同时是「点击未实现」的统一出口：当前版本 `ui.alert.respond` 仅查询，`dryRun=false` 一律命中
+    /// 此错误。message 明确告知 agent 本命令不能关闭 alert，需宿主注册自定义 handler 或等待后续版本。
+    ///
     /// - Parameter action: 触发失败的 action 名。
     /// - Returns: `alert_button_required` 失败描述。
     static func alertButtonRequired(action: String) -> UIKitCommandError {
         UIKitCommandError(code: .alertButtonRequired,
-                          message: "alert button is required",
+                          message: "ui.alert.respond is query-only in this version; it cannot dismiss the alert. Use dryRun=true to list buttons/textFields, then close the alert via a host-registered handler or a later version",
                           logMessage: "ui alert button required action=\(action)")
     }
 

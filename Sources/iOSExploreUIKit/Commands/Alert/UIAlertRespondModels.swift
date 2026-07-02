@@ -10,9 +10,11 @@ public enum AlertButtonRole: String, Sendable, Equatable, CaseIterable {
 
 /// `ui.alert.respond` 的命令参数。
 ///
-/// 第一版 query-first：`dryRun=true`（默认）只返回当前 alert 的标题/消息/按钮列表，
-/// 不点击。`buttonTitle` / `buttonIndex` / `role` 三者互斥，预留给将来 `dryRun=false`
-/// 直接点击的版本；当前 `dryRun=false` 统一抛 `alertButtonRequired`（点击未实现）。
+/// **当前版本仅查询，不能关闭 alert**：`dryRun=true`（默认）返回当前 alert 的标题/消息/按钮/
+/// 输入框列表，不点击。`dryRun=false` 一律抛 `alertButtonRequired`（点击 UIAlertAction 依赖
+/// UIKit 私有路径，未 spike 验证，暂不实现）。agent 拿到列表后，要真正关闭 alert 需宿主注册
+/// 自定义 handler 或等待后续版本。`buttonTitle` / `buttonIndex` / `role` 三者互斥，预留给将来
+/// `dryRun=false` 直接点击的版本。
 public struct UIAlertRespondInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let dryRun = CommandFields.bool(

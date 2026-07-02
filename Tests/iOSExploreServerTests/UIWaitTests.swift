@@ -98,7 +98,7 @@ func waitSnapshotChangedSatisfiedOnContentChange() async throws {
         rootView: context.rootView, query: .default, digest: digest)
     let snapshotContext = UIKitFingerprintCollector.context(
         window: context.window, topViewController: context.topViewController)
-    let snapshotID = try #require(UIKitSnapshotStore.shared.insert(context: snapshotContext, targets: initialTable))
+    let snapshotID = try #require(UIKitSnapshotStore.shared.insert(context: snapshotContext, targets: initialTable, query: .default))
 
     // 第二轮改 button.enabled → fingerprint 的 isEnabled 字段变化 → whole table 不同 → satisfied。
     // 注意：fingerprint 不含 text（防泄露），text 变化应用 textExists；snapshotChanged 检测结构/控件状态变化。
@@ -120,6 +120,8 @@ func waitCancellationConvergesToWaitTimeout() async {
         try await UIWaitExecutor.execute(input: input) { context }
     }
     // 让 executor 进入轮询后 cancel，验证收敛到 waitTimeout（不泄漏 CancellationError）。
+    let clock = ContinuousClock()
+    let start = clock.now
     try? await Task.sleep(nanoseconds: 150_000_000)
     task.cancel()
     do {
@@ -127,8 +129,53 @@ func waitCancellationConvergesToWaitTimeout() async {
         Issue.record("expected waitTimeout, got success")
     } catch let error as UIKitCommandError {
         #expect(error.failure.code == .waitTimeout)
+        // 关键回归保护：cancel 必须在远小于 timeoutMs(10s) 内收敛，证明是 cancel 短路而非自然
+        // deadline。若有人删掉 UIWaitExecutor 的 Task.isCancelled 检查，cancel 被忽略、`try?`
+        // 吞掉 CancellationError 后命令会跑满 10s 才靠自然 deadline 抛 waitTimeout——code 仍是
+        // waitTimeout 但耗时接近 10s，本断言会失败。
+        let elapsed = start.duration(to: clock.now)
+        #expect(elapsed < .seconds(2), "cancel should short-circuit within 2s, took \(elapsed)")
     } catch {
         Issue.record("unexpected error (expected waitTimeout): \(error)")
+    }
+}
+
+@Test("wait idle stableMs=0 稳定两帧后满足") @MainActor
+func waitIdleStableMsZeroSatisfiedWhenStable() async throws {
+    let context = UIKitTestHost.context { root in
+        let label = UILabel(frame: CGRect(x: 0, y: 0, width: 100, height: 20))
+        label.text = "稳定"
+        root.addSubview(label)
+    }
+    // view 树不变：首轮写入签名，第二轮 signature 一致 → stableMs=0 也满足，但需 attempts>=2。
+    let input = UIWaitInput(mode: .idle, timeoutMs: 2000, intervalMs: 50, stableMs: 0)
+    let data = try await UIWaitExecutor.execute(input: input) { context }
+    #expect(data["satisfied"]?.boolValue == true)
+    #expect((data["attempts"]?.doubleValue ?? 0) >= 2)
+}
+
+@Test("wait idle stableMs=0 每轮变化永不满足") @MainActor
+func waitIdleStableMsZeroChangingNeverSatisfied() async {
+    let context = UIKitTestHost.context { root in
+        let label = UILabel(frame: CGRect(x: 0, y: 0, width: 100, height: 20))
+        label.text = "初始"
+        root.addSubview(label)
+    }
+    // 每轮改文本 → activitySignature 每轮变 → 变化当轮不算稳定，stableMs=0 也不应 satisfied。
+    let label = context.rootView.subviews.first as? UILabel
+    var callCount = 0
+    let input = UIWaitInput(mode: .idle, timeoutMs: 400, intervalMs: 50, stableMs: 0)
+    do {
+        _ = try await UIWaitExecutor.execute(input: input) {
+            callCount += 1
+            label?.text = "变\(callCount)"
+            return context
+        }
+        Issue.record("expected waitTimeout, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .waitTimeout)
+    } catch {
+        Issue.record("unexpected error: \(error)")
     }
 }
 #endif

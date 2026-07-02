@@ -112,7 +112,9 @@ enum UIScreenshotCollector {
             window: context.window,
             topViewController: context.topViewController
         )
-        let snapshotID = UIKitSnapshotStore.shared.insert(context: snapContext, targets: fingerprints)
+        let snapshotID = UIKitSnapshotStore.shared.insert(context: snapContext,
+                                                          targets: fingerprints,
+                                                          query: query)
         let (idField, reasonField) = UIKitSnapshotResponse.fields(for: snapshotID)
 
         // window.screen 非 Optional（UIWindow.screen 在 iOS 13+ 为非可选）。

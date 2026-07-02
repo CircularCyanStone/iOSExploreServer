@@ -58,6 +58,12 @@ extension JSONValue {
 
     /// 当值为 `.bool` 时返回底层布尔值，否则返回 `nil`。
     public var boolValue: Bool? { if case .bool(let v) = self { return v } else { return nil } }
+
+    /// 当值为 `.array` 时返回底层数组，否则返回 `nil`。
+    public var arrayValue: [JSONValue]? { if case .array(let v) = self { return v } else { return nil } }
+
+    /// 当值为 `.object` 时返回底层 JSON 对象，否则返回 `nil`。
+    public var objectValue: JSON? { if case .object(let v) = self { return v } else { return nil } }
 }
 
 /// JSON 对象容器。

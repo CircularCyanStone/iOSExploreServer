@@ -36,8 +36,13 @@ enum UIViewHierarchyCollector {
         let fingerprints = UIKitFingerprintCollector.fingerprints(in: context.rootView,
                                                                   includeHidden: query.includeHidden,
                                                                   digest: digest)
+        // hierarchy 的指纹用 `fingerprints(in:includeHidden:)` 全节点口径签发（供 tap 陈旧校验），
+        // 与 `collectFingerprints(query:)` 的 control/gesture 筛选口径不同。这里存 `.default` 仅为
+        // 满足 store 契约；用 hierarchy snapshotID 调 `ui.wait(snapshotChanged)` 的 whole-table 比对会
+        // 因口径不一致误判——snapshotChanged 应配合 `ui.viewTargets`/`ui.screenshot`（同 `collectFingerprints` 口径）。
         let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
-                                                          targets: fingerprints)
+                                                          targets: fingerprints,
+                                                          query: .default)
         let snapshotFields = UIKitSnapshotResponse.fields(for: snapshotID)
         var data: JSON = [
             "screen": .object(screenJSON(window: context.window,

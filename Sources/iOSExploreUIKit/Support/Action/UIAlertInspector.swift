@@ -20,6 +20,17 @@ enum UIAlertInspector {
         let role: AlertButtonRole
     }
 
+    /// alert 输入框的摘要。
+    ///
+    /// 只暴露 placeholder 与 secure 标记——**绝不**回 `text` 原文，密码/验证码等敏感输入
+    /// 不应进入响应或日志。供 agent 识别输入型 alert（登录/改密码等需先填输入框再点按钮）。
+    struct TextFieldSummary: Sendable, Equatable {
+        /// 输入框占位文本。
+        let placeholder: String?
+        /// 是否为安全（密码）输入。
+        let isSecure: Bool
+    }
+
     /// alert 整体摘要。
     struct Summary: Sendable, Equatable {
         /// alert 标题。
@@ -28,6 +39,8 @@ enum UIAlertInspector {
         let message: String?
         /// 按钮列表。
         let buttons: [Button]
+        /// 输入框列表（仅 `addTextField` 过的 alert 非空）。
+        let textFields: [TextFieldSummary]
     }
 
     /// 从查询上下文找当前 presented 的 UIAlertController。
@@ -41,12 +54,15 @@ enum UIAlertInspector {
         context.topViewController as? UIAlertController
     }
 
-    /// 列出 alert 的标题/消息/按钮。
+    /// 列出 alert 的标题/消息/按钮/输入框（输入框只取 placeholder 与 secure 标记，不取原文）。
     static func summarize(_ alert: UIAlertController) -> Summary {
         let buttons = alert.actions.enumerated().map { index, action in
             Button(index: index, title: action.title, role: AlertButtonRole(style: action.style))
         }
-        return Summary(title: alert.title, message: alert.message, buttons: buttons)
+        let textFields = (alert.textFields ?? []).map { textField in
+            TextFieldSummary(placeholder: textField.placeholder, isSecure: textField.isSecureTextEntry)
+        }
+        return Summary(title: alert.title, message: alert.message, buttons: buttons, textFields: textFields)
     }
 }
 

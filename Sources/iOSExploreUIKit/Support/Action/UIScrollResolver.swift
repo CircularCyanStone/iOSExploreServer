@@ -43,7 +43,9 @@ enum UIScrollResolver {
             let located = try UIKitLocatorResolver.locate(
                 locator: locator.locator,
                 in: context.rootView,
-                notFound: { UIKitCommandError.invalidData(action: action, message: "scroll target not found") },
+                notFound: { UIKitCommandError.targetNotFound(action: action,
+                                                              message: "scroll target not found",
+                                                              logMessage: "ui scroll target not found action=\(action)") },
                 ambiguous: { count in
                     UIKitCommandError.invalidData(action: action, message: "scroll target is ambiguous count=\(count)")
                 }
@@ -138,7 +140,9 @@ enum UIScrollResolver {
         let located = try UIKitLocatorResolver.locate(
             locator: locator.locator,
             in: context.rootView,
-            notFound: { UIKitCommandError.invalidData(action: action, message: "scroll container not found") },
+            notFound: { UIKitCommandError.targetNotFound(action: action,
+                                                          message: "scroll container not found",
+                                                          logMessage: "ui scroll container not found action=\(action)") },
             ambiguous: { count in
                 UIKitCommandError.invalidData(action: action, message: "scroll container is ambiguous count=\(count)")
             }

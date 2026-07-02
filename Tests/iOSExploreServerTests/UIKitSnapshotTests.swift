@@ -17,7 +17,7 @@ import UIKit
 func snapshotTTL30sBoundary() {
     // spec §3.6：TTL 30s 匹配 LLM 推理节奏。25s 不应过期、35s 必须过期。
     let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
-    guard let id = store.insert(context: .test, targets: ["root/0": .test]) else {
+    guard let id = store.insert(context: .test, targets: ["root/0": .test], query: .default) else {
         Issue.record("small snapshot should be stored"); return
     }
     // 25s：仍在 TTL 窗口内，指纹匹配 → 非陈旧
@@ -32,7 +32,7 @@ func snapshotTTL30sBoundary() {
 @Test("超过 TTL 的 snapshot 被判定陈旧") @MainActor
 func expiredSnapshotIsStale() {
     let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
-    guard let id = store.insert(context: .test, targets: ["root/0": .test]) else {
+    guard let id = store.insert(context: .test, targets: ["root/0": .test], query: .default) else {
         Issue.record("small snapshot should be stored"); return
     }
     store.setNow(Date(timeIntervalSince1970: 131))
@@ -43,7 +43,7 @@ func expiredSnapshotIsStale() {
 func oversizedSnapshotIsNotStored() {
     let store = UIKitSnapshotStore()
     let targets = Dictionary(uniqueKeysWithValues: (0...512).map { ("root/\($0)", UIKitTargetFingerprint.test) })
-    #expect(store.insert(context: .test, targets: targets) == nil)
+    #expect(store.insert(context: .test, targets: targets, query: .default) == nil)
 }
 
 @Test("snapshot context 或祖先摘要变化必须判定陈旧") @MainActor
@@ -57,7 +57,7 @@ func snapshotRejectsChangedContextOrAncestorDigest() {
                                           isEnabled: true,
                                           isSelected: false,
                                           ancestorDigest: 10)
-    guard let id = store.insert(context: context, targets: [original.path: original]) else {
+    guard let id = store.insert(context: context, targets: [original.path: original], query: .default) else {
         Issue.record("small snapshot should be stored")
         return
     }

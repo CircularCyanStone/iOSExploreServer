@@ -193,6 +193,12 @@ public final class UIKitSnapshotStore {
         var fingerprints: [String: UIKitTargetFingerprint]
         /// 签发查询时的 window 与顶部控制器实例身份。
         let context: UIKitSnapshotContext
+        /// 签发时使用的目标查询参数。
+        ///
+        /// `ui.wait(snapshotChanged)` 重采 whole-table 时必须用同一 query，否则签发 query
+        /// 与重采 query 不一致（如 viewTargets 带 includeHidden）会让 path 集合天然不同，
+        /// 首轮即误判「已变化」。`UIViewTargetsInput` 是 Foundation-only 值类型，可安全存此。
+        let query: UIViewTargetsInput
     }
 
     /// snapshotID → 快照记录。
@@ -230,10 +236,13 @@ public final class UIKitSnapshotStore {
     /// - Parameters:
     ///   - context: 查询上下文摘要。
     ///   - targets: path → 指纹表。
+    ///   - query: 签发 targets 时使用的查询参数；`ui.wait(snapshotChanged)` 必须用同一 query
+    ///     重采才能与该表正确比对。
     /// - Returns: 签发的 snapshotID；超过上限时返回 nil。
     @discardableResult
     public func insert(context: UIKitSnapshotContext,
-                       targets: [String: UIKitTargetFingerprint]) -> String? {
+                       targets: [String: UIKitTargetFingerprint],
+                       query: UIViewTargetsInput) -> String? {
         if targets.count > Self.maxFingerprints {
             UIKitCommandLogging.info("command", "ui snapshot skipped oversized fingerprints=\(targets.count) max=\(Self.maxFingerprints)")
             return nil
@@ -245,9 +254,25 @@ public final class UIKitSnapshotStore {
         entries[id] = Entry(createdAt: stamp,
                             lastAccessedAt: stamp,
                             fingerprints: targets,
-                            context: context)
+                            context: context,
+                            query: query)
         UIKitCommandLogging.info("command", "ui snapshot insert id=\(id) fingerprints=\(targets.count)")
         return id
+    }
+
+    /// 返回 snapshot 签发时使用的查询参数。
+    ///
+    /// `ui.wait(snapshotChanged)` 用它重采 whole-table，保证与签发时同 query（避免 query
+    /// 不一致导致 path 集合天然不同、首轮即误判「已变化」）。snapshot 未知或已过期返回 nil，
+    /// 调用方回退到默认 query 并由 `matchesWholeTable` 返回 nil 记 `snapshotUnavailableReason`。
+    ///
+    /// 纯读不改 LRU/TTL（保活由 `matchesWholeTable`/`isStale` 在真正校验时更新）。
+    ///
+    /// - Parameter snapshotID: 参照快照标识。
+    /// - Returns: 签发时的查询参数；snapshot 不存在或已过期时返回 nil。
+    func signingQuery(for snapshotID: String) -> UIViewTargetsInput? {
+        guard let entry = entries[snapshotID], !isExpired(entry: entry) else { return nil }
+        return entry.query
     }
 
     /// 校验 snapshot 是否陈旧（snapshot 不存在、TTL 过期、context 变化、path 缺失或指纹不匹配）。

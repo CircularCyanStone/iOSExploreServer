@@ -72,4 +72,29 @@ func alertRespondDryRunFalseThrowsButtonRequired() {
         Issue.record("unexpected error: \(error)")
     }
 }
+
+@Test("alert respond 暴露输入框 placeholder 与 secure 标记") @MainActor
+func alertRespondExposesTextFields() throws {
+    let alert = UIAlertController(title: "登录", message: nil, preferredStyle: .alert)
+    alert.addTextField { tf in tf.placeholder = "用户名" }
+    alert.addTextField { tf in
+        tf.placeholder = "密码"
+        tf.isSecureTextEntry = true
+    }
+    alert.addAction(UIAlertAction(title: "OK", style: .default))
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    let context = UIKitContextProvider.Context(window: window,
+                                               rootViewController: alert,
+                                               topViewController: alert,
+                                               rootView: alert.view)
+    let input = UIAlertRespondInput()
+    let data = try UIAlertRespondExecutor.execute(input: input, context: context)
+    // 输入型 alert 必须暴露 textFields，让 agent 识别「需先填输入框」；原文不回（防泄露密码）。
+    let textFields = try #require(data["textFields"]?.arrayValue)
+    #expect(textFields.count == 2)
+    #expect(textFields[0].objectValue?["placeholder"]?.stringValue == "用户名")
+    #expect(textFields[0].objectValue?["isSecure"]?.boolValue == false)
+    #expect(textFields[1].objectValue?["placeholder"]?.stringValue == "密码")
+    #expect(textFields[1].objectValue?["isSecure"]?.boolValue == true)
+}
 #endif

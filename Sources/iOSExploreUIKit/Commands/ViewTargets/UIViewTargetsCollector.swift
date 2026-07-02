@@ -51,7 +51,8 @@ enum UIViewTargetsCollector {
             digest: digest
         )
         let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
-                                                          targets: fingerprints)
+                                                          targets: fingerprints,
+                                                          query: query)
         let snapshotFields = UIKitSnapshotResponse.fields(for: snapshotID)
         let data: JSON = [
             "screen": .object(screenJSON(window: context.window,
