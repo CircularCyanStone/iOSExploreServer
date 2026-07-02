@@ -262,6 +262,40 @@ public enum CommandFields {
         }
     }
 
+    /// 必填限定范围整数字段：缺失、null、非 JSON safe integer、非有限整数或越界时抛出解析错误。
+    ///
+    /// 用于调用方必须明确选择目标的场景，例如导航栏按钮下标。与带默认值的 `int` 不同，本字段
+    /// 会在 schema 的 required 列表里出现，避免工具客户端误以为可以省略。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - range: 允许的闭区间。
+    ///   - description: 字段说明。
+    /// - Returns: 解析为 `Int` 的命令字段。
+    public static func requiredInt(_ name: String,
+                                   range: ClosedRange<Int>,
+                                   description: String) -> CommandField<Int> {
+        precondition(range.lowerBound <= jsonSafeIntegerLimit && range.upperBound >= -jsonSafeIntegerLimit,
+                     "\(name) range must include at least one JSON safe integer")
+
+        let schemaMinimum = Double(Swift.max(range.lowerBound, -jsonSafeIntegerLimit))
+        let schemaMaximum = Double(Swift.min(range.upperBound, jsonSafeIntegerLimit))
+        return CommandField(name: name,
+                            schema: CommandFieldSchema(type: .integer,
+                                                       required: true,
+                                                       description: description,
+                                                       minimum: schemaMinimum,
+                                                       maximum: schemaMaximum)) { raw in
+            guard let raw = raw, raw != .null else {
+                throw CommandInputParseError("missing required parameter '\(name)'")
+            }
+            guard let parsed = try parseInteger(raw, name: name), range.contains(parsed) else {
+                throw CommandInputParseError("\(name) must be an integer between \(range.lowerBound) and \(range.upperBound)")
+            }
+            return parsed
+        }
+    }
+
     /// 限定范围整数字段：缺失使用默认值，存在但非 JSON safe integer、非有限整数或越界抛出解析错误。
     ///
     /// `default` 必须落在 `range` 内；这是声明字段时的开发期不变量。工厂本身非 throwing，

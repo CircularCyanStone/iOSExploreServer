@@ -173,6 +173,21 @@ public enum ExploreError: String, Sendable {
     /// 当前页面没有可返回的导航路径。
     case navigationBackUnavailable = "navigation_back_unavailable"
 
+    /// 当前页面没有可操作的导航栏。
+    case navigationBarUnavailable = "navigation_bar_unavailable"
+
+    /// 指定的导航栏按钮不存在。
+    case navigationBarItemNotFound = "navigation_bar_item_not_found"
+
+    /// 导航栏按钮与调用方观察到的标题或 identifier 不一致。
+    case navigationBarItemMismatch = "navigation_bar_item_mismatch"
+
+    /// 导航栏按钮存在但当前不可用。
+    case navigationBarItemDisabled = "navigation_bar_item_disabled"
+
+    /// 导航栏按钮存在但没有可安全触发的 target-action 或 customView 控件动作。
+    case navigationBarItemUnsupported = "navigation_bar_item_unsupported"
+
     /// 当前没有可处理的 UIAlertController。
     case alertUnavailable = "alert_unavailable"
 

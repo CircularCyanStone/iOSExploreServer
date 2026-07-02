@@ -53,6 +53,11 @@ enum UIViewHierarchyCollector {
             "snapshotID": snapshotFields.id,
             "snapshotUnavailableReason": snapshotFields.unavailableReason,
         ]
+        // 与 ui.viewTargets 同口径暴露 navigationBar 摘要，避免出现「viewTargets 看得到、
+        // topViewHierarchy 看不到」的分叉；深度排查与普通观察用同一份导航栏语义。
+        data["navigationBar"] = .object(
+            UINavigationBarInspector.summarize(topViewController: context.topViewController).toJSON()
+        )
 
         if query.hasIdentifierFilter {
             let matches = UIViewHierarchyBuilder.matches(in: element, query: query)

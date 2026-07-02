@@ -33,6 +33,11 @@ func navigationBackCommandSchemaMatchesInputFields() {
     #expect(NavigationBackCommand.Input.inputSchema.fields.map(\.name) == UINavigationBackInput.inputSchema.fields.map(\.name))
 }
 
+@Test("ui.navigation.tapBarButton 命令 schema 声明 typed input 字段")
+func navigationBarButtonCommandSchemaMatchesInputFields() {
+    #expect(NavigationBarButtonCommand.Input.inputSchema.fields.map(\.name) == UINavigationBarButtonInput.inputSchema.fields.map(\.name))
+}
+
 @Test("ui.wait 命令 schema 声明 typed input 字段")
 func waitCommandSchemaMatchesInputFields() {
     #expect(WaitCommand.Input.inputSchema.fields.map(\.name) == UIWaitInput.inputSchema.fields.map(\.name))

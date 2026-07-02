@@ -218,10 +218,10 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
         #expect(!text.contains(#""error":"#))
     }
 
-    /// 显式注册后 `help` 必须经 HTTP 列出全部 12 个 UIKit action（registrar count=12）。
+    /// 显式注册后 `help` 必须经 HTTP 列出全部 13 个 UIKit action（registrar count=13）。
     ///
-    /// 这是 registrar 计数的端到端回归点：经真实 HTTP `help` 取回命令列表，断言全部 12 个 `ui.*` action 都已注册并可被发现。
-    @Test("registerUIKitCommands 后 help 经 HTTP 含 12 个 ui.* action")
+    /// 这是 registrar 计数的端到端回归点：经真实 HTTP `help` 取回命令列表，断言全部 13 个 `ui.*` action 都已注册并可被发现。
+    @Test("registerUIKitCommands 后 help 经 HTTP 含 13 个 ui.* action")
     func helpListsAllUIKitActions() async throws {
         let server = ExploreServer(port: testPort)
         server.registerUIKitCommands()
@@ -230,7 +230,7 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
 
         let text = try await send(action: "help")
         #expect(envelopeCode(text) == "ok")
-        // 四个旧命令 + screenshot/input/keyboard.dismiss/scroll/navigation.back。
+        // 四个旧命令 + screenshot/input/keyboard.dismiss/scroll/navigation.back/navigation.tapBarButton。
         #expect(text.contains(#""action":"ui.topViewHierarchy""#))
         #expect(text.contains(#""action":"ui.viewTargets""#))
         #expect(text.contains(#""action":"ui.control.sendAction""#))
@@ -240,6 +240,7 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
         #expect(text.contains(#""action":"ui.keyboard.dismiss""#))
         #expect(text.contains(#""action":"ui.scroll""#))
         #expect(text.contains(#""action":"ui.navigation.back""#))
+        #expect(text.contains(#""action":"ui.navigation.tapBarButton""#))
         #expect(text.contains(#""action":"ui.wait""#))
         #expect(text.contains(#""action":"ui.scrollToElement""#))
         #expect(text.contains(#""action":"ui.alert.respond""#))

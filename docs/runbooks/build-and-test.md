@@ -4,7 +4,7 @@
 
 ```bash
 swift build                              # 构建（core + iOSExploreUIKit）
-swift test                               # 全量测试（macOS SPM 当前 101 个，含端到端、UIKit 模型/解析/snapshot store；iOS framework 下为 104 个，额外覆盖 UIKit 指纹状态与动作能力）
+swift test                               # 全量测试（macOS SPM 当前 190 个，含端到端、UIKit 模型/解析/snapshot store；iOS framework 下当前 269 个，额外覆盖 UIKit 指纹状态与动作能力）
 swift test --enable-code-coverage        # 带覆盖率（当前行覆盖 86.62%）
 swift test --filter Integration          # 只跑端到端集成测试
 ```

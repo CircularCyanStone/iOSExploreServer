@@ -36,13 +36,17 @@ final class ViewController: UIViewController {
         setupLayout()
         updateStatus(running: false)
 
-        // 顶部导航入口：进入 UIControl 测试页（供 ui.control.sendAction 命令压测）
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
+        // 顶部导航入口：进入 UIControl 测试页（供 ui.control.sendAction 命令压测）。
+        // 同时是 `ui.navigation.tapBarButton` 的真实闭环样本：补稳定 identifier，让 Agent
+        // 观察到 `navigationBar.rightItems[0]` 后可带 identifier 二次确认再触发，而不是坐标硬点。
+        let controlTestItem = UIBarButtonItem(
             title: "控件测试",
             style: .plain,
             target: self,
             action: #selector(openControlTest)
         )
+        controlTestItem.accessibilityIdentifier = "example.controlTest"
+        navigationItem.rightBarButtonItem = controlTestItem
 
         // 演示自定义命令 + UIKit 信息注入(register 同步,无需 Task)
         server.register(action: "greet", description: "按 name 打招呼", input: ExampleGreetingInput.self) { input in

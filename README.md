@@ -27,7 +27,7 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 请求：`POST /`，body `{"action":"<name>","data":{...}}`。
 响应：`{"code":"ok","data":{...}}` 或 `{"code":"...","message":"..."}`。
 
-### 命令清单（11 个）
+### 命令清单（17 个内置 action）
 
 **core 内置**（`ExploreServer.init` 自动注册；只依赖 Foundation + Network）：
 
@@ -50,6 +50,11 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 | `ui.input` | 向 UITextField / UITextView 注入文本（UITextInput.insertText） |
 | `ui.keyboard.dismiss` | 收起当前 first responder / 键盘 |
 | `ui.scroll` | 在 UIScrollView 上按方向 + 距离滚动 |
+| `ui.navigation.back` | 返回上一页（auto 先 dismiss 再 navigation pop） |
+| `ui.navigation.tapBarButton` | 触发导航栏 UIBarButtonItem（placement + index，可用 title/identifier 防误点） |
+| `ui.wait` | 等待 UI 稳定或等待目标/文本/快照变化 |
+| `ui.scrollToElement` | 滚动到包含指定文本/identifier 的元素可见 |
+| `ui.alert.respond` | 查询当前 UIAlertController；当前版本只能 dryRun 查询 |
 
 UIKit 命令不会自动注册，宿主 App 须显式开启：
 
@@ -58,10 +63,10 @@ import iOSExploreServer
 import iOSExploreUIKit
 
 let server = ExploreServer()
-server.registerUIKitCommands()   // 一次性注册 12 个 ui.* 命令
+server.registerUIKitCommands()   // 一次性注册 13 个 ui.* 命令
 ```
 
-`ui.*` 典型闭环：先 `ui.viewTargets`（或 `topViewHierarchy`）拿到目标的 `path` 和 `snapshotID` → 用 `path` + `snapshotID` 调 `ui.tap` / `ui.input` / `ui.scroll`（snapshotID 做陈旧防护，防画面已变还按旧坐标操作）→ 必要时用 `ui.keyboard.dismiss` 收起键盘 / `ui.navigation.back` 返回上一页 → `ui.screenshot` 截图看效果。这就是 AI agent 驱动 UI 的完整循环。
+`ui.*` 典型闭环：先 `ui.viewTargets`（或 `topViewHierarchy`）观察页面并拿到目标的 `path` / `snapshotID` → 优先用 `accessibilityIdentifier`，必要时用 `path + snapshotID` 调 `ui.tap` / `ui.input` / `ui.scroll`（snapshotID 做陈旧防护，防画面已变还按旧路径操作）→ 动作后用 `ui.wait` 等待明确反馈，或重新 `ui.viewTargets` 观察页面 → 必要时用 `ui.screenshot` 留失败证据。`ui.tap` 成功只表示动作已发出，不表示测试步骤成功。
 
 ### 注册自定义命令
 
@@ -84,13 +89,13 @@ server.register(action: "greet", description: "按 name 打招呼", input: Greet
 
 ## 现状与路线图
 
-**已实现**：11 个 action（core 4 + UIKit 7），补齐了 AI agent 闭环驱动 iPhone UI 的能力链——查询（`viewTargets` / `topViewHierarchy`）→ 看屏（`screenshot`）→ 操作（`tap` / `input` / `scroll` / `control`）。
+**已实现**：17 个内置 action（core 4 + UIKit 13）。Example App 额外注册 `greet` / `device`，`help` 实测共 19 个 action。现有能力链已覆盖查询（`viewTargets` / `topViewHierarchy`）→ 看屏（`screenshot`）→ 操作（`tap` / `input` / `scroll` / `control` / `navigation` / `keyboard`）→ 等待（`ui.wait`）。
 
-**质量**：macOS `swift test` 165 用例 + iOS framework 207 用例全绿，行覆盖 91.5%。
+**质量**：macOS `swift test` 190 用例 + iOS framework 269 用例全绿；最近一次三层验证记录见 `docs/superpowers/agent-mcp-exploration/runtime-validation-2026-07-02.md`。
 
 **最近修复**：HTTPListener 连接槽耗尽后 server 不响应（Network 层 `newConnectionLimit` 被误设为业务上限，连接关闭后不释放）。
 
-**下一步**：Mac 侧 MCP server——把每个 `action` 暴露为一个 MCP tool，让 AI（如 Claude）直接驱动 iPhone App，不必手写 `curl`。
+**下一步**：Agent 使用协议已写入 `docs/superpowers/agent-mcp-exploration/agent-usage-protocol.md`。接下来优先补 navigationBar / UIBarButtonItem 可达性，再处理多结果等待与弹窗响应能力。目标是让 Agent 能按自然语言测试目标持续观察、操作并验证 App，而不是只暴露一组零散命令。
 
 ## 调试日志
 

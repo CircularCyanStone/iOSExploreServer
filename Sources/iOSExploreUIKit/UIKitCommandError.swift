@@ -185,6 +185,66 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           logMessage: "ui navigation back unavailable action=\(action) top=\(top)")
     }
 
+    /// 当前顶部控制器不在导航控制器中，无法读取或触发导航栏按钮。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - top: 当前顶部控制器类型摘要。
+    /// - Returns: `navigation_bar_unavailable` 失败描述。
+    static func navigationBarUnavailable(action: String, top: String) -> UIKitCommandError {
+        UIKitCommandError(code: .navigationBarUnavailable,
+                          message: "navigation bar unavailable",
+                          logMessage: "ui navigation bar unavailable action=\(action) top=\(top)")
+    }
+
+    /// 指定侧和下标没有对应导航栏按钮。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - selector: 调用方选择器摘要。
+    /// - Returns: `navigation_bar_item_not_found` 失败描述。
+    static func navigationBarItemNotFound(action: String, selector: String) -> UIKitCommandError {
+        UIKitCommandError(code: .navigationBarItemNotFound,
+                          message: "navigation bar item not found",
+                          logMessage: "ui navigation bar item not found action=\(action) selector=\(selector)")
+    }
+
+    /// 导航栏按钮存在，但标题或 identifier 与调用方观察时不一致。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - selector: 调用方选择器摘要。
+    /// - Returns: `navigation_bar_item_mismatch` 失败描述。
+    static func navigationBarItemMismatch(action: String, selector: String) -> UIKitCommandError {
+        UIKitCommandError(code: .navigationBarItemMismatch,
+                          message: "navigation bar item changed since observation",
+                          logMessage: "ui navigation bar item mismatch action=\(action) selector=\(selector)")
+    }
+
+    /// 导航栏按钮存在，但当前 disabled。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - selector: 调用方选择器摘要。
+    /// - Returns: `navigation_bar_item_disabled` 失败描述。
+    static func navigationBarItemDisabled(action: String, selector: String) -> UIKitCommandError {
+        UIKitCommandError(code: .navigationBarItemDisabled,
+                          message: "navigation bar item disabled",
+                          logMessage: "ui navigation bar item disabled action=\(action) selector=\(selector)")
+    }
+
+    /// 导航栏按钮存在，但没有 target-action 或可触发的 UIControl customView。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - selector: 调用方选择器摘要。
+    /// - Returns: `navigation_bar_item_unsupported` 失败描述。
+    static func navigationBarItemUnsupported(action: String, selector: String) -> UIKitCommandError {
+        UIKitCommandError(code: .navigationBarItemUnsupported,
+                          message: "navigation bar item has no supported action",
+                          logMessage: "ui navigation bar item unsupported action=\(action) selector=\(selector)")
+    }
+
     /// 当前没有可处理的 `UIAlertController`。
     ///
     /// - Parameter action: 触发失败的 action 名。

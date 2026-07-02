@@ -54,7 +54,7 @@ enum UIViewTargetsCollector {
                                                           targets: fingerprints,
                                                           query: query)
         let snapshotFields = UIKitSnapshotResponse.fields(for: snapshotID)
-        let data: JSON = [
+        var data: JSON = [
             "screen": .object(screenJSON(window: context.window,
                                          rootViewController: context.rootViewController,
                                          topViewController: context.topViewController)),
@@ -67,6 +67,11 @@ enum UIViewTargetsCollector {
             "snapshotID": snapshotFields.id,
             "snapshotUnavailableReason": snapshotFields.unavailableReason,
         ]
+        // 导航栏按钮不是 rootView 子树里的普通 view，单独由 inspector 读 navigationItem 摘要，
+        // 让 Agent 在同一份观察结果里既看到普通目标，也看到 UIBarButtonItem 语义目标。
+        data["navigationBar"] = .object(
+            UINavigationBarInspector.summarize(topViewController: context.topViewController).toJSON()
+        )
         UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(targets.count) topViewController=\(String(describing: type(of: context.topViewController)))")
         return data
     }
