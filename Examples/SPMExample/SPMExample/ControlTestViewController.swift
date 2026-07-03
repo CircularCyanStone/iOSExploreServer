@@ -224,10 +224,13 @@ final class ControlTestViewController: UIViewController {
     }
 
     @objc private func switchChanged() {
+        // 只读当前值更新显示，不再 setOn 翻转：handler 若在 valueChanged 里再次 setOn(!on)，
+        // 会把 ui.tap 的 switch.toggle（executor setOn(!previous)）刚设的值翻回去，导致命令
+        // 返回 previousValue == currentValue（看似没生效）。与 slider/segmented/stepper 的
+        // handler 对齐：只反映状态，不改开关本身。
         let on = toggleSwitch.isOn
-        toggleSwitch.setOn(!on, animated: true)
-        switchStateLabel.text = !on ? "on" : "off"
-        logEvent(identifier: "test.switch", event: "valueChanged → \(!on ? "on" : "off")")
+        switchStateLabel.text = on ? "on" : "off"
+        logEvent(identifier: "test.switch", event: "valueChanged → \(on ? "on" : "off")")
     }
 
     @objc private func sliderChanged() {
