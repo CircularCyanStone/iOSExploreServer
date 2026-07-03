@@ -27,7 +27,7 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 请求：`POST /`，body `{"action":"<name>","data":{...}}`。
 响应：`{"code":"ok","data":{...}}` 或 `{"code":"...","message":"..."}`。
 
-### 命令清单（17 个内置 action）
+### 命令清单（18 个内置 action）
 
 **core 内置**（`ExploreServer.init` 自动注册；只依赖 Foundation + Network）：
 
@@ -53,6 +53,7 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 | `ui.navigation.back` | 返回上一页（auto 先 dismiss 再 navigation pop） |
 | `ui.navigation.tapBarButton` | 触发导航栏 UIBarButtonItem（placement + index，可用 title/identifier 防误点） |
 | `ui.wait` | 等待 UI 稳定或等待目标/文本/快照变化 |
+| `ui.waitAny` | 一次轮询等待多个条件，第一个命中返回 matchedID/matchedIndex |
 | `ui.scrollToElement` | 滚动到包含指定文本/identifier 的元素可见 |
 | `ui.alert.respond` | 查询当前 UIAlertController；当前版本只能 dryRun 查询 |
 
@@ -63,10 +64,10 @@ import iOSExploreServer
 import iOSExploreUIKit
 
 let server = ExploreServer()
-server.registerUIKitCommands()   // 一次性注册 13 个 ui.* 命令
+server.registerUIKitCommands()   // 一次性注册 14 个 ui.* 命令
 ```
 
-`ui.*` 典型闭环：先 `ui.viewTargets` 观察页面拿到 canonical target 的 `path` 与本次 `viewSnapshotID`（仅此命令签发，`ui.screenshot` / `ui.topViewHierarchy` 都不再签发）→ 优先用 `accessibilityIdentifier`，必要时用 `path + viewSnapshotID` 调 `ui.tap` / `ui.control.sendAction` / `ui.input` / `ui.scroll`（viewSnapshotID 做陈旧防护，防画面已变还按旧路径操作；命中陈旧时按提示重新 `ui.viewTargets` 拿新 viewSnapshotID 重试）→ 动作后用 `ui.wait` 等待明确反馈，或重新 `ui.viewTargets` 观察页面 → 必要时用 `ui.screenshot` 留失败证据。`ui.tap` 成功只表示激活动作已发出，不表示测试步骤成功。
+`ui.*` 典型闭环：先 `ui.viewTargets` 观察页面拿到 canonical target 的 `path` 与本次 `viewSnapshotID`（仅此命令签发，`ui.screenshot` / `ui.topViewHierarchy` 都不再签发）→ 优先用 `accessibilityIdentifier`，必要时用 `path + viewSnapshotID` 调动作。`ui.tap` / `ui.control.sendAction` 必填 `viewSnapshotID` 并校验 freshness；`ui.input` / `ui.scroll` 只有在 `path + viewSnapshotID` 组合下做可选陈旧防护；滚动后应重新 `ui.viewTargets`。动作后用 `ui.wait` 等待明确反馈，或重新 `ui.viewTargets` 观察页面；必要时用 `ui.screenshot` 留失败证据。`ui.tap` 成功只表示激活动作已发出，不表示测试步骤成功。可直接照跑的 JSON/curl 闭环见 `docs/superpowers/agent-mcp-exploration/curl-json-loop-protocol.md`。
 
 ### 注册自定义命令
 
@@ -89,13 +90,13 @@ server.register(action: "greet", description: "按 name 打招呼", input: Greet
 
 ## 现状与路线图
 
-**已实现**：17 个内置 action（core 4 + UIKit 13）。Example App 额外注册 `greet` / `device`，`help` 实测共 19 个 action。现有能力链已覆盖查询（`viewTargets` / `topViewHierarchy`）→ 看屏（`screenshot`）→ 操作（`tap` / `input` / `scroll` / `control` / `navigation` / `keyboard`）→ 等待（`ui.wait`）。
+**已实现**：18 个内置 action（core 4 + UIKit 14）。Example App 额外注册 `greet` / `device`，`help` 实测共 20 个 action。现有能力链已覆盖查询（`viewTargets` / `topViewHierarchy`）→ 看屏（`screenshot`）→ 操作（`tap` / `input` / `scroll` / `control` / `navigation` / `keyboard`）→ 等待（`ui.wait` 单条件 / `ui.waitAny` 多分支）。
 
-**质量**：macOS `swift test` 190 用例 + iOS framework 269 用例全绿；最近一次三层验证记录见 `docs/superpowers/agent-mcp-exploration/runtime-validation-2026-07-02.md`。
+**质量**：macOS `swift test` 210 用例 + iOS framework 310 用例全绿；历史三层验证记录见 `docs/superpowers/agent-mcp-exploration/runtime-validation-2026-07-02.md`。
 
 **最近修复**：HTTPListener 连接槽耗尽后 server 不响应（Network 层 `newConnectionLimit` 被误设为业务上限，连接关闭后不释放）。
 
-**下一步**：Agent 使用协议已写入 `docs/superpowers/agent-mcp-exploration/agent-usage-protocol.md`。接下来优先补 navigationBar / UIBarButtonItem 可达性，再处理多结果等待与弹窗响应能力。目标是让 Agent 能按自然语言测试目标持续观察、操作并验证 App，而不是只暴露一组零散命令。
+**下一步**：Agent 使用协议已写入 `docs/superpowers/agent-mcp-exploration/agent-usage-protocol.md`，可运行的 curl/JSON 闭环写入 `docs/superpowers/agent-mcp-exploration/curl-json-loop-protocol.md`。navigationBar / UIBarButtonItem 可达性与 `ui.tap` 结构化默认激活已完成；`ui.alert.respond` 已明确为 query-only；多结果等待（`ui.waitAny`）已完成——一次轮询等待多个可能结局，按命中 `matchedID` 分支。目标是让 Agent 能按自然语言测试目标持续观察、操作并验证 App，而不是只暴露一组零散命令。
 
 ## 调试日志
 

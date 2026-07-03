@@ -63,6 +63,11 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
     - navigationBar / UIBarButtonItem 当前不可达；
     - `ui.tap` 对非 `UIControl` 的 UIBarButtonItem 内部视图会拒绝；
     - `ui.wait textExists` 只检测当前可见文本。
+- [runtime-validation-2026-07-03.md](./runtime-validation-2026-07-03.md)
+  - navigationBar / `ui.tap` 默认激活 / `ui.waitAny` / alert query-only 全部落地后的第二轮真实闭环（SPMExample + iPhone 17 模拟器）。
+  - `observe → navigation.tapBarButton → tap/control.sendAction → waitAny → re-observe` 在 ControlTest 子页完整跑通。
+  - 修了 2 个只有真机跑才暴露的问题：curl 协议 `navigation.tapBarButton` 示例多带的 `dryRun` 字段、SPMExample `ControlTestViewController.switchChanged()` 自翻转。
+  - 测试基线推进到 SPM 210 / framework 310。
 
 ### 2.5 Agent 使用协议
 
@@ -70,7 +75,12 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
   - 说明 Agent 应该如何组合现有命令。
   - 明确：`observe → act → wait/observe again → judge` 是默认闭环。
   - 明确：动作成功不等于测试通过；测试是否通过必须看最终页面证据。
-  - 已同步 navigationBar 专用动作与 `ui.tap` 结构化默认激活后的使用顺序；`textExists` 仍只查当前可见文本，弹窗能力仍需后续补齐。
+  - 已同步 navigationBar 专用动作、`ui.tap` 结构化默认激活和 `ui.alert.respond` query-only 边界；`textExists` 仍只查当前可见文本。
+
+- [curl-json-loop-protocol.md](./curl-json-loop-protocol.md)
+  - 给外部 Agent / 人工调试者的可运行 curl/JSON 操作协议。
+  - 用真实 HTTP body 展示 `observe → action → ui.wait(snapshotChanged) → re-observe → verify`。
+  - 明确 freshness 字段、滚动后重新观察、navigationBar/alert 的当前边界。
 
 ### 2.6 navigationBar 可达性设计与执行任务包
 
@@ -107,14 +117,16 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 | 明确当前项目目标 | 已完成第一轮 | 方向稿 | 当前是 Agent MCP 应用探索服务，不是完整测试平台。 |
 | 静态体检现有命令 | 已完成第一轮 | 命令体检稿 | 已按观察、动作、等待、截图、弹窗、导航分类评估。 |
 | 建立文档入口地图 | 已完成第一版 | 本文件 | 后续所有关键讨论和进度都应挂到这里。 |
-| 运行现有测试验证能力边界 | 已完成第一轮 | [runtime-validation-2026-07-02.md](./runtime-validation-2026-07-02.md) | SPM `swift test` 185 个、framework `xcodebuild test` 258 个全过；主页 observe→act(scroll)→wait→observe 闭环跑通；实测暴露 3 个体检稿未提及的边界：navigationBar/UIBarButtonItem 完全不可达、`ui.tap` 拒绝非 UIControl、`textExists` 只检测可见文本。结论：先写 Agent 使用协议，navigationBar 可达性补齐优先级上调。 |
+| 运行现有测试验证能力边界 | 已完成第一轮（历史基线） | [runtime-validation-2026-07-02.md](./runtime-validation-2026-07-02.md) | 该记录是 navigationBar 可达性和 `ui.tap` 结构化默认激活之前的历史基线：当时 SPM 185、framework 258 全过，主页 observe→act(scroll)→wait→observe 跑通，并暴露 navigationBar 不可达、旧 `ui.tap` 边界、`textExists` 只检测可见文本。前两项已在后续阶段补齐；`textExists` 可见性限制仍成立。 |
+| 真实闭环复验 | 已完成第一轮 | [runtime-validation-2026-07-03.md](./runtime-validation-2026-07-03.md) | SPMExample + iPhone 17 模拟器真跑 `observe → navigation.tapBarButton → tap → waitAny → re-observe`；修了 curl 协议 `dryRun` 字段与 ControlTest switch 自翻转两个真机才暴露的问题；基线 SPM 210 / framework 310。 |
 | 写 Agent 使用协议 | 已完成第一版 | [agent-usage-protocol.md](./agent-usage-protocol.md) | 已写清观察、动作、等待、重新观察、最终判断，以及 stale、ambiguous、wait_timeout、navigationBar 不可达等边界。 |
 | 设计 navigationBar 可达性 | 已完成第一版 | [navigationbar 设计稿](../specs/2026-07-02-navigationbar-reachability-design.md) + [实施计划](../plans/2026-07-02-navigationbar-reachability.md) + [Claude Code 任务包](./claude-code-navigationbar-task.md) | 推荐把导航栏按钮作为语义目标返回，并新增 `ui.navigation.tapBarButton`，不依赖私有 view，不放宽坐标点击。 |
-| 实现 navigationBar 可达性 | 已完成第一轮 | [navigationBar 设计稿](../specs/2026-07-02-navigationbar-reachability-design.md) + `ui.navigation.tapBarButton` | `ui.viewTargets` / `ui.topViewHierarchy` 响应现暴露 `navigationBar` 摘要；`ui.navigation.tapBarButton` 按 `placement + index` 触发 `UIBarButtonItem`，支持 `title` / `accessibilityIdentifier` 二次确认。SPM 190 + framework 269 全绿；执行核心按 selector 签名派发，避开 `UIApplication.sendAction` 在单测里不派发无参 action 的问题。 |
+| 实现 navigationBar 可达性 | 已完成第一轮 | [navigationBar 设计稿](../specs/2026-07-02-navigationbar-reachability-design.md) + `ui.navigation.tapBarButton` | `ui.viewTargets` / `ui.topViewHierarchy` 响应现暴露 `navigationBar` 摘要；`ui.navigation.tapBarButton` 按 `placement + index` 触发 `UIBarButtonItem`，支持 `title` / `accessibilityIdentifier` 二次确认。执行核心按 selector 签名派发，避开 `UIApplication.sendAction` 在单测里不派发无参 action 的问题；该阶段回归基线为 SPM 196 + framework 290（后续 `ui.tap` 结构化默认激活与 `ui.waitAny` 已将基线推进到 SPM 210 + framework 310）。 |
 | 设计 `ui.tap` 结构化默认激活 | 已完成 | [`ui.tap` 设计说明](../specs/iOSExploreServer-ui-tap-design-rationale.md) + [最终重构方案](../specs/iOSExploreServer-ui-tap-final-refactor-plan.md) + [实施计划](../plans/2026-07-02-ui-tap-structural-default-activation.md) | 由得物文章触发，明确 `ui.tap` 保留为 Agent 层默认动作，但不再表示坐标点击、真实触摸注入或 ancestor fallback。 |
 | 实现 `ui.tap` 结构化默认激活 | 已完成第一轮 | `UITapInput` / `UIKitDefaultActivationResolver` / `UIKitActionExecutor` / `UIViewTargetsCollector` / snapshot 相关改造 | `ui.tap` 现在只接受 `accessibilityIdentifier` 或 `path` + 必填 `viewSnapshotID`；先校验 `ui.viewTargets` 签发的结构快照，再按 route 执行：按钮 `touchUpInside`、开关 toggle + `valueChanged`、文本输入 focus。`ui.screenshot` 不再签发快照；`ui.wait snapshotChanged` 使用 `viewSnapshotID`；`ui.viewTargets` 只签发最终返回 target 的 fingerprint。 |
-| 设计多结果等待能力 | 未开始 | 待补 | 需要决定是新增命令还是改造现有 `ui.wait`。 |
-| 修正弹窗能力 | 未开始 | 待补 | 需要决定改名为 query，还是补齐 respond。 |
+| 设计多结果等待能力 | 已完成 | 决定新增命令而非改造 `ui.wait` | 保持 `ui.wait` 单条件不变；新增 `ui.waitAny` 一次轮询等待多个结局，命中后默认不返回页面快照，只回 `matchedID`/`matchedIndex`/`matchedMode`。 |
+| 实现多结果等待能力 | 已完成 | `ui.waitAny`（`UIWaitAnyCommand` / `UIWaitAnyModels` / `UIWaitAnyExecutor`） | 与 `ui.wait` 共享五模式判断原语（`ConditionProbe`）；cancel 与瞬时层级不可用收敛到 `wait_timeout`；本阶段完整回归为 SPM 210 + framework 310。 |
+| 收敛弹窗能力边界 | 已完成第一轮 | [agent-usage-protocol.md](./agent-usage-protocol.md) + [curl-json-loop-protocol.md](./curl-json-loop-protocol.md) | `ui.alert.respond` 保持 query-only：`dryRun=true` 查询标题/消息/按钮/输入框，`dryRun=false` 稳定返回 `alert_button_required`；公共 API 无法触发 `UIAlertAction` handler，阻断流程走宿主自定义 action、人工或后续私有 API 评估。 |
 
 ## 3.1 协作执行方式
 
@@ -235,9 +247,14 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 
 ## 6. 下一步建议
 
-下一步不是继续讨论旧的 `ui.tap` 语义，而是基于 3.2 锚点做一次合并后的整体评估：
+`ui.tap` 结构化默认激活、navigationBar 可达性、`ui.waitAny` 多结果等待、`ui.alert.respond` query-only 边界均已落地。下一步按优先级：
 
-1. 对当前 `ui.tap` / `ui.viewTargets` / `viewSnapshotID` / `ui.control.sendAction` / `ui.wait snapshotChanged` 的实际实现做一次源码级 review，确认代码、help schema、README、Agent 使用协议和测试断言是否完全一致。
-2. 补一轮真实闭环验证：`ui.viewTargets → ui.tap/button → ui.wait或observe`、`ui.viewTargets → ui.tap/switch → observe`、`ui.viewTargets → ui.tap/text input → ui.input`、`ui.viewTargets → ui.control.sendAction`、`ui.screenshot` 只作证据。
-3. 在这个锚点稳定后，再继续设计“多结果等待并返回最终页面”的能力。
-4. 弹窗能力仍是后续硬缺口：需要决定 `ui.alert.respond` 是继续 query/dry-run，还是补齐真实响应执行器。
+1. **合并后源码级 review + 当前闭环验证（第一优先级）**：对 `ui.tap` / `ui.viewTargets` / `viewSnapshotID` / `ui.control.sendAction` / `ui.wait(snapshotChanged)` / `ui.waitAny` 的实际实现做一次源码级 review，确认代码、help schema、README、Agent 使用协议和测试断言完全一致；并用 [curl-json-loop-protocol.md](./curl-json-loop-protocol.md) 在真机/模拟器补一轮真实闭环验证（`observe → act → wait/waitAny → re-observe → verify`）。
+
+2. **MCP 层固定编排：`ui.waitAny` 命中后自动跟一次 `ui.viewTargets`（第二优先级）**：iPhone 端命令保持小而稳，命中后的「重新观察页面」固定由 Mac 侧 MCP 层在 `waitAny` 返回 `matchedID` 后立即发起 `ui.viewTargets`（结论见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md) 的方案 B）。**本期不实现 `ui.waitAny returnObservation`**——只有真机计时证明那次 round trip 是瓶颈才启动。
+
+3. **真机 / Example App 闭环计时与验证（第三优先级）**：用 Example App 跑通完整闭环，并测量命中后那次 `ui.viewTargets` 的 HTTP 往返 P50/P95，作为是否启动 `returnObservation` 设计的依据。
+
+4. **`ui.alert.respond` 二期只作为未来 spike**：当前 query-only 边界（`dryRun=true` 查询、`dryRun=false` 稳定返回 `alert_button_required`）已收敛，不进入本轮处理；若未来要真正触发 `UIAlertAction` handler，需单独评估私有 API / KVC 风险（见 [agent-usage-protocol.md](./agent-usage-protocol.md) §7）。
+
+> 多结果等待已落地为 `ui.waitAny`，不再作为未完成项；动作后轻量 final observation 的归属评估见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md)。

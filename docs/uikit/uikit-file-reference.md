@@ -20,7 +20,7 @@
 | `Commands/Scroll/` | 2 | `ui.scroll` 命令（adapter + models） |
 | `Commands/Keyboard/` | 2 | `ui.keyboard.dismiss` 命令（adapter + models） |
 | `Commands/Navigation/` | 4 | `ui.navigation.back` + `ui.navigation.tapBarButton` 命令（各 adapter + models） |
-| `Commands/Wait/` | 2 | `ui.wait` 命令（adapter + models） |
+| `Commands/Wait/` | 4 | `ui.wait` + `ui.waitAny` 命令（各 adapter + models） |
 | `Commands/ScrollToElement/` | 2 | `ui.scrollToElement` 命令（adapter + models） |
 | `Commands/Alert/` | 2 | `ui.alert.respond` 命令（adapter + models） |
 | `Support/Context/` | 1 | 前台 window / 顶部控制器 |
@@ -36,9 +36,9 @@
 ## 根目录
 
 ### `UIKitCommandRegistrar.swift` ✅（整体 `#if canImport(UIKit)`）
-- **职责**：`public extension ExploreServer` 的注册入口 `registerUIKitCommands()`，把 13 个命令挂到 router。
+- **职责**：`public extension ExploreServer` 的注册入口 `registerUIKitCommands()`，把 14 个命令挂到 router。
 - **关键点**：core 不自动注册 UIKit 命令，宿主必须显式调用；幂等安全；注册前后打 `uikit.registrar` 日志（started/completed count）。
-- **依赖**：13 个 `*Command` 类型。
+- **依赖**：14 个 `*Command` 类型。
 
 ### `UIKitCommandLogging.swift` ✅
 - **职责**：UIKit 模块统一的日志入口（`info`/`error`）。
@@ -246,10 +246,12 @@
 - **`UINavigationBarButtonModels.swift`** ✅ — `UINavigationBarButtonInput`：`placement`（left/right）+ `index` 定位导航栏按钮，可选 `title` / `accessibilityIdentifier` 做二次确认；`dryRun` 默认 false。
 - **`UINavigationBarButtonCommand.swift`** 🍎 — 薄 adapter，`MainActor.run` 取 context → 调 `UINavigationBarButtonExecutor`；顶层 catch `UIKitCommandError` 转 envelope（错误码：`navigation_bar_unavailable` / `navigation_bar_item_not_found` / `navigation_bar_item_mismatch` / `navigation_bar_item_disabled` / `navigation_bar_item_unsupported`）。
 
-### `Commands/Wait/`（`ui.wait`）
+### `Commands/Wait/`（`ui.wait` + `ui.waitAny`）
 
 - **`UIWaitModels.swift`** ✅ — `WaitMode`（idle/targetExists/targetGone/textExists/snapshotChanged）+ `UIWaitInput`。mode 决定字段需求（targetExists/targetGone 需 locator、textExists 需 text、snapshotChanged 需 `viewSnapshotID`）；timeoutMs 0...30000、intervalMs 50...5000、stableMs 0...10000；target 复用 `UIKitLocatorInput.parseOptional`。
 - **`UIWaitCommand.swift`** 🍎 — adapter，`timeoutNanoseconds = 35s`（命令级兜底高于最大业务 timeoutMs）；executor 是 `@MainActor async`，adapter 直接 `await`（不用 `MainActor.run`）。
+- **`UIWaitAnyModels.swift`** ✅ — `UIWaitAnyCondition`（id + mode + 该模式字段）+ `UIWaitAnyInput`（conditions 1...16 + 共享 timeoutMs/intervalMs/stableMs/includeHidden）。conditions 是对象数组，无法用标量 `CommandField` 表达，故 schema 只用 `AnyCommandField` 声明 array、解析在 `parse(from:)` 手写（id 唯一、mode 合法、各模式必填字段校验，统一抛 `CommandInputParseError` → `invalid_data`）。
+- **`UIWaitAnyCommand.swift`** 🍎 — adapter，`timeoutNanoseconds = 35s`；start 日志含 conditions 数/timeoutMs/intervalMs，complete 含 matchedID/matchedIndex/mode/elapsedMs/attempts。executor 是 `@MainActor async`，adapter 直接 `await`。
 
 ### `Commands/ScrollToElement/`（`ui.scrollToElement`）
 
@@ -264,7 +266,8 @@
 ### `Support/Wait/`
 
 - **`UIKitVisibleTextCollector.swift`** 🍎 — `@MainActor`，递归采集可见文本（UILabel.text/UIButton.currentTitle/UITextField.placeholder/accessibilityLabel/非编辑态 accessibilityValue）。**有意不收集 UITextField.text/UITextView.text**（用户输入，防泄露），与 `UIViewHierarchyCollector.textInfo` 分工。被 `UIWaitExecutor` 的 textExists/idle 用。
-- **`UIWaitExecutor.swift`** 🍎 — `@MainActor async`，按 intervalMs 轮询至满足或 deadline。`DispatchTime.uptimeNanoseconds` 做 deadline；sleep clamp 到剩余 deadline（业务 waitTimeout 先于命令级 35s）；`try? Task.sleep` 吞 cancellation + `Task.isCancelled` 收敛到 waitTimeout。5 模式：idle（活动签名连续 stableMs 不变）/ targetExists·targetGone（resolver.contains）/ textExists（VisibleTextCollector）/ snapshotChanged（store.matchesWholeTable 整体指纹表比较，检测 view 结构/控件状态变化；不含 text，文本变化用 textExists）。注入 contextProvider 便于测试。
+- **`UIWaitExecutor.swift`** 🍎 — `@MainActor async`，按 intervalMs 轮询至满足或 deadline。`DispatchTime.uptimeNanoseconds` 做 deadline；sleep clamp 到剩余 deadline（业务 waitTimeout 先于命令级 35s）；`try? Task.sleep` 吞 cancellation + `Task.isCancelled` 收敛到 waitTimeout。5 模式判断抽成共享 `evaluate(_:state:now:context:snapshotStore:snapshotUnavailableReason:)` + `ConditionProbe`/`PollState`（idle 的稳定窗口状态封装在 PollState），供 `UIWaitAnyExecutor` 复用，避免复制五套判断。注入 contextProvider 便于测试。
+- **`UIWaitAnyExecutor.swift`** 🍎 — `@MainActor async`，多条件轮询：每轮按 conditions 顺序调 `UIWaitExecutor.evaluate`，第一个满足立即返回 satisfied/matchedID/matchedIndex/matchedMode/elapsedMs/attempts。共享 timeoutMs/intervalMs；cancel 与 contextProvider 瞬时不可用对齐 `ui.wait`（前者收敛 waitTimeout，后者当本轮未满足继续）。超时复用 `UIKitCommandError.waitTimeout`（mode="any"），不发明新错误码。
 
 ### `Support/Action/` 新增
 
@@ -275,7 +278,7 @@
 - **`UINavigationBarButtonExecutor.swift`** 🍎 — `@MainActor`，触发 `UIBarButtonItem`。由 `UINavigationBarInspector` 摘出 leftItems/rightItems，按 `placement + index` 选定按钮，依 selector 签名派发 target-action（避开 `UIApplication.sendAction` 在单测里不派发无参 action 的问题）；按钮不存在/不匹配/disabled/无可触发动作分别对应明确错误码。navigationBar 按钮走此专用命令，**不并入 `ui.tap`**。
 - **`UIScrollToElementExecutor.swift`** 🍎 — `@MainActor`，容器内 findTarget + `scrollRectToVisible`。用 UIKit 原生（自动最短滚动、保证可见），替代循环小步 scroll 避免污染 snapshot store（评审 M3）；不签 snapshot（agent 应重新 screenshot）。
 - **`UIAlertInspector.swift`** 🍎 — `@MainActor`，`findAlert`（cast topViewController）+ `summarize`（actions 的 index/title/role）。不依赖 present 转场（评审 M7），logic test 可靠。
-- **`UIAlertRespondExecutor.swift`** 🍎 — `@MainActor`，query-first。dryRun=true 返回 alert 信息；dryRun=false 暂抛 `alertButtonRequired`（UIAlertAction 点击私有路径未 spike，不直接点）。
+- **`UIAlertRespondExecutor.swift`** 🍎 — `@MainActor`，query-first。dryRun=true 返回 alert 信息；dryRun=false 统一抛 `alertButtonRequired`（`UIAlertAction` handler 无公共触发路径：闭包仅 `init` 设置、无 public getter/perform，`dismiss` 也不调 handler），不直接点。
 
 ### `Support/Navigation/`
 

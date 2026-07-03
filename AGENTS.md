@@ -16,7 +16,7 @@
 ## Common commands
 
 - 构建 SPM 库：`swift build`
-- 测试（含真实 TCP 端到端）：`swift test`（macOS SPM 当前 185 个；iOS framework `xcodebuild ... test` 当前 258 个；集成测试用端口 38399）
+- 测试（含真实 TCP 端到端）：`swift test`（macOS SPM 当前 210 个；iOS framework `xcodebuild ... test` 当前 310 个；集成测试用端口 38399）
 - 覆盖率：`swift test --enable-code-coverage`（当前行覆盖 86.62%）
 - 构建 framework 工程（core + UIKit 两个 framework）：`xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator build`
 - framework 测试（含 iOS 正向注册断言）：`xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17' test`
@@ -36,7 +36,7 @@
   - `Support/Parsing/` — UIKit 命令复用的 Foundation-only 字段声明与定位解析入口：`UIKitCommandFields`（筛选字段/定位字段）、`UIKitLocatorInput`（identifier/path 二选一与 path 文法桥接）；单字段取值统一走 core `CommandInputDecoder`，解析错误统一为 `CommandInputParseError`，由 `AnyCommand` 转 `invalid_data`。
   - `UIKitCommandLogging.swift` — 日志入口，复用 core `ExploreLogging.emitExtension`，category 统一 `command`。
   - `UIKitCommandError.swift` — UIKit 错误工厂（conform `Error`）。
-  - `Commands/TopViewHierarchy/`、`Commands/ViewTargets/`、`Commands/Tap/`、`Commands/ControlAction/`、`Commands/Screenshot/`、`Commands/Input/`、`Commands/Scroll/`、`Commands/Keyboard/`、`Commands/Navigation/`、`Commands/Wait/`、`Commands/ScrollToElement/`、`Commands/Alert/` — 13 个 `ui.*` 命令（adapter + typed query 模型；查询命令含 collector）。`Commands/Navigation/` 现含 `ui.navigation.back` 与 `ui.navigation.tapBarButton`；后者由 `Support/Navigation/UINavigationBarInspector.swift`（读 navigationItem 摘要）+ `Support/Action/UINavigationBarButtonExecutor.swift`（按签名派发 target-action）支撑，`ui.viewTargets` / `ui.topViewHierarchy` 响应均追加 `navigationBar` 区块。
+  - `Commands/TopViewHierarchy/`、`Commands/ViewTargets/`、`Commands/Tap/`、`Commands/ControlAction/`、`Commands/Screenshot/`、`Commands/Input/`、`Commands/Scroll/`、`Commands/Keyboard/`、`Commands/Navigation/`、`Commands/Wait/`、`Commands/ScrollToElement/`、`Commands/Alert/` — 14 个 `ui.*` 命令（adapter + typed query 模型；查询命令含 collector）。`Commands/Navigation/` 现含 `ui.navigation.back` 与 `ui.navigation.tapBarButton`；后者由 `Support/Navigation/UINavigationBarInspector.swift`（读 navigationItem 摘要）+ `Support/Action/UINavigationBarButtonExecutor.swift`（按签名派发 target-action）支撑，`ui.viewTargets` / `ui.topViewHierarchy` 响应均追加 `navigationBar` 区块。
 - `iOSExploreServer/iOSExploreServer.xcodeproj/` — framework 工程，两个 target：`iOSExploreServer.framework`（`PBXFileSystemSynchronizedRootGroup` 指向 `../Sources/iOSExploreServer/`）与 `iOSExploreUIKit.framework`（指向 `../Sources/iOSExploreUIKit/`，链接并依赖 core framework）；测试 target 同时链接两个 framework。Debug/Release 均 `SWIFT_VERSION=5.0`、`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`（Swift 6.2 工具链要求，详见 runbooks）。
 - `Examples/SPMExample/` — UIKit 测试 App，本地 SPM 依赖同时选 core 与 `iOSExploreUIKit` product；`ViewController` 显式 `server.registerUIKitCommands()` 开放 UIKit 命令；启动/停止按钮 + 请求日志面板 + `greet`/`device` 自定义命令演示。
 - `scripts/proxy.sh` — iproxy 一键转发（`iproxy 38321 38321`）。

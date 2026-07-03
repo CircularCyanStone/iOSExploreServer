@@ -109,7 +109,7 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 
 该命令是 **viewSnapshotID 的唯一签发来源**（`ui.screenshot` / `ui.topViewHierarchy` 都不再签发）；返回的 target path 集合 == 签发的 fingerprint path 集合 == `ui.tap` / `ui.control.sendAction` 可执行的 path 集合（maxTargets 截断后只为返回的 target 签发指纹，不再签发未返回的 path）。`ui.tap` 现对签发的 target 执行默认激活动作（按类型路由：`UIButton` → `.touchUpInside`、`UISwitch` → 切换 + `.valueChanged`、`UITextField`/`UITextView` → `becomeFirstResponder`），不再触摸注入；`control.<event>` 对应 `ui.control.sendAction` 的 `<event>` 参数。agent 应优先按该能力表选择后续事件命令。
 
-`Support/`（`iOSExploreUIKit` 内）集中保存 UIKit 横切能力：定位（`Support/Locator/`，前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、祖先关系判断）、动作执行（`Support/Action/`）、快照陈旧检测（`Support/Snapshot/`）、command input 共享字段与安全数字（`Support/Parsing/`）。12 个命令在 `Commands/` 下按领域分子目录组织：`TopViewHierarchy`、`ViewTargets`、`Tap`、`ControlAction`、`Screenshot`、`Input`、`Scroll`、`Keyboard`、`Navigation`、`Wait`、`ScrollToElement`、`Alert`。后续 UIKit 命令应复用 `Support/`，不要各自重新实现路径解析和遍历。
+`Support/`（`iOSExploreUIKit` 内）集中保存 UIKit 横切能力：定位（`Support/Locator/`，前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、祖先关系判断）、动作执行（`Support/Action/`）、快照陈旧检测（`Support/Snapshot/`）、command input 共享字段与安全数字（`Support/Parsing/`）。14 个 `ui.*` 命令在 `Commands/` 下按领域分子目录组织：`TopViewHierarchy`、`ViewTargets`、`Tap`、`ControlAction`、`Screenshot`、`Input`、`Scroll`、`Keyboard`、`Navigation`、`Wait`（含 `ui.wait` + `ui.waitAny`）、`ScrollToElement`、`Alert`。后续 UIKit 命令应复用 `Support/`，不要各自重新实现路径解析和遍历。
 
 ## UIKit 定位语义
 

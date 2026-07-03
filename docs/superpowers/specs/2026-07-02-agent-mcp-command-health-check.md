@@ -2,6 +2,8 @@
 
 > 日期：2026-07-02
 >
+> **状态：历史体检快照。** 本文是 `ui.tap` 结构化默认激活、navigationBar 可达性与 `ui.waitAny` 落地之前的体检。文中「`ui.screenshot` 签发 snapshotID」「`ui.tap` 支持坐标/hit-test」「navigationBar 不可达」「`ui.wait` 单条件」「约 12 个 ui.* 命令」等结论已被后续实现覆盖；当前事实以 [../agent-mcp-exploration/README.md](../agent-mcp-exploration/README.md) 与 [../agent-mcp-exploration/agent-usage-protocol.md](../agent-mcp-exploration/agent-usage-protocol.md) 为准。本文保留作为决策过程与边界发现（如 `textExists` 只见可见文本）的记录。
+>
 > 本文基于当前代码，对 `iOSExploreUIKit` 已有命令做一次体检。目标不是复述每个命令做什么，而是判断它们能不能组成这条闭环：
 >
 > ```text

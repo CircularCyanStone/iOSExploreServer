@@ -1,5 +1,7 @@
 # UI Tap Structural Default Activation Implementation Plan
 
+> **状态：历史执行包（已实施完成，勿按 checkbox 继续执行）。** 本计划对应的 `ui.tap` 结构化默认激活已落地：`ui.tap` 只接受 `accessibilityIdentifier`/`path` + 必填 `viewSnapshotID`，按类型路由默认激活（button/switch/输入框），已删除坐标/hit-test/ancestor fallback；`viewSnapshotID` 只由 `ui.viewTargets` 签发，`ui.screenshot` 不再签发。checkbox 仅保留为历史执行轨迹；当前事实以 [../agent-mcp-exploration/README.md](../agent-mcp-exploration/README.md) 与 [../specs/iOSExploreServer-ui-tap-design-rationale.md](../specs/iOSExploreServer-ui-tap-design-rationale.md) 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 `ui.tap` 从坐标 / hit-test / ancestor fallback 的伪点击，重构为只作用于 `ui.viewTargets` 签发 canonical target 的结构化默认激活能力。

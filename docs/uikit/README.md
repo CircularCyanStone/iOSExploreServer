@@ -1,6 +1,6 @@
 # iOSExploreUIKit 知识库
 
-`Sources/iOSExploreUIKit/`（UIKit 扩展模块，13 个 `ui.*` 命令）的阅读与参考文档。
+`Sources/iOSExploreUIKit/`（UIKit 扩展模块，14 个 `ui.*` 命令）的阅读与参考文档。
 
 core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 App **显式** `server.registerUIKitCommands()` 注册。
 
@@ -9,7 +9,7 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 - **[reading-guide.md](./reading-guide.md)** — 阅读指南。回答"代码这么多，从哪看、整个设计长什么样"。给一张全局心智模型 + 一条按依赖排序的阅读路线（约 1500 行精选阅读量，不是全部 3840 行）。**第一次读从这份开始。**
 - **[uikit-file-reference.md](./uikit-file-reference.md)** — 文件档案。逐个登记 61 个文件的职责、关键点与依赖关系，当查阅手册或改某个文件时用。
 
-## 13 个命令一览
+## 14 个命令一览
 
 | action | 作用 | adapter | 执行核心 |
 |---|---|---|---|
@@ -24,6 +24,7 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 | `ui.navigation.back` | 返回上一页（auto 先 dismiss 再 navigation pop） | `NavigationBackCommand` | `UINavigationBackExecutor` |
 | `ui.navigation.tapBarButton` | 触发导航栏 UIBarButtonItem（placement + index） | `UINavigationBarButtonCommand` | `UINavigationBarButtonExecutor` |
 | `ui.wait` | 等待 UI 稳定或目标/文本/快照变化 | `WaitCommand` | `UIWaitExecutor` |
+| `ui.waitAny` | 一次轮询等待多个条件，第一个命中返回 matchedID/matchedIndex | `WaitAnyCommand` | `UIWaitAnyExecutor` |
 | `ui.scrollToElement` | 滚动到指定文本/identifier 元素可见 | `ScrollToElementCommand` | `UIScrollToElementExecutor` |
 | `ui.alert.respond` | 查询/响应 UIAlertController（dryRun） | `AlertRespondCommand` | `UIAlertRespondExecutor` |
 

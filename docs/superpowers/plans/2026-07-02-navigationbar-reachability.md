@@ -1,5 +1,7 @@
 # navigationBar Reachability Implementation Plan
 
+> **状态：历史执行包（已实施完成，勿按 checkbox 继续执行）。** 本计划对应的 navigationBar 可达性已落地（`UINavigationBarInspector` + `UINavigationBarButtonExecutor` + `ui.navigation.tapBarButton`，`ui.viewTargets`/`ui.topViewHierarchy` 响应追加 `navigationBar` 区块）。checkbox 仅保留为历史执行轨迹；当前事实以 [../agent-mcp-exploration/README.md](../agent-mcp-exploration/README.md) 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让 Agent 能在观察结果里看到 navigationBar / UIBarButtonItem，并通过 `ui.navigation.tapBarButton` 安全触发导航栏按钮。

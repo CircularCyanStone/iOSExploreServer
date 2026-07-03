@@ -2,6 +2,8 @@
 
 > 日期：2026-07-02
 >
+> **状态：历史执行包（勿按其中的步骤继续执行）。** navigationBar / UIBarButtonItem 可达性已落地：`ui.viewTargets` / `ui.topViewHierarchy` 响应均带 `navigationBar` 区块，`ui.navigation.tapBarButton` 按 `placement + index` 触发 `UIBarButtonItem`。文中 `swift test` 185 / framework 258 为当时基线，现已推进到 SPM 210 + framework 310。当前事实与下一步以 [README.md](./README.md) 为准。
+>
 > 这个任务包给 Claude Code 执行。当前会话负责分析、评估和验收；Claude Code 负责大量源码修改和长验证。
 
 ## 1. 背景

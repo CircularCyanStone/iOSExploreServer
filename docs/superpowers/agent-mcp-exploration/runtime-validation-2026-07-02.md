@@ -4,6 +4,8 @@
 > 关联：[README.md](./README.md) / [命令体检稿](../specs/2026-07-02-agent-mcp-command-health-check.md) / [方向稿](../specs/2026-07-02-agent-mcp-app-exploration-direction.md)
 >
 > 目的：本轮不改代码，验证当前 `iOSExploreServer` / `iOSExploreUIKit` 的实际能力边界，确认能否支撑 Agent 的 `observe → act → wait → observe again` 闭环。结论以当前源码和真实运行结果为准，不只凭旧设计文档。
+>
+> 当前状态说明：这是 `5b9885a feat(uikit): 重构 ui.tap 默认激活链路` 之前的历史验证记录。文中 `snapshotID`、坐标 `ui.tap`、navigationBar 不可达、12 个 `ui.*` action 等描述只反映 2026-07-02 当时状态；当前协议以 `viewSnapshotID`、`ui.viewTargets` 唯一签发、`ui.tap` 默认激活、navigationBar 专用动作和 14 个 `ui.*` 命令为准。当前可运行闭环见 [curl-json-loop-protocol.md](./curl-json-loop-protocol.md)。
 
 ## 1. 环境
 

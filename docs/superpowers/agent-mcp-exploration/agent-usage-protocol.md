@@ -3,6 +3,8 @@
 > 日期：2026-07-02
 >
 > 本文说明 Agent 应该如何使用 `iOSExploreServer` / `iOSExploreUIKit` 提供的 MCP 工具来探索和测试 App。它不是测试平台设计，也不是新命令实现方案；它先把“怎么正确使用现有工具”讲清楚。
+>
+> 可直接复制执行的 HTTP JSON 例子见 [curl-json-loop-protocol.md](./curl-json-loop-protocol.md)。本文讲规则；那份文档讲一轮真实 `curl` 闭环怎么发。
 
 ## 1. 这份协议解决什么问题
 
@@ -10,7 +12,7 @@
 
 - 看页面：`ui.viewTargets`、`ui.topViewHierarchy`、`ui.screenshot`
 - 做动作：`ui.tap`、`ui.control.sendAction`、`ui.input`、`ui.scroll`、`ui.scrollToElement`、`ui.keyboard.dismiss`、`ui.navigation.back`、`ui.navigation.tapBarButton`
-- 等待：`ui.wait`
+- 等待：`ui.wait`（单条件）/ `ui.waitAny`（多分支）
 - 查询弹窗：`ui.alert.respond`
 
 问题是：命令多，不等于 Agent 会正确使用。
@@ -209,7 +211,7 @@ target 有默认激活路由，激活动作已经发出。
 
 ## 6. 等待规则
 
-### 6.1 当前 `ui.wait` 是单条件等待
+### 6.1 `ui.wait` 单条件，`ui.waitAny` 多分支
 
 `ui.wait` 可以等：
 
@@ -221,7 +223,7 @@ target 有默认激活路由，激活动作已经发出。
 
 但它一次只等一个条件。
 
-它不是完整的“测试步骤验证器”。例如登录后可能有多个结果：
+多分支场景用 `ui.waitAny`：在一个轮询循环内按顺序等待多个可能结局，第一个满足立即返回命中条件。例如登录后可能有多个结果：
 
 ```text
 进入首页；
@@ -231,7 +233,18 @@ target 有默认激活路由，激活动作已经发出。
 仍在加载。
 ```
 
-当前 `ui.wait` 不能一次表达这些分支。后续需要设计“多结果等待并返回最终页面”的能力。
+用 `ui.waitAny` 一次表达这些分支：
+
+```json
+{"action":"ui.waitAny","data":{"timeoutMs":8000,"intervalMs":200,"conditions":[
+  {"id":"home","mode":"targetExists","accessibilityIdentifier":"home.root"},
+  {"id":"pwd_error","mode":"textExists","text":"密码错误"},
+  {"id":"network_error","mode":"textExists","text":"网络"},
+  {"id":"loading_gone","mode":"targetGone","accessibilityIdentifier":"login.loading"}
+]}}
+```
+
+返回命中的 `matchedID` / `matchedIndex` / `matchedMode`，按 `matchedID` 决定后续分支；超时仍是 `wait_timeout`。`conditions` 顺序即优先级（多个同时满足时返回靠前者），上限 16 个；`stableMs` / `includeHidden` 为顶层共享。命中后仍要重新 `ui.viewTargets` 观察页面——`ui.waitAny` 默认不返回页面快照，只告诉你“命中了哪个条件”。
 
 ### 6.2 `textExists` 只等当前可见文本
 
@@ -294,8 +307,29 @@ Agent 必须重新观察页面，再决定下一步。
 短期处理方式：
 
 - 如果只是确认无弹窗，`alert_unavailable` 可以视为“没有弹窗要处理”；
-- 如果发现有弹窗，需要人工、宿主自定义 action，或等待后续补齐真正的弹窗响应能力；
+- 如果发现有弹窗，需要人工、宿主自定义 action，或等待后续单独评估私有 API 风险；
 - 不能做“关闭所有弹窗”这种含糊动作。
+
+### 7.1 为什么当前不能点击 alert 按钮（公共 API 硬边界）
+
+`UIAlertAction` 的点击 handler 是一个闭包，只在用户真实点击按钮时由 UIKit 内部私有 view 层级触发。公共 API 没有任何方法能在不真实点击的情况下调用这个 handler：
+
+- `UIAlertAction` 没有 public 的 `perform` / `execute` 方法；
+- handler 闭包没有 public getter，`init(title:style:handler:)` 之后无法再拿到；
+- `UIAlertController` 没有 public 的「选中某个 action」接口；
+- `alert.dismiss(animated:)` 只关闭弹窗，**不会调用任何 action handler**——所以不能用 dismiss 冒充点击。
+
+对比 `UIBarButtonItem`：它有 public 的 `target` / `action`，所以 `ui.navigation.tapBarButton` 能通过 `sendAction` / `perform` 安全派发。`UIAlertAction` 用闭包而非 target-action，这条公共派发路径不存在。
+
+结论：在不使用 UIKit 私有 API、不伪造真实触摸、不依赖 alert 内部私有 view 的前提下，当前无法让 `ui.alert.respond` 真正触发 `UIAlertAction` handler。`dryRun=false` 因此统一返回 `alert_button_required`，这是公共 API 的硬边界，不是实现遗漏。
+
+### 7.2 遇到弹窗阻断时的可落地替代
+
+既然 `ui.alert.respond` 只能查询，Agent 遇到必须处理的弹窗时按优先级选择：
+
+1. **宿主自定义 action（推荐）**：业务 App 在创建 alert 时把每个 action 的真实业务回调抽成具名方法，并向 `ExploreServer` 注册一个自定义命令（如 `app.alert.confirm`），由宿主直接调用业务方法，绕开「点击」本身。这条路完全走公共 API，且语义最准——直接触发业务逻辑，而不是模拟手指。
+2. **人工兜底**：权限弹窗、系统弹窗等 App 无法接管的情况，记录到测试报告交人工处理，不要反复重试 `dryRun=false`。
+3. **后续专用实现**：若未来评估可接受用 KVC 反射 `UIAlertAction` 私有 handler ivar（属私有 API 边界，App Store 审核有风险），再单独设计；当前库不实现，也不暴露该入口。
 
 未来补能力时，也必须按明确按钮操作：
 
@@ -342,6 +376,7 @@ Agent 不应该把所有错误都当成“测试失败”。
 | `disabled` / unsupported | 目标当前不能操作或不支持动作 | 不要强点，观察状态或换动作 |
 | `wait_timeout` | 等待条件没出现 | 重新观察，再判断是业务失败还是条件不对 |
 | `alert_unavailable` | 当前没有 UIAlertController | 如果只是查弹窗，可继续下一步 |
+| `alert_button_required` | `dryRun=false` 当前版本不能点击/关闭 alert（公共 API 无法触发 `UIAlertAction` handler） | 改回 `dryRun=true` 查询按钮，再走宿主自定义 action、人工或后续版本；不要重试 `dryRun=false` |
 | `navigation_back_unavailable` | 当前不能返回 | 如果已经在根页面，这不是业务失败 |
 | `dismissed:false` | 当前没有键盘可收起 | 不是失败，可以继续 |
 
@@ -396,7 +431,7 @@ Agent 执行一个自然语言步骤时，推荐这样做：
    选择明确目标，优先 identifier，其次 path + viewSnapshotID（来自第 1 步的 ui.viewTargets）。
 
 3. act
-   按目标类型选命令：button/switch/可聚焦输入框用 `ui.tap`；特殊 control event 用 `ui.control.sendAction`；navigationBar 按钮用 `ui.navigation.tapBarButton`；其余用 `ui.input` / `ui.scroll` / `ui.navigation.back` 等。
+   按目标类型选命令：button/switch/可聚焦输入框用 `ui.tap`；特殊 control event 用 `ui.control.sendAction`；navigationBar 按钮用 `ui.navigation.tapBarButton`；其余用 `ui.input` / `ui.scroll` / `ui.scrollToElement` / `ui.navigation.back` 等。注意 `ui.input` / `ui.scroll` 不是强制 freshness：只有使用 `path + viewSnapshotID` 时才做可选陈旧校验，滚动后默认重新 `ui.viewTargets`。
 
 4. wait
    根据测试目标调用 ui.wait，或直接重新 observe。
@@ -433,7 +468,7 @@ observe 当前登录页
 → 如果超时，截图并重新观察，不能直接判定
 ```
 
-当前 `ui.wait` 还不能一次等待多个分支，所以短期 Agent 需要谨慎分步处理。后续应设计多结果等待能力来简化这一步。
+`ui.waitAny` 已可一次等待多个分支（见 6.1）：登录后用一次 waitAny 覆盖“首页 / 密码错误 / 网络重试 / 加载中”等结局，按 `matchedID` 决定分支，再重新 observe 拿页面证据。
 
 ## 13. 不应该做的事
 
@@ -454,9 +489,9 @@ Agent 默认不应该：
 这份协议不是终点。它把下一步任务排清楚了：
 
 1. ~~补 navigationBar / UIBarButtonItem 可达能力~~（已完成：`ui.navigation.tapBarButton`）；`ui.tap` 也已重构为"默认激活动作"（不再做坐标点击 / hit-test）。
-2. 设计多结果等待并返回最终页面状态。
-3. 补真正可用的弹窗响应能力。
-4. 设计动作后轻量 final observation 是否由 iPhone 端返回，还是由 Mac MCP 层组合。
-5. 后续再考虑视觉模型和测试平台化。
+2. ~~设计多结果等待能力~~（已完成：`ui.waitAny` 一次轮询等待多个条件，返回命中的 `matchedID`/`matchedIndex`/`matchedMode`；本版命中后仍需重新 observe 拿页面证据，不自动返回页面快照）。
+3. 设计动作后轻量 final observation 是否由 iPhone 端返回，还是由 Mac MCP 层组合。
+4. 后续再考虑视觉模型和测试平台化。
+5. 如确实要自动响应 `UIAlertAction`，单独评估私有 API / KVC / 真实触摸注入风险；当前公共 API 方案不做。
 
-剩余优先项是多结果等待与弹窗响应能力。
+多结果等待已落地为 `ui.waitAny`。弹窗已收敛为 query-only 边界，阻断流程走宿主自定义 action、人工或后续私有 API 评估。剩余优先项是评估“动作后轻量 final observation 是否随 waitAny 命中一起返回”，进一步减少 Mac 侧二次 observe。
