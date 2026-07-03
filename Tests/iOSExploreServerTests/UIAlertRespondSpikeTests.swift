@@ -73,6 +73,51 @@ func alertRespondDryRunFalseThrowsButtonRequired() {
     }
 }
 
+@Test("alert respond dryRun=false 对任意 selector 都抛 alertButtonRequired") @MainActor
+func alertRespondDryRunFalseRejectsAllSelectors() throws {
+    let alert = UIAlertController(title: "确认", message: nil, preferredStyle: .alert)
+    alert.addAction(UIAlertAction(title: "OK", style: .default))
+    alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    let context = UIKitContextProvider.Context(window: window,
+                                               rootViewController: alert,
+                                               topViewController: alert,
+                                               rootView: alert.view)
+    // 当前版本点击未实现：无论用 buttonTitle / buttonIndex / role（或不传 selector），
+    // 都稳定命中同一类错误，不进入选按钮逻辑。
+    let inputs: [UIAlertRespondInput] = [
+        UIAlertRespondInput(dryRun: false, buttonTitle: "OK"),
+        UIAlertRespondInput(dryRun: false, buttonIndex: 0),
+        UIAlertRespondInput(dryRun: false, role: "default"),
+        UIAlertRespondInput(dryRun: false),
+    ]
+    for input in inputs {
+        do {
+            _ = try UIAlertRespondExecutor.execute(input: input, context: context)
+            Issue.record("expected alertButtonRequired, got success for \(input)")
+        } catch let error as UIKitCommandError {
+            #expect(error.failure.code == .alertButtonRequired)
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+    }
+}
+
+@Test("alert respond alertButtonRequired 不暗示已点击或已关闭")
+func alertRespondButtonRequiredDoesNotImplyClick() {
+    let error = UIKitCommandError.alertButtonRequired(action: "ui.alert.respond")
+    let message = error.failure.message.lowercased()
+    let logMessage = error.failure.logMessage.lowercased()
+    // message / logMessage 不能出现「已点击/已触发/已响应成功」这类肯定词，否则会误导 agent 以为已响应。
+    for term in ["clicked", "tapped", "performed", "responded: true", "dismissed: true"] {
+        #expect(!message.contains(term), "message 不应暗示已点击: \(term)")
+        #expect(!logMessage.contains(term), "logMessage 不应暗示已点击: \(term)")
+    }
+    // message 必须明确告知当前 query-only 且无法关闭 alert，并指引下一步（宿主/后续版本）。
+    #expect(message.contains("query-only"))
+    #expect(message.contains("cannot dismiss"))
+}
+
 @Test("alert respond 暴露输入框 placeholder 与 secure 标记") @MainActor
 func alertRespondExposesTextFields() throws {
     let alert = UIAlertController(title: "登录", message: nil, preferredStyle: .alert)

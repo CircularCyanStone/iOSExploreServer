@@ -52,4 +52,9 @@ func scrollToElementCommandSchemaMatchesInputFields() {
 func alertRespondCommandSchemaMatchesInputFields() {
     #expect(AlertRespondCommand.Input.inputSchema.fields.map(\.name) == UIAlertRespondInput.inputSchema.fields.map(\.name))
 }
+
+@Test("ui.waitAny 命令 schema 声明 typed input 字段")
+func waitAnyCommandSchemaMatchesInputFields() {
+    #expect(WaitAnyCommand.Input.inputSchema.fields.map(\.name) == UIWaitAnyInput.inputSchema.fields.map(\.name))
+}
 #endif

@@ -7,7 +7,7 @@ import iOSExploreServer
 /// `ui.screenshot` 渲染流水线端到端测试。
 ///
 /// 通过 `UIKitTestHost` 注入可控 window + view 树，真实驱动 `UIScreenshotCollector` 的
-/// drawHierarchy → 降采样 → PNG 编码 → base64 → 签发 snapshot 流水线。logic test 没有
+/// drawHierarchy → 降采样 → PNG 编码 → base64 流水线（`ui.screenshot` 不签发 viewSnapshotID）。logic test 没有
 /// 真实 UIApplication scene，因此走注入入口 `collect(input:maxResponseBodyBytes:context:)`。
 @MainActor
 struct UIScreenshotTests {

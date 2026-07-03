@@ -339,8 +339,8 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     public let state: UIViewTargetState
     /// executor 实际可派发的动作（来自 `UIKitActionCapabilityResolver`）。
     ///
-    /// 与 `role` 无关，按真实 view 类型、nearest control、enabled 状态生成。非控件或 disabled
-    /// 时为空，避免把静态节点标成可 tap。
+    /// 与 `role` 无关，按真实 view 类型和 enabled 状态生成。非 canonical 目标或 disabled 控件
+    /// 时为空，避免把静态节点标成可 tap；不会借祖先 `UIControl` 生成能力。
     public let availableActions: UIKitActionAvailability
 
     /// 创建目标摘要。

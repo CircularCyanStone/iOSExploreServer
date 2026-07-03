@@ -49,12 +49,10 @@ enum UIWaitExecutor {
                         contextProvider: @escaping @MainActor () throws -> UIKitContextProvider.Context) async throws -> JSON {
         let start = DispatchTime.now().uptimeNanoseconds
         let deadline = start + UInt64(input.timeoutMs) * 1_000_000
-        let stableNanos = UInt64(input.stableMs) * 1_000_000
         let intervalNanos = UInt64(input.intervalMs) * 1_000_000
 
         var attempts = 0
-        var lastSignature: String?
-        var lastChangeAt = start
+        var state = PollState(start: start)
         var snapshotUnavailableReason: String?
 
         while true {
@@ -74,59 +72,14 @@ enum UIWaitExecutor {
             let now = DispatchTime.now().uptimeNanoseconds
             var satisfied = false
             if let context = try? contextProvider() {
-                switch input.mode {
-                case .idle:
-                    let signature = activitySignature(in: context.rootView, includeHidden: input.includeHidden)
-                    let signatureChanged = signature != lastSignature
-                    if signatureChanged {
-                        lastSignature = signature
-                        lastChangeAt = now
-                    }
-                    // 仅当本轮未发生变化、且距上次变化已持续 stableMs 才判稳。stableMs=0 时也要求
-                    // 「连续两帧相同」（首轮 lastSignature 由 nil→写入必 changed，不 satisfied），避免
-                    // 首轮单采样或「每轮都在变」时被误判为已稳定——变化当轮 lastChangeAt=now，
-                    // 若不卡 !signatureChanged，stableMs=0 下 0>=0 会假稳。
-                    if !signatureChanged, now - lastChangeAt >= stableNanos {
-                        satisfied = true
-                    }
-                case .targetExists:
-                    if let target = input.target {
-                        satisfied = UIKitLocatorResolver.contains(locator: target.locator, in: context.rootView)
-                    }
-                case .targetGone:
-                    if let target = input.target {
-                        satisfied = !UIKitLocatorResolver.contains(locator: target.locator, in: context.rootView)
-                    }
-                case .textExists:
-                    if let text = input.text {
-                        satisfied = UIKitVisibleTextCollector.contains(text: text,
-                                                                       in: context.rootView,
-                                                                       includeHidden: input.includeHidden)
-                    }
-                case .snapshotChanged:
-                    if let viewSnapshotID = input.viewSnapshotID {
-                        // whole table 比较（spec §6）：用签发时同一 query 重采当前 path→fingerprint 表，
-                        // 再与 snapshot 存的表整体比对。query 从 store 取（签发方诚实记录，签发方只能是
-                        // ui.viewTargets），避免签发 query（如 viewTargets 带 includeHidden）与重采 query
-                        // 不一致导致首轮误判「已变化」。
-                        let query = snapshotStore.signingQuery(for: viewSnapshotID) ?? .default
-                        let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
-                        let currentTable = UIKitFingerprintCollector.collectFingerprints(
-                            rootView: context.rootView,
-                            query: query,
-                            digest: digest
-                        )
-                        let snapshotContext = UIKitFingerprintCollector.context(window: context.window,
-                                                                                topViewController: context.topViewController)
-                        if let matched = snapshotStore.matchesWholeTable(viewSnapshotID: viewSnapshotID,
-                                                                         context: snapshotContext,
-                                                                         currentTable: currentTable) {
-                            satisfied = !matched
-                        } else if snapshotUnavailableReason == nil {
-                            snapshotUnavailableReason = "view snapshot unknown or expired"
-                        }
-                    }
-                }
+                // 五模式判断收敛到 evaluate，与 ui.waitAny 共享同一套原语，避免复制。idle 的稳定
+                // 窗口状态封装在 state 里，由 evaluate 回写；其余模式无状态。
+                satisfied = evaluate(ConditionProbe(input: input),
+                                     state: &state,
+                                     now: now,
+                                     context: context,
+                                     snapshotStore: snapshotStore,
+                                     snapshotUnavailableReason: &snapshotUnavailableReason)
             }
 
             if satisfied {
@@ -158,6 +111,141 @@ enum UIWaitExecutor {
                                                     mode: input.mode.rawValue,
                                                     elapsedMs: elapsedMs)
             }
+        }
+    }
+
+    /// 单条件一轮评估的不可变视图，`ui.wait` 与 `ui.waitAny` 共享同一套五模式判断原语。
+    ///
+    /// 把 mode 相关字段从完整 input 投影出来，使 `evaluate` 不依赖具体命令的输入形状：
+    /// `ui.wait` 由单条件 input 构造，`ui.waitAny` 由每个 condition 叠加顶层共享的 stableMs/includeHidden 构造。
+    struct ConditionProbe: Sendable {
+        /// 等待模式。
+        let mode: WaitMode
+        /// textExists 要等待的文本。
+        let text: String?
+        /// snapshotChanged 参照的 viewSnapshotID。
+        let viewSnapshotID: String?
+        /// targetExists / targetGone 的定位目标。
+        let target: UIKitViewLookupTarget?
+        /// idle 连续稳定的毫秒数。
+        let stableMs: Int
+        /// idle / textExists 是否考虑隐藏 view。
+        let includeHidden: Bool
+
+        /// 从 `ui.wait` 单条件输入投影 probe。
+        init(input: UIWaitInput) {
+            self.mode = input.mode
+            self.text = input.text
+            self.viewSnapshotID = input.viewSnapshotID
+            self.target = input.target
+            self.stableMs = input.stableMs
+            self.includeHidden = input.includeHidden
+        }
+
+        /// 按 `ui.waitAny` 单条件叠加顶层共享字段投影 probe。
+        init(mode: WaitMode,
+             text: String?,
+             viewSnapshotID: String?,
+             target: UIKitViewLookupTarget?,
+             stableMs: Int,
+             includeHidden: Bool) {
+            self.mode = mode
+            self.text = text
+            self.viewSnapshotID = viewSnapshotID
+            self.target = target
+            self.stableMs = stableMs
+            self.includeHidden = includeHidden
+        }
+    }
+
+    /// 单条件轮询的可变状态，仅 idle 的稳定窗口用到。
+    struct PollState: Sendable {
+        /// 上一轮活动签名，首轮为 nil（首轮写入必判为 changed，从而不计稳）。
+        var lastSignature: String?
+        /// 最近一次签名变化时刻（uptime 纳秒），首轮初始化为轮询起点。
+        var lastChangeAt: UInt64
+
+        /// 创建初始空状态。
+        ///
+        /// - Parameter start: 轮询起点 uptime 纳秒，作为 lastChangeAt 初值。
+        init(start: UInt64) {
+            self.lastSignature = nil
+            self.lastChangeAt = start
+        }
+    }
+
+    /// 评估单个条件在当前 context 下是否满足（单轮）。
+    ///
+    /// 这是 `ui.wait` 与 `ui.waitAny` 共享的判断核心：targetExists/targetGone/textExists/snapshotChanged
+    /// 无状态，idle 需要调用方传入并回写稳定窗口状态（`state`）。调用方在 contextProvider 瞬时不可用
+    /// 时应整体跳过本轮（不调本方法），与 `ui.wait` 一致地把瞬态当未满足继续轮询。
+    ///
+    /// - Parameters:
+    ///   - probe: 单条件评估的不可变视图。
+    ///   - state: idle 的稳定窗口状态，由本方法回写；其余模式不读写。
+    ///   - now: 当前 uptime 纳秒。
+    ///   - context: 当前查询上下文（调用方已确保层级可用）。
+    ///   - snapshotStore: snapshotChanged 的 snapshot 查询与整表比对。
+    ///   - snapshotUnavailableReason: snapshotChanged 不可用时回写的原因，跨轮保留首次原因。
+    /// - Returns: 该条件本轮是否满足。
+    static func evaluate(_ probe: ConditionProbe,
+                         state: inout PollState,
+                         now: UInt64,
+                         context: UIKitContextProvider.Context,
+                         snapshotStore: UIKitSnapshotStore,
+                         snapshotUnavailableReason: inout String?) -> Bool {
+        let stableNanos = UInt64(probe.stableMs) * 1_000_000
+        switch probe.mode {
+        case .idle:
+            let signature = activitySignature(in: context.rootView, includeHidden: probe.includeHidden)
+            let signatureChanged = signature != state.lastSignature
+            if signatureChanged {
+                state.lastSignature = signature
+                state.lastChangeAt = now
+            }
+            // 仅当本轮未发生变化、且距上次变化已持续 stableMs 才判稳。stableMs=0 时也要求
+            // 「连续两帧相同」（首轮 lastSignature 由 nil→写入必 changed，不 satisfied），避免
+            // 首轮单采样或「每轮都在变」时被误判为已稳定——变化当轮 lastChangeAt=now，
+            // 若不卡 !signatureChanged，stableMs=0 下 0>=0 会假稳。
+            if !signatureChanged, now - state.lastChangeAt >= stableNanos {
+                return true
+            }
+            return false
+        case .targetExists:
+            guard let target = probe.target else { return false }
+            return UIKitLocatorResolver.contains(locator: target.locator, in: context.rootView)
+        case .targetGone:
+            guard let target = probe.target else { return false }
+            return !UIKitLocatorResolver.contains(locator: target.locator, in: context.rootView)
+        case .textExists:
+            guard let text = probe.text else { return false }
+            return UIKitVisibleTextCollector.contains(text: text,
+                                                      in: context.rootView,
+                                                      includeHidden: probe.includeHidden)
+        case .snapshotChanged:
+            guard let viewSnapshotID = probe.viewSnapshotID else { return false }
+            // whole table 比较（spec §6）：用签发时同一 query 重采当前 path→fingerprint 表，
+            // 再与 snapshot 存的表整体比对。query 从 store 取（签发方诚实记录，签发方只能是
+            // ui.viewTargets），避免签发 query（如 viewTargets 带 includeHidden）与重采 query
+            // 不一致导致首轮误判「已变化」。
+            let query = snapshotStore.signingQuery(for: viewSnapshotID) ?? .default
+            let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
+            let currentTable = UIKitFingerprintCollector.collectFingerprints(
+                rootView: context.rootView,
+                query: query,
+                digest: digest
+            )
+            let snapshotContext = UIKitFingerprintCollector.context(window: context.window,
+                                                                    topViewController: context.topViewController)
+            if let matched = snapshotStore.matchesWholeTable(viewSnapshotID: viewSnapshotID,
+                                                             context: snapshotContext,
+                                                             currentTable: currentTable) {
+                return !matched
+            }
+            if snapshotUnavailableReason == nil {
+                snapshotUnavailableReason = "view snapshot unknown or expired"
+            }
+            return false
         }
     }
 
