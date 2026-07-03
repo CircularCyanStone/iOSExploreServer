@@ -7,11 +7,11 @@ import iOSExploreServer
 struct UIKitCommandErrorTests {
     @Test("staleLocator 使用 stale_locator code")
     func staleLocatorUsesDedicatedCode() {
-        let error = UIKitCommandError.staleLocator(action: "ui.tap", snapshotID: "snap-1")
+        let error = UIKitCommandError.staleLocator(action: "ui.tap", viewSnapshotID: "snap-1")
         #expect(error.failure.code == .staleLocator)
-        #expect(error.failure.message.contains("ui.screenshot"))
+        #expect(error.failure.message.contains("ui.viewTargets"))
         #expect(error.failure.logMessage.contains("action=ui.tap"))
-        #expect(error.failure.logMessage.contains("snapshot=snap-1"))
+        #expect(error.failure.logMessage.contains("viewSnapshot=snap-1"))
     }
 
     @Test("agent common command error code raw values")

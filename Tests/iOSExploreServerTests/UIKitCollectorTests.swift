@@ -4,39 +4,42 @@ import Testing
 import iOSExploreServer
 @testable import iOSExploreUIKit
 
-/// `UIViewTargetsCollector` 与 `UIViewHierarchyCollector` 的端到端测试。
+/// `UIViewTargetsCollector` 与 `UIViewHierarchyCollector` 的端到端测试（Task 4/8 重构后）。
 ///
-/// 通过 `UIKitTestHost` 注入可控 view 树，验证采集器整条流水线（遍历 → 过滤 → 生成摘要/树 →
-/// 签发 snapshot），补齐此前只测零件、未测组装的盲区——与 executor 端到端测试同源。
+/// 通过 `UIKitTestHost` 注入可控 view 树，验证采集器整条流水线（遍历 → canonical 筛选 →
+/// 生成摘要/树 → 只对返回 target 签发 viewSnapshotID）。重构后 `ui.viewTargets` 只输出
+/// canonical interaction target（UIControl / UIScrollView 系），普通 identifier/label view
+/// 不再进入 targets（其观察职责在 `ui.topViewHierarchy`）。
 
-@Test("viewTargets 采集注入 view 树的扁平目标并签发 snapshot") @MainActor
-func viewTargetsCollectsTargetsInContext() {
+@Test("viewTargets 只采集 canonical target 并签发 viewSnapshotID") @MainActor
+func viewTargetsCollectsCanonicalTargetsOnly() {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.accessibilityIdentifier = "submit"
         button.frame = CGRect(x: 10, y: 10, width: 80, height: 40)
-        root.addSubview(button)
+        root.addSubview(button) // root/0 button（canonical）
 
         let tagged = UIView()
         tagged.accessibilityIdentifier = "banner"
         tagged.frame = CGRect(x: 10, y: 60, width: 80, height: 20)
-        root.addSubview(tagged)
+        root.addSubview(tagged) // root/1 普通 view（有 identifier，但非 canonical → 不采集）
 
         let plain = UIView(frame: CGRect(x: 0, y: 100, width: 100, height: 50))
-        root.addSubview(plain)
+        root.addSubview(plain) // root/2 plain（非 canonical → 不采集）
     }
 
     let data = UIViewTargetsCollector.collect(query: .default, context: context)
-    // 默认策略：button（control）与 tagged（有 identifier）被采集；plain（无语义/交互）被过滤
-    #expect(data["targetCount"]?.doubleValue == 2)
+    // canonical-only：只有 button（UIControl）被采集；tagged(仅 identifier)/plain 不再进入。
+    #expect(data["targetCount"]?.doubleValue == 1)
     #expect(data["truncated"]?.boolValue == false)
-    #expect(data["snapshotID"]?.stringValue != nil)
+    #expect(data["viewSnapshotID"]?.stringValue != nil)
+    #expect(data["snapshotID"] == nil)
 
     guard case .array(let targets)? = data["targets"] else {
         Issue.record("targets not array")
         return
     }
-    #expect(targets.count == 2)
+    #expect(targets.count == 1)
 
     guard case .object(let buttonTarget) = targets[0] else {
         Issue.record("button target not object")
@@ -49,72 +52,67 @@ func viewTargetsCollectsTargetsInContext() {
         return
     }
     #expect(buttonActions.isEmpty == false)
-
-    guard case .object(let taggedTarget) = targets[1] else {
-        Issue.record("tagged target not object")
-        return
-    }
-    #expect(taggedTarget["path"]?.stringValue == "root/1")
-    #expect(taggedTarget["role"]?.stringValue == "view")
-    guard case .array(let taggedActions)? = taggedTarget["availableActions"] else {
-        Issue.record("tagged availableActions not array")
-        return
-    }
-    #expect(taggedActions.isEmpty)
 }
 
-@Test("viewTargets 指纹采集重构后输出契约不变") @MainActor
-func viewTargetsFingerprintContractUnchanged() throws {
-    // 重构基线：固定一棵覆盖多种候选（control / 有 identifier / 有 accessibilityLabel / 容器）
-    // 的 view 树，断言默认查询下的 targetCount、各 path 与 role 与重构前逐字一致。
-    // 注：UILabel 仅 text 不自带 accessibilityLabel，includeStaticText=false 时被过滤——
-    // 此处用显式 accessibilityLabel 的 view 作为第三个默认采集目标，避免依赖静态文本策略。
+@Test("viewTargets 签发的指纹集合等于返回的 target path 集合") @MainActor
+func viewTargetsSignsFingerprintsForReturnedPathsOnly() throws {
+    // 不变式：returned target paths == viewSnapshotID 签发 fingerprint paths == tap/sendAction 可执行集合。
+    // 用 maxTargets 截断验证：两个 button 但 maxTargets=1，只返回/签发 1 个，第 2 个 path 视为 stale。
+    let context = UIKitTestHost.context { root in
+        let button1 = UIButton(type: .system)
+        button1.frame = CGRect(x: 10, y: 10, width: 80, height: 40)
+        root.addSubview(button1)
+
+        let button2 = UIButton(type: .system)
+        button2.frame = CGRect(x: 10, y: 60, width: 80, height: 40)
+        root.addSubview(button2)
+    }
+
+    let query = UIViewTargetsInput(maxTargets: 1)
+    let data = UIViewTargetsCollector.collect(query: query, context: context)
+    #expect(data["targetCount"]?.doubleValue == 1)
+    #expect(data["truncated"]?.boolValue == true)
+    guard let viewSnapshotID = data["viewSnapshotID"]?.stringValue else {
+        Issue.record("viewSnapshotID should be signed")
+        return
+    }
+
+    // 返回的第 1 个 button path（root/0）应 freshness 通过；未返回的第 2 个（root/1）应 stale。
+    let snapContext = UIKitFingerprintCollector.context(window: context.window,
+                                                         topViewController: context.topViewController)
+    let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
+    let firstFp = UIKitFingerprintCollector.fingerprint(for: context.rootView.subviews[0],
+                                                         path: "root/0",
+                                                         rootView: context.rootView,
+                                                         digest: digest)
+    let secondFp = UIKitFingerprintCollector.fingerprint(for: context.rootView.subviews[1],
+                                                          path: "root/1",
+                                                          rootView: context.rootView,
+                                                          digest: digest)
+    #expect(UIKitSnapshotStore.shared.isStale(viewSnapshotID: viewSnapshotID, path: "root/0", context: snapContext, current: firstFp) == false)
+    #expect(UIKitSnapshotStore.shared.isStale(viewSnapshotID: viewSnapshotID, path: "root/1", context: snapContext, current: secondFp))
+}
+
+@Test("viewTargets 把按钮语义文本汇总到 canonical target") @MainActor
+func viewTargetsAggregatesButtonSemanticText() throws {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
-        button.accessibilityIdentifier = "submit"
-        button.frame = CGRect(x: 10, y: 10, width: 80, height: 40)
-        root.addSubview(button) // root/0 button
-
-        let tagged = UIView()
-        tagged.accessibilityIdentifier = "banner"
-        tagged.frame = CGRect(x: 10, y: 60, width: 80, height: 20)
-        root.addSubview(tagged) // root/1 view
-
-        let labeled = UIView()
-        labeled.accessibilityLabel = "Hello"
-        labeled.frame = CGRect(x: 10, y: 90, width: 80, height: 20)
-        root.addSubview(labeled) // root/2 view (有 accessibilityLabel，默认采集)
-
-        let plain = UIView(frame: CGRect(x: 0, y: 120, width: 100, height: 50))
-        root.addSubview(plain) // root/3 plain，默认策略被过滤
+        button.setTitle("提交订单", for: .normal)
+        button.accessibilityIdentifier = "checkout.submit"
+        button.frame = CGRect(x: 10, y: 10, width: 120, height: 40)
+        root.addSubview(button)
     }
 
     let data = UIViewTargetsCollector.collect(query: .default, context: context)
-
-    // 默认策略下采集 3 个：button / tagged / labeled(有 a11y label)；plain 无语义被过滤
-    #expect(data["targetCount"]?.doubleValue == 3)
-    #expect(data["truncated"]?.boolValue == false)
-    #expect(data["snapshotID"]?.stringValue != nil)
-
-    guard case .array(let targets)? = data["targets"] else {
-        Issue.record("targets not array")
+    guard case .array(let targets)? = data["targets"], case .object(let buttonTarget)? = targets.first else {
+        Issue.record("button target missing")
         return
     }
-    var paths: [String] = []
-    var roles: [String] = []
-    for target in targets {
-        guard case .object(let fields) = target else {
-            Issue.record("target not object")
-            return
-        }
-        if case .string(let p)? = fields["path"] { paths.append(p) }
-        if case .string(let r)? = fields["role"] { roles.append(r) }
-    }
-    #expect(paths == ["root/0", "root/1", "root/2"])
-    #expect(roles == ["button", "view", "view"])
+    // 按钮内部 label 不作为独立 target；其标题汇总到父 button 的 semanticText。
+    #expect(buttonTarget["semanticText"]?.stringValue == "提交订单")
 }
 
-@Test("topViewHierarchy 采集注入 view 树的层级结构") @MainActor
+@Test("topViewHierarchy 采集注入 view 树的层级结构（不签发 viewSnapshotID）") @MainActor
 func topViewHierarchyCollectsTreeInContext() throws {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
@@ -126,7 +124,9 @@ func topViewHierarchyCollectsTreeInContext() throws {
     let query = try UIViewHierarchyInput.parse(from: [:])
 
     let data = UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
-    #expect(data["snapshotID"]?.stringValue != nil)
+    // topViewHierarchy 不签发 viewSnapshotID（spec §1.2：只有 ui.viewTargets 签发）。
+    #expect(data["viewSnapshotID"] == nil)
+    #expect(data["snapshotID"] == nil)
 
     guard case .object(let root)? = data["root"] else {
         Issue.record("root not object")

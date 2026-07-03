@@ -18,7 +18,7 @@ public enum InputMode: String, Sendable, Equatable, CaseIterable {
 ///
 /// 命令要求调用方明确提供一个定位条件（`accessibilityIdentifier` 或 `path` 二选一）和
 /// 必填的 `text`。`mode` 默认 `replace`（先清空），`submit` 默认 `true`（写完
-/// `resignFirstResponder`）。`snapshotID` 仅允许与 `path` 搭配用于陈旧校验。
+/// `resignFirstResponder`）。`viewSnapshotID` 可选，仅允许与 `path` 搭配用于陈旧校验。
 ///
 /// 该类型整体 Foundation-only：字段声明与解析不依赖 UIKit，便于在 macOS 上做 schema
 /// 单测；UIKit 类型只在 executor 内部出现，不穿过 public 边界。
@@ -26,7 +26,7 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
         static let path = UIKitLocatorFields.path
-        static let snapshotID = UIKitLocatorFields.snapshotID
+        static let viewSnapshotID = UIKitLocatorFields.viewSnapshotID
         static let text = CommandFields.requiredString(
             "text",
             description: "要输入的文本 (任意 Unicode, 含中文/emoji)"
@@ -46,7 +46,7 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
         static let all: [AnyCommandField] = [
             accessibilityIdentifier.erased,
             path.erased,
-            snapshotID.erased,
+            viewSnapshotID.erased,
             text.erased,
             mode.erased,
             submit.erased,
@@ -58,7 +58,7 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
         fields: Fields.all,
         constraints: [
             .exactlyOneOf(["accessibilityIdentifier", "path"]),
-            .extensionMessage("snapshotID is valid only with path"),
+            .extensionMessage("viewSnapshotID is valid only with path"),
         ]
     )
 
@@ -70,8 +70,8 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
     public let mode: InputMode
     /// 写完后是否 resignFirstResponder。
     public let submit: Bool
-    /// 可选快照标识，仅允许与 `.path` 定位一起用于陈旧校验。
-    public let snapshotID: String?
+    /// `ui.viewTargets` 签发的结构化快照标识，可选，仅允许与 `.path` 定位一起用于陈旧校验。
+    public let viewSnapshotID: String?
 
     /// 创建一条 input 查询。
     ///
@@ -80,36 +80,36 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
     ///   - text: 要注入的文本。
     ///   - mode: 写入模式，默认 `.replace`。
     ///   - submit: 写完后是否 resignFirstResponder，默认 `true`。
-    ///   - snapshotID: 可选 snapshotID，默认 nil。
+    ///   - viewSnapshotID: 可选 viewSnapshotID（来自 ui.viewTargets），默认 nil。
     public init(target: UIKitViewLookupTarget,
                 text: String,
                 mode: InputMode = .replace,
                 submit: Bool = true,
-                snapshotID: String? = nil) {
+                viewSnapshotID: String? = nil) {
         self.target = target
         self.text = text
         self.mode = mode
         self.submit = submit
-        self.snapshotID = snapshotID
+        self.viewSnapshotID = viewSnapshotID
     }
 
-    /// 按 `CommandInputDecoder` 读取字段并执行定位/snapshotID 组合校验。
+    /// 按 `CommandInputDecoder` 读取字段并执行定位/viewSnapshotID 组合校验。
     ///
     /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
     /// - Returns: 已解析的 input 输入。
-    /// - Throws: 字段类型、定位互斥关系或 snapshotID 搭配非法时抛出 `CommandInputParseError`。
+    /// - Throws: 字段类型、定位互斥关系或 viewSnapshotID 搭配非法时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIInputInput {
-        let snapshotID = try decoder.read(Fields.snapshotID)
+        let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
         let mode = try decoder.read(Fields.mode)
         let submit = try decoder.read(Fields.submit)
         let text = try decoder.read(Fields.text)
         let target = try UIKitLocatorInput.parse(decoder: &decoder,
                                                   identifierField: Fields.accessibilityIdentifier,
                                                   pathField: Fields.path)
-        // snapshotID 仅允许与 path 搭配：identifier 定位不带结构路径，无法做指纹陈旧校验。
-        if snapshotID != nil, case .accessibilityIdentifier = target {
-            throw CommandInputParseError("snapshotID is valid only with path")
+        // viewSnapshotID 仅允许与 path 搭配：identifier 定位不带结构路径，无法做指纹陈旧校验。
+        if viewSnapshotID != nil, case .accessibilityIdentifier = target {
+            throw CommandInputParseError("viewSnapshotID is valid only with path")
         }
-        return UIInputInput(target: target, text: text, mode: mode, submit: submit, snapshotID: snapshotID)
+        return UIInputInput(target: target, text: text, mode: mode, submit: submit, viewSnapshotID: viewSnapshotID)
     }
 }

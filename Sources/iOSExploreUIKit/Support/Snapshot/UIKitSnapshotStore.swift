@@ -14,15 +14,18 @@ enum UIKitSnapshotLimits {
 /// UIKit 目标的轻量指纹。
 ///
 /// 陈旧检测的关键值类型：只保存"判断两次调用间的同一 path 是否仍指向同一 view"所需的
-/// 最少信息——context 类型摘要、path、view 类型名、identifier 的**稳定哈希**、基础状态布尔
-/// 与祖先结构摘要。**绝不保存** `UIView`、文本内容或完整 identifier，因此：
+/// 最少信息——context 类型摘要、path、view 类型名、identifier 的**稳定哈希**、基础状态布尔、
+/// 祖先结构摘要，以及与动作路由相关的**语义摘要哈希**（`semanticDigest`）。**绝不保存**
+/// `UIView`、文本内容或完整 identifier，因此：
 ///
 /// - 不泄露用户输入全文或大块 payload（只存哈希/摘要）；
 /// - 哈希自实现（FNV-1a），跨进程稳定，**不使用** `Hashable.hashValue`（后者每次运行随机）；
 /// - 保持 Foundation-only、`Sendable`、`Equatable`，可在 macOS 测试覆盖。
 ///
-/// executor 在交互命令携带 snapshotID 时，会把当前 view 树重新采集的指纹与 store 中保存
-/// 的指纹逐字段比对，任一字段不同即判定陈旧（`.stale`），避免 path 指向错误 view 导致误操作。
+/// executor 在交互命令携带 `viewSnapshotID` 时，会把当前 view 树重新采集的指纹与 store 中
+/// 保存的指纹逐字段比对，任一字段不同即判定陈旧（`.stale`），避免 path 指向错误 view 导致误操作。
+/// `semanticDigest` 让"按钮标题从提交变删除、switch 状态翻转、segment 选择变化"等语义变化
+/// 即使 path/类型/frame 不变也能触发陈旧，迫使 Agent 重新 observe。
 public struct UIKitTargetFingerprint: Sendable, Equatable {
     /// context 类型摘要（如顶部控制器类型名），用于检测页面整体是否切换。
     public let contextDigest: String
@@ -38,12 +41,18 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
     public let isSelected: Bool
     /// view 是否隐藏；隐藏后不应继续把旧 path 视为可操作目标。
     public let isHidden: Bool
-    /// view 透明度；低透明度会影响 hit-test，必须参与陈旧校验。
+    /// view 透明度；低透明度会影响可交互性，必须参与陈旧校验。
     public let alpha: Double
     /// 是否允许用户交互；关闭后不能沿用查询时的动作能力。
     public let isUserInteractionEnabled: Bool
-    /// 从 root 到目标父节点的结构与交互状态摘要。
+    /// 从 root 到目标父节点的结构和交互状态摘要。
     public let ancestorDigest: UInt64
+    /// 与动作路由相关的稳定语义摘要哈希（role / 标题 / label / value / switch isOn /
+    /// segment index 等的 FNV-1a）。
+    ///
+    /// 只存哈希，不存业务明文。即使 path、类型、frame 都没变，只要按钮标题、switch 状态、
+    /// segment 选择等关键语义改变，本字段就会变化，使旧观察的执行因 freshness 校验失败被拒绝。
+    public let semanticDigest: UInt64
 
     /// 创建一个目标指纹。
     ///
@@ -52,12 +61,13 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
     ///   - path: 目标 path。
     ///   - viewType: view 类型名。
     ///   - identifierHash: identifier 的稳定哈希（调用方负责用 `stableHash` 计算）。
-    ///   - role: 目标角色。
     ///   - isEnabled: 是否可用。
     ///   - isSelected: 是否选中。
     ///   - isHidden: 是否隐藏。
     ///   - alpha: 透明度。
     ///   - isUserInteractionEnabled: 是否允许用户交互。
+    ///   - ancestorDigest: 祖先链摘要。
+    ///   - semanticDigest: 语义摘要哈希。
     public init(contextDigest: String,
                 path: String,
                 viewType: String,
@@ -67,7 +77,8 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
                 isHidden: Bool = false,
                 alpha: Double = 1,
                 isUserInteractionEnabled: Bool = true,
-                ancestorDigest: UInt64 = 0) {
+                ancestorDigest: UInt64 = 0,
+                semanticDigest: UInt64 = 0) {
         self.contextDigest = contextDigest
         self.path = path
         self.viewType = viewType
@@ -78,6 +89,7 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
         self.alpha = alpha
         self.isUserInteractionEnabled = isUserInteractionEnabled
         self.ancestorDigest = ancestorDigest
+        self.semanticDigest = semanticDigest
     }
 
     /// 仅供测试的固定指纹 fixture。
@@ -93,7 +105,8 @@ public struct UIKitTargetFingerprint: Sendable, Equatable {
                                                     isHidden: false,
                                                     alpha: 1,
                                                     isUserInteractionEnabled: true,
-                                                    ancestorDigest: 0)
+                                                    ancestorDigest: 0,
+                                                    semanticDigest: 0)
 
     /// 字符串的稳定哈希（FNV-1a，64 位）。
     ///
@@ -154,14 +167,17 @@ public struct UIKitSnapshotContext: Sendable, Equatable {
 
 /// UIKit 视图树指纹快照存储。
 ///
-/// 解决"path 陈旧"问题：`ui.viewTargets`/`ui.topViewHierarchy` 查询时对当前 view 树生成
-/// 轻量指纹并签发一个 snapshotID 返回给调用方；交互命令（tap/control.sendAction）携带该
-/// snapshotID 时，executor 在执行前校验对应 path 的指纹是否仍匹配，不匹配则返回
-/// `stale_locator`（"snapshot expired or target changed; call ui.screenshot first..."），避免页面
-/// 变化后 path 指向错误 view 造成误操作。
+/// 解决"path 陈旧"问题：`ui.viewTargets` 查询时对当前 view 树生成轻量指纹并签发一个
+/// `viewSnapshotID` 返回给调用方；交互命令（tap/control.sendAction）携带该 `viewSnapshotID`
+/// 时，executor 在执行前校验对应 path 的指纹（含 `semanticDigest`）是否仍匹配，不匹配则返回
+/// `stale_locator`（"view snapshot expired or target changed; call ui.viewTargets first..."），
+/// 避免页面变化或语义变化后 path 指向错误 view 造成误操作。
+///
+/// `viewSnapshotID` 是 UIKit 结构指纹快照标识（**不是**截图 ID）。只有 `ui.viewTargets`
+/// 会签发它；`ui.screenshot` 不再签发。
 ///
 /// 容量与淘汰策略：
-/// - 最多 **8 条**快照（不同 snapshotID）；
+/// - 最多 **8 条**快照（不同 viewSnapshotID）；
 /// - 每条快照最多 **512** 条指纹（path→fingerprint）；超过 512 不签发（返回 nil）；
 /// - **TTL 30 秒**（spec §3.6：匹配 LLM 推理节奏）：查询时先清过期，再按 LRU 淘汰至容量上限。
 ///
@@ -169,7 +185,7 @@ public struct UIKitSnapshotContext: Sendable, Equatable {
 /// 是纯计算（无 UIKit 调用），所以 **macOS 下可测**（测试函数标 `@MainActor`）。时间通过注入
 /// 的 `now` 控制，提供 `setNow` 便于测试推进时间触发 TTL。
 ///
-/// 日志点：签发（含指纹数/是否超限）、淘汰（先过期后 LRU）、校验命中/陈旧/未知 snapshotID，
+/// 日志点：签发（含指纹数/是否超限）、淘汰（先过期后 LRU）、校验命中/陈旧/未知 viewSnapshotID，
 /// 均只记录数量与摘要，不写完整 identifier。
 @MainActor
 public final class UIKitSnapshotStore {
@@ -179,8 +195,8 @@ public final class UIKitSnapshotStore {
     static let maxFingerprints = UIKitSnapshotLimits.maxFingerprints
     /// 快照存活秒数。
     ///
-    /// spec §3.6：30s 匹配 LLM 推理节奏（agent 在 viewTargets/screenshot 与 tap 之间常需 3-30s
-    /// 思考），原 10s 易在推理期间过期导致 snapshotID 失效。
+    /// spec §3.6：30s 匹配 LLM 推理节奏（agent 在 viewTargets 与 tap 之间常需 3-30s
+    /// 思考），原 10s 易在推理期间过期导致 viewSnapshotID 失效。
     static let ttlSeconds: TimeInterval = 30
 
     /// 单条快照记录。
@@ -201,11 +217,11 @@ public final class UIKitSnapshotStore {
         let query: UIViewTargetsInput
     }
 
-    /// snapshotID → 快照记录。
+    /// viewSnapshotID → 快照记录。
     private var entries: [String: Entry] = [:]
     /// 当前时间提供者，测试可注入。
     private var now: () -> Date
-    /// 自增计数器，保证 snapshotID 唯一。
+    /// 自增计数器，保证 viewSnapshotID 唯一。
     private var counter = 0
 
     /// 进程内共享的单一 store 实例。
@@ -231,14 +247,14 @@ public final class UIKitSnapshotStore {
     /// 签发一条快照。
     ///
     /// 当指纹数超过 512 时不签发（返回 nil）：collector 仍正常返回采集数据，但响应中的
-    /// `snapshotID` 为 JSON null，调用方该轮不带 snapshotID 执行（不阻断功能）。
+    /// `viewSnapshotID` 为 JSON null，调用方该轮不带 viewSnapshotID 执行（不阻断功能）。
     ///
     /// - Parameters:
     ///   - context: 查询上下文摘要。
     ///   - targets: path → 指纹表。
     ///   - query: 签发 targets 时使用的查询参数；`ui.wait(snapshotChanged)` 必须用同一 query
     ///     重采才能与该表正确比对。
-    /// - Returns: 签发的 snapshotID；超过上限时返回 nil。
+    /// - Returns: 签发的 viewSnapshotID；超过上限时返回 nil。
     @discardableResult
     public func insert(context: UIKitSnapshotContext,
                        targets: [String: UIKitTargetFingerprint],
@@ -264,61 +280,61 @@ public final class UIKitSnapshotStore {
     ///
     /// `ui.wait(snapshotChanged)` 用它重采 whole-table，保证与签发时同 query（避免 query
     /// 不一致导致 path 集合天然不同、首轮即误判「已变化」）。snapshot 未知或已过期返回 nil，
-    /// 调用方回退到默认 query 并由 `matchesWholeTable` 返回 nil 记 `snapshotUnavailableReason`。
+    /// 调用方回退到默认 query 并由 `matchesWholeTable` 返回 nil 记 `viewSnapshotUnavailableReason`。
     ///
     /// 纯读不改 LRU/TTL（保活由 `matchesWholeTable`/`isStale` 在真正校验时更新）。
     ///
-    /// - Parameter snapshotID: 参照快照标识。
+    /// - Parameter viewSnapshotID: 参照快照标识。
     /// - Returns: 签发时的查询参数；snapshot 不存在或已过期时返回 nil。
-    func signingQuery(for snapshotID: String) -> UIViewTargetsInput? {
-        guard let entry = entries[snapshotID], !isExpired(entry: entry) else { return nil }
+    func signingQuery(for viewSnapshotID: String) -> UIViewTargetsInput? {
+        guard let entry = entries[viewSnapshotID], !isExpired(entry: entry) else { return nil }
         return entry.query
     }
 
     /// 校验 snapshot 是否陈旧（snapshot 不存在、TTL 过期、context 变化、path 缺失或指纹不匹配）。
     ///
-    /// executor 对携带 snapshotID 的交互在陈旧时 throw `staleLocator`；所有无法验证的情况均
+    /// executor 对携带 viewSnapshotID 的交互在陈旧时 throw `staleLocator`；所有无法验证的情况均
     /// 返回 `true`，防止 LRU 淘汰后的旧 path 静默退化为无防护执行。
     ///
     /// - Parameters:
-    ///   - snapshotID: 调用方携带的快照标识。
+    ///   - viewSnapshotID: 调用方携带的快照标识。
     ///   - path: 要交互的目标 path。
     ///   - context: 当前查询上下文身份。
     ///   - current: 当前重新采集的该 path 指纹。
     /// - Returns: `true` 表示陈旧（需重新查询）；`false` 表示有效。
-    public func isStale(snapshotID: String,
+    public func isStale(viewSnapshotID: String,
                         path: String,
                         context: UIKitSnapshotContext,
                         current: UIKitTargetFingerprint) -> Bool {
-        guard var entry = entries[snapshotID] else {
-            UIKitCommandLogging.info("command", "ui snapshot unknown id=\(snapshotID) path=\(path)")
+        guard var entry = entries[viewSnapshotID] else {
+            UIKitCommandLogging.info("command", "ui snapshot unknown id=\(viewSnapshotID) path=\(path)")
             return true
         }
         if isExpired(entry: entry) {
-            entries.removeValue(forKey: snapshotID)
-            UIKitCommandLogging.info("command", "ui snapshot expired id=\(snapshotID) path=\(path)")
+            entries.removeValue(forKey: viewSnapshotID)
+            UIKitCommandLogging.info("command", "ui snapshot expired id=\(viewSnapshotID) path=\(path)")
             return true
         }
         entry.lastAccessedAt = now()
-        entries[snapshotID] = entry
+        entries[viewSnapshotID] = entry
         guard entry.context == context else {
-            UIKitCommandLogging.info("command", "ui snapshot context mismatch id=\(snapshotID) path=\(path)")
+            UIKitCommandLogging.info("command", "ui snapshot context mismatch id=\(viewSnapshotID) path=\(path)")
             return true
         }
         guard let stored = entry.fingerprints[path] else {
-            UIKitCommandLogging.info("command", "ui snapshot path missing id=\(snapshotID) path=\(path)")
+            UIKitCommandLogging.info("command", "ui snapshot path missing id=\(viewSnapshotID) path=\(path)")
             return true
         }
         if stored == current { return false }
-        UIKitCommandLogging.info("command", "ui snapshot fingerprint mismatch id=\(snapshotID) path=\(path)")
+        UIKitCommandLogging.info("command", "ui snapshot fingerprint mismatch id=\(viewSnapshotID) path=\(path)")
         return true
     }
 
     /// 兼容未传实例上下文的既有调用方（Foundation 测试）。
-    public func isStale(snapshotID: String,
+    public func isStale(viewSnapshotID: String,
                         path: String,
                         current: UIKitTargetFingerprint) -> Bool {
-        isStale(snapshotID: snapshotID, path: path, context: .test, current: current)
+        isStale(viewSnapshotID: viewSnapshotID, path: path, context: .test, current: current)
     }
 
     /// 比较指定 snapshot 的完整指纹表是否与当前一致（供 `ui.wait` 的 snapshotChanged）。
@@ -326,31 +342,31 @@ public final class UIKitSnapshotStore {
     /// 按 spec §6 比较「whole snapshot tables」：取出 snapshot 签发时存的 path→fingerprint 表，
     /// 与调用方当前采集的表整体比对。表不同（path 集合变或任一 fingerprint 变）或页面身份
     /// （window + topVC 实例）变化都视为「已变化」。snapshot 未知/过期返回 nil，调用方据
-    /// `snapshotUnavailableReason` 处理。
+    /// `viewSnapshotUnavailableReason` 处理。
     ///
     /// - Parameters:
-    ///   - snapshotID: 参照快照标识。
+    ///   - viewSnapshotID: 参照快照标识。
     ///   - context: 当前页面身份摘要。
     ///   - currentTable: 当前重新采集的 path→fingerprint 表（应与签发时同 query）。
     /// - Returns: nil=snapshot 未知/过期；true=表与身份均一致（未变化）；false=已变化。
-    func matchesWholeTable(snapshotID: String,
+    func matchesWholeTable(viewSnapshotID: String,
                            context: UIKitSnapshotContext,
                            currentTable: [String: UIKitTargetFingerprint]) -> Bool? {
-        guard var entry = entries[snapshotID] else { return nil }
+        guard var entry = entries[viewSnapshotID] else { return nil }
         if isExpired(entry: entry) {
-            entries.removeValue(forKey: snapshotID)
-            UIKitCommandLogging.info("command", "ui snapshot expired id=\(snapshotID) wait=snapshotChanged")
+            entries.removeValue(forKey: viewSnapshotID)
+            UIKitCommandLogging.info("command", "ui snapshot expired id=\(viewSnapshotID) wait=snapshotChanged")
             return nil
         }
         entry.lastAccessedAt = now()
-        entries[snapshotID] = entry
+        entries[viewSnapshotID] = entry
         if entry.context != context {
-            UIKitCommandLogging.info("command", "ui snapshot context changed id=\(snapshotID) wait=snapshotChanged")
+            UIKitCommandLogging.info("command", "ui snapshot context changed id=\(viewSnapshotID) wait=snapshotChanged")
             return false
         }
         let matches = entry.fingerprints == currentTable
         if !matches {
-            UIKitCommandLogging.info("command", "ui snapshot table changed id=\(snapshotID) wait=snapshotChanged stored=\(entry.fingerprints.count) current=\(currentTable.count)")
+            UIKitCommandLogging.info("command", "ui snapshot table changed id=\(viewSnapshotID) wait=snapshotChanged stored=\(entry.fingerprints.count) current=\(currentTable.count)")
         }
         return matches
     }

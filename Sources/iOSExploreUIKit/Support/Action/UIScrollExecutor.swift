@@ -27,7 +27,7 @@ enum UIScrollExecutor {
         let action = ScrollCommand.actionName
         let resolved = try UIScrollResolver.resolveFromTarget(
             locator: input.locator,
-            snapshotID: input.snapshotID,
+            viewSnapshotID: input.viewSnapshotID,
             context: context,
             action: action
         )

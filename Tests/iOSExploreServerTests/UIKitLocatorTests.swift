@@ -13,51 +13,29 @@ struct UIKitLocatorTests {
         #expect(summary.contains("length=24"))
     }
 
-    @Test("UIKitLocator 统一 identifier path 和坐标")
-    func uikitLocatorParsesAllForms() throws {
-        #expect(try UIKitLocator.parse(identifier: "home.submit", path: nil, x: nil, y: nil) ==
+    @Test("UIKitLocator 解析 identifier 与 path")
+    func uikitLocatorParsesIdentifierAndPath() throws {
+        #expect(try UIKitLocator.parse(identifier: "home.submit", path: nil) ==
             .accessibilityIdentifier("home.submit"))
-        #expect(try UIKitLocator.parse(identifier: nil, path: "root/0/2", x: nil, y: nil) ==
+        #expect(try UIKitLocator.parse(identifier: nil, path: "root/0/2") ==
             .path([0, 2]))
-        #expect(try UIKitLocator.parse(identifier: nil, path: "root", x: nil, y: nil) ==
+        #expect(try UIKitLocator.parse(identifier: nil, path: "root") ==
             .path([]))
-        #expect(try UIKitLocator.parse(identifier: nil, path: nil, x: 24, y: 48) ==
-            .windowPoint(x: 24, y: 48))
-    }
-
-    @Test("view locator 与 window point 互斥")
-    func uikitLocatorRejectsMixedLocators() {
-        expectQueryFailure("view locator and window point are mutually exclusive") {
-            try UIKitLocator.parse(identifier: "home", path: nil, x: 1, y: 2)
-        }
-        expectQueryFailure("view locator and window point are mutually exclusive") {
-            try UIKitLocator.parse(identifier: nil, path: "root/0", x: 1, y: 2)
-        }
-    }
-
-    @Test("window point 必须成对提供 x 和 y")
-    func uikitLocatorRequiresBothCoordinates() {
-        expectQueryFailure("x and y must be provided together") {
-            try UIKitLocator.parse(identifier: nil, path: nil, x: 1, y: nil)
-        }
-        expectQueryFailure("x and y must be provided together") {
-            try UIKitLocator.parse(identifier: nil, path: nil, x: nil, y: 2)
-        }
     }
 
     @Test("identifier 与 path 互斥且必须提供其一")
     func uikitLocatorEnforcesIdentifierPathExclusivity() {
         expectQueryFailure("accessibilityIdentifier and path are mutually exclusive") {
-            try UIKitLocator.parse(identifier: "home", path: "root/0", x: nil, y: nil)
+            try UIKitLocator.parse(identifier: "home", path: "root/0")
         }
         expectQueryFailure("accessibilityIdentifier must not be empty") {
-            try UIKitLocator.parse(identifier: "", path: nil, x: nil, y: nil)
+            try UIKitLocator.parse(identifier: "", path: nil)
         }
         expectQueryFailure("path must be root or root/<non-negative-index>/...") {
-            try UIKitLocator.parse(identifier: nil, path: "bad/path", x: nil, y: nil)
+            try UIKitLocator.parse(identifier: nil, path: "bad/path")
         }
         expectQueryFailure("either accessibilityIdentifier or path is required") {
-            try UIKitLocator.parse(identifier: nil, path: nil, x: nil, y: nil)
+            try UIKitLocator.parse(identifier: nil, path: nil)
         }
     }
 }

@@ -5,14 +5,20 @@ import UIKit
 
 /// UIKit 轻量目标采集器。
 ///
-/// 采集器运行在 `MainActor`，从当前顶部控制器根 view 递归读取事件下发需要的目标摘要。
-/// 它刻意不复用完整层级快照，避免读取颜色、字体、图片等高成本验收字段。
+/// 采集器运行在 `MainActor`，从当前顶部控制器根 view 递归读取 canonical interaction target
+/// 摘要。它刻意不复用完整层级快照，避免读取颜色、字体、图片等高成本验收字段。
+///
+/// 重构后的核心不变式（spec §7）：`ui.viewTargets` 最终返回的 canonical target path 集合
+/// **等于** `viewSnapshotID` 内签发 fingerprint 的 path 集合，也**等于** `ui.tap` /
+/// `ui.control.sendAction` 允许操作的 path 集合。为此采集器先完成所有筛选与 `maxTargets`
+/// 截断，再只为最终返回的 target 逐个采集指纹并签发，禁止签发未返回的 path（否则 Agent 仍
+/// 可猜 path 执行）。
 @MainActor
 enum UIViewTargetsCollector {
     /// 采集当前顶部控制器 view 下的轻量目标列表。
     ///
     /// - Parameter query: 查询参数，控制包含策略、递归深度、identifier 筛选和文本长度。
-    /// - Returns: screen、targetCount、visitedNodeCount 与 targets 的 JSON。
+    /// - Returns: screen、targetCount、visitedNodeCount、targets、viewSnapshotID 的 JSON。
     /// - Throws: `UIKitCommandError.hierarchyUnavailable`——UIKit 上下文不可用时。
     static func collect(query: UIViewTargetsInput) throws -> JSON {
         UIKitCommandLogging.info("command", "ui view targets collect mainactor start includeHidden=\(query.includeHidden) includeDisabled=\(query.includeDisabled) includeStaticText=\(query.includeStaticText) includeContainers=\(query.includeContainers) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit)")
@@ -23,15 +29,16 @@ enum UIViewTargetsCollector {
     /// 采集轻量目标列表（注入入口：测试与内部复用）。
     ///
     /// 与 `collect(query:)` 的唯一区别是上下文由调用方提供，使采集流程可在测试里用可控
-    /// view 树驱动。其余逻辑（遍历、筛选、签发 snapshot）完全一致。
+    /// view 树驱动。其余逻辑（遍历、canonical 筛选、maxTargets 截断、按返回集合签发指纹）
+    /// 完全一致。
     ///
     /// - Parameters:
     ///   - query: 查询参数。
     ///   - context: 当前 UIKit 查询上下文。
-    /// - Returns: targets 列表 JSON。
+    /// - Returns: targets 列表 JSON（含 viewSnapshotID）。
     static func collect(query: UIViewTargetsInput, context: UIKitContextProvider.Context) -> JSON {
         var visitedNodeCount = 0
-        var targets: [UIViewTargetSummary] = []
+        var collected: [CollectedTarget] = []
         let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
         let truncated = collect(view: context.rootView,
                 rootView: context.rootView,
@@ -40,49 +47,60 @@ enum UIViewTargetsCollector {
                 depth: 0,
                 query: query,
                 visitedNodeCount: &visitedNodeCount,
-                targets: &targets,
-                digest: digest)
+                collected: &collected)
 
-        // 指纹表与 ui.screenshot 共用同一签发入口（collectFingerprints 收 UIViewTargetsInput，
-        // 与目标输出同筛选），保证"截图拿 snapshotID → tap 带 snapshotID"跨命令校验成立。
-        let fingerprints = UIKitFingerprintCollector.collectFingerprints(
-            rootView: context.rootView,
-            query: query,
-            digest: digest
+        // 只为最终返回（含 maxTargets 截断）的 canonical target 签发指纹：
+        // returned target paths == viewSnapshotID 签发 fingerprint paths == tap/sendAction 可执行集合。
+        let snapContext = UIKitFingerprintCollector.context(window: context.window,
+                                                             topViewController: context.topViewController)
+        let fingerprints = Dictionary(
+            uniqueKeysWithValues: collected.map { target in
+                (target.summary.path,
+                 UIKitFingerprintCollector.fingerprint(for: target.view,
+                                                        path: target.summary.path,
+                                                        rootView: context.rootView,
+                                                        digest: digest))
+            }
         )
-        let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
-                                                          targets: fingerprints,
-                                                          query: query)
-        let snapshotFields = UIKitSnapshotResponse.fields(for: snapshotID)
+        let viewSnapshotID = UIKitSnapshotStore.shared.insert(context: snapContext,
+                                                              targets: fingerprints,
+                                                              query: query)
+        let snapshotFields = UIKitSnapshotResponse.fields(for: viewSnapshotID)
+
         var data: JSON = [
             "screen": .object(screenJSON(window: context.window,
                                          rootViewController: context.rootViewController,
                                          topViewController: context.topViewController)),
-            "targetCount": .double(Double(targets.count)),
+            "targetCount": .double(Double(collected.count)),
             "visitedNodeCount": .double(Double(visitedNodeCount)),
-            "targets": .array(targets.map { .object($0.toJSON()) }),
+            "targets": .array(collected.map { .object($0.summary.toJSON()) }),
             "maxTargets": .double(Double(query.maxTargets)),
             "truncated": .bool(truncated),
             "truncationReason": truncated ? .string("maxTargets") : .null,
-            "snapshotID": snapshotFields.id,
-            "snapshotUnavailableReason": snapshotFields.unavailableReason,
+            "viewSnapshotID": snapshotFields.id,
+            "viewSnapshotUnavailableReason": snapshotFields.unavailableReason,
         ]
         // 导航栏按钮不是 rootView 子树里的普通 view，单独由 inspector 读 navigationItem 摘要，
         // 让 Agent 在同一份观察结果里既看到普通目标，也看到 UIBarButtonItem 语义目标。
         data["navigationBar"] = .object(
             UINavigationBarInspector.summarize(topViewController: context.topViewController).toJSON()
         )
-        UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(targets.count) topViewController=\(String(describing: type(of: context.topViewController)))")
+        UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(collected.count) fingerprints=\(fingerprints.count) topViewController=\(String(describing: type(of: context.topViewController)))")
         return data
     }
 
-    /// 递归遍历 view 树，并把符合输出策略和筛选条件的节点加入 targets。
+    /// 一条已采集的 canonical target：summary（跨边界 Sendable）+ 真实 view（仅 MainActor 域内，
+    /// 用于同帧采集指纹，不跨边界、不入响应）。
+    private struct CollectedTarget {
+        let summary: UIViewTargetSummary
+        let view: UIView
+    }
+
+    /// 递归遍历 view 树，并把符合 canonical 策略和筛选条件的节点收集进 `collected`。
     ///
     /// identifier 筛选只影响当前节点是否输出，不会提前剪枝子树，避免漏掉深层控件。
-    /// 隐藏节点在 `includeHidden=false` 时会剪枝整棵子树，避免隐藏容器下的控件被误返回。
-    ///
-    /// 指纹签发已下沉到 `UIKitFingerprintCollector.collectFingerprints`（与目标输出同筛选），
-    /// 此处只负责生成目标摘要与统计 `visitedNodeCount`、`maxTargets` 截断。
+    /// 隐藏节点在 `includeHidden=false` 时会剪枝整棵子树。`maxTargets` 截断后立即停止，
+    /// 保证签发集合 == 返回集合。
     private static func collect(view: UIView,
                                 rootView: UIView,
                                 window: UIWindow,
@@ -90,8 +108,7 @@ enum UIViewTargetsCollector {
                                 depth: Int,
                                 query: UIViewTargetsInput,
                                 visitedNodeCount: inout Int,
-                                targets: inout [UIViewTargetSummary],
-                                digest: String) -> Bool {
+                                collected: inout [CollectedTarget]) -> Bool {
         visitedNodeCount += 1
         if !query.includeHidden, view.isHidden {
             return false
@@ -100,8 +117,8 @@ enum UIViewTargetsCollector {
         if shouldInclude(view: view, query: query),
            matchesIdentifier(view: view, query: query) {
             let summary = summary(for: view, rootView: rootView, window: window, path: path, query: query)
-            targets.append(summary)
-            if targets.count >= query.maxTargets { return true }
+            collected.append(CollectedTarget(summary: summary, view: view))
+            if collected.count >= query.maxTargets { return true }
         }
 
         if let maxDepth = query.maxDepth, depth >= maxDepth {
@@ -116,16 +133,15 @@ enum UIViewTargetsCollector {
                     depth: depth + 1,
                     query: query,
                     visitedNodeCount: &visitedNodeCount,
-                    targets: &targets,
-                    digest: digest) { return true }
+                    collected: &collected) { return true }
         }
         return false
     }
 
-    /// 判断 view 是否符合默认或可选输出策略。
+    /// 判断 view 是否符合 canonical 输出策略。
     ///
-    /// 对 `UIKitFingerprintCollector.collectFingerprints` 可见：指纹签发必须与目标输出
-    /// 共用同一套筛选，保证跨命令 snapshotID 校验成立。
+    /// 对 `UIKitFingerprintCollector.collectMatching` 可见：指纹签发必须与目标输出共用同一套
+    /// canonical 筛选，保证 `ui.wait(snapshotChanged)` 重采表与 viewTargets 签发表同口径。
     static func shouldInclude(view: UIView, query: UIViewTargetsInput) -> Bool {
         let control = view as? UIControl
         let candidate = UIViewTargetCandidate(
@@ -137,14 +153,15 @@ enum UIViewTargetsCollector {
             hasAccessibilityIdentifier: view.accessibilityIdentifier?.isEmpty == false,
             hasAccessibilityLabel: view.accessibilityLabel?.isEmpty == false,
             hasStaticText: textualValue(from: view)?.isEmpty == false,
-            hasSubviews: !view.subviews.isEmpty
+            hasSubviews: !view.subviews.isEmpty,
+            isScrollView: view is UIScrollView
         )
         return query.shouldInclude(candidate: candidate)
     }
 
     /// 判断当前 view 是否通过 identifier 输出筛选。
     ///
-    /// 对 `UIKitFingerprintCollector.collectFingerprints` 可见（与 `shouldInclude` 同理）。
+    /// 对 `UIKitFingerprintCollector.collectMatching` 可见（与 `shouldInclude` 同理）。
     static func matchesIdentifier(view: UIView, query: UIViewTargetsInput) -> Bool {
         guard query.hasIdentifierFilter else { return true }
         let identifier = view.accessibilityIdentifier
@@ -165,8 +182,9 @@ enum UIViewTargetsCollector {
                                 query: UIViewTargetsInput) -> UIViewTargetSummary {
         let control = view as? UIControl
         let frame = view.convert(view.bounds, to: window)
+        let semantic = semanticText(for: view, limit: query.textLimit)
         // identifier 完整保留：它是事件下发的稳定定位键，裁断会让后续 tap/sendAction 失配。
-        // 仅 title/label/text/placeholder/value 这些展示型文本按 textLimit 裁剪。
+        // 仅 title/label/text/placeholder/value/semanticText 这些展示型文本按 textLimit 裁剪。
         return UIViewTargetSummary(
             path: UIKitViewLookupTarget.pathString(from: path),
             type: String(describing: Swift.type(of: view)),
@@ -177,6 +195,8 @@ enum UIViewTargetsCollector {
             text: UIViewTargetText.limited(textualValue(from: view), limit: query.textLimit),
             placeholder: UIViewTargetText.limited(placeholder(from: view), limit: query.textLimit),
             value: UIViewTargetText.limited(value(from: view), limit: query.textLimit),
+            semanticText: semantic?.text,
+            semanticTextSource: semantic?.source,
             frame: UIViewHierarchyRect(rect: frame),
             state: UIViewTargetState(isHidden: view.isHidden,
                                      alpha: Double(view.alpha),
@@ -191,19 +211,39 @@ enum UIViewTargetsCollector {
 
     /// 计算 path-target 的可执行动作，供 `summary` 与可测入口共用。
     ///
-    /// 与 `UIKitActionExecutor` 的 view-tap 语义保持一致是本方法的核心约束：第一版 executor 只
-    /// 对目标自身为 `UIControl` 的 path 派发事件，因此能力声明只认目标自身的 control 身份，
-    /// 不向上借用祖先 control——否则会出现 collector 声明可 tap、executor 按 path 派发却返回
-    /// `unsupportedTarget` 的分叉。
+    /// 与 `UIKitActionExecutor` 的语义保持一致：`tap` 只在存在默认激活路由
+    /// （`UIKitDefaultActivationResolver`）时声明；`control.*`/`input`/`scroll` 按真实控件类型
+    /// 与状态声明。collector 与 executor 共用 resolver/capability，保证"声明可执行"与"实际派发"
+    /// 不分叉。
     ///
     /// - Parameters:
     ///   - view: 被采集/点击的目标 view。
     ///   - rootView: 当前查询上下文的根 view，用于祖先交互性校验。
-    /// - Returns: 目标当前可执行的动作集合；非 control、不可交互或 disabled 时为空。
+    /// - Returns: 目标当前可执行的动作集合；非 canonical、不可交互或 disabled 时为空。
     static func availableActions(for view: UIView, rootView: UIView) -> UIKitActionAvailability {
-        UIKitActionCapabilityResolver.resolve(view: view,
-                                              rootView: rootView,
-                                              nearestControl: view as? UIControl)
+        UIKitActionCapabilityResolver.resolve(view: view, rootView: rootView)
+    }
+
+    /// 提取 canonical target 的稳定语义文本（按钮内部 label/image 不再作为独立 target，
+    /// 其文本汇总到父 target）。优先级：a11y label → 按钮标题 → a11y value → identifier。
+    /// 不记录明文到日志；返回文本按 `limit` 裁剪。
+    private static func semanticText(for view: UIView, limit: Int) -> (text: String, source: String)? {
+        if let label = view.accessibilityLabel, !label.isEmpty {
+            return (UIViewTargetText.limited(label, limit: limit) ?? label, "accessibilityLabel")
+        }
+        if let button = view as? UIButton {
+            let title = button.title(for: .normal) ?? button.currentTitle
+            if let title, !title.isEmpty {
+                return (UIViewTargetText.limited(title, limit: limit) ?? title, "buttonTitle")
+            }
+        }
+        if let value = view.accessibilityValue, !value.isEmpty {
+            return (UIViewTargetText.limited(value, limit: limit) ?? value, "accessibilityValue")
+        }
+        if let identifier = view.accessibilityIdentifier, !identifier.isEmpty {
+            return (UIViewTargetText.limited(identifier, limit: limit) ?? identifier, "accessibilityIdentifier")
+        }
+        return nil
     }
 
     /// 识别轻量目标角色，用于给 agent 返回建议动作。

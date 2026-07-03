@@ -2,44 +2,81 @@ import Testing
 @testable import iOSExploreServer
 @testable import iOSExploreUIKit
 
-@Test("UIControlSendActionInput 从 accessibilityIdentifier 解析目标和事件")
-func controlSendActionQueryParsesIdentifierTarget() throws {
+// MARK: - ui.control.sendAction 精确事件契约
+
+/// `ui.control.sendAction` 是精确 UIKit event 工具：只接受 canonical target 定位
+/// （path 或 accessibilityIdentifier）+ 必填 `viewSnapshotID` + 显式 event，不再做
+/// hit-test、不接受坐标、不找祖先 control。下面测试锁定该公共输入契约。
+@Test("UIControlSendActionInput 从 path + viewSnapshotID + event 解析")
+func sendActionInputParsesPathWithViewSnapshotIDAndEvent() throws {
     let query = try UIControlSendActionInput.parse(from: [
-        "accessibilityIdentifier": "mine.header.avatar",
+        "path": "root/0",
+        "viewSnapshotID": "view_snapshot_test",
         "event": "touchUpInside",
     ])
 
-    #expect(query.target == .accessibilityIdentifier("mine.header.avatar"))
+    #expect(query.target == .path([0]))
     #expect(query.event == .touchUpInside)
+    #expect(query.viewSnapshotID == "view_snapshot_test")
 }
 
-@Test("UIControlSendActionInput 从 path 解析目标和事件")
-func controlSendActionQueryParsesPathTarget() throws {
+@Test("UIControlSendActionInput 从 identifier + viewSnapshotID + event 解析")
+func sendActionInputParsesIdentifierWithViewSnapshotIDAndEvent() throws {
     let query = try UIControlSendActionInput.parse(from: [
-        "path": "root/0/2/1",
-        "event": "valueChanged",
+        "accessibilityIdentifier": "checkout.submit",
+        "viewSnapshotID": "view_snapshot_test",
+        "event": "touchDown",
     ])
 
-    #expect(query.target == .path([0, 2, 1]))
-    #expect(query.event == .valueChanged)
+    #expect(query.target == .accessibilityIdentifier("checkout.submit"))
+    #expect(query.event == .touchDown)
+    #expect(query.viewSnapshotID == "view_snapshot_test")
 }
 
-@Test("UIControlSendActionInput 拒绝歧义目标和非法 path")
-func controlSendActionQueryRejectsAmbiguousOrInvalidTarget() {
+@Test("UIControlSendActionInput path 与 identifier 都必须携带 viewSnapshotID")
+func sendActionInputRejectsMissingViewSnapshotID() {
+    #expect(throws: CommandInputParseError.self) {
+        try UIControlSendActionInput.parse(from: ["path": "root/0", "event": "touchUpInside"])
+    }
     #expect(throws: CommandInputParseError.self) {
         try UIControlSendActionInput.parse(from: [
-            "accessibilityIdentifier": "mine.header.avatar",
-            "path": "root/0",
+            "accessibilityIdentifier": "checkout.submit",
             "event": "touchUpInside",
         ])
     }
+}
 
+@Test("UIControlSendActionInput 拒绝旧 snapshotID 字段名")
+func sendActionInputRejectsOldSnapshotID() {
     #expect(throws: CommandInputParseError.self) {
         try UIControlSendActionInput.parse(from: [
-            "path": "root/a",
+            "path": "root/0",
+            "snapshotID": "snap-1",
             "event": "touchUpInside",
         ])
     }
+}
+
+@Test("UIControlSendActionInput 拒绝 path 与 identifier 同时提供")
+func sendActionInputRejectsMixedPathAndIdentifier() {
+    #expect(throws: CommandInputParseError.self) {
+        try UIControlSendActionInput.parse(from: [
+            "path": "root/0",
+            "accessibilityIdentifier": "checkout.submit",
+            "viewSnapshotID": "view_snapshot_test",
+            "event": "touchUpInside",
+        ])
+    }
+}
+
+@Test("UIControlSendActionInput schema 使用 viewSnapshotID 且无坐标")
+func sendActionInputSchemaUsesViewSnapshotID() {
+    #expect(UIControlSendActionInput.inputSchema.fields.map(\.name) == [
+        "accessibilityIdentifier",
+        "path",
+        "viewSnapshotID",
+        "event",
+    ])
 }
 
 @Test("UIControlSendActionEvent 支持常用 UIControl 事件名")
@@ -50,59 +87,4 @@ func controlSendActionEventParsesSupportedNames() {
     #expect(UIControlSendActionEvent(rawValue: "editingChanged") == .editingChanged)
     #expect(UIControlSendActionEvent(rawValue: "editingDidBegin") == .editingDidBegin)
     #expect(UIControlSendActionEvent(rawValue: "editingDidEnd") == .editingDidEnd)
-}
-
-@Test("UIControlSendActionInput schema 声明字段顺序和约束")
-func controlSendActionInputSchemaUsesExpectedFieldsAndConstraints() {
-    #expect(UIControlSendActionInput.inputSchema.fields.map(\.name) == [
-        "accessibilityIdentifier",
-        "path",
-        "snapshotID",
-        "event",
-    ])
-    #expect(UIControlSendActionInput.inputSchema.constraints.contains(.exactlyOneOf([
-        "accessibilityIdentifier",
-        "path",
-    ])))
-    #expect(UIControlSendActionInput.inputSchema.constraints.contains(.extensionMessage(
-        "snapshotID is valid only with path"
-    )))
-}
-
-@Test("UIControlSendActionInput 接受 identifier 或 path+snapshotID")
-func controlSendActionInputParsesValidMatrix() throws {
-    let identifier = try UIControlSendActionInput.parse(from: [
-        "accessibilityIdentifier": "home.submit",
-        "event": "touchUpInside",
-    ])
-    #expect(identifier.target == .accessibilityIdentifier("home.submit"))
-    #expect(identifier.event == .touchUpInside)
-    #expect(identifier.snapshotID == nil)
-
-    let path = try UIControlSendActionInput.parse(from: [
-        "path": "root/0/1",
-        "snapshotID": "snap-1",
-        "event": "valueChanged",
-    ])
-    #expect(path.target == .path([0, 1]))
-    #expect(path.event == .valueChanged)
-    #expect(path.snapshotID == "snap-1")
-}
-
-@Test("UIControlSendActionInput 拒绝缺事件、缺目标和 snapshotID 非法组合")
-func controlSendActionInputRejectsInvalidMatrixAsCommandInputError() {
-    let invalidCases: [JSON] = [
-        ["accessibilityIdentifier": "home.submit"],
-        ["event": "touchUpInside"],
-        ["accessibilityIdentifier": "home.submit", "path": "root/0", "event": "touchUpInside"],
-        ["accessibilityIdentifier": "home.submit", "snapshotID": "snap-1", "event": "touchUpInside"],
-        ["path": "root/a", "event": "touchUpInside"],
-        ["path": "root/0", "event": "unknown"],
-    ]
-
-    for data in invalidCases {
-        #expect(throws: CommandInputParseError.self) {
-            try UIControlSendActionInput.parse(from: data)
-        }
-    }
 }

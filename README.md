@@ -43,10 +43,10 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 | action | 说明 |
 |---|---|
 | `ui.topViewHierarchy` | 完整 view 树快照（文本/颜色/控件状态） |
-| `ui.viewTargets` | 扁平可交互目标列表（path + 可用动作 + snapshotID） |
-| `ui.tap` | 点击（accessibilityIdentifier / path 定位，或 window 坐标） |
-| `ui.control.sendAction` | 向 UIControl 发 target-action 事件 |
-| `ui.screenshot` | 截屏（PNG base64，降采样 + 签发 snapshotID） |
+| `ui.viewTargets` | canonical interaction targets 列表（UIControl 系 + UIScrollView 系；返回 path + 可用动作 + viewSnapshotID） |
+| `ui.tap` | 对 `ui.viewTargets` 签发的 canonical target 执行默认激活动作（accessibilityIdentifier / path + 必填 viewSnapshotID） |
+| `ui.control.sendAction` | 向 UIControl 发 target-action 事件（path/identifier + 必填 viewSnapshotID + 显式 event） |
+| `ui.screenshot` | 截屏（PNG base64，降采样；可选视觉证据，不再签发 viewSnapshotID） |
 | `ui.input` | 向 UITextField / UITextView 注入文本（UITextInput.insertText） |
 | `ui.keyboard.dismiss` | 收起当前 first responder / 键盘 |
 | `ui.scroll` | 在 UIScrollView 上按方向 + 距离滚动 |
@@ -66,7 +66,7 @@ let server = ExploreServer()
 server.registerUIKitCommands()   // 一次性注册 13 个 ui.* 命令
 ```
 
-`ui.*` 典型闭环：先 `ui.viewTargets`（或 `topViewHierarchy`）观察页面并拿到目标的 `path` / `snapshotID` → 优先用 `accessibilityIdentifier`，必要时用 `path + snapshotID` 调 `ui.tap` / `ui.input` / `ui.scroll`（snapshotID 做陈旧防护，防画面已变还按旧路径操作）→ 动作后用 `ui.wait` 等待明确反馈，或重新 `ui.viewTargets` 观察页面 → 必要时用 `ui.screenshot` 留失败证据。`ui.tap` 成功只表示动作已发出，不表示测试步骤成功。
+`ui.*` 典型闭环：先 `ui.viewTargets` 观察页面拿到 canonical target 的 `path` 与本次 `viewSnapshotID`（仅此命令签发，`ui.screenshot` / `ui.topViewHierarchy` 都不再签发）→ 优先用 `accessibilityIdentifier`，必要时用 `path + viewSnapshotID` 调 `ui.tap` / `ui.control.sendAction` / `ui.input` / `ui.scroll`（viewSnapshotID 做陈旧防护，防画面已变还按旧路径操作；命中陈旧时按提示重新 `ui.viewTargets` 拿新 viewSnapshotID 重试）→ 动作后用 `ui.wait` 等待明确反馈，或重新 `ui.viewTargets` 观察页面 → 必要时用 `ui.screenshot` 留失败证据。`ui.tap` 成功只表示激活动作已发出，不表示测试步骤成功。
 
 ### 注册自定义命令
 

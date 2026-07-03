@@ -9,7 +9,7 @@
 当前项目已经有不少 UI 命令：
 
 - 看页面：`ui.viewTargets`、`ui.topViewHierarchy`、`ui.screenshot`
-- 做动作：`ui.tap`、`ui.input`、`ui.scroll`、`ui.scrollToElement`、`ui.keyboard.dismiss`、`ui.navigation.back`
+- 做动作：`ui.tap`、`ui.control.sendAction`、`ui.input`、`ui.scroll`、`ui.scrollToElement`、`ui.keyboard.dismiss`、`ui.navigation.back`、`ui.navigation.tapBarButton`
 - 等待：`ui.wait`
 - 查询弹窗：`ui.alert.respond`
 
@@ -60,7 +60,7 @@ Agent 每一步都应按这个顺序走：
 它支持哪些动作？
 ```
 
-Agent 默认应该先调用它，而不是直接截图。
+Agent 默认应该先调用它，而不是直接截图。**它也是 `viewSnapshotID` 的唯一签发者**——后续 `ui.tap` / `ui.control.sendAction` / `ui.wait(snapshotChanged)` 所需的 `viewSnapshotID` 必须来自最近一次 `ui.viewTargets`（`ui.screenshot` / `ui.topViewHierarchy` 不再签发）。
 
 ### 3.2 需要更详细信息时再用 `ui.topViewHierarchy`
 
@@ -101,7 +101,7 @@ identifier 是业务给自动化留下的稳定名字；
 
 业务 App 后续应该尽量给关键页面状态和关键控件设置稳定 identifier。
 
-### 4.2 path 必须配合 snapshotID 才适合安全复用
+### 4.2 path 必须配合 viewSnapshotID 才适合安全复用
 
 `path` 表示“当前这次页面快照里的位置”，例如：
 
@@ -114,35 +114,49 @@ root/0/2/1
 所以如果 Agent 要用 path 做动作，应该使用：
 
 ```text
-path + snapshotID
+path + viewSnapshotID
 ```
 
-这样工具可以检查页面是否已经变化，避免旧 path 点错目标。
+`viewSnapshotID` 来自最近一次 `ui.viewTargets`。这样工具可以检查页面是否已经变化，避免旧 path 点错目标。
 
-### 4.3 坐标点击只能最后兜底
+### 4.3 不存在“裸坐标点击”
 
-坐标点击看起来方便，但风险最高。
+`ui.tap` 不再接受坐标（`x`/`y`/`window`/`coordinateSpace` 已删除），也不做 hit-test。它只接受 `accessibilityIdentifier` 或 `path`（二选一）+ 必填 `viewSnapshotID`，并按 target 类型做“默认激活动作”。
 
-只有在这些条件同时满足时才考虑：
+所以协议要求：
 
-- 没有可用 identifier；
-- path 也不可靠；
-- 页面结构化信息不足；
-- Agent 或人工已经有明确证据；
-- 这个动作不是危险动作。
+```text
+不要尝试用坐标点击绕过目标定位。
+```
 
-不能把坐标点击当默认路径。
+如果 `ui.viewTargets` 看不到能满足的目标，说明：
+
+- 目标可能是普通 label / container / gesture-only view（不在 canonical targets 里），需要 `ui.topViewHierarchy` 排查；
+- 目标可能是 navigationBar 按钮，走 `ui.navigation.tapBarButton`；
+- 目标可能是弹窗按钮，走 `ui.alert.respond`；
+- 目标真的不在当前页面，需要先滚动或返回。
+
+没有“用坐标硬点”这条兜底路径。
 
 ## 5. 动作规则
 
-### 5.1 `ui.tap` 成功只代表动作已发出
+### 5.1 `ui.tap` 是默认激活动作，不是触摸注入
 
-`ui.tap` 返回成功，只能说明：
+`ui.tap` 现在按 target 类型路由“默认激活动作”：
+
+```text
+UIButton                → sendActions(.touchUpInside)
+UISwitch                → setOn(!isOn) + .valueChanged
+UITextField/UITextView  → becomeFirstResponder（聚焦）
+UISlider/UISegmentedControl/普通 UIView → unsupported_target
+```
+
+它返回成功（`activated: true` + `activationRoute`），只能说明：
 
 ```text
 目标找到了；
-目标通过了安全检查；
-点击动作已经派发。
+viewSnapshotID 通过了陈旧校验；
+target 有默认激活路由，激活动作已经发出。
 ```
 
 它不能说明：
@@ -152,6 +166,12 @@ path + snapshotID
 - 登录已经成功；
 - 列表已经刷新；
 - 测试步骤已经通过。
+
+需要其他动作时走对应命令：
+
+- 需要显式 control event（如 `.valueChanged` / `.touchDown` / `.editingDidEnd`）→ `ui.control.sendAction`（target 自身必须是 `UIControl`，需 `viewSnapshotID`）；
+- navigationBar 按钮 → `ui.navigation.tapBarButton`（不并入 `ui.tap`）；
+- 弹窗按钮 → `ui.alert.respond`（不并入 `ui.tap`）。
 
 因此，`ui.tap` 后必须调用等待或重新观察。
 
@@ -172,7 +192,7 @@ path + snapshotID
 
 `ui.scroll` / `ui.scrollToElement` 会改变页面可见区域。
 
-滚动后旧 snapshot 和旧 path 都可能不适合继续用。
+滚动后旧 viewSnapshotID 和旧 path 都可能不适合继续用。
 
 因此滚动后默认应：
 
@@ -316,7 +336,7 @@ Agent 不应该把所有错误都当成“测试失败”。
 
 | code / 结果 | 普通解释 | Agent 应该怎么做 |
 |---|---|---|
-| `stale_locator` | 页面已经变了，旧 path 不可靠 | 重新观察，不要重试旧 path |
+| `stale_locator` | 页面已经变了，旧 path / 旧 viewSnapshotID 不可靠（固定提示 "call ui.viewTargets first"） | 重新调用 `ui.viewTargets` 拿新 viewSnapshotID，不要重试旧输入 |
 | `target_not_found` | 目标不存在或当前不可见 | 重新观察，必要时滚动或处理弹窗 |
 | `ambiguous` / 歧义 | 找到多个候选 | 不要点，换更明确 identifier |
 | `disabled` / unsupported | 目标当前不能操作或不支持动作 | 不要强点，观察状态或换动作 |
@@ -358,7 +378,7 @@ Agent 不应该把所有错误都当成“测试失败”。
 
 不应该用这些作为通过依据：
 
-- `ui.tap` 返回 `tapped: true`；
+- `ui.tap` 返回 `activated: true`；
 - `ui.input` 返回 finalText；
 - 固定 sleep 后没有报错；
 - 坐标点下去没有失败；
@@ -373,10 +393,10 @@ Agent 执行一个自然语言步骤时，推荐这样做：
    调 ui.viewTargets，看当前页面和可操作目标。
 
 2. decide
-   选择明确目标，优先 identifier，其次 path + snapshotID。
+   选择明确目标，优先 identifier，其次 path + viewSnapshotID（来自第 1 步的 ui.viewTargets）。
 
 3. act
-   调 ui.tap / ui.input / ui.scroll / ui.navigation.back 等动作。
+   按目标类型选命令：button/switch/可聚焦输入框用 `ui.tap`；特殊 control event 用 `ui.control.sendAction`；navigationBar 按钮用 `ui.navigation.tapBarButton`；其余用 `ui.input` / `ui.scroll` / `ui.navigation.back` 等。
 
 4. wait
    根据测试目标调用 ui.wait，或直接重新 observe。
@@ -426,17 +446,17 @@ Agent 默认不应该：
 - 把 `ui.tap` 成功当测试成功；
 - 把 `wait_timeout` 直接当业务失败；
 - 自动关闭所有弹窗；
-- 假装能点击当前不可达的 navigationBar 按钮；
+- 用 `ui.tap` 或坐标去点 navigationBar 按钮（应走 `ui.navigation.tapBarButton`）；
 - 生成很多步骤后一次性执行到底。
 
 ## 14. 当前协议带来的后续任务
 
 这份协议不是终点。它把下一步任务排清楚了：
 
-1. 补 navigationBar / UIBarButtonItem 可达能力。
+1. ~~补 navigationBar / UIBarButtonItem 可达能力~~（已完成：`ui.navigation.tapBarButton`）；`ui.tap` 也已重构为"默认激活动作"（不再做坐标点击 / hit-test）。
 2. 设计多结果等待并返回最终页面状态。
 3. 补真正可用的弹窗响应能力。
 4. 设计动作后轻量 final observation 是否由 iPhone 端返回，还是由 Mac MCP 层组合。
 5. 后续再考虑视觉模型和测试平台化。
 
-其中第 1 项是运行验证暴露的硬阻断，应优先进入设计。
+剩余优先项是多结果等待与弹窗响应能力。

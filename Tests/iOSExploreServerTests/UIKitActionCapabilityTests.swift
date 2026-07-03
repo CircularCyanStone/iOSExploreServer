@@ -33,14 +33,55 @@ func availabilityPreservesActionOrder() {
 }
 
 #if canImport(UIKit)
-@Test("UITextField 声明编辑事件与 input 动作") @MainActor
-func textFieldDeclaresEditingActions() {
+@Test("UIButton 声明 tap 与 touchDown/touchUpInside") @MainActor
+func buttonDeclaresTapAndTouchEvents() {
+    let button = UIButton(type: .system)
+    let availability = UIKitActionCapabilityResolver.resolve(view: button, rootView: button)
+    #expect(availability.actions.contains(.tap))
+    #expect(availability.actions.contains(.controlTouchDown))
+    #expect(availability.actions.contains(.controlTouchUpInside))
+}
+
+@Test("UISwitch 声明 tap 与 valueChanged") @MainActor
+func switchDeclaresTapAndValueChanged() {
+    let toggle = UISwitch()
+    let availability = UIKitActionCapabilityResolver.resolve(view: toggle, rootView: toggle)
+    #expect(availability.actions.contains(.tap))
+    #expect(availability.actions.contains(.controlValueChanged))
+}
+
+@Test("UISlider 不声明 tap，仅 valueChanged") @MainActor
+func sliderDoesNotDeclareTap() {
+    let slider = UISlider()
+    let availability = UIKitActionCapabilityResolver.resolve(view: slider, rootView: slider)
+    #expect(!availability.actions.contains(.tap))
+    #expect(availability.actions.contains(.controlValueChanged))
+}
+
+@Test("UISegmentedControl 不声明 tap，仅 valueChanged") @MainActor
+func segmentedControlDoesNotDeclareTap() {
+    let segmented = UISegmentedControl(items: ["一", "二"])
+    let availability = UIKitActionCapabilityResolver.resolve(view: segmented, rootView: segmented)
+    #expect(!availability.actions.contains(.tap))
+    #expect(availability.actions.contains(.controlValueChanged))
+}
+
+@Test("未知自定义 UIControl 不声明 tap，仅 touchDown/touchUpInside") @MainActor
+func unknownCustomControlDoesNotDeclareTap() {
+    final class CustomControl: UIControl {}
+    let control = CustomControl()
+    let availability = UIKitActionCapabilityResolver.resolve(view: control, rootView: control)
+    #expect(!availability.actions.contains(.tap))
+    #expect(availability.actions.contains(.controlTouchDown))
+    #expect(availability.actions.contains(.controlTouchUpInside))
+}
+
+@Test("UITextField 声明 tap/input 与编辑事件") @MainActor
+func textFieldDeclaresTapInputAndEditingEvents() {
     let textField = UITextField()
-    let availability = UIKitActionCapabilityResolver.resolve(view: textField,
-                                                               rootView: textField,
-                                                               nearestControl: textField)
-    // UITextField 既是 UIControl（保留 tap + control.editing* 编辑事件），又 conform UITextInput
-    // → 追加 input。两条路径并列累加，覆盖 executor 后续的 ui.input 命令。
+    let availability = UIKitActionCapabilityResolver.resolve(view: textField, rootView: textField)
+    // UITextField 既是 UIControl（默认激活路由 inputFocus → tap + control.editing*），又 conform
+    // UITextInput → 追加 input。覆盖 executor 后续的 ui.tap(聚焦) 与 ui.input 命令。
     #expect(availability.actions.contains(.tap))
     #expect(availability.actions.contains(.controlEditingChanged))
     #expect(availability.actions.contains(.controlEditingDidBegin))
@@ -58,23 +99,23 @@ func capabilityDeclarationsForInputAndScroll() {
 
     // UITextField（UIControl 子类）声明 input（UITextInput conform）。
     #expect(UIKitActionCapabilityResolver
-            .resolve(view: textField, rootView: root, nearestControl: textField)
+            .resolve(view: textField, rootView: root)
             .actions.contains(.input))
     // UIScrollView 声明 scroll。
     #expect(UIKitActionCapabilityResolver
-            .resolve(view: scrollView, rootView: root, nearestControl: nil)
+            .resolve(view: scrollView, rootView: root)
             .actions.contains(.scroll))
     // UITextView 虽是 UIScrollView 子类，但内部长文滚动留 v2——显式排除 scroll，避免误暴露。
     #expect(!UIKitActionCapabilityResolver
-            .resolve(view: textView, rootView: root, nearestControl: nil)
+            .resolve(view: textView, rootView: root)
             .actions.contains(.scroll))
-    // UITextView conform UITextInput，仍声明 input（codex 第三轮补的正确性断言）。
+    // UITextView conform UITextInput，仍声明 input。
     #expect(UIKitActionCapabilityResolver
-            .resolve(view: textView, rootView: root, nearestControl: nil)
+            .resolve(view: textView, rootView: root)
             .actions.contains(.input))
     // 既非 control、又非 UITextInput/UIScrollView 的普通 view 不声明任何动作。
     #expect(UIKitActionCapabilityResolver
-            .resolve(view: plain, rootView: root, nearestControl: nil)
+            .resolve(view: plain, rootView: root)
             .actions.isEmpty)
 }
 
@@ -82,9 +123,7 @@ func capabilityDeclarationsForInputAndScroll() {
 func disabledControlHasNoAvailableActions() {
     let button = UIButton(type: .system)
     button.isEnabled = false
-    let availability = UIKitActionCapabilityResolver.resolve(view: button,
-                                                               rootView: button,
-                                                               nearestControl: button)
+    let availability = UIKitActionCapabilityResolver.resolve(view: button, rootView: button)
     #expect(availability.rawValues.isEmpty)
 }
 
@@ -105,18 +144,15 @@ func ancestorStateBlocksAvailableActions() {
         container.alpha = 1
         container.isUserInteractionEnabled = true
         mutate()
-        let availability = UIKitActionCapabilityResolver.resolve(view: button,
-                                                                   rootView: root,
-                                                                   nearestControl: button)
+        let availability = UIKitActionCapabilityResolver.resolve(view: button, rootView: root)
         #expect(availability.actions.isEmpty)
     }
 }
 
-@Test("非 control 目标不因祖先 control 被声明可执行动作（与 executor view-tap 一致）") @MainActor
+@Test("非 control 目标不声明动作（canonical-only，不借祖先 control）") @MainActor
 func nonControlTargetDoesNotInheritAncestorControlActions() {
-    // 结构：root > button > container > leaf。leaf 非 control 且可交互，祖先是 UIControl。
-    // collector 不应借用祖先 control 声明动作——否则 executor 按 path 派发时，nearestControl
-    // 被限制在 leaf.superview 之内（找不到 control）会返回 unsupportedTarget，造成声明与派发分叉。
+    // 结构：root > button > container > leaf。leaf 非 control 非 scrollView，canonical-only 规则下
+    // 不声明任何动作，更不会借祖先 button control 派生 tap（resolver 已无 nearestControl 借用路径）。
     let root = UIView()
     let button = UIButton(type: .system)
     let container = UIView()

@@ -98,13 +98,14 @@ func waitSnapshotChangedSatisfiedOnContentChange() async throws {
         rootView: context.rootView, query: .default, digest: digest)
     let snapshotContext = UIKitFingerprintCollector.context(
         window: context.window, topViewController: context.topViewController)
-    let snapshotID = try #require(UIKitSnapshotStore.shared.insert(context: snapshotContext, targets: initialTable, query: .default))
+    let snapshotStore = UIKitSnapshotStore()
+    let snapshotID = try #require(snapshotStore.insert(context: snapshotContext, targets: initialTable, query: .default))
 
     // 第二轮改 button.enabled → fingerprint 的 isEnabled 字段变化 → whole table 不同 → satisfied。
     // 注意：fingerprint 不含 text（防泄露），text 变化应用 textExists；snapshotChanged 检测结构/控件状态变化。
     var callCount = 0
-    let input = UIWaitInput(mode: .snapshotChanged, timeoutMs: 2000, intervalMs: 50, snapshotID: snapshotID)
-    let data = try await UIWaitExecutor.execute(input: input) {
+    let input = UIWaitInput(mode: .snapshotChanged, timeoutMs: 2000, intervalMs: 50, viewSnapshotID: snapshotID)
+    let data = try await UIWaitExecutor.execute(input: input, snapshotStore: snapshotStore) {
         callCount += 1
         if callCount > 1 { button.isEnabled = false }
         return context

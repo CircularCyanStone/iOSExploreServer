@@ -6,8 +6,8 @@ import UIKit
 /// UIKit locator 解析器。
 ///
 /// 在 `MainActor` 上把 `UIKitLocator` 的 `accessibilityIdentifier`/`path` 变体解析为
-/// 真实 `UIView`，并提供祖先判断与 nearest-control 查找。`windowPoint` 变体**不**在此
-/// 解析（它交给 executor 用坐标 hit-test），本类型只负责 view 定位。
+/// 真实 `UIView`，并提供祖先判断与路径查找。重构后 `UIKitLocator` 只表达 view 定位
+/// （identifier / path），不再有坐标变体，故本类型只负责 view 定位。
 ///
 /// 该类型是 MainActor 隔离域的一部分：调用方（adapter）只能 `await` 其入口，不能把
 /// 解析出的 `UIView` 返回到非隔离域——跨边界只传 Sendable 摘要（路径、类型名）。
@@ -28,10 +28,10 @@ enum UIKitLocatorResolver {
 
     /// 按通用目标定位 view，失败时抛出由调用方提供的业务错误。
     ///
-    /// 仅解析 `accessibilityIdentifier` 与 `path` 变体；`windowPoint` 不应传入本方法（传入会抛
-    /// `notFound()`，作为防御）。`notFound` / `ambiguous` 两个工厂由调用方提供——因为 tap 与
-    /// control 命令对「未找到 / 歧义」使用不同 message/log 语境（`targetNotFound` vs
-    /// `controlTargetNotFound` 工厂），定位器本身不持有调用语境，交由调用方决定。
+    /// 解析 `accessibilityIdentifier` 与 `path` 变体。`notFound` / `ambiguous` 两个工厂由调用方
+    /// 提供——因为 tap 与 control 命令对「未找到 / 歧义」使用不同 message/log 语境
+    /// （`targetNotFound` vs `controlTargetNotFound` 工厂），定位器本身不持有调用语境，交由调用方
+    /// 决定。
     ///
     /// - Parameters:
     ///   - locator: 统一定位器。
@@ -53,8 +53,6 @@ enum UIKitLocatorResolver {
         case .path(let indexes):
             guard let located = findView(at: indexes, in: rootView) else { throw notFound() }
             return located
-        case .windowPoint:
-            throw notFound()
         }
     }
 
@@ -66,17 +64,6 @@ enum UIKitLocatorResolver {
             current = view.superview
         }
         return false
-    }
-
-    /// 从指定 view 向上查找最近的 UIControl，最多查到 boundary。
-    static func nearestControl(from view: UIView, stoppingAt boundary: UIView?) -> UIControl? {
-        var current: UIView? = view
-        while let view = current {
-            if let control = view as? UIControl { return control }
-            if let boundary, view === boundary { return nil }
-            current = view.superview
-        }
-        return nil
     }
 
     /// 在 root 中查找指定 view 的路径。
@@ -100,10 +87,10 @@ enum UIKitLocatorResolver {
     /// 判断 `rootView` 中是否存在匹配 `locator` 的 view（至少一个），不抛错。
     ///
     /// 供 `ui.wait` 的 targetExists / targetGone 判断存在性：与 `locate(...)` 不同，本方法
-    /// 把"未找到 / 多个匹配"都视为存在性结果而非错误。`windowPoint` 不表达 view 存在性，返回 false。
+    /// 把"未找到 / 多个匹配"都视为存在性结果而非错误。
     ///
     /// - Parameters:
-    ///   - locator: 统一定位器（仅 accessibilityIdentifier / path 有意义）。
+    ///   - locator: 统一定位器（accessibilityIdentifier / path）。
     ///   - rootView: 顶部控制器根 view。
     /// - Returns: 是否存在至少一个匹配 view。
     static func contains(locator: UIKitLocator, in rootView: UIView) -> Bool {
@@ -112,8 +99,6 @@ enum UIKitLocatorResolver {
             return !findViews(withAccessibilityIdentifier: identifier, in: rootView, path: []).isEmpty
         case .path(let indexes):
             return findView(at: indexes, in: rootView) != nil
-        case .windowPoint:
-            return false
         }
     }
 

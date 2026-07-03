@@ -114,19 +114,26 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
 
     /// 判断轻量目标候选是否应该进入 `ui.viewTargets` 输出。
     ///
+    /// 重构后 `ui.viewTargets` 只输出 **canonical interaction targets**——可由现有公开命令
+    /// 直接、确定操作的对象：
+    /// - 任何 `UIControl`（`UIButton`/`UISwitch`/`UISlider`/`UISegmentedControl`/
+    ///   `UITextField`/custom control，含 disabled——disabled 仍可观察，其 `availableActions`
+    ///   由 capability resolver 决定为空）；
+    /// - `UIScrollView` 系（含 `UITextView`：input；纯 scroll view：scroll）。
+    ///
+    /// 普通 `UILabel`、container、gesture-only、仅 identifier 或 label 的 view 不再进入
+    /// targets（其观察职责在 `ui.topViewHierarchy`）。`includeStaticText`/`includeContainers`/
+    /// `includeDisabled` 字段保留 schema 兼容，但 canonical-only 规则下不再让非可执行 view
+    /// 进入 targets，也不再因 `includeDisabled=false` 排除 disabled canonical target。
+    ///
     /// 该方法只依赖 Foundation-only 的候选摘要，便于在非 UIKit 测试中覆盖采集器的包含策略。
     ///
     /// - Parameter candidate: 从真实 view 或测试用例抽取出的候选摘要。
     /// - Returns: 当前查询参数下是否应输出该候选。
     public func shouldInclude(candidate: UIViewTargetCandidate) -> Bool {
         if !includeHidden, candidate.isHidden { return false }
-        if candidate.isControl, !includeDisabled, !candidate.isEnabled { return false }
         if candidate.isControl { return true }
-        if candidate.hasGestureRecognizers, candidate.isUserInteractionEnabled { return true }
-        if candidate.hasAccessibilityIdentifier { return true }
-        if candidate.hasAccessibilityLabel { return true }
-        if includeStaticText, candidate.hasStaticText { return true }
-        if includeContainers, candidate.hasSubviews { return true }
+        if candidate.isScrollView { return true }
         return false
     }
 
@@ -173,6 +180,8 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
     public let hasStaticText: Bool
     /// 是否存在子 view。
     public let hasSubviews: Bool
+    /// 是否为 `UIScrollView` 系（含 `UITableView`/`UICollectionView`/`UITextView`）。
+    public let isScrollView: Bool
 
     /// 创建轻量目标候选摘要。
     ///
@@ -186,6 +195,7 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
     ///   - hasAccessibilityLabel: 是否存在非空 accessibilityLabel。
     ///   - hasStaticText: 是否存在非空静态文本。
     ///   - hasSubviews: 是否存在子 view。
+    ///   - isScrollView: 是否为 UIScrollView 系。
     public init(isHidden: Bool,
                 isControl: Bool,
                 isEnabled: Bool,
@@ -194,7 +204,8 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
                 hasAccessibilityIdentifier: Bool,
                 hasAccessibilityLabel: Bool,
                 hasStaticText: Bool,
-                hasSubviews: Bool) {
+                hasSubviews: Bool,
+                isScrollView: Bool = false) {
         self.isHidden = isHidden
         self.isControl = isControl
         self.isEnabled = isEnabled
@@ -204,6 +215,7 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
         self.hasAccessibilityLabel = hasAccessibilityLabel
         self.hasStaticText = hasStaticText
         self.hasSubviews = hasSubviews
+        self.isScrollView = isScrollView
     }
 }
 
@@ -314,6 +326,13 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     public let placeholder: String?
     /// 当前值。
     public let value: String?
+    /// 汇总到 canonical target 的稳定语义文本（按钮标题 / a11y label / value 等）。
+    ///
+    /// 内部 label/image 不再作为独立 target；其文本汇总到可操作的父 target，让 Agent 在父
+    /// target 上直接读到语义，而非去猜某个 `UILabel` 属于哪个按钮。不记录明文到日志。
+    public let semanticText: String?
+    /// `semanticText` 的来源（`accessibilityLabel` / `buttonTitle` / `accessibilityValue` 等）。
+    public let semanticTextSource: String?
     /// window 坐标系 frame。
     public let frame: UIViewHierarchyRect
     /// 目标状态。
@@ -336,6 +355,8 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     ///   - text: 可见文本。
     ///   - placeholder: 输入占位文本。
     ///   - value: 当前值。
+    ///   - semanticText: 汇总到 canonical target 的稳定语义文本。
+    ///   - semanticTextSource: `semanticText` 的来源标签。
     ///   - frame: window 坐标系 frame。
     ///   - state: 目标状态。
     ///   - availableActions: executor 实际可派发的动作集合。
@@ -348,6 +369,8 @@ public struct UIViewTargetSummary: Sendable, Equatable {
                 text: String?,
                 placeholder: String?,
                 value: String?,
+                semanticText: String? = nil,
+                semanticTextSource: String? = nil,
                 frame: UIViewHierarchyRect,
                 state: UIViewTargetState,
                 availableActions: UIKitActionAvailability = UIKitActionAvailability(actions: [])) {
@@ -360,6 +383,8 @@ public struct UIViewTargetSummary: Sendable, Equatable {
         self.text = text
         self.placeholder = placeholder
         self.value = value
+        self.semanticText = semanticText
+        self.semanticTextSource = semanticTextSource
         self.frame = frame
         self.state = state
         self.availableActions = availableActions
@@ -379,6 +404,8 @@ public struct UIViewTargetSummary: Sendable, Equatable {
             "text": text.map(JSONValue.string) ?? .null,
             "placeholder": placeholder.map(JSONValue.string) ?? .null,
             "value": value.map(JSONValue.string) ?? .null,
+            "semanticText": semanticText.map(JSONValue.string) ?? .null,
+            "semanticTextSource": semanticTextSource.map(JSONValue.string) ?? .null,
             "frame": .object(frame.toJSON()),
             "isHidden": .bool(state.isHidden),
             "alpha": .double(state.alpha),

@@ -1,6 +1,6 @@
 # Agent MCP 应用探索服务改造地图
 
-> 日期：2026-07-02
+> 日期：2026-07-02；最近更新：2026-07-03
 >
 > 这个目录是本轮“吸取得物 AI UITester 经验，重新确定 iOSExploreServer 方向”的入口地图。它记录：我们为什么做这轮讨论、已经形成哪些分析文档、当前进度到哪里、后续需要验证什么。
 
@@ -70,7 +70,7 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
   - 说明 Agent 应该如何组合现有命令。
   - 明确：`observe → act → wait/observe again → judge` 是默认闭环。
   - 明确：动作成功不等于测试通过；测试是否通过必须看最终页面证据。
-  - 明确：navigationBar 当前不可达、`textExists` 只查当前可见文本、弹窗当前只能查询。
+  - 已同步 navigationBar 专用动作与 `ui.tap` 结构化默认激活后的使用顺序；`textExists` 仍只查当前可见文本，弹窗能力仍需后续补齐。
 
 ### 2.6 navigationBar 可达性设计与执行任务包
 
@@ -86,6 +86,19 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
   - navigationBar 可达性的实施计划。
   - 把设计拆成模型、检查器、动作命令、观察命令、注册、文档和验证任务。
 
+### 2.7 `ui.tap` 结构化默认激活锚点
+
+- [iOSExploreServer-ui-tap-design-rationale.md](../specs/iOSExploreServer-ui-tap-design-rationale.md)
+  - 记录为什么保留 `ui.tap`，以及为什么它不能继续表示坐标点击、真实触摸注入或“找最近父 control”。
+  - 这是由得物 AI UITester 文章触发的单点深挖：吸收“Agent 层动作语言”，但不复制截图/VLM/跨端 driver 路线。
+
+- [iOSExploreServer-ui-tap-final-refactor-plan.md](../specs/iOSExploreServer-ui-tap-final-refactor-plan.md)
+  - `ui.tap` 重构的决策基线：`viewSnapshotID`、canonical target、默认激活 route、`ui.screenshot` 不签发快照、`ui.wait snapshotChanged` 使用结构快照。
+
+- [2026-07-02-ui-tap-structural-default-activation.md](../plans/2026-07-02-ui-tap-structural-default-activation.md)
+  - 给 Claude Code 的实施计划。
+  - 把重构拆成输入协议、snapshot 签发、semanticDigest、capability、executor、docs/tests 等任务。
+
 ## 3. 当前进度
 
 | 阶段 | 状态 | 产物 | 说明 |
@@ -98,6 +111,8 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 | 写 Agent 使用协议 | 已完成第一版 | [agent-usage-protocol.md](./agent-usage-protocol.md) | 已写清观察、动作、等待、重新观察、最终判断，以及 stale、ambiguous、wait_timeout、navigationBar 不可达等边界。 |
 | 设计 navigationBar 可达性 | 已完成第一版 | [navigationbar 设计稿](../specs/2026-07-02-navigationbar-reachability-design.md) + [实施计划](../plans/2026-07-02-navigationbar-reachability.md) + [Claude Code 任务包](./claude-code-navigationbar-task.md) | 推荐把导航栏按钮作为语义目标返回，并新增 `ui.navigation.tapBarButton`，不依赖私有 view，不放宽坐标点击。 |
 | 实现 navigationBar 可达性 | 已完成第一轮 | [navigationBar 设计稿](../specs/2026-07-02-navigationbar-reachability-design.md) + `ui.navigation.tapBarButton` | `ui.viewTargets` / `ui.topViewHierarchy` 响应现暴露 `navigationBar` 摘要；`ui.navigation.tapBarButton` 按 `placement + index` 触发 `UIBarButtonItem`，支持 `title` / `accessibilityIdentifier` 二次确认。SPM 190 + framework 269 全绿；执行核心按 selector 签名派发，避开 `UIApplication.sendAction` 在单测里不派发无参 action 的问题。 |
+| 设计 `ui.tap` 结构化默认激活 | 已完成 | [`ui.tap` 设计说明](../specs/iOSExploreServer-ui-tap-design-rationale.md) + [最终重构方案](../specs/iOSExploreServer-ui-tap-final-refactor-plan.md) + [实施计划](../plans/2026-07-02-ui-tap-structural-default-activation.md) | 由得物文章触发，明确 `ui.tap` 保留为 Agent 层默认动作，但不再表示坐标点击、真实触摸注入或 ancestor fallback。 |
+| 实现 `ui.tap` 结构化默认激活 | 已完成第一轮 | `UITapInput` / `UIKitDefaultActivationResolver` / `UIKitActionExecutor` / `UIViewTargetsCollector` / snapshot 相关改造 | `ui.tap` 现在只接受 `accessibilityIdentifier` 或 `path` + 必填 `viewSnapshotID`；先校验 `ui.viewTargets` 签发的结构快照，再按 route 执行：按钮 `touchUpInside`、开关 toggle + `valueChanged`、文本输入 focus。`ui.screenshot` 不再签发快照；`ui.wait snapshotChanged` 使用 `viewSnapshotID`；`ui.viewTargets` 只签发最终返回 target 的 fingerprint。 |
 | 设计多结果等待能力 | 未开始 | 待补 | 需要决定是新增命令还是改造现有 `ui.wait`。 |
 | 修正弹窗能力 | 未开始 | 待补 | 需要决定改名为 query，还是补齐 respond。 |
 
@@ -110,14 +125,47 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 - Claude Code 执行前，当前会话应尽量给清楚任务包：目标、文件范围、验收命令、不能越界的地方。
 - Claude Code 执行后，当前会话要看产物和真实输出，再决定是否进入下一步。
 
+## 3.2 关键锚点：`ui.tap` 结构化默认激活是本轮能力改造的起点
+
+本轮最初的总纲是“吸取得物 AI UITester 经验，重新确定 iOSExploreServer 方向”。其中第一个真正落到协议和源码的大改造，是 `ui.tap` 结构化默认激活。
+
+后续分析、评估和继续改造，默认以这个锚点为基线，而不是以旧版“坐标 tap / hit-test / nearest UIControl fallback”语义为基线。
+
+锚点定义：
+
+```text
+锚点：2026-07-03 ui.tap structural default activation
+触发来源：得物 AI UITester 文章引发的点击语义讨论
+设计文档：iOSExploreServer-ui-tap-design-rationale.md
+执行基线：iOSExploreServer-ui-tap-final-refactor-plan.md
+实施计划：2026-07-02-ui-tap-structural-default-activation.md
+核心代码：UITapInput / UIKitDefaultActivationResolver / UIKitActionExecutor / UIViewTargetsCollector / UIKitSnapshotStore
+```
+
+这个锚点确立的协议边界：
+
+- `ui.viewTargets` 是结构化 observe-first 的动作授权来源，返回 canonical targets、`availableActions` 和 `viewSnapshotID`。
+- `viewSnapshotID` 只由 `ui.viewTargets` 签发；`ui.screenshot` 和 `ui.topViewHierarchy` 不签发、不刷新、不拥有该 ID。
+- `ui.tap` 只作用于 `ui.viewTargets` 签发的 canonical target，输入为 `accessibilityIdentifier` 或 `path` 加必填 `viewSnapshotID`。
+- `ui.tap` 是默认激活，不是触摸注入：`UIButton` → `touchUpInside`，`UISwitch` → toggle + `valueChanged`，文本输入 → focus。
+- `UISlider`、`UISegmentedControl`、普通 view、gesture-only view、未知自定义 control 不拥有默认 `tap`；需要精确能力时走 `ui.control.sendAction` 或后续专用命令。
+- `ui.control.sendAction` 保留为精确 UIKit event 工具，也必须携带 `viewSnapshotID` 并校验 freshness。
+- `ui.wait snapshotChanged` 使用 `viewSnapshotID` 做结构指纹表变化等待；它仍是单条件等待，不等于多结果等待能力。
+
+后续所有文档或源码评估，如果发现旧说法仍在暗示“截图签发 snapshot”“坐标点击兜底”“identifier 可绕过 freshness”“child label path 可借父 control 激活”，都应按本锚点修正。
+
 ## 4. 当前已经确定的判断
 
 ### 4.1 保留的方向
 
 - 结构化观察优先于截图。
 - `accessibilityIdentifier` 优先于 path。
-- `path + snapshotID` 可作为无稳定 identifier 时的安全定位方式。
-- 坐标点击只能作为最后兜底。
+- `path + viewSnapshotID` 可作为无稳定 identifier 时的安全定位方式；`accessibilityIdentifier + viewSnapshotID` 是更稳定的同等入口，两者都必须通过 freshness 校验。
+- `viewSnapshotID` 只由 `ui.viewTargets` 签发，代表一次结构化 target 指纹快照；`ui.screenshot` / `ui.topViewHierarchy` 不再签发。
+- `ui.viewTargets` 是动作前的轻量发现与授权层：返回 canonical interaction targets、语义文本、状态、`availableActions` 和 `viewSnapshotID`。它不再把普通 label、container、gesture-only view、仅有 identifier/a11y label 的普通 view 当作可执行 target。
+- `ui.tap` 不再做坐标点击 / hit-test / ancestor fallback，只做"默认激活动作"（button/switch/可聚焦输入框）；无默认激活路由的目标（slider/segmented/普通 view/未知自定义 control）返回 `unsupported_target` 或只暴露精确 `control.*`。
+- `ui.control.sendAction` 是精确 UIKit event 工具，不承担默认激活，也必须携带 `viewSnapshotID`。
+- 导航栏按钮不并入 `ui.tap`，继续使用 `ui.navigation.tapBarButton`。
 - 截图用于证据、人工排查、视觉辅助，不作为默认每一步主路径。
 - `ui.tap` 成功只表示动作已发出，不表示测试步骤成功。
 
@@ -127,7 +175,8 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 - 动作后必须等待或重新观察。
 - 等待能力要支持多个可能结果，而不是只等一个条件。
 - 弹窗能力必须能支撑真实流程，否则 Agent 很容易被阻断。
-- navigationBar / UIBarButtonItem 目前不可达，需要补观察和操作能力。
+- navigationBar / UIBarButtonItem 可达性已补齐（`ui.navigation.tapBarButton`，`ui.viewTargets`/`ui.topViewHierarchy` 暴露 `navigationBar` 摘要）。
+- `ui.tap` 已重构为结构化默认激活；后续文档和评估必须以 3.2 锚点为基线，不再沿用旧坐标点击语义。
 - `ui.wait textExists` 只检测当前可见文本，列表场景要先滚动并重新观察。
 
 ### 4.3 暂不做的方向
@@ -186,10 +235,9 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 
 ## 6. 下一步建议
 
-下一步交给 Claude Code 实现 navigationBar / UIBarButtonItem 可达性。
+下一步不是继续讨论旧的 `ui.tap` 语义，而是基于 3.2 锚点做一次合并后的整体评估：
 
-原因：运行验证已经证明，这不是小体验问题，而是硬阻断。很多真实 App 的“完成”“编辑”“筛选”“更多”“返回右侧入口”等按钮都在 navigationBar 上。Agent 当前既看不到这些按钮，也不能用现有 `ui.tap` 安全点击它们。
-
-任务包已经写好：[claude-code-navigationbar-task.md](./claude-code-navigationbar-task.md)。
-
-navigationBar 补齐后，再设计“多结果等待并返回最终页面”的能力。
+1. 对当前 `ui.tap` / `ui.viewTargets` / `viewSnapshotID` / `ui.control.sendAction` / `ui.wait snapshotChanged` 的实际实现做一次源码级 review，确认代码、help schema、README、Agent 使用协议和测试断言是否完全一致。
+2. 补一轮真实闭环验证：`ui.viewTargets → ui.tap/button → ui.wait或observe`、`ui.viewTargets → ui.tap/switch → observe`、`ui.viewTargets → ui.tap/text input → ui.input`、`ui.viewTargets → ui.control.sendAction`、`ui.screenshot` 只作证据。
+3. 在这个锚点稳定后，再继续设计“多结果等待并返回最终页面”的能力。
+4. 弹窗能力仍是后续硬缺口：需要决定 `ui.alert.respond` 是继续 query/dry-run，还是补齐真实响应执行器。

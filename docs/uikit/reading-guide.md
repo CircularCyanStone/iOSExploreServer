@@ -10,24 +10,25 @@
 
 整个模块只做一件事：**把"Mac 发来的 JSON 命令"翻译成"在 iPhone 当前页面上对真实 `UIView` 的读/写操作"**。
 
-它由 **12 个对外命令**和一组**内部基础设施**组成：
+它由 **13 个对外命令**和一组**内部基础设施**组成：
 
 | 命令 | 一句话作用 |
 |---|---|
 | `ui.topViewHierarchy` | 返回当前页面 view 树的**完整结构快照**（含文本/颜色/控件状态等验收字段） |
 | `ui.viewTargets` | 返回**扁平的、轻量的可交互目标列表**（事件下发前的目标发现） |
-| `ui.tap` | 模拟点击（坐标 hit-test 或 view 定位） |
-| `ui.control.sendAction` | 向 `UIControl` 发送 target-action 事件 |
-| `ui.screenshot` | 截屏并签发 snapshotID |
+| `ui.tap` | 默认激活动作（按 target 类型路由：button/switch/输入框聚焦） |
+| `ui.control.sendAction` | 向 `UIControl` 发送显式 target-action 事件 |
+| `ui.screenshot` | 截屏（可选视觉证据，不再签发 viewSnapshotID） |
 | `ui.input` | 向文本控件注入文本 |
 | `ui.keyboard.dismiss` | 收起当前 first responder / 键盘 |
 | `ui.scroll` | 在 `UIScrollView` 上按方向 + 距离滚动 |
 | `ui.navigation.back` | 返回上一页（auto 先 dismiss 再 navigation pop） |
+| `ui.navigation.tapBarButton` | 触发导航栏 UIBarButtonItem（placement + index） |
 | `ui.wait` | 等待 UI 稳定或目标/文本/快照变化 |
 | `ui.scrollToElement` | 滚动到包含指定文本/identifier 的元素可见 |
 | `ui.alert.respond` | 查询/响应当前 UIAlertController（第一版 dryRun 查询） |
 
-这 12 个命令共享同一套底层能力：**定位（Locator）→ 能力判定（Capability）→ 陈旧防护（Snapshot）→ 执行（Executor）**。理解了这套共享基础设施，各命令的 adapter 都只是薄薄的"解析参数 + 调用"。
+这 13 个命令共享同一套底层能力：**定位（Locator）→ 能力判定（Capability）→ 陈旧防护（Snapshot）→ 执行（Executor）**。理解了这套共享基础设施，各命令的 adapter 都只是薄薄的"解析参数 + 调用"。
 
 ## 一张图看懂分层
 
@@ -75,33 +76,33 @@
 
 ### 第 1 步：两个查询命令（最容易上手，~750 行）
 查询命令是纯读、无副作用，最适合先读：
-- `Commands/ViewTargets/UIViewTargetsModels.swift`（381 行）——**重点读 `UIViewTargetsInput.shouldInclude`**，这是整个目标发现的决策核心，而且全是 Foundation-only 逻辑。
-- `Commands/ViewTargets/UIViewTargetsCollector.swift`（270 行）——看 `collect(view:...)` 递归遍历 + 签发 snapshot 的主流程。
+- `Commands/ViewTargets/UIViewTargetsModels.swift`（381 行）——**重点读 `UIViewTargetsInput.shouldInclude`**，这是 canonical 目标发现决策核心（只含 UIControl 系 + UIScrollView 系；普通 label/container/gesture-only view 不进 targets，观察职责在 `ui.topViewHierarchy`），而且全是 Foundation-only 逻辑。
+- `Commands/ViewTargets/UIViewTargetsCollector.swift`（270 行）——看 `collect(view:...)` 递归遍历 + 仅按最终 returned targets 签发 `viewSnapshotID` 的主流程。
 - `Commands/ViewTargets/ViewTargetsCommand.swift`（81 行）——最薄的 adapter，看"typed input → 调 collector → 打日志"模板。
 - （可选）`Commands/TopViewHierarchy/` 三件套——结构类似，但多了完整树和 `UIViewHierarchyElement` 协议抽象，可略读。
 
-> 目标：吃透"AnyCommand 解析 typed input → adapter 调 MainActor collector → 返回 JSON + snapshotID"这套模板。后两个命令照搬。
+> 目标：吃透"AnyCommand 解析 typed input → adapter 调 MainActor collector → 返回 JSON + viewSnapshotID"这套模板。后两个命令照搬。
 
 ### 第 2 步：定位与执行（核心难点，~700 行）
 两个交互命令（tap / sendAction）共享同一套执行引擎，**这是模块最值得读的部分**：
-- `Support/Locator/UIKitLocator.swift`（78 行）——三种定位语义（identifier / path / windowPoint）收敛成一个枚举。
+- `Support/Locator/UIKitLocator.swift`（78 行）——两种定位语义（identifier / path）收敛成一个枚举。
 - `Support/Locator/UIKitLocatorResolver.swift`（143 行）——把 locator 在真实 view 树里解析成 `UIView`（失败 throws，由调用方工厂闭包构造对应错误）。
-- `Support/Action/UIKitActionExecutor.swift`——**全模块的执行核心**。重点看 `executeTap` 和 `executeControlEvent`：locate → 陈旧校验 → 能力校验 → hit-test/sendActions（全程 throws，失败由 handler 顶层 catch 转 envelope）。
+- `Support/Action/UIKitActionExecutor.swift`——**全模块的执行核心**。重点看 `executeTap` 和 `executeControlEvent`：locate → `viewSnapshotID` 陈旧校验 → 默认激活路由（tap）/ `sendActions(for:)`（control）（全程 throws，失败由 handler 顶层 catch 转 envelope）。
 - `Commands/Tap/UITapCommand.swift` + `Commands/ControlAction/UIControlSendActionCommand.swift`（共 ~140 行）——又是薄 adapter，和第 1 步的 adapter 模板一模一样。
 
 > 目标：理解"一个交互命令从参数到真实 `sendActions(for:)` 的完整路径"。
 
 ### 第 3 步：陈旧防护（决定正确性，~470 行）
-为什么 tap 带了 `snapshotID` 才安全？读这块就懂：
+为什么 tap 带了 `viewSnapshotID` 才安全？读这块就懂：
 - `Support/Snapshot/UIKitSnapshotStore.swift`——指纹快照存储，**重点看 `isStale` 方法和容量/淘汰策略**。
-- `Support/Snapshot/UIKitFingerprintCollector.swift`（114 行）——从 `UIView` 抽指纹；注意 identifier 只存哈希、不存原文。
+- `Support/Snapshot/UIKitFingerprintCollector.swift`（114 行）——从 `UIView` 抽指纹（含新增 `semanticDigest`：按钮标题 / a11y label / a11y value / switch isOn / segment index / 默认激活路由的稳定哈希，参与陈旧检测）；注意 identifier 只存哈希、不存原文。
 
-> 目标：理解"path 陈旧问题怎么被解决的"——这是 `ui.viewTargets` 返回 `snapshotID` 的全部理由。
+> 目标：理解"path 陈旧问题怎么被解决的"——这是 `ui.viewTargets` 返回 `viewSnapshotID` 的全部理由。
 
 ### 第 4 步：辅助基础设施（按需查，~330 行）
 用到时再翻，不必通读：
 - `Support/Context/UIKitContextProvider.swift`——怎么找前台 window 和顶部 VC（`currentContext(action:) throws`）。
-- `Support/Action/UIKitActionCapabilityResolver.swift`（91 行）——"什么 view 能做什么动作"的规则（collector 和 executor 共用）。
+- `Support/Action/UIKitActionCapabilityResolver.swift`（91 行）——UIControl 各 event 的可用性规则（collector 声明 `availableActions` 时用）。tap 的默认激活路由判定已拆到 `UIKitDefaultActivationResolver`（V1：UIButton/UISwitch/文本输入；UISlider/UISegmentedControl/普通 UIView 无默认激活路由，tap 返回 `unsupported_target`）。
 - `UIKitCommandError.swift`——错误工厂（conform `Error`，可被 throw），**查的时候看**，不需要通读。
 - `Support/Parsing/`——UIKit 共享 command 字段、定位 input helper 与安全整数转换。
 
@@ -117,8 +118,8 @@
 
 - **core 不依赖 UIKit** → UIKit 能力做成独立 product，宿主**显式** `registerUIKitCommands()`。core 初始化不自动注册任何 `ui.*`，未注册时 `help` 不含 UIKit action（这是回归保护点）。
 - **adapter 薄、executor 厚** → 所有"真实 UIKit 操作"集中在 `@MainActor` 的 executor/collector，adapter 只接收已解析的 typed input。这让执行逻辑可在 iOS 测试里用注入的 view 树驱动（看每个类型有没有 `execute(_:context:)` / `collect(query:context:)` 这种"注入入口"）。
-- **collector 与 executor 共用同一份能力规则** → `UIKitActionCapabilityResolver` 被 `ui.viewTargets`（声明 `availableActions`）和 executor（实际派发前校验）同时调用，避免"声明可点但实际点不动"的分叉。
-- **定位三选一、identifier 精确不截断** → 历史上有过截断 prefix 的 bug；现在 `identifier` 完整匹配，匹配多个返回 `ambiguous`。
+- **availableActions 与可执行性对齐** → `ui.viewTargets` 声明的 `availableActions` 由 `UIKitActionCapabilityResolver` 给出（UIControl 各 event）；`ui.tap` 的默认激活路由由 `UIKitDefaultActivationResolver` 判定（V1：UIButton/UISwitch/文本输入）。二者口径一致，避免"声明可点但实际点不动"的分叉。
+- **定位二选一、identifier 精确不截断** → 历史上有过截断 prefix 的 bug；现在 `identifier` 完整匹配，匹配多个返回 `ambiguous`。
 
 ## 下一步
 

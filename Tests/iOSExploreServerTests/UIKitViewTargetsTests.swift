@@ -76,19 +76,26 @@ func viewTargetsQueryRejectsOutOfRangeNumbers() {
 }
 #endif
 
-@Test("UIViewTargetsInput include 策略覆盖可交互和可选节点")
+@Test("UIViewTargetsInput include 策略只输出 canonical interaction target")
 func viewTargetsQueryShouldIncludeCandidates() {
     let defaultQuery = UIViewTargetsInput.default
 
+    // UIControl（含 disabled）始终是 canonical target：disabled 仍可观察，其 availableActions
+    // 由 capability resolver 决定为空。
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isControl: true)) == true)
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isControl: true, isEnabled: false)) == true)
-    #expect(UIViewTargetsInput(includeDisabled: false).shouldInclude(candidate: .testCandidate(isControl: true, isEnabled: false)) == false)
+    // includeDisabled 不再排除 disabled canonical control（canonical-only 规则优先）。
+    #expect(UIViewTargetsInput(includeDisabled: false).shouldInclude(candidate: .testCandidate(isControl: true, isEnabled: false)) == true)
+    // hidden 排除。
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isHidden: true, isControl: true)) == false)
+    // UIScrollView 系是 canonical（scroll / input）。
+    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isScrollView: true)) == true)
+    // 非 canonical：静态文本 / container / gesture 不再进入 targets（观察职责在 topViewHierarchy）。
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(hasStaticText: true)) == false)
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(hasSubviews: true)) == false)
-    #expect(UIViewTargetsInput(includeStaticText: true).shouldInclude(candidate: .testCandidate(hasStaticText: true)) == true)
-    #expect(UIViewTargetsInput(includeContainers: true).shouldInclude(candidate: .testCandidate(hasSubviews: true)) == true)
-    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isUserInteractionEnabled: true, hasGestureRecognizers: true)) == true)
+    #expect(UIViewTargetsInput(includeStaticText: true).shouldInclude(candidate: .testCandidate(hasStaticText: true)) == false)
+    #expect(UIViewTargetsInput(includeContainers: true).shouldInclude(candidate: .testCandidate(hasSubviews: true)) == false)
+    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isUserInteractionEnabled: true, hasGestureRecognizers: true)) == false)
 }
 
 @Test("UIViewTargetSummary 转 JSON 保留轻量字段")
@@ -176,7 +183,8 @@ private extension UIViewTargetCandidate {
                               hasAccessibilityIdentifier: Bool = false,
                               hasAccessibilityLabel: Bool = false,
                               hasStaticText: Bool = false,
-                              hasSubviews: Bool = false) -> UIViewTargetCandidate {
+                              hasSubviews: Bool = false,
+                              isScrollView: Bool = false) -> UIViewTargetCandidate {
         UIViewTargetCandidate(isHidden: isHidden,
                               isControl: isControl,
                               isEnabled: isEnabled,
@@ -185,6 +193,7 @@ private extension UIViewTargetCandidate {
                               hasAccessibilityIdentifier: hasAccessibilityIdentifier,
                               hasAccessibilityLabel: hasAccessibilityLabel,
                               hasStaticText: hasStaticText,
-                              hasSubviews: hasSubviews)
+                              hasSubviews: hasSubviews,
+                              isScrollView: isScrollView)
     }
 }

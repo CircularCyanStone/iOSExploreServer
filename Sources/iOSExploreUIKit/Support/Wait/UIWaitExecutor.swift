@@ -29,6 +29,24 @@ enum UIWaitExecutor {
     ///   hierarchy 不可用（转场/前后台切换）被当作本轮未满足继续轮询，不上抛成硬失败。
     static func execute(input: UIWaitInput,
                         contextProvider: @escaping @MainActor () throws -> UIKitContextProvider.Context) async throws -> JSON {
+        try await execute(input: input, snapshotStore: .shared, contextProvider: contextProvider)
+    }
+
+    /// 执行一次 UI 等待，并允许测试注入独立 snapshot store。
+    ///
+    /// 产品路径始终通过 `execute(input:contextProvider:)` 使用共享 store；该入口只用于把需要
+    /// `await` 轮询的测试从全局 LRU 状态中隔离出来，避免其它并发 UIKit 测试插入 snapshot 后
+    /// 淘汰本用例刚签发的 `viewSnapshotID`。
+    ///
+    /// - Parameters:
+    ///   - input: 已通过 typed schema 校验的 wait 参数。
+    ///   - snapshotStore: 用于 `snapshotChanged` 的 snapshot 查询与整表比对。
+    ///   - contextProvider: 每轮轮询取当前查询上下文的闭包（注入便于测试）。
+    /// - Returns: 满足时返回 satisfied/mode/elapsedMs/attempts，snapshotChanged 不可用时附 reason。
+    /// - Throws: `UIKitCommandError.waitTimeout`——业务 deadline 到仍未满足。
+    static func execute(input: UIWaitInput,
+                        snapshotStore: UIKitSnapshotStore,
+                        contextProvider: @escaping @MainActor () throws -> UIKitContextProvider.Context) async throws -> JSON {
         let start = DispatchTime.now().uptimeNanoseconds
         let deadline = start + UInt64(input.timeoutMs) * 1_000_000
         let stableNanos = UInt64(input.stableMs) * 1_000_000
@@ -86,11 +104,12 @@ enum UIWaitExecutor {
                                                                        includeHidden: input.includeHidden)
                     }
                 case .snapshotChanged:
-                    if let snapshotID = input.snapshotID {
+                    if let viewSnapshotID = input.viewSnapshotID {
                         // whole table 比较（spec §6）：用签发时同一 query 重采当前 path→fingerprint 表，
-                        // 再与 snapshot 存的表整体比对。query 从 store 取（签发方诚实记录），避免签发
-                        // query（如 viewTargets 带 includeHidden）与重采 query 不一致导致首轮误判「已变化」。
-                        let query = UIKitSnapshotStore.shared.signingQuery(for: snapshotID) ?? .default
+                        // 再与 snapshot 存的表整体比对。query 从 store 取（签发方诚实记录，签发方只能是
+                        // ui.viewTargets），避免签发 query（如 viewTargets 带 includeHidden）与重采 query
+                        // 不一致导致首轮误判「已变化」。
+                        let query = snapshotStore.signingQuery(for: viewSnapshotID) ?? .default
                         let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
                         let currentTable = UIKitFingerprintCollector.collectFingerprints(
                             rootView: context.rootView,
@@ -99,12 +118,12 @@ enum UIWaitExecutor {
                         )
                         let snapshotContext = UIKitFingerprintCollector.context(window: context.window,
                                                                                 topViewController: context.topViewController)
-                        if let matched = UIKitSnapshotStore.shared.matchesWholeTable(snapshotID: snapshotID,
-                                                                                      context: snapshotContext,
-                                                                                      currentTable: currentTable) {
+                        if let matched = snapshotStore.matchesWholeTable(viewSnapshotID: viewSnapshotID,
+                                                                         context: snapshotContext,
+                                                                         currentTable: currentTable) {
                             satisfied = !matched
                         } else if snapshotUnavailableReason == nil {
-                            snapshotUnavailableReason = "snapshot unknown or expired"
+                            snapshotUnavailableReason = "view snapshot unknown or expired"
                         }
                     }
                 }

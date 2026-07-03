@@ -27,18 +27,19 @@ struct UIKitCommandError: Error, Sendable, Equatable {
         self.failure = ExploreCommandFailure(code: code, message: message, logMessage: logMessage)
     }
 
-    /// locator 陈旧（snapshot 已过期或目标指纹变化），需重新查询后重试。
+    /// locator 陈旧（viewSnapshot 已过期、目标未被签发，或指纹 / 语义变化），需重新观察后重试。
     ///
-    /// spec §3.6：提示调用方先 `ui.screenshot` 拿到新 snapshotID 再下发交互。
+    /// 提示调用方重新调用 `ui.viewTargets` 拿到新 `viewSnapshotID` 再下发交互。viewSnapshotID
+    /// 只由 `ui.viewTargets` 签发（不再来自 `ui.screenshot`）。
     ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名，用于日志关联。
-    ///   - snapshotID: 过期的 snapshot 标识摘要。
+    ///   - viewSnapshotID: 过期的 viewSnapshot 标识摘要。
     /// - Returns: `stale_locator` 失败描述。
-    static func staleLocator(action: String, snapshotID: String) -> UIKitCommandError {
+    static func staleLocator(action: String, viewSnapshotID: String) -> UIKitCommandError {
         UIKitCommandError(code: .staleLocator,
-                          message: "snapshot expired or target changed; call ui.screenshot first, then retry with the new snapshotID",
-                          logMessage: "uikit locator stale action=\(action) snapshot=\(snapshotID)")
+                          message: "view snapshot expired or target changed; call ui.viewTargets first, then retry with the new viewSnapshotID",
+                          logMessage: "uikit locator stale action=\(action) viewSnapshot=\(viewSnapshotID)")
     }
 
     /// UIKit 层级采集所需的窗口、控制器或根 view 不可用。

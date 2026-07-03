@@ -12,8 +12,8 @@ public enum ScrollToElementMatch: String, Sendable, Equatable, CaseIterable {
 /// `ui.scrollToElement` 的命令参数。
 ///
 /// 在指定滚动容器内查找目标（按文本或 identifier），用 `UIScrollView.scrollRectToVisible`
-/// 一次性滚到目标可见。`container` 缺省时用 keyWindow 最前 scrollView。命令不签发 snapshot：
-/// 滚动后画面变化，agent 应重新 `ui.screenshot` 取新 snapshotID 再交互。
+/// 一次性滚到目标可见。`container` 缺省时用 keyWindow 最前 scrollView。命令不签发 viewSnapshotID：
+/// 滚动后画面变化，agent 应重新 `ui.viewTargets` 取新 viewSnapshotID 再交互。
 public struct UIScrollToElementInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let match = CommandFields.enumValue(

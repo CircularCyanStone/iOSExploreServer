@@ -32,26 +32,14 @@ enum UIViewHierarchyCollector {
     static func collectTopViewHierarchy(query: UIViewHierarchyInput, context: UIKitContextProvider.Context) -> JSON {
         let element = UIKitViewElement(view: context.rootView)
         let root = UIViewHierarchyBuilder.build(from: element, query: query)
-        let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
-        let fingerprints = UIKitFingerprintCollector.fingerprints(in: context.rootView,
-                                                                  includeHidden: query.includeHidden,
-                                                                  digest: digest)
-        // hierarchy 的指纹用 `fingerprints(in:includeHidden:)` 全节点口径签发（供 tap 陈旧校验），
-        // 与 `collectFingerprints(query:)` 的 control/gesture 筛选口径不同。这里存 `.default` 仅为
-        // 满足 store 契约；用 hierarchy snapshotID 调 `ui.wait(snapshotChanged)` 的 whole-table 比对会
-        // 因口径不一致误判——snapshotChanged 应配合 `ui.viewTargets`/`ui.screenshot`（同 `collectFingerprints` 口径）。
-        let snapshotID = UIKitSnapshotStore.shared.insert(context: UIKitFingerprintCollector.context(window: context.window, topViewController: context.topViewController),
-                                                          targets: fingerprints,
-                                                          query: .default)
-        let snapshotFields = UIKitSnapshotResponse.fields(for: snapshotID)
+        // topViewHierarchy 不签发 viewSnapshotID：结构化 freshness / locator 签发是 ui.viewTargets
+        // 的专属职责（spec §1.2）。这里只输出页面结构供观察/排障，不参与 tap/sendAction 陈旧校验。
         var data: JSON = [
             "screen": .object(screenJSON(window: context.window,
                                          rootViewController: context.rootViewController,
                                          topViewController: context.topViewController)),
             "nodeCount": .double(Double(root.nodeCount)),
             "detailLevel": .string(query.detailLevel.rawValue),
-            "snapshotID": snapshotFields.id,
-            "snapshotUnavailableReason": snapshotFields.unavailableReason,
         ]
         // 与 ui.viewTargets 同口径暴露 navigationBar 摘要，避免出现「viewTargets 看得到、
         // topViewHierarchy 看不到」的分叉；深度排查与普通观察用同一份导航栏语义。

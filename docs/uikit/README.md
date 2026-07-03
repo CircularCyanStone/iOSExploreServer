@@ -1,27 +1,28 @@
 # iOSExploreUIKit 知识库
 
-`Sources/iOSExploreUIKit/`（UIKit 扩展模块，12 个 `ui.*` 命令）的阅读与参考文档。
+`Sources/iOSExploreUIKit/`（UIKit 扩展模块，13 个 `ui.*` 命令）的阅读与参考文档。
 
 core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 App **显式** `server.registerUIKitCommands()` 注册。
 
 ## 这里的文档
 
 - **[reading-guide.md](./reading-guide.md)** — 阅读指南。回答"代码这么多，从哪看、整个设计长什么样"。给一张全局心智模型 + 一条按依赖排序的阅读路线（约 1500 行精选阅读量，不是全部 3840 行）。**第一次读从这份开始。**
-- **[uikit-file-reference.md](./uikit-file-reference.md)** — 文件档案。逐个登记 25 个文件的职责、关键点与依赖关系，当查阅手册或改某个文件时用。
+- **[uikit-file-reference.md](./uikit-file-reference.md)** — 文件档案。逐个登记 61 个文件的职责、关键点与依赖关系，当查阅手册或改某个文件时用。
 
-## 12 个命令一览
+## 13 个命令一览
 
 | action | 作用 | adapter | 执行核心 |
 |---|---|---|---|
 | `ui.topViewHierarchy` | 完整 view 树结构快照（含文本/颜色/控件状态） | `TopViewHierarchyCommand` | `UIViewHierarchyCollector` |
 | `ui.viewTargets` | 扁平轻量可交互目标列表（事件下发前发现） | `ViewTargetsCommand` | `UIViewTargetsCollector` |
-| `ui.tap` | 模拟点击（坐标 hit-test / view 定位） | `UITapCommand` | `UIKitActionExecutor` |
-| `ui.control.sendAction` | 向 UIControl 发 target-action 事件 | `UIControlSendActionCommand` | `UIKitActionExecutor` |
-| `ui.screenshot` | 截屏并签发 snapshotID | `ScreenshotCommand` | `UIScreenshotCollector` |
+| `ui.tap` | 默认激活动作（按 target 类型路由：button/switch/输入框聚焦） | `UITapCommand` | `UIKitActionExecutor` |
+| `ui.control.sendAction` | 向 UIControl 发显式 target-action 事件 | `UIControlSendActionCommand` | `UIKitActionExecutor` |
+| `ui.screenshot` | 截屏（可选视觉证据，不再签发 viewSnapshotID） | `ScreenshotCommand` | `UIScreenshotCollector` |
 | `ui.input` | 向文本控件注入文本 | `InputCommand` | `UITextInputExecutor` |
 | `ui.keyboard.dismiss` | 收起当前 first responder / 键盘 | `KeyboardDismissCommand` | `UIKeyboardDismissExecutor` |
 | `ui.scroll` | 在 UIScrollView 上按方向 + 距离滚动 | `ScrollCommand` | `UIScrollExecutor` |
 | `ui.navigation.back` | 返回上一页（auto 先 dismiss 再 navigation pop） | `NavigationBackCommand` | `UINavigationBackExecutor` |
+| `ui.navigation.tapBarButton` | 触发导航栏 UIBarButtonItem（placement + index） | `UINavigationBarButtonCommand` | `UINavigationBarButtonExecutor` |
 | `ui.wait` | 等待 UI 稳定或目标/文本/快照变化 | `WaitCommand` | `UIWaitExecutor` |
 | `ui.scrollToElement` | 滚动到指定文本/identifier 元素可见 | `ScrollToElementCommand` | `UIScrollToElementExecutor` |
 | `ui.alert.respond` | 查询/响应 UIAlertController（dryRun） | `AlertRespondCommand` | `UIAlertRespondExecutor` |

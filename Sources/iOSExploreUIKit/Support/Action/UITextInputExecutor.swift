@@ -41,8 +41,8 @@ enum UITextInputExecutor {
             ambiguous: { n in UIKitCommandError.invalidData(action: action, message: "input target ambiguous count=\(n)") }
         )
 
-        // 2. 陈旧校验：仅 path 定位 + 带 snapshotID 时执行。
-        if let snapshotID = input.snapshotID, case .path = input.target {
+        // 2. 陈旧校验：仅 path 定位 + 带 viewSnapshotID 时执行。
+        if let viewSnapshotID = input.viewSnapshotID, case .path = input.target {
             let cur = UIKitFingerprintCollector.fingerprint(
                 for: located.view,
                 path: located.pathString,
@@ -53,11 +53,11 @@ enum UITextInputExecutor {
                 window: context.window,
                 topViewController: context.topViewController
             )
-            if UIKitSnapshotStore.shared.isStale(snapshotID: snapshotID,
+            if UIKitSnapshotStore.shared.isStale(viewSnapshotID: viewSnapshotID,
                                                  path: located.pathString,
                                                  context: snapCtx,
                                                  current: cur) {
-                throw UIKitCommandError.staleLocator(action: action, snapshotID: snapshotID)
+                throw UIKitCommandError.staleLocator(action: action, viewSnapshotID: viewSnapshotID)
             }
         }
 

@@ -11,94 +11,86 @@ func viewLookupTargetParsesPath() throws {
     #expect(UIKitViewLookupTarget.pathString(from: [0, 2, 1]) == "root/0/2/1")
 }
 
-@Test("UITapInput 从 accessibilityIdentifier 解析 view 目标")
-func tapQueryParsesIdentifierTarget() throws {
+// MARK: - ui.tap 结构化默认激活契约
+
+/// `ui.tap` 已从“坐标 / hit-test / 祖先 fallback 的伪点击”收敛为：只接受
+/// `ui.viewTargets` 签发的 canonical target 定位（path 或 accessibilityIdentifier）
+/// 加必填的 `viewSnapshotID`。下面的测试锁定该公共输入契约。
+@Test("UITapInput 从 path + viewSnapshotID 解析默认激活目标")
+func tapInputParsesPathWithViewSnapshotID() throws {
     let query = try UITapInput.parse(from: [
-        "accessibilityIdentifier": "mine.header.avatar",
+        "path": "root/0/2/1",
+        "viewSnapshotID": "view_snapshot_test",
     ])
 
-    #expect(query.target == .view(.accessibilityIdentifier("mine.header.avatar")))
+    #expect(query.target == .path([0, 2, 1]))
+    #expect(query.viewSnapshotID == "view_snapshot_test")
 }
 
-@Test("UITapInput 从 window 坐标解析点击目标")
-func tapQueryParsesWindowPointTarget() throws {
+@Test("UITapInput 从 accessibilityIdentifier + viewSnapshotID 解析默认激活目标")
+func tapInputParsesIdentifierWithViewSnapshotID() throws {
     let query = try UITapInput.parse(from: [
-        "x": 120,
-        "y": 300,
-        "coordinateSpace": "window",
+        "accessibilityIdentifier": "checkout.submit",
+        "viewSnapshotID": "view_snapshot_test",
     ])
 
-    #expect(query.target == .windowPoint(x: 120, y: 300))
+    #expect(query.target == .accessibilityIdentifier("checkout.submit"))
+    #expect(query.viewSnapshotID == "view_snapshot_test")
 }
 
-@Test("UITapInput 拒绝 view 定位和坐标混用")
-func tapQueryRejectsMixedTargets() {
+@Test("UITapInput path 定位必须携带 viewSnapshotID")
+func tapInputRequiresViewSnapshotIDForPath() {
+    #expect(throws: CommandInputParseError.self) {
+        try UITapInput.parse(from: ["path": "root/0"])
+    }
+}
+
+@Test("UITapInput accessibilityIdentifier 定位必须携带 viewSnapshotID")
+func tapInputRequiresViewSnapshotIDForIdentifier() {
+    #expect(throws: CommandInputParseError.self) {
+        try UITapInput.parse(from: ["accessibilityIdentifier": "checkout.submit"])
+    }
+}
+
+@Test("UITapInput 拒绝裸坐标 x/y")
+func tapInputRejectsCoordinates() {
+    #expect(throws: CommandInputParseError.self) {
+        try UITapInput.parse(from: ["x": 120, "y": 300])
+    }
+}
+
+@Test("UITapInput 拒绝 coordinateSpace")
+func tapInputRejectsCoordinateSpace() {
+    #expect(throws: CommandInputParseError.self) {
+        try UITapInput.parse(from: ["x": 1, "y": 2, "coordinateSpace": "window"])
+    }
+}
+
+@Test("UITapInput 拒绝 path 与 accessibilityIdentifier 同时提供")
+func tapInputRejectsMixedPathAndIdentifier() {
     #expect(throws: CommandInputParseError.self) {
         try UITapInput.parse(from: [
-            "accessibilityIdentifier": "mine.header.avatar",
-            "x": 120,
-            "y": 300,
+            "path": "root/0",
+            "accessibilityIdentifier": "checkout.submit",
+            "viewSnapshotID": "view_snapshot_test",
         ])
     }
 }
 
-@Test("UITapInput schema 声明字段顺序和扩展约束")
-func tapInputSchemaUsesExpectedFieldsAndConstraints() {
+@Test("UITapInput 拒绝旧 snapshotID 字段名")
+func tapInputRejectsOldSnapshotID() {
+    // 旧契约 path + snapshotID 合法；新契约字段改名为 viewSnapshotID，旧名属于未声明字段，
+    // 同时 path 必须配 viewSnapshotID，故此组合必须失败。
+    #expect(throws: CommandInputParseError.self) {
+        try UITapInput.parse(from: ["path": "root/0", "snapshotID": "snap-1"])
+    }
+}
+
+@Test("UITapInput schema 不再声明坐标字段且使用 viewSnapshotID")
+func tapInputSchemaDropsCoordinatesAndUsesViewSnapshotID() {
     #expect(UITapInput.inputSchema.fields.map(\.name) == [
         "accessibilityIdentifier",
         "path",
-        "snapshotID",
-        "x",
-        "y",
-        "coordinateSpace",
+        "viewSnapshotID",
     ])
-
-    let json = UITapInput.inputSchema.toJSON()
-    guard case .array(let constraints)? = json["x-iosExplore-constraints"] else {
-        Issue.record("x-iosExplore-constraints not found")
-        return
-    }
-    #expect(constraints.map(\.stringValue).contains("snapshotID is valid only with path"))
-    #expect(constraints.map(\.stringValue).contains("coordinateSpace currently supports only window"))
-
-    guard case .array(let oneOf)? = json["oneOf"] else {
-        Issue.record("oneOf not found")
-        return
-    }
-    #expect(oneOf.count == 3)
-}
-
-@Test("UITapInput 接受 identifier、path+snapshotID、window 坐标三类合法输入")
-func tapInputParsesValidMatrix() throws {
-    let identifier = try UITapInput.parse(from: ["accessibilityIdentifier": "home.submit"])
-    #expect(identifier.target == .view(.accessibilityIdentifier("home.submit")))
-    #expect(identifier.snapshotID == nil)
-
-    let path = try UITapInput.parse(from: ["path": "root/0/1", "snapshotID": "snap-1"])
-    #expect(path.target == .view(.path([0, 1])))
-    #expect(path.snapshotID == "snap-1")
-
-    let point = try UITapInput.parse(from: ["x": 10.5, "y": 20, "coordinateSpace": "window"])
-    #expect(point.target == .windowPoint(x: 10.5, y: 20))
-}
-
-@Test("UITapInput 拒绝互斥、成对和 snapshotID 非法组合")
-func tapInputRejectsInvalidMatrixAsCommandInputError() {
-    let invalidCases: [JSON] = [
-        ["x": 10],
-        ["y": 20],
-        ["accessibilityIdentifier": "home.submit", "path": "root/0"],
-        ["accessibilityIdentifier": "home.submit", "coordinateSpace": "window"],
-        ["accessibilityIdentifier": "home.submit", "x": 10, "y": 20],
-        ["path": "root/0", "coordinateSpace": "window"],
-        ["snapshotID": "snap-1", "accessibilityIdentifier": "home.submit"],
-        ["snapshotID": "snap-1", "x": 10, "y": 20],
-        ["x": 10, "y": 20, "coordinateSpace": "screen"],
-    ]
-
-    for data in invalidCases {
-        #expect(throws: CommandInputParseError.self) {
-            try UITapInput.parse(from: data)
-        }
-    }
 }

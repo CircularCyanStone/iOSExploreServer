@@ -21,7 +21,7 @@ func inputInputParseDefaults() throws {
     #expect(input.text == "hi")
     #expect(input.mode == .replace)
     #expect(input.submit == true)
-    #expect(input.snapshotID == nil)
+    #expect(input.viewSnapshotID == nil)
 }
 
 @Test("UIInputInput: 缺 text 抛解析错误")
@@ -44,13 +44,13 @@ func inputInputParsesAppendAndNoSubmit() throws {
     #expect(input.target == .accessibilityIdentifier("field.email"))
 }
 
-@Test("UIInputInput: snapshotID 搭配 identifier 抛错")
-func inputInputRejectsSnapshotIDWithIdentifier() {
+@Test("UIInputInput: viewSnapshotID 搭配 identifier 抛错")
+func inputInputRejectsViewSnapshotIDWithIdentifier() {
     #expect(throws: CommandInputParseError.self) {
         _ = try UIInputInput.parse(from: [
             "accessibilityIdentifier": "field.email",
             "text": "x",
-            "snapshotID": "snap-1",
+            "viewSnapshotID": "view_snapshot_test",
         ])
     }
 }
@@ -60,7 +60,7 @@ func inputInputSchemaFieldsAndConstraints() {
     #expect(UIInputInput.inputSchema.fields.map(\.name) == [
         "accessibilityIdentifier",
         "path",
-        "snapshotID",
+        "viewSnapshotID",
         "text",
         "mode",
         "submit",
@@ -78,7 +78,7 @@ func inputInputSchemaFieldsAndConstraints() {
         Issue.record("x-iosExplore-constraints not found")
         return
     }
-    #expect(constraints.map(\.stringValue).contains("snapshotID is valid only with path"))
+    #expect(constraints.map(\.stringValue).contains("viewSnapshotID is valid only with path"))
 }
 
 // MARK: - UITextInputExecutor 派发
@@ -163,8 +163,8 @@ func executorSecureFieldMasksResponse() throws {
     #expect(serialized.contains(secret) == false)
 }
 
-@Test("executor 带 snapshotID 且陈旧时抛 staleLocator") @MainActor
-func executorStaleSnapshotThrows() {
+@Test("executor 带 viewSnapshotID 且陈旧时抛 staleLocator") @MainActor
+func executorStaleViewSnapshotThrows() {
     let context = UIKitTestHost.context { root in
         let field = UITextField()
         field.text = ""
@@ -172,15 +172,15 @@ func executorStaleSnapshotThrows() {
         root.addSubview(field)
     }
 
-    // 用一个 store 里不存在的 snapshotID 触发 stale（unknown id → isStale 返回 true）。
-    let input = UIInputInput(target: .path([0]), text: "x", snapshotID: "snap-nonexistent")
+    // 用一个 store 里不存在的 viewSnapshotID 触发 stale（unknown id → isStale 返回 true）。
+    let input = UIInputInput(target: .path([0]), text: "x", viewSnapshotID: "snap-nonexistent")
     do {
         _ = try UITextInputExecutor.execute(input: input, context: context)
         Issue.record("expected failure, got success")
     } catch let error as UIKitCommandError {
         #expect(error.failure.code == .staleLocator)
-        #expect(error.failure.message == "snapshot expired or target changed; call ui.screenshot first, then retry with the new snapshotID")
-        #expect(error.failure.logMessage == "uikit locator stale action=ui.input snapshot=snap-nonexistent")
+        #expect(error.failure.message == "view snapshot expired or target changed; call ui.viewTargets first, then retry with the new viewSnapshotID")
+        #expect(error.failure.logMessage == "uikit locator stale action=ui.input viewSnapshot=snap-nonexistent")
     } catch {
         Issue.record("unexpected error: \(error)")
     }

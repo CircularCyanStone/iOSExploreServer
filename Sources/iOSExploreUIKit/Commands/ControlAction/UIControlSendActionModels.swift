@@ -24,13 +24,15 @@ public enum UIControlSendActionEvent: String, Sendable, Equatable, CaseIterable 
 
 /// `ui.control.sendAction` 的命令参数。
 ///
-/// 命令要求调用方明确提供一个定位条件和一个事件名。定位条件只能二选一，避免同一请求里
-/// identifier 与 path 指向不同控件导致误触发。
+/// 它是精确 UIKit event 工具：对自身为 `UIControl` 的 canonical target 发送调用方显式指定的
+/// `UIControl.Event`。命令要求调用方明确提供一个定位条件（`accessibilityIdentifier` 或 `path`
+/// 二选一）、必填的 `viewSnapshotID` 和一个事件名。它不做 hit-test、不接受坐标、不找祖先
+/// control、不承担默认激活。成功只表示已向该 UIControl 发出指定 event。
 public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
         static let path = UIKitLocatorFields.path
-        static let snapshotID = UIKitLocatorFields.snapshotID
+        static let viewSnapshotID = UIKitLocatorFields.viewSnapshotID
         static let event = CommandFields.requiredEnum(
             "event",
             type: UIControlSendActionEvent.self,
@@ -40,7 +42,7 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
         static let all: [AnyCommandField] = [
             accessibilityIdentifier.erased,
             path.erased,
-            snapshotID.erased,
+            viewSnapshotID.erased,
             event.erased,
         ]
     }
@@ -50,7 +52,7 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
         fields: Fields.all,
         constraints: [
             .exactlyOneOf(["accessibilityIdentifier", "path"]),
-            .extensionMessage("snapshotID is valid only with path"),
+            .extensionMessage("viewSnapshotID is required and must come from ui.viewTargets"),
         ]
     )
 
@@ -58,36 +60,36 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     public let target: UIKitViewLookupTarget
     /// 要发送的 UIControl 事件。
     public let event: UIControlSendActionEvent
-    /// 可选的快照标识，用于对 `.path` 定位做陈旧校验。
-    public let snapshotID: String?
+    /// `ui.viewTargets` 签发的结构化 target 指纹快照标识，必填；executor 用它做陈旧校验。
+    public let viewSnapshotID: String
 
     /// 创建 sendAction 查询。
     ///
     /// - Parameters:
     ///   - target: 目标控件定位方式。
     ///   - event: 要发送的 UIControl 事件。
-    ///   - snapshotID: 可选 snapshotID，默认 nil。
-    public init(target: UIKitViewLookupTarget, event: UIControlSendActionEvent, snapshotID: String? = nil) {
+    ///   - viewSnapshotID: `ui.viewTargets` 签发的 viewSnapshotID。
+    public init(target: UIKitViewLookupTarget, event: UIControlSendActionEvent, viewSnapshotID: String) {
         self.target = target
         self.event = event
-        self.snapshotID = snapshotID
+        self.viewSnapshotID = viewSnapshotID
     }
 
-    /// 按 `CommandInputDecoder` 读取字段并执行定位/snapshotID 组合校验。
+    /// 按 `CommandInputDecoder` 读取字段并执行定位/viewSnapshotID/event 校验。
     ///
     /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
     /// - Returns: 已解析的 control action 输入。
-    /// - Throws: 字段类型、事件枚举、定位互斥关系或 snapshotID 搭配非法时抛出
+    /// - Throws: 字段类型、事件枚举、定位互斥关系或 viewSnapshotID 缺失时抛出
     ///   `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIControlSendActionInput {
-        let snapshotID = try decoder.read(Fields.snapshotID)
+        let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
         let event = try decoder.read(Fields.event)
         let target = try UIKitLocatorInput.parse(decoder: &decoder,
                                                  identifierField: Fields.accessibilityIdentifier,
                                                  pathField: Fields.path)
-        if snapshotID != nil, case .accessibilityIdentifier = target {
-            throw CommandInputParseError("snapshotID is valid only with path")
+        guard let viewSnapshotID else {
+            throw CommandInputParseError("viewSnapshotID is required")
         }
-        return UIControlSendActionInput(target: target, event: event, snapshotID: snapshotID)
+        return UIControlSendActionInput(target: target, event: event, viewSnapshotID: viewSnapshotID)
     }
 }

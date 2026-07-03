@@ -78,7 +78,15 @@ enum UIKitFingerprintCollector {
             ancestorDigest: ancestorDigest(
                 for: view,
                 rootView: rootView
-            )
+            ),
+
+            // 与动作路由相关的语义摘要哈希（类型 / role / a11y label·value / 按钮标题 /
+            // 输入占位 / switch isOn / slider value / segment 选择 / 默认激活路由）。
+            //
+            // 即使 path、类型、frame 都没变，按钮标题从「提交」变「删除」、switch 状态翻转、
+            // segment 选择变化也会让本字段变化，触发陈旧校验拒绝旧 locator，迫使重新 observe。
+            // 只存哈希，不存业务明文。
+            semanticDigest: UIKitTargetSemanticDigest.digest(for: view)
         )
     }
 
@@ -257,27 +265,28 @@ enum UIKitFingerprintCollector {
 
     // MARK: - Query-driven Fingerprint Collection
 
-    /// 按 `UIViewTargetsInput` 筛选条件遍历 rootView，生成与 `ui.viewTargets` 输出**同源同筛选**的
-    /// 目标指纹表（`path → fingerprint`）。
+    /// 按 `UIViewTargetsInput` 筛选条件遍历 rootView，生成 canonical 目标的指纹表
+    /// （`path → fingerprint`），供 `ui.wait(snapshotChanged)` 重采 whole-table 与签发表比对。
     ///
-    /// 这是 `ui.viewTargets` 与 `ui.screenshot` 共享的指纹签发入口（spec §3.2/§3.6）：
-    /// - screenshot 用 `UIViewTargetsInput.default` 签发指纹集；
-    /// - viewTargets 用调用方传入的 query 签发；
-    /// - 两者筛选口径完全一致，保证"截图拿 snapshotID → tap 带 snapshotID"跨命令校验成立，
-    ///   不会因筛选不同导致 `path missing` 被误判为 stale。
+    /// 重构后的口径（spec §7）：
+    /// - `ui.viewTargets` 不再用本方法签发——它遍历时累积 `(summary, view)`，maxTargets 截断后
+    ///   只为最终返回的 canonical target 逐个 `fingerprint(for:)` 签发（returned paths == signed paths）；
+    /// - 本方法现在主要服务 `ui.wait(snapshotChanged)`：用签发时同一 query 重采当前表，再与
+    ///   `UIKitSnapshotStore.matchesWholeTable` 整体比对；
+    /// - `ui.screenshot` 不再签发 viewSnapshotID（结构化 freshness / locator 由 ui.viewTargets 负责）。
     ///
-    /// 筛选规则与 `UIViewTargetsCollector` 逐字对齐：
+    /// 筛选规则与 `UIViewTargetsCollector.shouldInclude` 逐字对齐（canonical-only：UIControl 系 +
+    /// UIScrollView 系），保证 wait 重采表与 viewTargets 签发表同口径：
     /// - `includeHidden=false` 时 hidden 节点整棵子树剪枝；
     /// - 通过 `query.shouldInclude` + `matchesIdentifier` 的节点才签发指纹；
     /// - `maxDepth` 限制递归深度（`nil` 不限）；
-    /// - **不受** `maxTargets` 约束（指纹表是内部陈旧校验用，不进 HTTP 响应；签发越多越能拦截
-    ///   陈旧 path，且 snapshot store 自身有 512 条上限保护）。
+    /// - 不受 `maxTargets` 约束（whole-table 重采需要完整 canonical 集合）。
     ///
     /// - Parameters:
     ///   - rootView: 本次 snapshot 的根节点。
-    ///   - query: 与 viewTargets 同口径的筛选参数。
+    ///   - query: 与签发同口径的筛选参数。
     ///   - digest: 顶部控制器等页面上下文摘要。
-    /// - Returns: 命中筛选的节点的 `path → fingerprint` 表；该入口不受 `maxTargets` 限制。
+    /// - Returns: 命中 canonical 筛选的节点的 `path → fingerprint` 表。
     static func collectFingerprints(
         rootView: UIView,
         query: UIViewTargetsInput,

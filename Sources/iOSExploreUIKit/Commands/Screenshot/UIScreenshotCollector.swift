@@ -6,24 +6,26 @@ import UIKit
 /// `ui.screenshot` 的渲染与编码核心。
 ///
 /// 运行在 `MainActor`：负责取当前前台上下文、检测控制器过渡态、`drawHierarchy` 截屏、
-/// 按像素长边降采样、PNG 编码、体积前置检查（base64 前拦截避免分配峰值）、签发同帧
-/// snapshot。所有 UIKit 对象（`UIImage`/`UIWindow`/`UIView`）均不跨 actor 边界，返回值
-/// 为纯 `JSON`（base64 字符串 + 像素尺寸 + snapshotID）。
+/// 按像素长边降采样、PNG 编码、体积前置检查（base64 前拦截避免分配峰值）。所有 UIKit 对象
+/// （`UIImage`/`UIWindow`/`UIView`）均不跨 actor 边界，返回值为纯 `JSON`（base64 字符串 +
+/// 像素尺寸）。
+///
+/// **`ui.screenshot` 只是可选的视觉证据**：它不签发、不刷新、不返回 `viewSnapshotID`，也不
+/// 参与结构化 freshness / 动作授权 / locator 签发。`viewSnapshotID` 只由 `ui.viewTargets`
+/// 签发。截图用于人工排障或支持多模态的 Agent 的可选增强输入。
 ///
 /// 失败统一 `throw UIKitCommandError`，由 `ScreenshotCommand` 顶层 catch 转 envelope。
 @MainActor
 enum UIScreenshotCollector {
-    /// 采集当前前台 window 的截图并签发 snapshot。
+    /// 采集当前前台 window 的截图。
     ///
     /// 流程：currentContext → transitionCoordinator 检测 → `drawHierarchy`（捕获 Bool）→
-    /// 像素长边降采样 → MainActor PNG 编码 → 体积前置检查（base64 之前）→ base64 →
-    /// collectFingerprints(默认筛选) + insert → 返回 JSON。
+    /// 像素长边降采样 → MainActor PNG 编码 → 体积前置检查（base64 之前）→ base64 → 返回 JSON。
     ///
     /// - Parameters:
     ///   - input: 截图参数，`maxDimension` 为像素长边上限。
     ///   - maxResponseBodyBytes: 响应 body 字节上限，base64 估算超限即抛 `responseTooLarge`。
-    /// - Returns: 含 `image`(base64)/`format`/`width`/`height`/`scale`/`pixelScale`/
-    ///   `snapshotID`/`snapshotUnavailableReason` 的 JSON。
+    /// - Returns: 含 `image`(base64)/`format`/`width`/`height`/`scale`/`pixelScale` 的 JSON。
     /// - Throws: `UIKitCommandError`——过渡态、渲染失败、PNG 编码失败、响应过大、上下文不可用。
     static func collect(input: UIScreenshotInput, maxResponseBodyBytes: Int) throws -> JSON {
         let action = ScreenshotCommand.actionName
@@ -53,7 +55,7 @@ enum UIScreenshotCollector {
         if context.topViewController.transitionCoordinator != nil {
             throw UIKitCommandError.transitionInProgress(action: action)
         }
-        // Context.window 非 Optional（codex 复审核对），直接绑定避免 guard let 语义漂移。
+        // Context.window 非 Optional，直接绑定避免 guard let 语义漂移。
         let window = context.window
 
         // 2. MainActor 渲染：截当前帧。
@@ -99,29 +101,12 @@ enum UIScreenshotCollector {
         }
         let base64 = pngData.base64EncodedString()
 
-        // 6. 同帧指纹（与 viewTargets 同默认筛选）+ 签发 snapshot，保证"截图拿 snapshotID →
-        //    tap 带 snapshotID"跨命令陈旧校验成立。
-        let query = UIViewTargetsInput()
-        let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
-        let fingerprints = UIKitFingerprintCollector.collectFingerprints(
-            rootView: context.rootView,
-            query: query,
-            digest: digest
-        )
-        let snapContext = UIKitFingerprintCollector.context(
-            window: context.window,
-            topViewController: context.topViewController
-        )
-        let snapshotID = UIKitSnapshotStore.shared.insert(context: snapContext,
-                                                          targets: fingerprints,
-                                                          query: query)
-        let (idField, reasonField) = UIKitSnapshotResponse.fields(for: snapshotID)
-
         // window.screen 非 Optional（UIWindow.screen 在 iOS 13+ 为非可选）。
+        // screenshot 不签发 viewSnapshotID（结构化 freshness / locator 由 ui.viewTargets 负责）。
         let screenScale = window.screen.scale
         let scaledPxW = scaledImage.cgImage?.width ?? 0
         let scaledPxH = scaledImage.cgImage?.height ?? 0
-        UIKitCommandLogging.info("command", "ui screenshot completed pngBytes=\(pngData.count) pxW=\(scaledPxW) pxH=\(scaledPxH) pixelScale=\(pixelScale) snapshot=\(snapshotID ?? "nil")")
+        UIKitCommandLogging.info("command", "ui screenshot completed pngBytes=\(pngData.count) pxW=\(scaledPxW) pxH=\(scaledPxH) pixelScale=\(pixelScale)")
 
         return [
             "image": .string(base64),
@@ -130,8 +115,6 @@ enum UIScreenshotCollector {
             "height": .double(Double(scaledPxH)),
             "scale": .double(Double(screenScale)),
             "pixelScale": .double(pixelScale),
-            "snapshotID": idField,
-            "snapshotUnavailableReason": reasonField,
         ]
     }
 

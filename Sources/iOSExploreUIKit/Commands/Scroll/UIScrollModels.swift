@@ -41,7 +41,7 @@ public enum ScrollExtent: String, Sendable, Equatable {
 ///
 /// 命令要求调用方明确给出 `direction`；`amount` 缺省时按可见区一半滚动；定位条件
 /// （`accessibilityIdentifier` / `path`）可同时缺省——此时 executor 回退到 keyWindow
-/// 最前的 scrollView。`snapshotID` 仅允许与 `path` 搭配，用于陈旧校验。
+/// 最前的 scrollView。`viewSnapshotID` 可选，仅允许与 `path` 搭配用于陈旧校验。
 public struct UIScrollInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let direction = CommandFields.requiredEnum(
@@ -55,7 +55,7 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
         )
         static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
         static let path = UIKitLocatorFields.path
-        static let snapshotID = UIKitLocatorFields.snapshotID
+        static let viewSnapshotID = UIKitLocatorFields.viewSnapshotID
         static let animated = CommandFields.bool(
             "animated",
             default: false,
@@ -67,7 +67,7 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
             amount.erased,
             accessibilityIdentifier.erased,
             path.erased,
-            snapshotID.erased,
+            viewSnapshotID.erased,
             animated.erased,
         ]
     }
@@ -77,7 +77,7 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
         fields: Fields.all,
         constraints: [
             .extensionMessage("accessibilityIdentifier/path 都缺时滚动 keyWindow 最前 scrollView"),
-            .extensionMessage("snapshotID is valid only with path"),
+            .extensionMessage("viewSnapshotID is valid only with path"),
         ]
     )
 
@@ -87,8 +87,8 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
     public let amount: Double?
     /// 目标定位方式，缺省表示滚动 keyWindow 最前的 scrollView。
     public let locator: UIKitViewLookupTarget?
-    /// 快照标识，仅与 `.path` 定位搭配做陈旧校验。
-    public let snapshotID: String?
+    /// `ui.viewTargets` 签发的结构化快照标识，可选，仅与 `.path` 定位搭配做陈旧校验。
+    public let viewSnapshotID: String?
     /// 是否动画。默认 false（`setContentOffset` 同步更新，after/reachedExtent 为确定值）。
     public let animated: Bool
 
@@ -98,42 +98,42 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
     ///   - direction: 滚动方向。
     ///   - amount: 滚动距离；nil 表示按可见区一半。
     ///   - locator: 目标定位；nil 表示 keyWindow 最前 scrollView。
-    ///   - snapshotID: 可选 snapshotID，默认 nil。
+    ///   - viewSnapshotID: 可选 viewSnapshotID（来自 ui.viewTargets），默认 nil。
     ///   - animated: 是否动画，默认 false。
     public init(direction: ScrollDirection,
                 amount: Double? = nil,
                 locator: UIKitViewLookupTarget? = nil,
-                snapshotID: String? = nil,
+                viewSnapshotID: String? = nil,
                 animated: Bool = false) {
         self.direction = direction
         self.amount = amount
         self.locator = locator
-        self.snapshotID = snapshotID
+        self.viewSnapshotID = viewSnapshotID
         self.animated = animated
     }
 
-    /// 按 `CommandInputDecoder` 读取字段并执行 amount/snapshotID 组合校验。
+    /// 按 `CommandInputDecoder` 读取字段并执行 amount/viewSnapshotID 组合校验。
     ///
     /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
     /// - Returns: 已解析的 scroll 输入。
-    /// - Throws: 字段类型、方向枚举、amount<=0 或 snapshotID 搭配非法时抛出
+    /// - Throws: 字段类型、方向枚举、amount<=0 或 viewSnapshotID 搭配非法时抛出
     ///   `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIScrollInput {
         let direction = try decoder.read(Fields.direction)
         let amountRaw = try decoder.read(Fields.amount)
         let animated = try decoder.read(Fields.animated)
-        let snapshotID = try decoder.read(Fields.snapshotID)
+        let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
         let locator = try UIKitLocatorInput.parseOptional(decoder: &decoder)
         if let amount = amountRaw, amount <= 0 {
             throw CommandInputParseError("amount must be > 0")
         }
-        if snapshotID != nil, let locator, case .accessibilityIdentifier = locator {
-            throw CommandInputParseError("snapshotID is valid only with path")
+        if viewSnapshotID != nil, let locator, case .accessibilityIdentifier = locator {
+            throw CommandInputParseError("viewSnapshotID is valid only with path")
         }
         return UIScrollInput(direction: direction,
                              amount: amountRaw,
                              locator: locator,
-                             snapshotID: snapshotID,
+                             viewSnapshotID: viewSnapshotID,
                              animated: animated)
     }
 }

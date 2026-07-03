@@ -33,7 +33,7 @@ struct UIControlSendActionCommand: Command {
         do {
             let plan = UIKitActionPlan.controlEvent(locator: input.target.locator,
                                                     event: input.event,
-                                                    snapshotID: input.snapshotID)
+                                                    viewSnapshotID: input.viewSnapshotID)
             let data = try await UIKitActionExecutor.execute(plan)
             UIKitCommandLogging.info("command", "command \(action) completed target=\(input.target.logSummary) event=\(input.event.rawValue) type=\(data["type"]?.stringValue ?? "unknown")")
             return .success(data)

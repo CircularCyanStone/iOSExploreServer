@@ -11,7 +11,7 @@ import iOSExploreServer
 /// 真实 UIApplication scene，因此走注入入口 `collect(input:maxResponseBodyBytes:context:)`。
 @MainActor
 struct UIScreenshotTests {
-    @Test("screenshot: base64 解码回 UIImage 非空 + 像素非全透明 + 签发 snapshot")
+    @Test("screenshot: base64 解码回 UIImage 非空 + 像素非全透明（不签发 viewSnapshotID）")
     func screenshotProducesValidImage() throws {
         let context = UIKitTestHost.context { root in
             // 含对比色背景，防空白位图假通过。
@@ -45,8 +45,10 @@ struct UIScreenshotTests {
         // 防空白位图假通过：至少存在一个非透明像素。
         #expect(Self.hasNonTransparentPixel(img))
 
-        // 签发了有效 snapshotID（默认筛选下含 identifier 节点，应非空）。
-        #expect(data["snapshotID"]?.stringValue != nil)
+        // screenshot 不签发 viewSnapshotID（Task 3）：结构化 freshness / locator 是 ui.viewTargets
+        // 的专属职责，screenshot 仅是视觉证据。
+        #expect(data["snapshotID"] == nil)
+        #expect(data["viewSnapshotID"] == nil)
     }
 
     @Test("screenshot: maxDimension 像素长边降采样生效")

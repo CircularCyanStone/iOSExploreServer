@@ -25,10 +25,29 @@ func targetExistsAcceptsPath() throws {
     #expect(input.target != nil)
 }
 
-@Test("snapshotChanged 必须提供 snapshotID")
-func snapshotChangedRequiresSnapshotID() {
+@Test("snapshotChanged 接受 viewSnapshotID")
+func waitSnapshotChangedParsesViewSnapshotID() throws {
+    let input = try UIWaitInput.parse(from: [
+        "mode": "snapshotChanged",
+        "viewSnapshotID": "view_snapshot_test",
+    ])
+    #expect(input.mode == .snapshotChanged)
+    #expect(input.viewSnapshotID == "view_snapshot_test")
+}
+
+@Test("snapshotChanged 必须提供 viewSnapshotID")
+func waitSnapshotChangedRequiresViewSnapshotID() {
     #expect(throws: Error.self) {
         try UIWaitInput.parse(from: ["mode": "snapshotChanged"])
+    }
+}
+
+@Test("snapshotChanged 拒绝旧 snapshotID 字段名")
+func waitSnapshotChangedRejectsOldSnapshotID() {
+    // 旧契约接受 snapshotID；新契约字段改名 viewSnapshotID，旧名属于未声明字段，
+    // 同时 snapshotChanged 必须配 viewSnapshotID，故此组合必须失败。
+    #expect(throws: Error.self) {
+        try UIWaitInput.parse(from: ["mode": "snapshotChanged", "snapshotID": "snap-1"])
     }
 }
 

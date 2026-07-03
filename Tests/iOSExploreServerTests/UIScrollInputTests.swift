@@ -6,7 +6,7 @@ import Testing
 ///
 /// `UIScrollInput`（含 `ScrollDirection` / `ScrollExtent`）保持 Foundation-only
 /// （无 `#if canImport(UIKit)`），因此本测试在 macOS SPM 与 iOS framework 工程下均可运行，
-/// 覆盖 direction 必填、amount 必须 > 0、定位字段可缺省以及 snapshotID 仅允许与 path 搭配的规则。
+/// 覆盖 direction 必填、amount 必须 > 0、定位字段可缺省以及 viewSnapshotID 仅允许与 path 搭配的规则。
 
 @Test("UIScrollInput: direction 必填；amount>0；target 可缺；animated 默认 false")
 func scrollInputParse() throws {
@@ -34,28 +34,28 @@ func scrollInputRejectsMissingDirection() {
     }
 }
 
-@Test("UIScrollInput: snapshotID 仅允许与 path 搭配，与 identifier 搭配抛错")
-func scrollInputRejectsSnapshotIDWithIdentifier() {
+@Test("UIScrollInput: viewSnapshotID 仅允许与 path 搭配，与 identifier 搭配抛错")
+func scrollInputRejectsViewSnapshotIDWithIdentifier() {
     #expect(throws: CommandInputParseError.self) {
         _ = try UIScrollInput.parse(from: [
             "accessibilityIdentifier": "list.scroll",
             "direction": "down",
-            "snapshotID": "snap-1",
+            "viewSnapshotID": "view_snapshot_test",
         ])
     }
 }
 
-@Test("UIScrollInput: path 定位 + snapshotID 合法解析")
-func scrollInputParsesPathWithSnapshotID() throws {
+@Test("UIScrollInput: path 定位 + viewSnapshotID 合法解析")
+func scrollInputParsesPathWithViewSnapshotID() throws {
     let input = try UIScrollInput.parse(from: [
         "path": "root/0",
         "direction": "up",
-        "snapshotID": "snap-1",
+        "viewSnapshotID": "view_snapshot_test",
         "animated": true,
     ])
     #expect(input.direction == .up)
     #expect(input.locator == .path([0]))
-    #expect(input.snapshotID == "snap-1")
+    #expect(input.viewSnapshotID == "view_snapshot_test")
     #expect(input.animated == true)
 }
 
@@ -66,7 +66,7 @@ func scrollInputSchemaFieldsAndDirectionValues() {
         "amount",
         "accessibilityIdentifier",
         "path",
-        "snapshotID",
+        "viewSnapshotID",
         "animated",
     ])
     // ScrollDirection 与 ScrollExtent 各自独立枚举，rawValue 集合互相对应四向。

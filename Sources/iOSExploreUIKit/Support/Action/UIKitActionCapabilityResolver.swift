@@ -5,12 +5,13 @@ import UIKit
 
 /// UIKit 动作能力的唯一解析器。
 ///
-/// collector（`ui.viewTargets` 输出 `availableActions`）与 executor（Task 5 的
-/// `UIKitActionExecutor` 决定 tap/control 派发）共用本类型，确保“声明可执行”与“实际可派发”
-/// 走同一份规则，避免静态节点被标成可 tap，或给 disabled 控件虚假动作。
+/// collector（`ui.viewTargets` 输出 `availableActions`）与 executor（`UIKitActionExecutor`
+/// 决定 tap / control 派发）共用本类型，确保"声明可执行"与"实际可派发"走同一份规则。
 ///
-/// 规则由 collector 与 executor 同时调用：
-/// - `tap` 仅在命中可用 `UIControl` 时可执行；
+/// 重构后的规则：
+/// - `tap` 仅在目标存在默认激活路由（`UIKitDefaultActivationResolver`）时声明——即
+///   `UIButton`/`UISwitch`/文本输入。`UISlider`/`UISegmentedControl`/未知自定义 `UIControl`
+///   不声明 `tap`（tap 语义不明确），但仍可暴露精确 `control.*` 事件；
 /// - `control.*` 按真实控件类型选择自然事件；
 /// - `input` 对 conform `UITextInput` 的 view 声明（覆盖 `UITextField`/`UITextView`/
 ///   `UISearchTextField`），为 `ui.input` 类命令预留可输入声明；
@@ -24,43 +25,36 @@ import UIKit
 enum UIKitActionCapabilityResolver {
     /// 解析单个 view 的可执行动作。
     ///
-    /// 当 view 本身不是 `UIControl` 时，沿用 `UITapCommand` 的 nearest-control 策略：向上
-    /// 查找最近的 `UIControl`（例如按钮内的 label），但不再越过本 view 的父级——因为
-    /// `ui.viewTargets` 返回的是叶子目标，能力应描述该叶子点上去能触发的控件。
-    ///
-    /// `input`/`scroll` 只看 view 本身的协议 conform（不看 nearestControl）：输入与滚动描述的是
-    /// 该叶子目标自身的可操作语义，不应借祖先 control 派生。
+    /// 不再借祖先 `UIControl` 派生动作：canonical target 的能力描述该 target 自身可触发的
+    /// 动作。`tap` 由默认激活路由决定，`control.*`/`input`/`scroll` 按真实类型与状态生成。
     ///
     /// - Parameters:
     ///   - view: 被采集/点击的真实 view。
     ///   - rootView: 当前 UIKit 查询上下文的根 view；目标到该根之间任一节点不可交互即拒绝。
-    ///   - nearestControl: 调用方预先解析的最近 `UIControl`（可由 `UIKitLocatorResolver.nearestControl`
-    ///     得到）；若 view 自身即控件，传它本身即可。`nil` 表示无关联控件。
-    ///   - isEnabled: 控件当前是否可用。非控件或未知时传 `nil`。
-    /// - Returns: 该目标当前可执行的动作集合。disabled 控件返回空集合（`input`/`scroll`
-    ///   不会绕过 disabled 空集规则——disabled `UIControl` 整体拒绝声明任何动作）。
-    static func resolve(view: UIView,
-                        rootView: UIView,
-                        nearestControl: UIControl?) -> UIKitActionAvailability {
+    /// - Returns: 该目标当前可执行的动作集合。disabled 控件返回空集合。
+    static func resolve(view: UIView, rootView: UIView) -> UIKitActionAvailability {
         guard isInteractable(view: view, through: rootView) else {
             return UIKitActionAvailability(actions: [])
         }
-        let control = (view as? UIControl) ?? nearestControl
 
-        // disabled 控件语义上不可执行：UITapCommand 的 touchUpInside fallback 与
-        // UIControlSendActionCommand 都不应在 disabled 状态下被声明为可用动作。
-        // disabled 规则作用于整棵声明树——disabled 控件不声明 input/scroll 等任何动作，
-        // 避免 discovery 与 executor 在 disabled 状态下出现“可声明但不可派发”的分叉。
-        if let control, !control.isEnabled {
+        // disabled 控件语义上不可执行：tap 默认激活与 control.sendAction 都不应在 disabled
+        // 状态下被声明为可用动作。disabled 规则作用于整棵声明树——disabled 控件不声明
+        // input/scroll 等任何动作，避免 discovery 与 executor 在 disabled 状态下出现
+        // "可声明但不可派发"的分叉。
+        if let control = view as? UIControl, !control.isEnabled {
             return UIKitActionAvailability(actions: [])
         }
 
         // 三条声明路径并列累加（用 Set 去重，再按 UIKitActionKind 声明顺序稳定排序输出）：
-        // 1. UIControl 路径：tap + control.*（仅当命中可用 control）；
-        // 2. UITextInput 路径：input（UITextField/UITextView/UISearchTextField 等）；
-        // 3. UIScrollView 路径：scroll（UIScrollView/UICollectionView/UITableView），UITextView 显式排除。
+        // 1. 默认激活路由：UIButton/UISwitch/文本输入 → tap；
+        // 2. UIControl 路径：精确 control.* 事件（不含 tap，tap 已由路由决定）；
+        // 3. UITextInput 路径：input；
+        // 4. UIScrollView 路径：scroll（UITextView 显式排除）。
         var collected = Set<UIKitActionKind>()
-        if let control {
+        if UIKitDefaultActivationResolver.route(for: view) != nil {
+            collected.insert(.tap)
+        }
+        if let control = view as? UIControl {
             collected.formUnion(controlActions(for: control))
         }
         if view is UITextInput {
@@ -98,19 +92,22 @@ enum UIKitActionCapabilityResolver {
         }
     }
 
-    /// 按控件真实类型选择 executor 能派发的 control 事件。
+    /// 按控件真实类型选择 executor 能派发的精确 control 事件（不含 tap）。
     ///
-    /// - `UITextField` 声明编辑开始、变化和结束事件（input 由 `UITextInput` 路径补充）；
-    /// - 值型控件（`UISwitch`/`UISlider`/`UISegmentedControl`）声明 `valueChanged`；
-    /// - 其余 `UIControl`（如 `UIButton`）声明按下和抬起事件。
+    /// - `UITextField` 声明编辑开始、变化和结束事件（input 由 `UITextInput` 路径补充，
+    ///   tap 由默认激活路由补充）；
+    /// - 值型控件（`UISwitch`/`UISlider`/`UISegmentedControl`）声明 `valueChanged`
+    ///   （其中 UISwitch 的 tap 由路由 switchToggle 声明，slider/segmented 无 tap）；
+    /// - 其余 `UIControl`（如 `UIButton`、未知自定义 control）声明按下和抬起事件
+    ///   （UIButton 的 tap 由路由 controlTouchUpInside 声明，自定义 control 无 tap）。
     private static func controlActions(for control: UIControl) -> [UIKitActionKind] {
         if control is UITextField {
-            return [.tap, .controlEditingChanged, .controlEditingDidBegin, .controlEditingDidEnd]
+            return [.controlEditingChanged, .controlEditingDidBegin, .controlEditingDidEnd]
         }
         if control is UISwitch || control is UISlider || control is UISegmentedControl {
-            return [.tap, .controlValueChanged]
+            return [.controlValueChanged]
         }
-        return [.tap, .controlTouchDown, .controlTouchUpInside]
+        return [.controlTouchDown, .controlTouchUpInside]
     }
 
     /// 将动作集合按 `UIKitActionKind` 声明顺序稳定排序后输出。
