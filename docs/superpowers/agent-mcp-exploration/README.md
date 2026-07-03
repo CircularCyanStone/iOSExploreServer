@@ -254,7 +254,7 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 
 这是"让 agent 操作应用"的最后一公里：把 iPhone 端 18 个 HTTP action 包装成 MCP 工具，agent 通过标准 MCP 协议调用，不再 `curl` 裸打。其中 `ui.waitAny → ui.viewTargets` 的固定编排（命中后自动重新观察）在这一层用代码固化，不再靠协议自觉。
 
-**真机计时已证明不需要 `returnObservation`**：USB 链路上一次 viewTargets 往返 **~10ms**（连续 8 次 8.7–14.5ms），相对 waitAny 秒级 timeout 占比 < 1%，round trip 不是瓶颈。方案 B（MCP 层编排）完全够用，iPhone 端 waitAny 响应保持只返回 matchedID。详见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md)。
+**真机计时已证明不需要 `returnObservation`**：USB 链路上一次 viewTargets 往返 **~10ms**（连续 8 次 8.7–14.5ms），相对 waitAny 秒级 timeout 占比 < 1%，round trip 不是瓶颈。方案 B（MCP 层编排）完全够用，iPhone 端 waitAny 响应保持只返回 matchedID。详见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md)。**开建时的范围、已定约束与起点 checklist 见 [2026-07-03-mac-mcp-server-scope.md](../specs/2026-07-03-mac-mcp-server-scope.md)。**
 
 ### 6.2 ui.alert.respond 二期（未来 spike）
 
