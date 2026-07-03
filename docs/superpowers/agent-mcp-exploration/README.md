@@ -119,6 +119,7 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 | 建立文档入口地图 | 已完成第一版 | 本文件 | 后续所有关键讨论和进度都应挂到这里。 |
 | 运行现有测试验证能力边界 | 已完成第一轮（历史基线） | [runtime-validation-2026-07-02.md](./runtime-validation-2026-07-02.md) | 该记录是 navigationBar 可达性和 `ui.tap` 结构化默认激活之前的历史基线：当时 SPM 185、framework 258 全过，主页 observe→act(scroll)→wait→observe 跑通，并暴露 navigationBar 不可达、旧 `ui.tap` 边界、`textExists` 只检测可见文本。前两项已在后续阶段补齐；`textExists` 可见性限制仍成立。 |
 | 真实闭环复验 | 已完成第一轮 | [runtime-validation-2026-07-03.md](./runtime-validation-2026-07-03.md) | SPMExample + iPhone 17 模拟器真跑 `observe → navigation.tapBarButton → tap → waitAny → re-observe`；修了 curl 协议 `dryRun` 字段与 ControlTest switch 自翻转两个真机才暴露的问题；基线 SPM 210 / framework 310。 |
+| 真机闭环计时（USB） | 已完成 | [runtime-validation-2026-07-03.md](./runtime-validation-2026-07-03.md) §7 | iPhone 16 Pro Max / iOS 26.5 真机闭环全通；viewTargets USB 往返 ~10ms（连续 8 次 8.7–14.5ms），证明 waitAny 命中后 re-observe 非瓶颈 → 方案 B 成立，不需要 returnObservation。 |
 | 写 Agent 使用协议 | 已完成第一版 | [agent-usage-protocol.md](./agent-usage-protocol.md) | 已写清观察、动作、等待、重新观察、最终判断，以及 stale、ambiguous、wait_timeout、navigationBar 不可达等边界。 |
 | 设计 navigationBar 可达性 | 已完成第一版 | [navigationbar 设计稿](../specs/2026-07-02-navigationbar-reachability-design.md) + [实施计划](../plans/2026-07-02-navigationbar-reachability.md) + [Claude Code 任务包](./claude-code-navigationbar-task.md) | 推荐把导航栏按钮作为语义目标返回，并新增 `ui.navigation.tapBarButton`，不依赖私有 view，不放宽坐标点击。 |
 | 实现 navigationBar 可达性 | 已完成第一轮 | [navigationBar 设计稿](../specs/2026-07-02-navigationbar-reachability-design.md) + `ui.navigation.tapBarButton` | `ui.viewTargets` / `ui.topViewHierarchy` 响应现暴露 `navigationBar` 摘要；`ui.navigation.tapBarButton` 按 `placement + index` 触发 `UIBarButtonItem`，支持 `title` / `accessibilityIdentifier` 二次确认。执行核心按 selector 签名派发，避开 `UIApplication.sendAction` 在单测里不派发无参 action 的问题；该阶段回归基线为 SPM 196 + framework 290（后续 `ui.tap` 结构化默认激活与 `ui.waitAny` 已将基线推进到 SPM 210 + framework 310）。 |
@@ -247,14 +248,16 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 
 ## 6. 下一步建议
 
-`ui.tap` 结构化默认激活、navigationBar 可达性、`ui.waitAny` 多结果等待、`ui.alert.respond` query-only 边界均已落地。下一步按优先级：
+`ui.tap` 结构化默认激活、navigationBar 可达性、`ui.waitAny`、`ui.alert.respond` query-only 边界均已落地，并经模拟器 + 真机闭环验证（[runtime-validation-2026-07-03](./runtime-validation-2026-07-03.md)）。**当前阶段只剩两件实质工作**：
 
-1. **合并后源码级 review + 当前闭环验证（第一优先级）**：对 `ui.tap` / `ui.viewTargets` / `viewSnapshotID` / `ui.control.sendAction` / `ui.wait(snapshotChanged)` / `ui.waitAny` 的实际实现做一次源码级 review，确认代码、help schema、README、Agent 使用协议和测试断言完全一致；并用 [curl-json-loop-protocol.md](./curl-json-loop-protocol.md) 在真机/模拟器补一轮真实闭环验证（`observe → act → wait/waitAny → re-observe → verify`）。
+### 6.1 Mac 侧 MCP server（让 agent 用 MCP 协议而非 curl 操作应用）
 
-2. **MCP 层固定编排：`ui.waitAny` 命中后自动跟一次 `ui.viewTargets`（第二优先级）**：iPhone 端命令保持小而稳，命中后的「重新观察页面」固定由 Mac 侧 MCP 层在 `waitAny` 返回 `matchedID` 后立即发起 `ui.viewTargets`（结论见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md) 的方案 B）。**本期不实现 `ui.waitAny returnObservation`**——只有真机计时证明那次 round trip 是瓶颈才启动。
+这是"让 agent 操作应用"的最后一公里：把 iPhone 端 18 个 HTTP action 包装成 MCP 工具，agent 通过标准 MCP 协议调用，不再 `curl` 裸打。其中 `ui.waitAny → ui.viewTargets` 的固定编排（命中后自动重新观察）在这一层用代码固化，不再靠协议自觉。
 
-3. **真机 / Example App 闭环计时与验证（第三优先级）**：用 Example App 跑通完整闭环，并测量命中后那次 `ui.viewTargets` 的 HTTP 往返 P50/P95，作为是否启动 `returnObservation` 设计的依据。
+**真机计时已证明不需要 `returnObservation`**：USB 链路上一次 viewTargets 往返 **~10ms**（连续 8 次 8.7–14.5ms），相对 waitAny 秒级 timeout 占比 < 1%，round trip 不是瓶颈。方案 B（MCP 层编排）完全够用，iPhone 端 waitAny 响应保持只返回 matchedID。详见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md)。
 
-4. **`ui.alert.respond` 二期只作为未来 spike**：当前 query-only 边界（`dryRun=true` 查询、`dryRun=false` 稳定返回 `alert_button_required`）已收敛，不进入本轮处理；若未来要真正触发 `UIAlertAction` handler，需单独评估私有 API / KVC 风险（见 [agent-usage-protocol.md](./agent-usage-protocol.md) §7）。
+### 6.2 ui.alert.respond 二期（未来 spike）
 
-> 多结果等待已落地为 `ui.waitAny`，不再作为未完成项；动作后轻量 final observation 的归属评估见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md)。
+当前 query-only 边界已收敛（`dryRun=true` 查询、`dryRun=false` 稳定返回 `alert_button_required`）。公共 API 无法触发 `UIAlertAction` handler（闭包无 public getter），要真正响应弹窗需评估 KVC 反射私有 ivar——属私有 API 边界，App Store 审核有风险，作为独立 spike，不进当前库。阻断流程的短期替代：宿主注册自定义 action（如 `app.alert.confirm`）直接调业务方法。见 [agent-usage-protocol.md](./agent-usage-protocol.md) §7。
+
+> 多结果等待（`ui.waitAny`）、动作后 final observation 归属（方案 B，不改 iPhone 端）均已结案；源码级 review + 真实闭环验证（原第一、第三优先级）已完成。

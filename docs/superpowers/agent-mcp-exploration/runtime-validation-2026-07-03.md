@@ -103,7 +103,26 @@ curl ... -d '{"action":"ui.navigation.tapBarButton","data":{"placement":"right",
 | 测试基线 | SPM 185 / framework 258 | **SPM 210 / framework 310** |
 | 暴露的 bug | navigationBar 不可达（已修） | curl 协议 dryRun + ControlTest switch 自翻转（均已修） |
 
-## 7. 结论
+## 7. 真机 USB 闭环计时（2026-07-03 补充）
+
+模拟器走 loopback 不能代表真机 USB 延迟，故在 iPhone 16 Pro Max / iOS 26.5 真机（USB + `iproxy`）上重跑同一闭环，并测每次 HTTP 往返（`curl -w %{time_total}`）：
+
+| 命令 | 往返耗时 |
+|---|---|
+| help | 17.9ms |
+| viewTargets（首次） | 29.4ms |
+| viewTargets（连续 8 次稳定值） | **8.7–14.5ms（均值 ~11ms）** |
+| ui.tap | 19.9ms |
+| ui.waitAny（命中） | 10.3ms |
+| navigation.tapBarButton | 358.8ms（含 waitAfterMs=300）|
+
+真机闭环同样全通（help 20/14 ui.* → viewTargets → navigation.tapBarButton 进 ControlTest → tap test.button activated → waitAny matched=btn attempts=1）。
+
+**结论**：waitAny 命中后那次 re-observe（viewTargets）的 USB 往返 **~10ms**，相对 waitAny 秒级 `timeoutMs`（典型 2000ms）**占比 < 1%**。round trip 不是瓶颈 → **方案 B（Mac MCP 层编排 waitAny→viewTargets）成立，不需要 `returnObservation`**（方案 A）。第 2 级因此简化为「建 Mac MCP server 把编排代码化」，iPhone 端 waitAny 响应保持不变。
+
+> 真机 server 启动方式：`devicectl device process launch -e '{"AUTO_START_SERVER":"1"}'`（注意 devicectl 用 `-e` JSON 字典，不是 simctl 的 `--env` 或 `SIMCTL_CHILD_` 前缀）。
+
+## 8. 结论
 
 - 14 个 `ui.*` 命令在真实 App 上闭环可用：`observe(viewTargets) → act(navigation.tapBarButton / tap / control.sendAction) → wait(waitAny / snapshotChanged) → re-observe → verify` 全程通畅。
 - help schema、协议文档、源码、测试四者在本轮验证后一致：screenshot 不签发 viewSnapshotID、navigation.tapBarButton 字段、switch.toggle 语义均有源码 + 测试 + 真机输出三方佐证。
