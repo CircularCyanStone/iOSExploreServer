@@ -55,7 +55,7 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 | `ui.wait` | 等待 UI 稳定或等待目标/文本/快照变化 |
 | `ui.waitAny` | 一次轮询等待多个条件，第一个命中返回 matchedID/matchedIndex |
 | `ui.scrollToElement` | 滚动到包含指定文本/identifier 的元素可见 |
-| `ui.alert.respond` | 查询当前 UIAlertController；当前版本只能 dryRun 查询 |
+| `ui.alert.respond` | 查询 UIAlertController（dryRun=true）；dryRun=false 触发指定按钮 handler 并关闭弹窗 |
 
 UIKit 命令不会自动注册，宿主 App 须显式开启：
 
@@ -96,7 +96,7 @@ server.register(action: "greet", description: "按 name 打招呼", input: Greet
 
 **最近修复**：HTTPListener 连接槽耗尽后 server 不响应（Network 层 `newConnectionLimit` 被误设为业务上限，连接关闭后不释放）。
 
-**下一步**：Agent 使用协议已写入 `docs/superpowers/agent-mcp-exploration/agent-usage-protocol.md`，可运行的 curl/JSON 闭环写入 `docs/superpowers/agent-mcp-exploration/curl-json-loop-protocol.md`。navigationBar / UIBarButtonItem 可达性与 `ui.tap` 结构化默认激活已完成；`ui.alert.respond` 已明确为 query-only；多结果等待（`ui.waitAny`）已完成——一次轮询等待多个可能结局，按命中 `matchedID` 分支。目标是让 Agent 能按自然语言测试目标持续观察、操作并验证 App，而不是只暴露一组零散命令。
+**下一步**：Agent 使用协议已写入 `docs/superpowers/agent-mcp-exploration/agent-usage-protocol.md`，可运行的 curl/JSON 闭环写入 `docs/superpowers/agent-mcp-exploration/curl-json-loop-protocol.md`。navigationBar / UIBarButtonItem 可达性与 `ui.tap` 结构化默认激活已完成；`ui.alert.respond` 的 `dryRun=false` 已实现——通过 Debug-only 私有方法 `_dismissWithAction:` 让系统自动 dismiss + 调 handler，五案例（simple/threeButtons/loginInput/actionSheet/nested）真机验证通过；多结果等待（`ui.waitAny`）已完成——一次轮询等待多个可能结局，按命中 `matchedID` 分支。目标是让 Agent 能按自然语言测试目标持续观察、操作并验证 App，而不是只暴露一组零散命令。
 
 ## 调试日志
 

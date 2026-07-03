@@ -5,11 +5,9 @@ import UIKit
 
 /// `ui.alert.respond` 的执行核心。
 ///
-/// 在 `MainActor` 上 query-first：定位当前 `UIAlertController` → 返回标题/消息/按钮/输入框列表。
-/// **当前版本仅查询，不能关闭 alert**：`dryRun=false` 不直接点击 `UIAlertAction`——其内部点击
-/// 依赖 UIKit 私有路径，在 logic test 与真机上稳定性未经 spike 验证，统一抛 `alertButtonRequired`
-/// 提示调用方。agent 拿到按钮/输入框列表后，要真正关闭 alert 需宿主注册自定义 handler 或等待
-/// 后续版本实现点击。失败由 command adapter 顶层 catch 转 envelope。
+/// 在 `MainActor` 上定位当前 `UIAlertController`。`dryRun=true` 只返回标题/消息/按钮/输入框
+/// 列表；`dryRun=false` 会按调用方提供的按钮选择条件触发对应 action 的 handler，并请求关闭
+/// alert。失败由 command adapter 顶层 catch 转 envelope。
 @MainActor
 enum UIAlertRespondExecutor {
     /// 执行一次 alert 查询/响应。
@@ -17,8 +15,9 @@ enum UIAlertRespondExecutor {
     /// - Parameters:
     ///   - input: 已通过 typed schema 校验的 alert respond 参数。
     ///   - context: 当前 MainActor 查询上下文。
-    /// - Returns: dryRun=true 时返回 dryRun/title/message/buttons；dryRun=false 不返回（抛错）。
-    /// - Throws: `UIKitCommandError.alertUnavailable`——无 alert；`.alertButtonRequired`——dryRun=false（点击未实现）。
+    /// - Returns: dryRun=true 时返回 alert 摘要；dryRun=false 时返回已触发的按钮与关闭请求结果。
+    /// - Throws: `UIKitCommandError.alertUnavailable`——无 alert；`.alertButtonRequired`——多按钮未指定；
+    ///   `.alertButtonNotFound`——指定按钮不存在；`.alertButtonTriggerFailed`——按钮 handler 无法执行。
     static func execute(input: UIAlertRespondInput, context: UIKitContextProvider.Context) throws -> JSON {
         let action = AlertRespondCommand.actionName
         guard let alert = UIAlertInspector.findAlert(in: context) else {
@@ -26,8 +25,11 @@ enum UIAlertRespondExecutor {
         }
 
         if !input.dryRun {
-            // 第一版不直接点击（spike 未验证）；提示调用方用 dryRun 查询。
+            #if DEBUG
+            return try perform(input: input, alert: alert)
+            #else
             throw UIKitCommandError.alertButtonRequired(action: action)
+            #endif
         }
 
         let summary = UIAlertInspector.summarize(alert)
@@ -40,6 +42,96 @@ enum UIAlertRespondExecutor {
             "textFields": .array(summary.textFields.map { textFieldJSON($0) }),
         ]
     }
+
+    #if DEBUG
+    /// 执行一次 alert 按钮响应。
+    ///
+    /// executor 只负责业务流程：选择按钮、让系统触发并关闭该 action、返回结果。底层 runtime（调用
+    /// 系统私有 `_dismissWithAction:` 入口，或回退直接调 handler block）封装在 `UIAlertController`/
+    /// `UIAlertAction` 的 Debug 扩展中，命令层不直接接触私有 selector 或 swizzle 细节。
+    ///
+    /// 真实展示中的 alert 走系统私有 `_dismissWithAction:`——系统点击 alert 按钮时的内部入口，由系统
+    /// 本身同时完成「dismiss 当前 alert」与「调用该 action 的 handler」，与真人点按钮完全一致。这样
+    /// executor 不手动 dismiss，dismiss、handler、handler 内嵌套 present 全交给 UIKit 在同一套点击流程
+    /// 里协调——嵌套场景第二层也能正常弹出并被后续 `ui.alert.respond` 响应（simple / 三按钮 / 输入框 /
+    /// actionSheet / 嵌套两层五个案例实测全部通过）。未 present 的 alert（典型是 logic test 构造的对象）
+    /// 该方法要求 alert 在层级中，故回退直接调用 handler block，`dismissed=false`。
+    private static func perform(input: UIAlertRespondInput, alert: UIAlertController) throws -> JSON {
+        let actionName = AlertRespondCommand.actionName
+        let selected = try selectAction(input: input, alert: alert)
+        let isPresented = alert.presentingViewController != nil
+        let dismissed: Bool
+        do {
+            if isPresented {
+                try alert.explore_dismissWithAction(selected.action)
+                dismissed = true
+            } else {
+                try selected.action.explore_performHandler()
+                dismissed = false
+            }
+        } catch {
+            throw UIKitCommandError.alertButtonTriggerFailed(action: actionName, reason: "\(error)")
+        }
+        UIKitCommandLogging.info("command", "ui alert respond complete dryRun=false performed=true dismissed=\(dismissed) viaSystemDismiss=\(isPresented) selector=\(selectorDescription(input))")
+        return [
+            "performed": .bool(true),
+            "dismissed": .bool(dismissed),
+            "button": buttonJSON(selected.button),
+        ]
+    }
+
+    /// 按请求选择一个 `UIAlertAction` 与对应摘要。
+    ///
+    /// 没传选择器时只有单按钮 alert 可以默认选择；多按钮 alert 必须显式指定，防止 agent 误点
+    /// 取消/删除等破坏性动作。
+    private static func selectAction(input: UIAlertRespondInput,
+                                     alert: UIAlertController) throws -> (button: UIAlertInspector.Button, action: UIAlertAction) {
+        let summary = UIAlertInspector.summarize(alert)
+        let selectedIndex: Int?
+        if let title = input.buttonTitle {
+            selectedIndex = summary.buttons.first { $0.title == title }?.index
+        } else if let index = input.buttonIndex {
+            selectedIndex = summary.buttons.indices.contains(index) ? index : nil
+        } else if let role = input.role {
+            guard let parsedRole = AlertButtonRole(rawValue: role) else {
+                throw UIKitCommandError.alertButtonNotFound(action: AlertRespondCommand.actionName,
+                                                            selector: selectorDescription(input))
+            }
+            selectedIndex = summary.buttons.first { $0.role == parsedRole }?.index
+        } else {
+            guard summary.buttons.count == 1 else {
+                throw UIKitCommandError.alertButtonRequired(action: AlertRespondCommand.actionName)
+            }
+            selectedIndex = summary.buttons.first?.index
+        }
+
+        guard let index = selectedIndex,
+              summary.buttons.indices.contains(index),
+              alert.actions.indices.contains(index) else {
+            throw UIKitCommandError.alertButtonNotFound(action: AlertRespondCommand.actionName,
+                                                        selector: selectorDescription(input))
+        }
+        return (summary.buttons[index], alert.actions[index])
+    }
+
+    /// 手动 dismiss 已被 `UIAlertController.explore_dismissWithAction` 取代：现在由系统私有
+    /// `_dismissWithAction:` 在点击流程内同时完成 dismiss 与 handler 调用，executor 不再手动
+    /// 关闭 alert（手动 dismiss 曾导致嵌套场景第二层弹不出来，详见设计文档「限制」与「备选方案」）。
+
+    /// 构造按钮选择条件摘要，只写入标题长度或短值，避免日志中混入过长输入。
+    private static func selectorDescription(_ input: UIAlertRespondInput) -> String {
+        if let title = input.buttonTitle {
+            return "titleLen=\(title.count)"
+        }
+        if let index = input.buttonIndex {
+            return "index=\(index)"
+        }
+        if let role = input.role {
+            return "role=\(role)"
+        }
+        return "default"
+    }
+    #endif
 
     /// 构造单个按钮的 JSON 值。
     private static func buttonJSON(_ button: UIAlertInspector.Button) -> JSONValue {

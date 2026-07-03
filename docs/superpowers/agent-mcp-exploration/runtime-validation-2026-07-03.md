@@ -1,5 +1,7 @@
 # Agent MCP 运行验证记录（2026-07-03）
 
+> **后续更新（2026-07-04）**：本文记录的「`ui.alert.respond` query-only 边界」已于 2026-07-04 打破——`dryRun=false` 通过 Debug-only 私有方法 `_dismissWithAction:` 实现真实触发与关闭，五案例真机验证通过。本文其余内容为 2026-07-03 当天快照，保留作历史基线。最新结论见 [README.md](./README.md) §6.2 与 [2026-07-03-alert-respond-dryrun-false-design.md](../specs/2026-07-03-alert-respond-dryrun-false-design.md)。
+
 > 日期：2026-07-03
 > 关联：[README.md](./README.md) / [2026-07-02 历史基线](./runtime-validation-2026-07-02.md) / [curl 闭环协议](./curl-json-loop-protocol.md)
 >

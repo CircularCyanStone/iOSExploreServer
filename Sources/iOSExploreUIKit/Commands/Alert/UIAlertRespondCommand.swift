@@ -5,7 +5,8 @@ import iOSExploreServer
 /// 查询/响应弹窗的命令。
 ///
 /// action 为 `ui.alert.respond`。adapter 只负责解析后的日志、切到 `MainActor` 取上下文并
-/// 调用同步 executor；查询逻辑（定位 alert、列出按钮）收敛在 `UIAlertInspector`/executor。
+/// 调用同步 executor；查询逻辑（定位 alert、列出按钮）和响应逻辑（选择按钮、触发 handler、
+/// 请求关闭 alert）收敛在 `UIAlertInspector`/executor。
 struct AlertRespondCommand: Command {
     /// typed 输入模型。
     typealias Input = UIAlertRespondInput
@@ -17,12 +18,12 @@ struct AlertRespondCommand: Command {
     let action = AlertRespondCommand.actionName
 
     /// `help` 命令展示的说明。
-    let description = "查询当前 UIAlertController（dryRun=true 返回按钮列表；dryRun=false 当前版本不实现点击)"
+    let description = "查询或响应当前 UIAlertController（dryRun=true 返回按钮列表；dryRun=false 触发指定按钮)"
 
     /// 执行 alert 查询/响应。
     ///
     /// - Parameter input: 已通过 typed schema 校验的 alert respond 输入。
-    /// - Returns: dryRun=true 时返回 alert 信息；失败返回业务失败 envelope。
+    /// - Returns: 成功时返回 alert 信息或已触发按钮；失败返回业务失败 envelope。
     func handle(_ input: UIAlertRespondInput) async -> ExploreResult {
         UIKitCommandLogging.info("command", "command \(action) start dryRun=\(input.dryRun)")
         do {

@@ -27,7 +27,7 @@
 | `ui.wait` | 等待 UI 稳定或目标/文本/快照变化 |
 | `ui.waitAny` | 一次轮询等待多个条件，第一个命中返回 matchedID/matchedIndex |
 | `ui.scrollToElement` | 滚动到包含指定文本/identifier 的元素可见 |
-| `ui.alert.respond` | 查询/响应当前 UIAlertController（第一版 dryRun 查询） |
+| `ui.alert.respond` | 查询（dryRun=true）/ 按明确按钮触发并关闭（dryRun=false）当前 UIAlertController |
 
 这 14 个命令共享同一套底层能力：**定位（Locator）→ 能力判定（Capability）→ 陈旧防护（Snapshot）→ 执行（Executor）**。理解了这套共享基础设施，各命令的 adapter 都只是薄薄的"解析参数 + 调用"。
 

@@ -10,11 +10,10 @@ public enum AlertButtonRole: String, Sendable, Equatable, CaseIterable {
 
 /// `ui.alert.respond` 的命令参数。
 ///
-/// **当前版本仅查询，不能关闭 alert**：`dryRun=true`（默认）返回当前 alert 的标题/消息/按钮/
-/// 输入框列表，不点击。`dryRun=false` 一律抛 `alertButtonRequired`（点击 UIAlertAction 依赖
-/// UIKit 私有路径，未 spike 验证，暂不实现）。agent 拿到列表后，要真正关闭 alert 需宿主注册
-/// 自定义 handler 或等待后续版本。`buttonTitle` / `buttonIndex` / `role` 三者互斥，预留给将来
-/// `dryRun=false` 直接点击的版本。
+/// `dryRun=true`（默认）返回当前 alert 的标题/消息/按钮/输入框列表，不点击。`dryRun=false`
+/// 会按 `buttonTitle`、`buttonIndex` 或 `role` 选择一个按钮并触发其 `UIAlertAction` handler；
+/// 多按钮 alert 未指定选择条件时抛 `alertButtonRequired`，避免 agent 猜测默认按钮而误点。
+/// 三个按钮选择条件互斥，只能提供一个。
 public struct UIAlertRespondInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let dryRun = CommandFields.bool(
@@ -24,11 +23,11 @@ public struct UIAlertRespondInput: CommandInput, Sendable, Equatable {
         )
         static let buttonTitle = CommandFields.optionalString(
             "buttonTitle",
-            description: "要点击的按钮标题 (dryRun=false 时, 当前版本暂未实现点击)"
+            description: "dryRun=false 时要触发的按钮标题"
         )
         static let buttonIndex = CommandFields.optionalNonNegativeInt(
             "buttonIndex",
-            description: "要点击的按钮下标 (dryRun=false 时, 当前版本暂未实现点击)"
+            description: "dryRun=false 时要触发的按钮下标"
         )
         static let role = CommandFields.optionalString(
             "role",

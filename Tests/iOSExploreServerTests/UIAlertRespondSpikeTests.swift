@@ -53,28 +53,56 @@ func alertRespondDryRunReturnsInfo() throws {
     #expect(data["title"]?.stringValue == "确认")
 }
 
-@Test("alert respond dryRun=false 抛 alertButtonRequired（点击未实现）") @MainActor
-func alertRespondDryRunFalseThrowsButtonRequired() {
+@Test("alert respond dryRun=false 按标题触发 UIAlertAction handler") @MainActor
+func alertRespondDryRunFalsePerformsButtonByTitle() throws {
     let alert = UIAlertController(title: "确认", message: nil, preferredStyle: .alert)
-    alert.addAction(UIAlertAction(title: "OK", style: .default))
+    var performedTitle: String?
+    alert.addAction(UIAlertAction(title: "OK", style: .default) { action in
+        performedTitle = action.title
+    })
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
     let context = UIKitContextProvider.Context(window: window,
                                                rootViewController: alert,
                                                topViewController: alert,
                                                rootView: alert.view)
     let input = UIAlertRespondInput(dryRun: false, buttonTitle: "OK")
-    do {
-        _ = try UIAlertRespondExecutor.execute(input: input, context: context)
-        Issue.record("expected failure, got success")
-    } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .alertButtonRequired)
-    } catch {
-        Issue.record("unexpected error: \(error)")
-    }
+    let data = try UIAlertRespondExecutor.execute(input: input, context: context)
+    #expect(performedTitle == "OK")
+    #expect(data["performed"]?.boolValue == true)
+    #expect(data["button"]?.objectValue?["title"]?.stringValue == "OK")
+    #expect(data["button"]?.objectValue?["index"]?.doubleValue == 0)
+    #expect(data["button"]?.objectValue?["role"]?.stringValue == "default")
+    // 这里 alert 只被构造、未真正 present（无 presentingViewController、view 未挂 window），
+    // dismissed 必须是 false。锁定「未 present 不谎报关闭」契约；真实 present 的 alert 走模拟器集成验证。
+    #expect(data["dismissed"]?.boolValue == false)
 }
 
-@Test("alert respond dryRun=false 对任意 selector 都抛 alertButtonRequired") @MainActor
-func alertRespondDryRunFalseRejectsAllSelectors() throws {
+@Test("alert respond dryRun=false 支持按下标和角色选择按钮") @MainActor
+func alertRespondDryRunFalseSelectsByIndexAndRole() throws {
+    let alert = UIAlertController(title: "确认", message: nil, preferredStyle: .alert)
+    var performed: [String] = []
+    alert.addAction(UIAlertAction(title: "继续", style: .default) { _ in performed.append("default") })
+    alert.addAction(UIAlertAction(title: "删除", style: .destructive) { _ in performed.append("destructive") })
+    alert.addAction(UIAlertAction(title: "取消", style: .cancel) { _ in performed.append("cancel") })
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    let context = UIKitContextProvider.Context(window: window,
+                                               rootViewController: alert,
+                                               topViewController: alert,
+                                               rootView: alert.view)
+
+    let byIndex = try UIAlertRespondExecutor.execute(input: UIAlertRespondInput(dryRun: false, buttonIndex: 1),
+                                                     context: context)
+    #expect(performed == ["destructive"])
+    #expect(byIndex["button"]?.objectValue?["title"]?.stringValue == "删除")
+
+    let byRole = try UIAlertRespondExecutor.execute(input: UIAlertRespondInput(dryRun: false, role: "cancel"),
+                                                    context: context)
+    #expect(performed == ["destructive", "cancel"])
+    #expect(byRole["button"]?.objectValue?["title"]?.stringValue == "取消")
+}
+
+@Test("alert respond dryRun=false 多按钮未指定选择器时要求明确按钮") @MainActor
+func alertRespondDryRunFalseRequiresSelectorForMultipleButtons() {
     let alert = UIAlertController(title: "确认", message: nil, preferredStyle: .alert)
     alert.addAction(UIAlertAction(title: "OK", style: .default))
     alert.addAction(UIAlertAction(title: "取消", style: .cancel))
@@ -83,28 +111,38 @@ func alertRespondDryRunFalseRejectsAllSelectors() throws {
                                                rootViewController: alert,
                                                topViewController: alert,
                                                rootView: alert.view)
-    // 当前版本点击未实现：无论用 buttonTitle / buttonIndex / role（或不传 selector），
-    // 都稳定命中同一类错误，不进入选按钮逻辑。
-    let inputs: [UIAlertRespondInput] = [
-        UIAlertRespondInput(dryRun: false, buttonTitle: "OK"),
-        UIAlertRespondInput(dryRun: false, buttonIndex: 0),
-        UIAlertRespondInput(dryRun: false, role: "default"),
-        UIAlertRespondInput(dryRun: false),
-    ]
-    for input in inputs {
-        do {
-            _ = try UIAlertRespondExecutor.execute(input: input, context: context)
-            Issue.record("expected alertButtonRequired, got success for \(input)")
-        } catch let error as UIKitCommandError {
-            #expect(error.failure.code == .alertButtonRequired)
-        } catch {
-            Issue.record("unexpected error: \(error)")
-        }
+    do {
+        _ = try UIAlertRespondExecutor.execute(input: UIAlertRespondInput(dryRun: false), context: context)
+        Issue.record("expected alertButtonRequired, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .alertButtonRequired)
+    } catch {
+        Issue.record("unexpected error: \(error)")
     }
 }
 
-@Test("alert respond alertButtonRequired 不暗示已点击或已关闭")
-func alertRespondButtonRequiredDoesNotImplyClick() {
+@Test("alert respond dryRun=false 找不到指定按钮时返回 alertButtonNotFound") @MainActor
+func alertRespondDryRunFalseReturnsNotFoundForMissingButton() {
+    let alert = UIAlertController(title: "确认", message: nil, preferredStyle: .alert)
+    alert.addAction(UIAlertAction(title: "OK", style: .default))
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    let context = UIKitContextProvider.Context(window: window,
+                                               rootViewController: alert,
+                                               topViewController: alert,
+                                               rootView: alert.view)
+    do {
+        _ = try UIAlertRespondExecutor.execute(input: UIAlertRespondInput(dryRun: false, buttonTitle: "不存在"),
+                                               context: context)
+        Issue.record("expected alertButtonNotFound, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .alertButtonNotFound)
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
+}
+
+@Test("alert respond alertButtonRequired 表示需要明确按钮")
+func alertRespondButtonRequiredExplainsSelectorRequirement() {
     let error = UIKitCommandError.alertButtonRequired(action: "ui.alert.respond")
     let message = error.failure.message.lowercased()
     let logMessage = error.failure.logMessage.lowercased()
@@ -113,9 +151,9 @@ func alertRespondButtonRequiredDoesNotImplyClick() {
         #expect(!message.contains(term), "message 不应暗示已点击: \(term)")
         #expect(!logMessage.contains(term), "logMessage 不应暗示已点击: \(term)")
     }
-    // message 必须明确告知当前 query-only 且无法关闭 alert，并指引下一步（宿主/后续版本）。
-    #expect(message.contains("query-only"))
-    #expect(message.contains("cannot dismiss"))
+    // message 必须明确告知需要提供按钮选择条件，不能让 agent 猜测默认按钮。
+    #expect(message.contains("button"))
+    #expect(message.contains("specify"))
 }
 
 @Test("alert respond 暴露输入框 placeholder 与 secure 标记") @MainActor

@@ -52,7 +52,7 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
     - Agent 使用协议还没写清；
     - `ui.wait` 是单条件等待，不足以覆盖多个可能结果；
     - 动作后的最终页面状态没有统一返回；
-    - `ui.alert.respond` 当前只能查询，不能真正响应弹窗。
+    - ~~`ui.alert.respond` 只能查询、不能真正响应弹窗~~（已解决：`dryRun=false` 通过 Debug-only 私有方法 `_dismissWithAction:` 实现真实触发与关闭，见 §6.2）。
 
 ### 2.4 运行验证记录
 
@@ -75,7 +75,7 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
   - 说明 Agent 应该如何组合现有命令。
   - 明确：`observe → act → wait/observe again → judge` 是默认闭环。
   - 明确：动作成功不等于测试通过；测试是否通过必须看最终页面证据。
-  - 已同步 navigationBar 专用动作、`ui.tap` 结构化默认激活和 `ui.alert.respond` query-only 边界；`textExists` 仍只查当前可见文本。
+  - 已同步 navigationBar 专用动作、`ui.tap` 结构化默认激活和 `ui.alert.respond`（含 `dryRun=false` 真实触发）；`textExists` 仍只查当前可见文本。
 
 - [curl-json-loop-protocol.md](./curl-json-loop-protocol.md)
   - 给外部 Agent / 人工调试者的可运行 curl/JSON 操作协议。
@@ -127,7 +127,7 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 | 实现 `ui.tap` 结构化默认激活 | 已完成第一轮 | `UITapInput` / `UIKitDefaultActivationResolver` / `UIKitActionExecutor` / `UIViewTargetsCollector` / snapshot 相关改造 | `ui.tap` 现在只接受 `accessibilityIdentifier` 或 `path` + 必填 `viewSnapshotID`；先校验 `ui.viewTargets` 签发的结构快照，再按 route 执行：按钮 `touchUpInside`、开关 toggle + `valueChanged`、文本输入 focus。`ui.screenshot` 不再签发快照；`ui.wait snapshotChanged` 使用 `viewSnapshotID`；`ui.viewTargets` 只签发最终返回 target 的 fingerprint。 |
 | 设计多结果等待能力 | 已完成 | 决定新增命令而非改造 `ui.wait` | 保持 `ui.wait` 单条件不变；新增 `ui.waitAny` 一次轮询等待多个结局，命中后默认不返回页面快照，只回 `matchedID`/`matchedIndex`/`matchedMode`。 |
 | 实现多结果等待能力 | 已完成 | `ui.waitAny`（`UIWaitAnyCommand` / `UIWaitAnyModels` / `UIWaitAnyExecutor`） | 与 `ui.wait` 共享五模式判断原语（`ConditionProbe`）；cancel 与瞬时层级不可用收敛到 `wait_timeout`；本阶段完整回归为 SPM 210 + framework 310。 |
-| 收敛弹窗能力边界 | 已完成第一轮 | [agent-usage-protocol.md](./agent-usage-protocol.md) + [curl-json-loop-protocol.md](./curl-json-loop-protocol.md) | `ui.alert.respond` 保持 query-only：`dryRun=true` 查询标题/消息/按钮/输入框，`dryRun=false` 稳定返回 `alert_button_required`；公共 API 无法触发 `UIAlertAction` handler，阻断流程走宿主自定义 action、人工或后续私有 API 评估。 |
+| 弹窗 dryRun=false 触发 | 已完成 | [2026-07-03-alert-respond-dryrun-false-design.md](../specs/2026-07-03-alert-respond-dryrun-false-design.md) + [agent-usage-protocol.md](./agent-usage-protocol.md) §7 | `dryRun=false` 通过 Debug-only 私有方法 `_dismissWithAction:` 让系统自动 dismiss + 调 handler，simple/threeButtons/loginInput/actionSheet/nested 五案例真机验证通过；Release 下回退 `alert_button_required`（私有 API 被 `#if DEBUG` 隔离）。 |
 
 ## 3.1 协作执行方式
 
@@ -208,7 +208,7 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 
 - `ui.tap` 在真实控件、遮挡、转场时是否稳定；
 - `ui.wait` 的等待语义是否符合 Agent 使用；
-- `ui.alert.respond` 当前只能查询，这在真实 App 里会卡住哪些流程；
+- ~~`ui.alert.respond` 只能查询会卡住哪些流程~~（已解决，`dryRun=false` 已实现）；
 - `ui.scrollToElement` 滚动后不签发 snapshot，对后续操作影响多大；
 - `ui.screenshot` 的体积、速度、失败场景是否可接受；
 - Example App 是否足够覆盖我们想让 Agent 走的闭环。
@@ -248,7 +248,7 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 
 ## 6. 下一步建议
 
-`ui.tap` 结构化默认激活、navigationBar 可达性、`ui.waitAny`、`ui.alert.respond` query-only 边界均已落地，并经模拟器 + 真机闭环验证（[runtime-validation-2026-07-03](./runtime-validation-2026-07-03.md)）。**当前阶段只剩两件实质工作**：
+`ui.tap` 结构化默认激活、navigationBar 可达性、`ui.waitAny`、`ui.alert.respond`（含 `dryRun=false` 真实触发）均已落地，并经模拟器 + 真机闭环验证。**当前阶段剩一件实质工作**：
 
 ### 6.1 Mac 侧 MCP server（让 agent 用 MCP 协议而非 curl 操作应用）
 
@@ -256,8 +256,8 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 
 **真机计时已证明不需要 `returnObservation`**：USB 链路上一次 viewTargets 往返 **~10ms**（连续 8 次 8.7–14.5ms），相对 waitAny 秒级 timeout 占比 < 1%，round trip 不是瓶颈。方案 B（MCP 层编排）完全够用，iPhone 端 waitAny 响应保持只返回 matchedID。详见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md)。**开建时的范围、已定约束与起点 checklist 见 [2026-07-03-mac-mcp-server-scope.md](../specs/2026-07-03-mac-mcp-server-scope.md)。**
 
-### 6.2 ui.alert.respond 二期（未来 spike）
+### 6.2 ui.alert.respond dryRun=false（已完成）
 
-当前 query-only 边界已收敛（`dryRun=true` 查询、`dryRun=false` 稳定返回 `alert_button_required`）。公共 API 无法触发 `UIAlertAction` handler（闭包无 public getter），要真正响应弹窗需评估 KVC 反射私有 ivar——属私有 API 边界，App Store 审核有风险，作为独立 spike，不进当前库。阻断流程的短期替代：宿主注册自定义 action（如 `app.alert.confirm`）直接调业务方法。见 [agent-usage-protocol.md](./agent-usage-protocol.md) §7。
+`dryRun=false` 已实现：通过 Debug-only 私有方法 `UIAlertController._dismissWithAction:` 让系统像真人点按钮一样自动 dismiss + 调 handler，executor 不手动 dismiss，嵌套 present 也由系统协调。simple / 三按钮 / 输入框 / actionSheet / 嵌套两层五案例在 iPhone 17 模拟器 iOS 26.3.1 真机验证全部通过。Release 构建下私有 API 被 `#if DEBUG` 隔离，`dryRun=false` 回退 `alert_button_required`。详见 [2026-07-03-alert-respond-dryrun-false-design.md](../specs/2026-07-03-alert-respond-dryrun-false-design.md) 与 [agent-usage-protocol.md](./agent-usage-protocol.md) §7。
 
 > 多结果等待（`ui.waitAny`）、动作后 final observation 归属（方案 B，不改 iPhone 端）均已结案；源码级 review + 真实闭环验证（原第一、第三优先级）已完成。

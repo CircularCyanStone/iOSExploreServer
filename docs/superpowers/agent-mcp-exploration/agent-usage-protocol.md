@@ -13,7 +13,7 @@
 - 看页面：`ui.viewTargets`、`ui.topViewHierarchy`、`ui.screenshot`
 - 做动作：`ui.tap`、`ui.control.sendAction`、`ui.input`、`ui.scroll`、`ui.scrollToElement`、`ui.keyboard.dismiss`、`ui.navigation.back`、`ui.navigation.tapBarButton`
 - 等待：`ui.wait`（单条件）/ `ui.waitAny`（多分支）
-- 查询弹窗：`ui.alert.respond`
+- 查询/响应弹窗：`ui.alert.respond`（`dryRun=true` 查询；`dryRun=false` 触发按钮并关闭，见 §7）
 
 问题是：命令多，不等于 Agent 会正确使用。
 
@@ -285,51 +285,41 @@ Agent 必须重新观察页面，再决定下一步。
 
 ## 7. 弹窗规则
 
-当前 `ui.alert.respond` 名字像“响应弹窗”，但真实能力是查询弹窗。
+`ui.alert.respond` 既可查询弹窗，也可真实触发按钮并关闭弹窗（`dryRun=false`）。
 
-当前它可以：
+- **dryRun=true（查询）**：查询当前是否有 `UIAlertController`；返回标题、消息、按钮、输入框；当前无弹窗时返回 `alert_unavailable`。
+- **dryRun=false（触发）**：按 `buttonTitle` / `buttonIndex` / `role` 之一选中一个按钮，让系统像真人点按钮一样触发该 `UIAlertAction` 的 handler 并关闭弹窗，返回 `{ performed, dismissed, button }`。simple / 三按钮 / 输入框 / actionSheet / 嵌套两层五个案例已在 iPhone 17 模拟器 iOS 26.3.1 真机验证全部通过（`performed=true`、`dismissed=true`）。
 
-- 查询当前是否有 `UIAlertController`；
-- 返回标题、消息、按钮、输入框；
-- 当前无弹窗时返回 `alert_unavailable`。
-
-当前它不能：
-
-- 真正点击弹窗按钮；
-- 自动关闭所有弹窗。
-
-所以协议要求：
+协议要求：
 
 ```text
-遇到弹窗流程，不能假装已经能自动处理。
+遇到弹窗，先 dryRun=true 看清按钮，再 dryRun=false 按明确按钮触发；不要在没看清按钮时盲点。
 ```
 
-短期处理方式：
+处理方式：
 
-- 如果只是确认无弹窗，`alert_unavailable` 可以视为“没有弹窗要处理”；
-- 如果发现有弹窗，需要人工、宿主自定义 action，或等待后续单独评估私有 API 风险；
-- 不能做“关闭所有弹窗”这种含糊动作。
+- 先 `dryRun=true` 确认有弹窗、拿到按钮列表（标题/角色/输入框）；
+- 再 `dryRun=false` 带明确的 `buttonTitle` / `buttonIndex` / `role` 触发目标按钮；
+- 多按钮 alert 不指定选择器时返回 `alert_button_required`（防止误点取消/删除等破坏性动作）；
+- 输入框 alert 可先用 `ui.input`（必须用 `path` 定位 textField）填入，再 `dryRun=false` 触发登录/提交按钮。
 
-### 7.1 为什么当前不能点击 alert 按钮（公共 API 硬边界）
+### 7.1 dryRun=false 怎么实现的（Debug-only 私有 API）
 
-`UIAlertAction` 的点击 handler 是一个闭包，只在用户真实点击按钮时由 UIKit 内部私有 view 层级触发。公共 API 没有任何方法能在不真实点击的情况下调用这个 handler：
+`UIAlertAction` 的 handler 是闭包，公开 API 没有触发它的方法——这是早期版本判定的「公共 API 硬边界」。但本项目是 Debug-only 开发工具（定位类似 Lookin / Reveal / FLEX，不打包进 Release 上架产物），UIKit 私有 API 在 Debug 下是允许手段，只要用 `#if DEBUG` 隔离、确保不进 Release 二进制。
 
-- `UIAlertAction` 没有 public 的 `perform` / `execute` 方法；
-- handler 闭包没有 public getter，`init(title:style:handler:)` 之后无法再拿到；
-- `UIAlertController` 没有 public 的「选中某个 action」接口；
-- `alert.dismiss(animated:)` 只关闭弹窗，**不会调用任何 action handler**——所以不能用 dismiss 冒充点击。
+`dryRun=false` 的实现：调用 `UIAlertController` 的系统私有方法 `_dismissWithAction:`——它是 UIKit 点击 alert 按钮时的内部入口，由系统本身同时完成「dismiss 当前 alert」与「调用该 action 的 handler」，与真人点按钮完全一致。executor 不手动 dismiss，dismiss、handler、嵌套 present 全交给 UIKit 在同一套点击流程里协调。封装在 `Sources/iOSExploreUIKit/Support/Runtime/UIAlertController+TriggerAction.swift`，仅 `#if DEBUG` 编译。
 
-对比 `UIBarButtonItem`：它有 public 的 `target` / `action`，所以 `ui.navigation.tapBarButton` 能通过 `sendAction` / `perform` 安全派发。`UIAlertAction` 用闭包而非 target-action，这条公共派发路径不存在。
+Release 构建下该私有方法调用不存在，`dryRun=false` 回退返回 `alert_button_required`——这是 Debug-only 隔离的预期行为，不是实现遗漏。
 
-结论：在不使用 UIKit 私有 API、不伪造真实触摸、不依赖 alert 内部私有 view 的前提下，当前无法让 `ui.alert.respond` 真正触发 `UIAlertAction` handler。`dryRun=false` 因此统一返回 `alert_button_required`，这是公共 API 的硬边界，不是实现遗漏。
+selector 名 `_dismissWithAction:` 随 iOS 版本可能漂移；失效时需重新枚举 `UIAlertController` 方法表并降级（候选路与放弃原因详见 `docs/superpowers/specs/2026-07-03-alert-respond-dryrun-false-design.md` §14）。
 
-### 7.2 遇到弹窗阻断时的可落地替代
+### 7.2 何时仍不能自动处理
 
-既然 `ui.alert.respond` 只能查询，Agent 遇到必须处理的弹窗时按优先级选择：
+Debug 下 `dryRun=false` 已能触发本 App 内绝大多数 `UIAlertController`。仍需人工或宿主自定义 action 的情况：
 
-1. **宿主自定义 action（推荐）**：业务 App 在创建 alert 时把每个 action 的真实业务回调抽成具名方法，并向 `ExploreServer` 注册一个自定义命令（如 `app.alert.confirm`），由宿主直接调用业务方法，绕开「点击」本身。这条路完全走公共 API，且语义最准——直接触发业务逻辑，而不是模拟手指。
-2. **人工兜底**：权限弹窗、系统弹窗等 App 无法接管的情况，记录到测试报告交人工处理，不要反复重试 `dryRun=false`。
-3. **后续专用实现**：若未来评估可接受用 KVC 反射 `UIAlertAction` 私有 handler ivar（属私有 API 边界，App Store 审核有风险），再单独设计；当前库不实现，也不暴露该入口。
+1. **系统级弹窗**（权限请求、通知授权、App Store 登录等）：它们不属于本 App 的 `UIAlertController`，`findAlert` 找不到，仍需人工或宿主自定义命令处理。
+2. **Release 构建**：`dryRun=false` 回退 `alert_button_required`，此时只能 `dryRun=true` 查询，触发交给宿主自定义 action 或人工。
+3. **第三方 SDK 的自定义弹窗**（非 `UIAlertController` 形态）：`findAlert` 不命中，需要该 SDK 提供自有处理入口。
 
 未来补能力时，也必须按明确按钮操作：
 
@@ -376,7 +366,7 @@ Agent 不应该把所有错误都当成“测试失败”。
 | `disabled` / unsupported | 目标当前不能操作或不支持动作 | 不要强点，观察状态或换动作 |
 | `wait_timeout` | 等待条件没出现 | 重新观察，再判断是业务失败还是条件不对 |
 | `alert_unavailable` | 当前没有 UIAlertController | 如果只是查弹窗，可继续下一步 |
-| `alert_button_required` | `dryRun=false` 当前版本不能点击/关闭 alert（公共 API 无法触发 `UIAlertAction` handler） | 改回 `dryRun=true` 查询按钮，再走宿主自定义 action、人工或后续版本；不要重试 `dryRun=false` |
+| `alert_button_required` | Debug 下：多按钮 alert 未指定 `buttonTitle`/`buttonIndex`/`role`；Release 下：`dryRun=false` 回退（私有 API 被 `#if DEBUG` 隔离） | Debug 多按钮时补上明确的按钮选择器再重试 `dryRun=false`；Release 下改 `dryRun=true` 查询，触发交宿主自定义 action 或人工 |
 | `navigation_back_unavailable` | 当前不能返回 | 如果已经在根页面，这不是业务失败 |
 | `dismissed:false` | 当前没有键盘可收起 | 不是失败，可以继续 |
 
@@ -480,7 +470,7 @@ Agent 默认不应该：
 - 旧 path 反复重试；
 - 把 `ui.tap` 成功当测试成功；
 - 把 `wait_timeout` 直接当业务失败；
-- 自动关闭所有弹窗；
+- 不指定按钮、含糊地「关闭所有弹窗」（必须 `dryRun=false` 按明确按钮逐个触发，见 §7）；
 - 用 `ui.tap` 或坐标去点 navigationBar 按钮（应走 `ui.navigation.tapBarButton`）；
 - 生成很多步骤后一次性执行到底。
 
@@ -492,6 +482,6 @@ Agent 默认不应该：
 2. ~~设计多结果等待能力~~（已完成：`ui.waitAny` 一次轮询等待多个条件，返回命中的 `matchedID`/`matchedIndex`/`matchedMode`；本版命中后仍需重新 observe 拿页面证据，不自动返回页面快照）。
 3. 设计动作后轻量 final observation 是否由 iPhone 端返回，还是由 Mac MCP 层组合。
 4. 后续再考虑视觉模型和测试平台化。
-5. 如确实要自动响应 `UIAlertAction`，单独评估私有 API / KVC / 真实触摸注入风险；当前公共 API 方案不做。
+5. ~~自动响应 `UIAlertAction`~~（已完成：`dryRun=false` 通过 Debug-only 私有方法 `_dismissWithAction:` 让系统自动 dismiss + 调 handler，见 §7.1；五案例真机验证通过）。
 
-多结果等待已落地为 `ui.waitAny`。弹窗已收敛为 query-only 边界，阻断流程走宿主自定义 action、人工或后续私有 API 评估。剩余优先项是评估“动作后轻量 final observation 是否随 waitAny 命中一起返回”，进一步减少 Mac 侧二次 observe。
+多结果等待已落地为 `ui.waitAny`。弹窗 `dryRun=false` 已通过 Debug-only 私有方法 `_dismissWithAction:` 实现真实触发与关闭（见 §7.1），不再需要宿主自定义 action 绕行。剩余优先项是评估“动作后轻量 final observation 是否随 waitAny 命中一起返回”，进一步减少 Mac 侧二次 observe。

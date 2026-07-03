@@ -180,14 +180,23 @@ curl -sS -X POST "$BASE" -H 'Content-Type: application/json' \
 
 导航栏按钮不走 `ui.tap`，也不要坐标硬点。
 
-### alert 查询
+### alert 查询与响应
+
+先查询弹窗结构（标题、消息、按钮、输入框）：
 
 ```bash
 curl -sS -X POST "$BASE" -H 'Content-Type: application/json' \
   -d '{"action":"ui.alert.respond","data":{"dryRun":true}}'
 ```
 
-当前版本只能查询 `UIAlertController` 标题、消息、按钮和输入框。`dryRun=false` 不会真实点击，返回明确错误；遇到弹窗阻断流程时，需要宿主自定义 action、人工处理，或后续单独评估私有 API 风险。
+看清按钮后，`dryRun=false` 按明确按钮（`buttonTitle` / `buttonIndex` / `role` 三选一）触发该 `UIAlertAction` 的 handler 并关闭弹窗，返回 `{ performed, dismissed, button }`：
+
+```bash
+curl -sS -X POST "$BASE" -H 'Content-Type: application/json' \
+  -d '{"action":"ui.alert.respond","data":{"dryRun":false,"buttonTitle":"确认"}}'
+```
+
+`dryRun=false` 通过 Debug-only 私有方法 `_dismissWithAction:` 让系统像真人点按钮一样自动 dismiss + 调 handler（含嵌套场景，第二层也能正常弹出与响应）。多按钮 alert 必须指定选择器，否则返回 `alert_button_required`；输入框 alert 可先用 `ui.input`（`path` 定位 textField）填入再触发。Release 构建下 `dryRun=false` 回退 `alert_button_required`（私有 API 被 `#if DEBUG` 隔离）。
 
 ## 3. 错误后的固定处理
 
@@ -197,7 +206,7 @@ curl -sS -X POST "$BASE" -H 'Content-Type: application/json' \
 | `wait_timeout` | 重新 observe，再判断业务失败、条件错误、目标不可见、弹窗遮挡或网络慢。 |
 | `unsupported_target` | 目标没有默认 tap；改用 `ui.control.sendAction` 或专用命令。 |
 | `alert_unavailable` | 当前无 `UIAlertController`；如果只是排查弹窗，可以继续下一步。 |
-| `alert_button_required` | `dryRun=false` 当前版本不能点击/关闭 alert（公共 API 无法触发 `UIAlertAction` handler）。改回 `dryRun=true` 查询按钮，再走宿主自定义 action、人工或后续版本。 |
+| `alert_button_required` | Debug 下：多按钮 alert 未指定 `buttonTitle`/`buttonIndex`/`role`；Release 下：`dryRun=false` 回退（私有 API 被 `#if DEBUG` 隔离）。 | Debug 多按钮时补上明确选择器再重试 `dryRun=false`；Release 下改 `dryRun=true` 查询，触发交宿主自定义 action 或人工。 |
 | `navigation_bar_item_mismatch` | 页面或按钮已变化；重新 observe navigationBar 区块。 |
 
 ## 4. 不要做的事

@@ -28,6 +28,9 @@ final class ViewController: UIViewController {
     private let stopButton = UIButton(type: .system)
     private let tableView = UITableView()
     private nonisolated(unsafe) var eventsTask: Task<Void, Never>?
+    #if DEBUG
+    private var didRunLaunchAutomation = false
+    #endif
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -47,6 +50,17 @@ final class ViewController: UIViewController {
         )
         controlTestItem.accessibilityIdentifier = "example.controlTest"
         navigationItem.rightBarButtonItem = controlTestItem
+
+        // 顶部导航左上角入口：进入 UIAlertController 测试页（供 ui.alert.respond 观察系统标准弹窗）。
+        // 与右侧「控件测试」对称，同样补稳定 identifier，供 ui.navigation.tapBarButton 真实闭环。
+        let alertTestItem = UIBarButtonItem(
+            title: "弹窗测试",
+            style: .plain,
+            target: self,
+            action: #selector(openAlertTest)
+        )
+        alertTestItem.accessibilityIdentifier = "example.alertTest"
+        navigationItem.leftBarButtonItem = alertTestItem
 
         // 演示自定义命令 + UIKit 信息注入(register 同步,无需 Task)
         server.register(action: "greet", description: "按 name 打招呼", input: ExampleGreetingInput.self) { input in
@@ -77,6 +91,13 @@ final class ViewController: UIViewController {
                 }
             }
         }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        #if DEBUG
+        runLaunchAutomationIfNeeded()
+        #endif
     }
 
     deinit {
@@ -117,9 +138,22 @@ final class ViewController: UIViewController {
     }
 
     @objc private func startTapped() {
+        startServer()
+    }
+
+    /// 启动 ExploreServer 并把失败写入日志面板。
+    ///
+    /// 手动按钮和 Debug 启动参数共用同一条路径，避免测试工具自动启动 server 时走另一份逻辑。
+    private func startServer() {
         Task {
-            do { try await server.start() }
-            catch { appendLog("启动失败：\(error)") }
+            do {
+                print("iOSExplore startServer begin")
+                try await server.start()
+                print("iOSExplore startServer success")
+            } catch {
+                print("iOSExplore startServer failed error=\(error)")
+                appendLog("启动失败：\(error)")
+            }
         }
     }
 
@@ -131,6 +165,40 @@ final class ViewController: UIViewController {
     @objc private func openControlTest() {
         navigationController?.pushViewController(ControlTestViewController(), animated: true)
     }
+
+    /// push 进入 UIAlertController 测试页（载体页供 ui.alert.respond 远程观察系统标准弹窗）。
+    @objc private func openAlertTest() {
+        navigationController?.pushViewController(AlertTestViewController(), animated: true)
+    }
+
+    #if DEBUG
+    /// Debug 测试工具启动入口。
+    ///
+    /// 真实闭环验证不能依赖先远程点击“启动 Server”按钮，因为 server 未启动时 HTTP 命令本身
+    /// 不可达。这里读取启动参数/环境变量，允许 XcodeBuildMCP 或 xcodebuild launch 时自动启动
+    /// server，并可选进入弹窗测试页。未传这些开关时，示例 App 的手动体验保持不变。
+    private func runLaunchAutomationIfNeeded() {
+        guard !didRunLaunchAutomation else { return }
+        didRunLaunchAutomation = true
+
+        let arguments = Set(ProcessInfo.processInfo.arguments)
+        let environment = ProcessInfo.processInfo.environment
+        let shouldAutostart = arguments.contains("--ios-explore-autostart")
+            || environment["IOS_EXPLORE_AUTOSTART"] == "1"
+        let shouldOpenAlertTest = arguments.contains("--ios-explore-open-alert-test")
+            || environment["IOS_EXPLORE_OPEN_ALERT_TEST"] == "1"
+        print("iOSExplore launch automation autostart=\(shouldAutostart) openAlertTest=\(shouldOpenAlertTest) arguments=\(ProcessInfo.processInfo.arguments)")
+
+        if shouldAutostart {
+            appendLog("launch automation: start server")
+            startServer()
+        }
+        if shouldOpenAlertTest {
+            appendLog("launch automation: open alert test")
+            openAlertTest()
+        }
+    }
+    #endif
 
     @MainActor
     private func updateStatus(running: Bool) {

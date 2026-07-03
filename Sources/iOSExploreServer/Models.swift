@@ -197,6 +197,9 @@ public enum ExploreError: String, Sendable {
     /// 当前 alert 不能安全默认选择按钮，需要调用方明确指定。
     case alertButtonRequired = "alert_button_required"
 
+    /// 已选中 alert 按钮，但无法取到或执行对应的 handler。
+    case alertButtonTriggerFailed = "alert_button_trigger_failed"
+
     /// 键盘或 first responder 收起失败。
     case keyboardDismissFailed = "keyboard_dismiss_failed"
 

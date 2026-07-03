@@ -4,6 +4,7 @@
 
 ## Always follow（硬规则）
 
+- **本项目是 Debug-only 开发工具**（定位类似 Lookin / Reveal / FLEX）：只在 Debug 环境集成，供 agent / 开发者探索和测试 App，**不打包进 Release 上架产物**。因此 UIKit 私有 API / runtime 技巧（KVC 反射、method swizzle 等）是实现探索能力的正当手段，**不是禁区**；但所有依赖私有 API 的代码必须用 `#if DEBUG`（或等价条件编译）隔离，确保绝不进入 Release 二进制。私有结构随 iOS 版本漂移属于工具的正常维护成本，按版本适配，不作为拒绝实现的理由。涉及私有 API 的复杂操作应下沉到 UIKit 控件 extension 或专用工具类（如 Swizzler），命令层只调用，不散写。
 - 库 `iOSExploreServer` **只依赖 `Foundation` + `Network`，不依赖 UIKit**；需要 UIKit 的信息（如设备机型）由集成方 App 注册额外 handler 注入，不进库。
 - Swift 6.2 严格并发：跨边界模型 `Sendable`，共享状态用 `Mutex`（全库唯一 `@unchecked` 边界，锁内禁 `await`），闭包 `@Sendable`。
 - 唯一命令端点 `POST /`，body `{"action":"...","data":{...}}`，响应统一 envelope `{"code":"ok","data"?}` 或 `{"code":"...","message":"..."}`。**新增能力 = 注册新 action，不改协议**。
@@ -12,6 +13,18 @@
 - 库源码必须同时兼容 SPM（Swift 6.2）与 framework 工程（`SWIFT_VERSION=5.0`）：避免 Swift-6-only 语法。
 - 底层网络 / 协议 / 连接 / 命令代码必须配套详细日志：新增或修改命令、关键属性、生命周期方法、状态转移方法、错误分支、资源限制、设计方案和文档时，要同步说明并实现对应日志点。用户不熟悉底层代码，不能只靠读实现推断运行状态。
 - AI 配置与 docs 知识库（`AGENTS.md`/`CLAUDE.md`/`docs/`/`.claude/`）随项目正常纳入 git（个人项目，无保密约束）。
+
+## 沟通约定：抽象短词必须解释
+
+Agent 不能只用自己在完整上下文里才能理解的抽象短词、阶段词或内部术语来回复开发者。开发者通常只看到当前回复，不会自动拥有 agent 刚读过的全部文档、源码、测试输出和中间推理；因此“工程化”“落地”“打通”“闭环”“收敛”“主线”“兜底”“边界”“能力补齐”“行为对齐”“协议演进”“验证完成”这类词，如果不解释，会让人不知道到底要改什么、为什么改、下一步做什么。
+
+使用这类词时，必须在同一段或紧随其后的段落里补上具体解释。解释至少要回答以下问题：这个词在当前任务里具体指哪些文件、模块或命令；会改变什么运行行为或对外契约；为什么现在要做这些事；推荐下一步先做哪一项；完成后用哪些测试、构建或真实操作验证。不能只说“下一步工程化”“继续落地”“把链路打通”这种短句，因为这些短句只表达 agent 自己的压缩记忆，不能把可执行信息传给开发者。
+
+正确写法示例：不要只说“下一步进入工程化”。要写成“下一步建议先新增 `Swizzler.swift` 和 `UIAlertAction+Trigger.swift`，把 spike 里验证过的 runtime hook、关联对象保存、KVC handler 兜底、block 调用签名放进 `iOSExploreUIKit` 的 Debug-only runtime 层。这样 executor 后续只需要调用 `explore_performHandler()`，不会散写私有 ivar 或 swizzle 细节。完成后先跑对应 iOS framework 测试，再继续改 `UIAlertRespondExecutor` 的 dryRun=false 行为。”
+
+正确写法示例：不要只说“把闭环打通”。要写成“这里的闭环指从示例 App 弹出 alert，到 Mac 侧 curl 发送 `ui.alert.respond`，再到 App 内对应 `UIAlertAction` handler 被调用、alert 关闭、响应 envelope 返回 `performed/dismissed/button` 的全过程。要验证这个闭环，需要启动 `Examples/SPMExample`，进入弹窗测试页，触发目标 alert，然后发送 dryRun=false 请求并观察事件流和响应 JSON。”
+
+如果一个词已经写成项目固定术语，也仍然要在第一次出现时给当前上下文解释。例如“typed factory”不能只当口号使用；需要说明它在当前改动里表示“先用 Foundation-only 输入模型解析和校验请求数据，只有解析成功后才进入 MainActor 上的 UIKit resolver/executor，因此 UIKit 类型不会穿过 public 命令边界”。这样后续读者不用回翻全部架构文档，也能理解这条约束会怎样影响当前实现。
 
 ## Common commands
 
@@ -23,6 +36,14 @@
 - 构建/运行测试 App：Xcode 打开 `Examples/SPMExample/SPMExample.xcodeproj`，选真机或模拟器 → Run
 - 起 USB 转发：`./scripts/proxy.sh`（前台运行，Ctrl-C 停）
 - 发命令：`curl -X POST http://localhost:38321/ -d '{"action":"ping"}'`
+
+## 示例 App 真实验证：必须自动启动 Server
+
+对 `Examples/SPMExample/SPMExample/ViewController.swift` 做真实闭环验证时，不要再依赖手动点“启动 Server”按钮，也不要每次重新探索“服务没启动所以无法远程点击启动服务”的解决方案。这个问题的固定处理方式是：测试工具通过启动参数或环境变量让示例 App 在 Debug 启动后自动执行 `ViewController.server.start()`，使 `POST /` 的 38321 端口先进入可用状态，然后再用 `curl` 或 `ui.*` 命令继续触发页面、弹窗和其它交互。
+
+推荐固定使用语义清楚的开关，例如启动参数 `--ios-explore-autostart` 或环境变量 `IOS_EXPLORE_AUTOSTART=1` 表示“启动 App 后自动调用 `server.start()`”。如果验证流程还需要直接进入弹窗测试页，可以再使用 `--ios-explore-open-alert-test` 或 `IOS_EXPLORE_OPEN_ALERT_TEST=1` 表示“server 启动后自动 push 到 `AlertTestViewController`”。如果当前示例 App 代码尚未实现这些开关，下一步应先补 Debug-only 的启动参数/环境变量读取逻辑，而不是切回手动 UI 点击方案。
+
+这些启动参数和环境变量属于测试工具约定，不是一次性临时状态。验证完成后不用刻意删除或清理它们；后续 agent 应复用同一套开关，保持真实闭环测试流程稳定可重复。只有在开关名称或行为本身需要升级时，才同步修改这里和对应示例 App 代码。
 
 ## 模块边界
 
