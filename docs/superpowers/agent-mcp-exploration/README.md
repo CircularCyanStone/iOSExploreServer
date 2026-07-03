@@ -200,6 +200,16 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 - 不把视觉模型放进 iPhone 端库。
 - 不把每一步默认变成截图加视觉模型判断。
 
+### 4.4 已评估确认的限制与不变式（2026-07-04 复核，接受现状）
+
+下列三条曾被标为"已知限制"，经源码与协议复核确认**接受现状**，不作为待办；后续评估不应再把它们当遗漏或 bug 重提。
+
+1. **`ui.wait mode=textExists` 只采集当前 view 树内、未 hidden、alpha>0 的文本**（`UIKitVisibleTextCollector`）。"可见"指树内存在且未被标记隐藏，**不等同于屏幕可视区域**（完全不做 frame/window 交集判断）：已 add 到树里但滚出 viewport 的 label 仍能命中；被 cell 复用移出树的文本命中不到。有意不采集 `UITextField.text`/`UITextView.text`（用户输入，防泄露），这是安全设计不是缺口。Agent 正确用法见 [agent-usage-protocol.md](./agent-usage-protocol.md) §6.2（列表场景先滚动再 observe → wait textExists）。
+
+2. **`ui.scrollToElement` 滚动后不签发 snapshot**。评审 M3 的有意决策：用 UIKit 原生 `scrollRectToVisible` 一次到位，避免循环小步 scroll 反复让旧 `viewSnapshotID` 对应的指纹表失效（污染 snapshot store）。`scrollRectToVisible` 不改 view 树结构（path 稳定），但改变可见性 → 旧 snapshot 整表对不上当前页面（stale）→ 后续 `ui.tap`/`ui.wait snapshotChanged` 会拿到 `stale_locator`。因此滚动后必须重新 `ui.viewTargets` 拿新 `viewSnapshotID`（不能靠 `ui.screenshot`，它不签发 snapshot）；MCP 层未来可用 `scroll_and_observe` 组合固化该序列。
+
+3. **`ui.screenshot`/`ui.topViewHierarchy` 不签发 `viewSnapshotID`**（不变式）。`viewSnapshotID` 对 agent 的唯一签发源是 `ui.viewTargets`（`UIKitSnapshotResponse` 单一映射，源码注释已固化）。screenshot 是视觉证据、topViewHierarchy 是只读结构概览，都不是动作授权层。单一签发源让 id 的 TTL、签发 query、freshness 比对都可追溯；多源会让校验分叉。这是 §3.2 锚点定的设计决策。
+
 ## 5. 关于是否需要运行测试项目
 
 需要。
