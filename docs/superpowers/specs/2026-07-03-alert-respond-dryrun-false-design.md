@@ -53,18 +53,18 @@ App 启动时（`registerUIKitCommands` 内）用 method swizzle 替换 `actionW
 
 ### 4.3 命令层
 
-`UIAlertRespondExecutor`：`dryRun=false` 时定位 alert → 按 selector 选 action → 调 `action.explore_performHandler()` → 确认 dismiss → 返回。不出现 KVC/swizzle 字眼。后续 iOS 版本适配只改 extension 内部 ivar 路径表，命令层和测试不动。
+`UIAlertRespondExecutor`：`dryRun=false` 时定位 alert → 按 selector 选 action → 对真实展示中的 alert 调 `UIAlertController.explore_dismissWithAction(_:)`，让 UIKit 自己完成关闭与 handler 调用 → 对未 present 的测试对象回退 `action.explore_performHandler()` → 返回 `{ performed, dismissed, button }`。executor 只表达业务流程，不散写私有结构处理；后续 iOS 版本适配只改 Debug runtime extension，命令层和测试不动。
 
 ## 5. Debug 隔离
 
-整个 `Support/Runtime/` 子目录 `#if DEBUG` 包裹。非 Debug 编译时代码不存在，extension 方法不存在；executor 的 `dryRun=false` 分支在 `#if DEBUG` 关闭时降级返回 `alert_button_required`，不 crash。确保误打包进 Release 也没有私有 API 残留。
+整个 `Support/Runtime/` 子目录 `#if DEBUG` 包裹。非 Debug 编译时代码不存在，extension 方法不存在；executor 的 `dryRun=false` 分支在 `#if DEBUG` 关闭时返回 `alert_release_unsupported`，不 crash。这个错误码表示“构建配置禁止触发”，不同于 `alert_button_required`（多按钮未指定选择器，补参数可解决）。确保误打包进 Release 也没有私有 API 残留。
 
 ## 6. 错误码与返回值演进
 
 - 触发成功：`{ performed: true, dismissed: <bool>, button: { index, title, role } }`。`dismissed` 单独给，handler 调用后 alert 是否自动关闭需观察，不假设。
 - handler 拿不到 / 调用异常：新错误码 `alert_button_trigger_failed`（与"能力不支持"区分）。
 - 未指定按钮且 alert 多按钮：保留 `alert_button_required` 原语义（不猜默认）。
-- Debug 关闭 / Release 构建：`dryRun=false` 回退 `alert_button_required`。
+- Debug 关闭 / Release 构建：`dryRun=false` 回退 `alert_release_unsupported`，提示调用方改用 `dryRun=true` 查询或交给宿主自定义 action / 人工处理。
 
 ## 7. 实现步骤
 
@@ -80,7 +80,7 @@ App 启动时（`registerUIKitCommands` 内）用 method swizzle 替换 `actionW
 
 - `AlertTestViewController` 5 个案例（`alert.trigger.simple` / `threeButtons` / `loginInput` / `actionSheet` / `nested`）`dryRun=false` 全部能触发对应 handler 并 dismiss。
 - actionSheet 在 iPad popover 场景、嵌套 alert 的第二个、带输入框先填再触发，都覆盖。
-- Debug 关闭时 `dryRun=false` 回退 `alert_button_required`，不 crash。
+- Debug 关闭时 `dryRun=false` 回退 `alert_release_unsupported`，不 crash。
 - 构造不经过 hook 代码的 alert（模拟第三方 SDK），KVC 兜底也能触发。
 
 ## 9. 风险与适配
@@ -93,7 +93,7 @@ App 启动时（`registerUIKitCommands` 内）用 method swizzle 替换 `actionW
 
 已有：
 - `Sources/iOSExploreUIKit/Commands/Alert/UIAlertRespondCommand.swift` — adapter
-- `Sources/iOSExploreUIKit/Support/Action/UIAlertRespondExecutor.swift` — 执行核心（`dryRun=false` 在 Debug 下选择按钮、触发 handler、请求关闭 alert；Release 下回退 `alertButtonRequired`）
+- `Sources/iOSExploreUIKit/Support/Action/UIAlertRespondExecutor.swift` — 执行核心（`dryRun=false` 在 Debug 下选择按钮、真实展示 alert 交给 `UIAlertController` runtime 扩展关闭并触发 handler，未 present 测试对象回退直接触发 handler；Release 下回退 `alertRespondDisabledInRelease` / `alert_release_unsupported`）
 - `Sources/iOSExploreUIKit/Support/Action/UIAlertInspector.swift` — alert 定位与摘要
 - `Sources/iOSExploreUIKit/UIKitCommandError.swift` — 错误工厂
 - `Examples/SPMExample/SPMExample/AlertTestViewController.swift` — 5 个 alert 案例（已就位）
@@ -130,13 +130,13 @@ App 启动时（`registerUIKitCommands` 内）用 method swizzle 替换 `actionW
 
 已完成的自动化验证：
 
-- `swift test`（macOS SPM，含真实 TCP 端到端）`210 tests` 全通过。
-- `xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17' test` 通过，`316 tests` 全通过（含 `UIAlertAction` handler 触发、KVC 兜底、`ui.alert.respond` dryRun=false 选择按钮 + 未 present 时 `dismissed=false` 契约）。
+- `swift test`（macOS SPM，含真实 TCP 端到端）2026-07-04 复核为 `208 tests` 全通过。
+- `xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj -scheme iOSExploreServer -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17' test` 2026-07-04 复核为 `327 tests` 全通过（含 `UIAlertAction` handler 触发、KVC 兜底、`ui.alert.respond` dryRun=false 选择按钮 + 未 present 时 `dismissed=false` 契约）。
 - 同上 `-configuration Release build` 通过，确认 Debug-only runtime 隔离：`perform`/`explore_dismissWithAction`/`explore_performHandler` 整套在 `#if DEBUG` 内，Release 二进制无私有 API 残留。
 
 ## 13. 真实闭环验证结果（2026-07-04）
 
-真实闭环指：示例 App 弹出 alert → Mac（经模拟器内部 Python socket，因 Mac 侧 localhost 连不上模拟器内 listener）发 `ui.alert.respond dryRun=false` → App 内对应 `UIAlertAction` handler 被调用 → alert 关闭 → 响应 envelope 返回 `{ performed, dismissed, button }`。环境：iPhone 17 模拟器 iOS 26.3.1，App 用 `--ios-explore-autostart --ios-explore-open-alert-test` 自动起 server 并进入弹窗测试页。
+真实闭环指：示例 App 弹出 alert → Mac 侧发 `ui.alert.respond dryRun=false` → App 内对应 `UIAlertAction` handler 被调用 → alert 关闭 → 响应 envelope 返回 `{ performed, dismissed, button }`。已覆盖两类环境：iPhone 17 模拟器 iOS 26.3.1（模拟器内 socket 路径）和 iOS 26.5 真机（`devicectl` 安装启动，`--ios-explore-autostart --ios-explore-open-alert-test` / `IOS_EXPLORE_AUTOSTART=1` / `IOS_EXPLORE_OPEN_ALERT_TEST=1` 自动起 server 并进入弹窗测试页，Mac 侧经 `iproxy` + `curl` 访问）。
 
 触发与关闭的最终实现：真实展示中的 alert 走系统私有 `UIAlertController._dismissWithAction:`——系统点击 alert 按钮时的内部入口，由系统本身同时完成「dismiss 当前 alert」与「调用该 action 的 handler」，与真人点按钮完全一致。executor 不手动 dismiss，dismiss、handler、嵌套 present 全交给 UIKit 在同一套点击流程里协调。未 present 的 alert（logic test 构造的对象）回退 `UIAlertAction.explore_performHandler()` 直接调 handler block，`dismissed=false`。封装在 `Sources/iOSExploreUIKit/Support/Runtime/UIAlertController+TriggerAction.swift`，selector 名随 iOS 版本漂移需重新探测。
 

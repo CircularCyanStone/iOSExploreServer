@@ -288,7 +288,7 @@ Agent 必须重新观察页面，再决定下一步。
 `ui.alert.respond` 既可查询弹窗，也可真实触发按钮并关闭弹窗（`dryRun=false`）。
 
 - **dryRun=true（查询）**：查询当前是否有 `UIAlertController`；返回标题、消息、按钮、输入框；当前无弹窗时返回 `alert_unavailable`。
-- **dryRun=false（触发）**：按 `buttonTitle` / `buttonIndex` / `role` 之一选中一个按钮，让系统像真人点按钮一样触发该 `UIAlertAction` 的 handler 并关闭弹窗，返回 `{ performed, dismissed, button }`。simple / 三按钮 / 输入框 / actionSheet / 嵌套两层五个案例已在 iPhone 17 模拟器 iOS 26.3.1 真机验证全部通过（`performed=true`、`dismissed=true`）。
+- **dryRun=false（触发）**：按 `buttonTitle` / `buttonIndex` / `role` 之一选中一个按钮，让系统像真人点按钮一样触发该 `UIAlertAction` 的 handler 并关闭弹窗，返回 `{ performed, dismissed, button }`。simple / 三按钮 / 输入框 / actionSheet / 嵌套两层五个案例已在 iPhone 17 模拟器 iOS 26.3.1 和 iOS 26.5 真机验证全部通过（`performed=true`、`dismissed=true`）。
 
 协议要求：
 

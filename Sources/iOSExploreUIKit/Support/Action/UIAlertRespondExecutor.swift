@@ -46,16 +46,11 @@ enum UIAlertRespondExecutor {
     #if DEBUG
     /// 执行一次 alert 按钮响应。
     ///
-    /// executor 只负责业务流程：选择按钮、让系统触发并关闭该 action、返回结果。底层 runtime（调用
-    /// 系统私有 `_dismissWithAction:` 入口，或回退直接调 handler block）封装在 `UIAlertController`/
-    /// `UIAlertAction` 的 Debug 扩展中，命令层不直接接触私有 selector 或 swizzle 细节。
-    ///
-    /// 真实展示中的 alert 走系统私有 `_dismissWithAction:`——系统点击 alert 按钮时的内部入口，由系统
-    /// 本身同时完成「dismiss 当前 alert」与「调用该 action 的 handler」，与真人点按钮完全一致。这样
-    /// executor 不手动 dismiss，dismiss、handler、handler 内嵌套 present 全交给 UIKit 在同一套点击流程
-    /// 里协调——嵌套场景第二层也能正常弹出并被后续 `ui.alert.respond` 响应（simple / 三按钮 / 输入框 /
-    /// actionSheet / 嵌套两层五个案例实测全部通过）。未 present 的 alert（典型是 logic test 构造的对象）
-    /// 该方法要求 alert 在层级中，故回退直接调用 handler block，`dismissed=false`。
+    /// executor 只负责业务流程：选择按钮、交给 Debug runtime 扩展触发、返回统一结果。真实展示中的
+    /// alert 由 `UIAlertController` 扩展接管，让 UIKit 按自己的按钮点击流程关闭弹窗并执行 handler；
+    /// 未 present 的 alert（典型是 logic test 构造的对象）没有展示层级可关闭，改由 `UIAlertAction`
+    /// 扩展直接执行 handler，并明确返回 `dismissed=false`。runtime 细节集中在扩展文件内，命令层不
+    /// 散写私有结构处理逻辑，后续 iOS 版本适配也只需要改扩展。
     private static func perform(input: UIAlertRespondInput, alert: UIAlertController) throws -> JSON {
         let actionName = AlertRespondCommand.actionName
         let selected = try selectAction(input: input, alert: alert)

@@ -127,7 +127,7 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 | 实现 `ui.tap` 结构化默认激活 | 已完成第一轮 | `UITapInput` / `UIKitDefaultActivationResolver` / `UIKitActionExecutor` / `UIViewTargetsCollector` / snapshot 相关改造 | `ui.tap` 现在只接受 `accessibilityIdentifier` 或 `path` + 必填 `viewSnapshotID`；先校验 `ui.viewTargets` 签发的结构快照，再按 route 执行：按钮 `touchUpInside`、开关 toggle + `valueChanged`、文本输入 focus。`ui.screenshot` 不再签发快照；`ui.wait snapshotChanged` 使用 `viewSnapshotID`；`ui.viewTargets` 只签发最终返回 target 的 fingerprint。 |
 | 设计多结果等待能力 | 已完成 | 决定新增命令而非改造 `ui.wait` | 保持 `ui.wait` 单条件不变；新增 `ui.waitAny` 一次轮询等待多个结局，命中后默认不返回页面快照，只回 `matchedID`/`matchedIndex`/`matchedMode`。 |
 | 实现多结果等待能力 | 已完成 | `ui.waitAny`（`UIWaitAnyCommand` / `UIWaitAnyModels` / `UIWaitAnyExecutor`） | 与 `ui.wait` 共享五模式判断原语（`ConditionProbe`）；cancel 与瞬时层级不可用收敛到 `wait_timeout`；本阶段完整回归为 SPM 210 + framework 310。 |
-| 弹窗 dryRun=false 触发 | 已完成 | [2026-07-03-alert-respond-dryrun-false-design.md](../specs/2026-07-03-alert-respond-dryrun-false-design.md) + [agent-usage-protocol.md](./agent-usage-protocol.md) §7 | `dryRun=false` 通过 Debug-only 私有方法 `_dismissWithAction:` 让系统自动 dismiss + 调 handler，simple/threeButtons/loginInput/actionSheet/nested 五案例真机验证通过；Release 下回退 `alert_release_unsupported`（私有 API 被 `#if DEBUG` 隔离）。 |
+| 弹窗 dryRun=false 触发 | 已完成 | [2026-07-03-alert-respond-dryrun-false-design.md](../specs/2026-07-03-alert-respond-dryrun-false-design.md) + [agent-usage-protocol.md](./agent-usage-protocol.md) §7 | `dryRun=false` 通过 Debug-only 私有方法 `_dismissWithAction:` 让系统自动 dismiss + 调 handler；simple/threeButtons/loginInput/actionSheet/nested 五案例已在 iPhone 17 模拟器 iOS 26.3.1 和 iOS 26.5 真机闭环验证通过；2026-07-04 当前自动化复核为 SPM 208 / framework 327；Release 下回退 `alert_release_unsupported`（私有 API 被 `#if DEBUG` 隔离）。 |
 
 ## 3.1 协作执行方式
 
@@ -268,6 +268,6 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 
 ### 6.2 ui.alert.respond dryRun=false（已完成）
 
-`dryRun=false` 已实现：通过 Debug-only 私有方法 `UIAlertController._dismissWithAction:` 让系统像真人点按钮一样自动 dismiss + 调 handler，executor 不手动 dismiss，嵌套 present 也由系统协调。simple / 三按钮 / 输入框 / actionSheet / 嵌套两层五案例在 iPhone 17 模拟器 iOS 26.3.1 真机验证全部通过。Release 构建下私有 API 被 `#if DEBUG` 隔离，`dryRun=false` 回退 `alert_release_unsupported`。详见 [2026-07-03-alert-respond-dryrun-false-design.md](../specs/2026-07-03-alert-respond-dryrun-false-design.md) 与 [agent-usage-protocol.md](./agent-usage-protocol.md) §7。
+`dryRun=false` 已实现：通过 Debug-only 私有方法 `UIAlertController._dismissWithAction:` 让系统像真人点按钮一样自动 dismiss + 调 handler，executor 不手动 dismiss，嵌套 present 也由系统协调。simple / 三按钮 / 输入框 / actionSheet / 嵌套两层五案例已在 iPhone 17 模拟器 iOS 26.3.1 和 iOS 26.5 真机验证全部通过。Release 构建下私有 API 被 `#if DEBUG` 隔离，`dryRun=false` 回退 `alert_release_unsupported`。详见 [2026-07-03-alert-respond-dryrun-false-design.md](../specs/2026-07-03-alert-respond-dryrun-false-design.md) 与 [agent-usage-protocol.md](./agent-usage-protocol.md) §7。
 
 > 多结果等待（`ui.waitAny`）、动作后 final observation 归属（方案 B，不改 iPhone 端）均已结案；源码级 review + 真实闭环验证（原第一、第三优先级）已完成。
