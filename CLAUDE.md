@@ -18,4 +18,13 @@
 
 这些开关是测试工具的长期约定，不是一次性临时环境。验证结束后不用专门删除环境变量或启动参数；后续继续复用，除非项目明确改名或改变行为。
 
+## Claude Code 额外提醒：用 XcodeBuildMCP 跑真机/模拟器走 profile + iproxy
+
+用 XcodeBuildMCP 跑 `Examples/SPMExample` 的完整方案（`enabledWorkflows`、`sim-app`/`sim-fw`/`device-app` 三个 profile、模拟器直接 `curl localhost:38321`、真机经 `iproxy` USB 转发、完整命令序列）写在 `AGENTS.md` 的「XcodeBuildMCP 运行配置」节，不在此重复。下面只列 Claude Code 用 MCP 时最容易踩的四个坑（每次跑真机/模拟器前先过一遍）：
+
+1. **设备 ID 两套**：MCP 的 `deviceId` 是 CoreDevice identifier（`list_devices` 返回的 `3AC0C7D6-...`），`iproxy -u` 是 USB UDID（`00008030-...`），同一台设备不能混用。
+2. **devicectl 的机型字段会串号**：判 iOS 版本看 `list_devices` 的 `osVersion`，别信 `devicectl` 的 `Model`（曾把 iOS 26.5 的真机显成 iPhone 11）。SPMExample 部署目标 26.2，低于装不上。
+3. **`build_run_sim`/`build_run_device` 不注入 profile 的 `env`**：autostart 必须用 `launch_app_sim`/`launch_app_device` 的 `env` 或 `launchArgs` 驱动，且要先 `stop_app_*` 再 `launch_app_*`（已运行的 App 不重启、参数不生效）。
+4. **curl 真机前先 `lsof -iTCP:38321` 确认是 `iproxy` 在监听**：`sim-app` 跑过没关的模拟器 SPMExample 会残留成 Mac 进程占住 38321，`curl localhost:38321` 打到的是这个**模拟器残留**（旧 binary、不是真机、env 也没设），结果对不上真机预期——曾导致真机验证反复卡住。`lsof` 的 COMMAND 列是 `SPMExampl` 则 `xcrun simctl terminate 065CC8DB-8978-46C5-82D6-C96625B608D8 com.coo.SPMExample` 清理后再起 iproxy；`iproxy` 启动立即报 `Address already in use: 38321` 也是这个原因。详细排查见 AGENTS.md「四个必须记住的差异」第 4 点。
+
 @AGENTS.md

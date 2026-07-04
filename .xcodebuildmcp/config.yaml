@@ -1,0 +1,30 @@
+schemaVersion: 1
+enabledWorkflows:
+  - simulator
+  - device
+  - debugging
+  - ui-automation
+sessionDefaultsProfiles:
+  sim-app:
+    projectPath: /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/Examples/SPMExample/SPMExample.xcodeproj
+    scheme: SPMExample
+    configuration: Debug
+    simulatorName: iPhone 17
+    bundleId: com.coo.SPMExample
+    env:
+      IOS_EXPLORE_AUTOSTART: "1"
+  sim-fw:
+    projectPath: /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSExploreServer/iOSExploreServer.xcodeproj
+    scheme: iOSExploreServer
+    configuration: Debug
+    simulatorName: iPhone 17
+    simulatorId: 065CC8DB-8978-46C5-82D6-C96625B608D8
+    simulatorPlatform: iOS Simulator
+  device-app:
+    projectPath: /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/Examples/SPMExample/SPMExample.xcodeproj
+    scheme: SPMExample
+    configuration: Debug
+    deviceId: 3AC0C7D6-22F6-572B-8368-4047A14BAB52
+    platform: iOS
+    bundleId: com.coo.SPMExample
+activeSessionDefaultsProfile: device-app

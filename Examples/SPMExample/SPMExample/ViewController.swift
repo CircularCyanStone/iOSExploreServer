@@ -30,6 +30,8 @@ final class ViewController: UIViewController {
     private nonisolated(unsafe) var eventsTask: Task<Void, Never>?
     #if DEBUG
     private var didRunLaunchAutomation = false
+    /// 合成触摸 spike 最近一次结果（供 `debug.syntheticTapSpike` 命令读取，真机验证用）。
+    private var lastSyntheticTapSpikeResult = "not run"
     #endif
 
     override func viewDidLoad() {
@@ -76,6 +78,27 @@ final class ViewController: UIViewController {
         // 显式开放 UIKit 命令（ui.topViewHierarchy / ui.viewTargets /
         // ui.control.sendAction / ui.tap）。core 不自动注册，由宿主决定是否启用。
         server.registerUIKitCommands()
+
+        // 非 #if DEBUG probe：确认 viewDidLoad 执行 + 设备跑的是新 binary（含本改动）。
+        server.register(action: "debug.probe",
+                        description: "alive probe (非 DEBUG, 验证新 binary)",
+                        input: EmptyCommandInput.self) { _ in
+            .success(["alive": .bool(true), "build": .string("spike-2026-07-04-probe")])
+        }
+
+        #if DEBUG
+        // Debug 工具：运行合成触摸 spike 并返回结果（真机验证 ui.tap realTouch 可行性）。
+        // 非生产命令，仅用于在真实 App 进程确认模拟器结论。
+        server.register(action: "debug.syntheticTapSpike",
+                        description: "运行合成触摸 spike，返回真机 4 场景结果",
+                        input: EmptyCommandInput.self) { [weak self] _ in
+            await MainActor.run {
+                guard let self else { return .success(["result": .string("host unavailable")]) }
+                self.runSyntheticTapSpike()
+                return .success(["result": .string(self.lastSyntheticTapSpikeResult)])
+            }
+        }
+        #endif
 
         // 订阅事件 → 日志面板
         eventsTask = Task { @MainActor [weak self, server] in
@@ -187,7 +210,9 @@ final class ViewController: UIViewController {
             || environment["IOS_EXPLORE_AUTOSTART"] == "1"
         let shouldOpenAlertTest = arguments.contains("--ios-explore-open-alert-test")
             || environment["IOS_EXPLORE_OPEN_ALERT_TEST"] == "1"
-        print("iOSExplore launch automation autostart=\(shouldAutostart) openAlertTest=\(shouldOpenAlertTest) arguments=\(ProcessInfo.processInfo.arguments)")
+        let shouldRunSyntheticTapTest = arguments.contains("--ios-explore-synthetic-tap-test")
+            || environment["IOS_EXPLORE_SYNTHETIC_TAP_TEST"] == "1"
+        print("iOSExplore launch automation autostart=\(shouldAutostart) openAlertTest=\(shouldOpenAlertTest) syntheticTap=\(shouldRunSyntheticTapTest) arguments=\(ProcessInfo.processInfo.arguments)")
 
         if shouldAutostart {
             appendLog("launch automation: start server")
@@ -197,6 +222,30 @@ final class ViewController: UIViewController {
             appendLog("launch automation: open alert test")
             openAlertTest()
         }
+        if shouldRunSyntheticTapTest {
+            appendLog("launch automation: synthetic tap test")
+            // 延迟让 view 完成 appear + 布局，再在真实 key window 上合成触摸。
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                self?.runSyntheticTapSpike()
+            }
+        }
+    }
+
+    /// 真机合成触摸 spike：在真实 App 进程（有 UIApplication / gestureEnvironment / scene）
+    /// 跑 4 场景，验证 `explore_sendSyntheticTap` 在真实 key window 上能否触发
+    /// gesture / plain view / 遮挡 / UIButton。结果存 `lastSyntheticTapSpikeResult`。
+    @MainActor
+    private func runSyntheticTapSpike() {
+        guard let window = view.window else {
+            lastSyntheticTapSpikeResult = "no window"
+            print("[synthetic-tap-spike] REAL aborted: no window")
+            return
+        }
+        let result = SyntheticTapSpikeRunner.runAll(in: view, window: window)
+        lastSyntheticTapSpikeResult = String(describing: result)
+        print("[synthetic-tap-spike] REAL iOS \(UIDevice.current.systemVersion) \(result)")
+        appendLog("synthetic tap: \(result)")
     }
     #endif
 
@@ -237,3 +286,111 @@ extension ViewController: UITableViewDataSource {
         return cell
     }
 }
+
+#if DEBUG
+/// 真机合成触摸 spike runner：在真实 App 进程跑 4 个场景，汇总结果。
+///
+/// 场景对齐 `UITouchSyntheticSpikeTests`（gesture / plain view / 遮挡 / UIButton），
+/// 但运行在真实 key window 上（有 UIApplication、gestureEnvironment、scene），用于确认
+/// 模拟器结论（iOS 26 UIEvent touches 挂载失败）在真机同样成立。
+@MainActor
+enum SyntheticTapSpikeRunner {
+    /// spike 4 场景结果汇总。
+    struct Result: CustomStringConvertible {
+        var gestureFired = false
+        var plainBegan = 0
+        var plainEnded = 0
+        var overlayFired = false
+        var bottomFired = false
+        var buttonFired = false
+        var hitTestDescription = "nil"
+        var attachedTouchCount = -1
+        var missing: [String] = []
+
+        var description: String {
+            "gesture=\(gestureFired) plainBegan=\(plainBegan) plainEnded=\(plainEnded) "
+                + "overlay=\(overlayFired) bottom=\(bottomFired) button=\(buttonFired) "
+                + "hitTest=\(hitTestDescription) attached=\(attachedTouchCount) missing=\(missing)"
+        }
+    }
+
+    /// 手势 / target-action 计数器（gesture 的 target 是弱引用，由 `runAll` 局部变量强持有）。
+    @MainActor
+    final class Counter: NSObject {
+        var fired = false
+        @objc func didTap() { fired = true }
+    }
+
+    /// 普通 view touches 计数器（非 UIControl）。
+    @MainActor
+    final class Recorder: UIView {
+        var began = 0
+        var ended = 0
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { began &+= 1 }
+        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { ended &+= 1 }
+    }
+
+    /// 在 container（已挂 window）上跑 4 场景，返回汇总。
+    ///
+    /// 每个场景临时把测试 view 加到 container 顶层，合成 tap 其中心点（转 window 坐标），
+    /// 跑完移除，互不干扰。counter / recorder 由本方法局部变量强持有，sendTap 同步验证期间 alive。
+    static func runAll(in container: UIView, window: UIWindow) -> Result {
+        var r = Result()
+        let frame = CGRect(x: 40, y: 260, width: 120, height: 120)
+        let centerInContainer = CGPoint(x: frame.midX, y: frame.midY)
+
+        // 场景 1：UITapGestureRecognizer（手势识别器路径）。
+        let gCounter = Counter()
+        let gView = UIView(frame: frame)
+        gView.backgroundColor = .systemRed.withAlphaComponent(0.3)
+        gView.addGestureRecognizer(UITapGestureRecognizer(target: gCounter, action: #selector(Counter.didTap)))
+        container.addSubview(gView)
+        container.layoutIfNeeded()
+        let gDiag = window.explore_sendSyntheticTap(at: container.convert(centerInContainer, to: window))
+        r.gestureFired = gCounter.fired
+        r.hitTestDescription = gDiag.hitTestViewDescription ?? "nil"
+        r.attachedTouchCount = gDiag.attachedTouchCount
+        r.missing = gDiag.missingFields
+        gView.removeFromSuperview()
+
+        // 场景 2：普通 UIView touchesBegan/Ended（非 UIControl）。
+        let pView = Recorder(frame: frame)
+        container.addSubview(pView)
+        container.layoutIfNeeded()
+        _ = window.explore_sendSyntheticTap(at: container.convert(centerInContainer, to: window))
+        r.plainBegan = pView.began
+        r.plainEnded = pView.ended
+        pView.removeFromSuperview()
+
+        // 场景 3：透明遮挡——底层 + 完全覆盖的遮挡层，合成 tap 应命中遮挡层而非底层。
+        let bCounter = Counter()
+        let oCounter = Counter()
+        let bView = UIView(frame: frame)
+        bView.addGestureRecognizer(UITapGestureRecognizer(target: bCounter, action: #selector(Counter.didTap)))
+        let oView = UIView(frame: frame)
+        oView.addGestureRecognizer(UITapGestureRecognizer(target: oCounter, action: #selector(Counter.didTap)))
+        container.addSubview(bView)
+        container.addSubview(oView)
+        container.layoutIfNeeded()
+        _ = window.explore_sendSyntheticTap(at: container.convert(centerInContainer, to: window))
+        r.bottomFired = bCounter.fired
+        r.overlayFired = oCounter.fired
+        bView.removeFromSuperview()
+        oView.removeFromSuperview()
+
+        // 场景 4：UIButton touchUpInside（与 default 模式兼容）。
+        var buttonFired = false
+        let button = UIButton(type: .system)
+        button.setTitle("Spike", for: .normal)
+        button.frame = frame
+        button.addAction(UIAction { _ in buttonFired = true }, for: .touchUpInside)
+        container.addSubview(button)
+        container.layoutIfNeeded()
+        _ = window.explore_sendSyntheticTap(at: container.convert(centerInContainer, to: window))
+        r.buttonFired = buttonFired
+        button.removeFromSuperview()
+
+        return r
+    }
+}
+#endif
