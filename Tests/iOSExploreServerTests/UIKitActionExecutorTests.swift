@@ -100,7 +100,7 @@ func tapSliderReturnsUnsupportedTarget() {
                                             context: context)
         Issue.record("expected unsupported_target, got success")
     } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .invalidData)
+        #expect(error.failure.code == .unsupportedTarget)
     } catch {
         Issue.record("unexpected error: \(error)")
     }
@@ -120,7 +120,7 @@ func tapSegmentedControlReturnsUnsupportedTarget() {
                                             context: context)
         Issue.record("expected unsupported_target, got success")
     } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .invalidData)
+        #expect(error.failure.code == .unsupportedTarget)
     } catch {
         Issue.record("unexpected error: \(error)")
     }

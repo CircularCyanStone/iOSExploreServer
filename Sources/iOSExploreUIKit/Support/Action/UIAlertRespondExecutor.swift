@@ -28,7 +28,7 @@ enum UIAlertRespondExecutor {
             #if DEBUG
             return try perform(input: input, alert: alert)
             #else
-            throw UIKitCommandError.alertButtonRequired(action: action)
+            throw UIKitCommandError.alertRespondDisabledInRelease(action: action)
             #endif
         }
 
@@ -113,10 +113,6 @@ enum UIAlertRespondExecutor {
         }
         return (summary.buttons[index], alert.actions[index])
     }
-
-    /// 手动 dismiss 已被 `UIAlertController.explore_dismissWithAction` 取代：现在由系统私有
-    /// `_dismissWithAction:` 在点击流程内同时完成 dismiss 与 handler 调用，executor 不再手动
-    /// 关闭 alert（手动 dismiss 曾导致嵌套场景第二层弹不出来，详见设计文档「限制」与「备选方案」）。
 
     /// 构造按钮选择条件摘要，只写入标题长度或短值，避免日志中混入过长输入。
     private static func selectorDescription(_ input: UIAlertRespondInput) -> String {

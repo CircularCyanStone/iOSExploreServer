@@ -94,43 +94,20 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           logMessage: "ui tap target ambiguous action=\(action) target=\(targetDescription) count=\(count)")
     }
 
-    /// ui.tap 的目标点没有命中任何 view。
+    /// ui.tap 找到了 view，但目标类型没有默认激活路由。
     ///
-    /// - Parameters:
-    ///   - action: 触发失败的 action 名。
-    ///   - targetDescription: 目标摘要。
-    ///   - x: window 坐标 x。
-    ///   - y: window 坐标 y。
-    /// - Returns: `invalid_data` 失败描述。
-    static func hitTestFailed(action: String, targetDescription: String, x: Double, y: Double) -> UIKitCommandError {
-        UIKitCommandError(code: .invalidData,
-                          message: "tap point did not hit any view",
-                          logMessage: "ui tap hit test failed action=\(action) target=\(targetDescription) x=\(x) y=\(y)")
-    }
-
-    /// ui.tap 按 view 定位时，中心点被其他 view 命中。
-    ///
-    /// - Parameters:
-    ///   - action: 触发失败的 action 名。
-    ///   - targetDescription: 目标摘要。
-    ///   - hitType: 实际命中 view 的类型名。
-    /// - Returns: `invalid_data` 失败描述。
-    static func hitMismatch(action: String, targetDescription: String, hitType: String) -> UIKitCommandError {
-        UIKitCommandError(code: .invalidData,
-                          message: "tap point hit a different view",
-                          logMessage: "ui tap hit mismatch action=\(action) target=\(targetDescription) hitType=\(hitType)")
-    }
-
-    /// ui.tap 找到了 view，但第一版无法派发非 UIControl 的真实 tap。
+    /// 默认激活仅覆盖 UIButton（touchUpInside）、UISwitch（toggle + valueChanged）、文本输入
+    ///（becomeFirstResponder）；UISlider / UISegmentedControl / 普通 UIView / 手势 view 命中本错误。
+    /// 区别于 `unsupportedAction`（控件存在但请求的事件不支持）：这里是目标类型本身无默认 tap 路由。
     ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名。
     ///   - targetDescription: 目标摘要。
     ///   - type: 目标 view 的类型名。
-    /// - Returns: `invalid_data` 失败描述。
+    /// - Returns: `unsupported_target` 失败描述。
     static func unsupportedTarget(action: String, targetDescription: String, type: String) -> UIKitCommandError {
-        UIKitCommandError(code: .invalidData,
-                          message: "tap dispatch is only supported for UIControl in this version",
+        UIKitCommandError(code: .unsupportedTarget,
+                          message: "target has no default activation route (UIButton / UISwitch / text input only)",
                           logMessage: "ui tap unsupported target action=\(action) target=\(targetDescription) type=\(type)")
     }
 
@@ -288,6 +265,19 @@ struct UIKitCommandError: Error, Sendable, Equatable {
         UIKitCommandError(code: .alertButtonTriggerFailed,
                           message: "alert button handler could not be triggered",
                           logMessage: "ui alert button trigger failed action=\(action) reason=\(reason)")
+    }
+
+    /// 非 Debug 构建：`ui.alert.respond` 的 `dryRun=false` 触发路径被 `#if DEBUG` 隔离，不可用。
+    ///
+    /// 区别于 `alertButtonRequired`（多按钮需指定选择器，补参数可解决）：这里是构建配置硬限制，
+    /// 调用方应改用 `dryRun=true` 查询，触发交宿主自定义 action 或人工。
+    ///
+    /// - Parameter action: 触发失败的 action 名。
+    /// - Returns: `alert_release_unsupported` 失败描述。
+    static func alertRespondDisabledInRelease(action: String) -> UIKitCommandError {
+        UIKitCommandError(code: .alertReleaseUnsupported,
+                          message: "alert trigger is disabled in Release builds; use dryRun=true to query",
+                          logMessage: "ui alert respond disabled in release action=\(action)")
     }
 
     /// 键盘或 first responder 收起失败。

@@ -7,8 +7,9 @@ import UIKit
 ///
 /// 在 `MainActor` 上完成：经 `UIScrollResolver` 解析滚动容器 → `UIScrollGeometry` 计算
 /// 距离并单步滚动 → 回传完整 offset/extent/inset 摘要。容器解析、几何计算已下沉到共享
-/// 原语（供 `ui.scrollToElement` 复用），本类型只保留 scroll 特有的「amount 缺省 = 可见区
-/// 一半」语义与日志/响应组装。所有失败出口通过 `UIKitCommandError` 工厂构造。
+/// 原语（`ui.scrollToElement` 已改用 `scrollRectToVisible`，不复用本类型的 step），
+/// 本类型只保留 scroll 特有的「amount 缺省 = 可见区一半」语义与日志/响应组装。
+/// 所有失败出口通过 `UIKitCommandError` 工厂构造。
 ///
 /// `execute` 为同步方法（`setContentOffset(animated: false)` 同步更新 contentOffset，
 /// 立即读 after 即为目标值，语义确定；`animated: true` 仅调试用，此时 after 为动画启动

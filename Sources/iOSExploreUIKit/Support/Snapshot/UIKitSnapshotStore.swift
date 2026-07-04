@@ -135,12 +135,6 @@ public struct UIKitSnapshotContext: Sendable, Equatable {
     /// 当前顶部控制器的进程内实例标识。
     public let topViewControllerIdentity: String
 
-    /// 兼容既有诊断调用的摘要。
-    ///
-    /// 新实现不得把实例 identity 写入日志；该属性仅保留旧 collector 在迁移到新 context
-    /// 构造方式前的编译兼容，返回顶部控制器 identity。
-    public var digest: String { topViewControllerIdentity }
-
     /// 创建一个上下文摘要。
     ///
     /// - Parameters:
@@ -149,13 +143,6 @@ public struct UIKitSnapshotContext: Sendable, Equatable {
     public init(windowIdentity: String, topViewControllerIdentity: String) {
         self.windowIdentity = windowIdentity
         self.topViewControllerIdentity = topViewControllerIdentity
-    }
-
-    /// 兼容旧调用方提供的单一上下文摘要。
-    ///
-    /// - Parameter digest: 旧版调用方提供的上下文摘要。
-    public init(digest: String) {
-        self.init(windowIdentity: digest, topViewControllerIdentity: digest)
     }
 
     /// 仅供测试的固定上下文 fixture。

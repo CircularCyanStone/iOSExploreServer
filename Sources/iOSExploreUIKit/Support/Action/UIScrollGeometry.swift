@@ -6,8 +6,8 @@ import UIKit
 /// `ui.scroll` 的滚动几何计算（原语抽取自 `UIScrollExecutor`）。
 ///
 /// 把默认距离、方向 → delta、边界判定、单步滚动四个纯几何操作集中到一处。注意：
-/// `ui.scrollToElement` 改用 UIKit 原生 `scrollRectToVisible` 后不再调用本类型（step /
-/// delta / reachedExtent 当前仅 `ui.scroll` 使用）；保留是为未来可能的循环 scroll 命令复用。
+/// `ui.scrollToElement` 改用 UIKit 原生 `scrollRectToVisible` 后不再调用本类型；
+/// step / delta / reachedExtent 当前仅 `ui.scroll` 使用。
 /// 全部基于 `adjustedContentInset`（含 safe area），与迁移前的 `ui.scroll` 行为一致。
 @MainActor
 enum UIScrollGeometry {
@@ -64,7 +64,7 @@ enum UIScrollGeometry {
     }
 }
 
-/// 单步滚动结果（`ui.scroll` / `ui.scrollToElement` 共享）。
+/// 单步滚动结果（仅 `ui.scroll` 使用，`ui.scrollToElement` 已改用 `scrollRectToVisible`）。
 ///
 /// 值类型快照：捕获一次 `setContentOffset` 前后的 offset、边界与 inset，便于 executor
 /// 统一构造对外 JSON。`animated: false` 时 after 为目标值；`animated: true` 时 after 为

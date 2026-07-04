@@ -200,11 +200,26 @@ public enum ExploreError: String, Sendable {
     /// 已选中 alert 按钮，但无法取到或执行对应的 handler。
     case alertButtonTriggerFailed = "alert_button_trigger_failed"
 
+    /// 非 Debug 构建下 `ui.alert.respond` 的 `dryRun=false` 不支持触发。
+    ///
+    /// 真实触发依赖 Debug-only 私有 API（`_dismissWithAction:`），Release 构建下该路径被
+    /// `#if DEBUG` 隔离不存在，此时只能 `dryRun=true` 查询。区别于 `alert_button_required`
+    ///（多按钮未指定选择器，补参数可解决）：这里是构建配置硬限制，补按钮参数无效。
+    case alertReleaseUnsupported = "alert_release_unsupported"
+
     /// 键盘或 first responder 收起失败。
     case keyboardDismissFailed = "keyboard_dismiss_failed"
 
     /// 目标在当前 UI 树或滚动搜索后仍未找到。
     case targetNotFound = "target_not_found"
+
+    /// 目标定位成功，但其类型没有默认激活路由（如 slider/segmented/普通 view 请求 tap）。
+    ///
+    /// 区别于参数校验失败的 `invalid_data`：目标本身已定位，只是不在默认激活覆盖范围内
+    ///（UIButton / UISwitch / 文本输入）。供 `UIKitCommandError.unsupportedTarget` 引用，
+    /// 也是未来 `ui.tap` realTouch 模式不可用时的分流出口，让调用方能按 code 区分
+    ///「参数错」与「目标类型不支持默认 tap」。
+    case unsupportedTarget = "unsupported_target"
 
     /// 输入被业务规则拒绝（如非法文本、不可编辑元素），区别于 schema 解析失败的 `invalid_data`。
     case inputRejected = "input_rejected"

@@ -47,25 +47,10 @@ struct UIKitCommandErrorTests {
         #expect(error.failure.logMessage.contains("count=3"))
     }
 
-    @Test("命中测试失败使用 invalid_data 并记录坐标")
-    func hitTestFailedMapsToInvalidData() {
-        let error = UIKitCommandError.hitTestFailed(action: "ui.tap", targetDescription: "root/0", x: 10, y: 20)
-        #expect(error.result == .failure(code: .invalidData, message: "tap point did not hit any view"))
-        #expect(error.failure.logMessage.contains("x=10.0"))
-        #expect(error.failure.logMessage.contains("y=20.0"))
-    }
-
-    @Test("命中目标不一致使用 invalid_data")
-    func hitMismatchMapsToInvalidData() {
-        let error = UIKitCommandError.hitMismatch(action: "ui.tap", targetDescription: "root/0", hitType: "UILabel")
-        #expect(error.result == .failure(code: .invalidData, message: "tap point hit a different view"))
-        #expect(error.failure.logMessage.contains("hitType=UILabel"))
-    }
-
-    @Test("非 UIControl 目标使用 invalid_data")
-    func unsupportedTargetMapsToInvalidData() {
+    @Test("无默认激活路由目标使用 unsupported_target")
+    func unsupportedTargetMapsToUnsupportedTarget() {
         let error = UIKitCommandError.unsupportedTarget(action: "ui.tap", targetDescription: "root/0", type: "UILabel")
-        #expect(error.result == .failure(code: .invalidData, message: "tap dispatch is only supported for UIControl in this version"))
+        #expect(error.result == .failure(code: .unsupportedTarget, message: "target has no default activation route (UIButton / UISwitch / text input only)"))
         #expect(error.failure.logMessage.contains("type=UILabel"))
     }
 
