@@ -15,27 +15,27 @@ struct UIKitLocatorTests {
 
     @Test("UIKitLocator 解析 identifier 与 path")
     func uikitLocatorParsesIdentifierAndPath() throws {
-        #expect(try UIKitLocator.parse(identifier: "home.submit", path: nil) ==
+        #expect(try UIKitLocator.parse(identifier: "home.submit", rawPath: nil) ==
             .accessibilityIdentifier("home.submit"))
-        #expect(try UIKitLocator.parse(identifier: nil, path: "root/0/2") ==
+        #expect(try UIKitLocator.parse(identifier: nil, rawPath: "root/0/2") ==
             .path([0, 2]))
-        #expect(try UIKitLocator.parse(identifier: nil, path: "root") ==
+        #expect(try UIKitLocator.parse(identifier: nil, rawPath: "root") ==
             .path([]))
     }
 
     @Test("identifier 与 path 互斥且必须提供其一")
     func uikitLocatorEnforcesIdentifierPathExclusivity() {
         expectQueryFailure("accessibilityIdentifier and path are mutually exclusive") {
-            try UIKitLocator.parse(identifier: "home", path: "root/0")
+            try UIKitLocator.parse(identifier: "home", rawPath: "root/0")
         }
         expectQueryFailure("accessibilityIdentifier must not be empty") {
-            try UIKitLocator.parse(identifier: "", path: nil)
+            try UIKitLocator.parse(identifier: "", rawPath: nil)
         }
         expectQueryFailure("path must be root or root/<non-negative-index>/...") {
-            try UIKitLocator.parse(identifier: nil, path: "bad/path")
+            try UIKitLocator.parse(identifier: nil, rawPath: "bad/path")
         }
         expectQueryFailure("either accessibilityIdentifier or path is required") {
-            try UIKitLocator.parse(identifier: nil, path: nil)
+            try UIKitLocator.parse(identifier: nil, rawPath: nil)
         }
     }
 }

@@ -39,18 +39,12 @@ public enum UIKitViewLookupTarget: Sendable, Equatable {
         "root" + indexes.map { "/\($0)" }.joined()
     }
 
-    /// 转换为统一定位器 `UIKitLocator`。
+    /// 转换为统一定位器 `UIKitLocator`（执行层别名）。
     ///
-    /// 本类型仅表达 identifier/path 两种 view 定位语义；交互执行前会桥接为
-    /// `UIKitLocator`，再交给 resolver/executor 解析。
-    public var locator: UIKitLocator {
-        switch self {
-        case .accessibilityIdentifier(let value):
-            return .accessibilityIdentifier(value)
-        case .path(let value):
-            return .path(value)
-        }
-    }
+    /// `UIKitLocator` 已是本类型的 typealias，故该属性返回自身；保留属性名是给执行层入口
+    ///（`UIKitActionPlan` / `UIKitLocatorResolver`）一个显式语义标记：「把解析层 target
+    /// 交给执行层 locator」，调用点读起来意图明确，不必让读者自行把两个名字对上。
+    public var locator: UIKitLocator { self }
 
     /// 从 identifier/path 字段解析通用目标。
     ///
