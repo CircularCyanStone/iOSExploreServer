@@ -25,7 +25,7 @@
 | `Commands/Alert/` | 2 | `ui.alert.respond` 命令（adapter + models） |
 | `Support/Context/` | 1 | 前台 window / 顶部控制器 |
 | `Support/Locator/` | 3 | 定位语义 + 真实 view 解析 + view lookup 模型 |
-| `Support/Action/` | 15 | 动作执行引擎 + 默认激活路由 + scroll 原语 + 各命令 executor |
+| `Support/Action/` | 16 | 动作执行引擎 + 默认激活路由 + scroll 原语 + 各命令 executor（含手势 target-action adapter） |
 | `Support/Snapshot/` | 4 | 陈旧检测（指纹快照 + 语义摘要） |
 | `Support/Navigation/` | 1 | navigationBar 检查器（读 navigationItem 摘要） |
 | `Support/Parsing/` | 3 | UIKit command 共享字段、locator input helper、安全数字、底层 parse 错误类型 |
@@ -122,13 +122,13 @@
 
 ### `UIKitActionExecutor.swift` 🍎
 - **职责**：`@MainActor`，tap 与 control.sendAction 的实际 UIKit 执行入口。
-- **关键点**：**全模块执行核心**。`execute(_:) throws -> JSON` / `execute(_:context:) throws -> JSON`——成功返回纯 `JSON`，失败 `throw UIKitCommandError`。固定流程：取 Context → resolve locator（线性 `try`）→ **`viewSnapshotID` 陈旧校验（必填，`validateViewSnapshot`）** → tap 走默认激活路由（`UIKitDefaultActivationResolver`，不做 hit-test / 坐标 / 祖先 fallback）/ control 走 `sendActions(for:)`。复用调用方已 locate 的 `LocatedView` 避免二次遍历。失败日志不在执行器内记——统一由 handler 顶层 `catch` 后记 `error.failure.logMessage`。有 `execute(_:context:)` 注入入口供测试。
-- **依赖**：UIKit、`UIKitContextProvider`、`UIKitLocatorResolver`、`UIKitDefaultActivationResolver`、`UIKitSnapshotStore`、`UIKitFingerprintCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
+- **关键点**：**全模块执行核心**。`execute(_:) throws -> JSON` / `execute(_:context:) throws -> JSON`——成功返回纯 `JSON`，失败 `throw UIKitCommandError`。固定流程：取 Context → resolve locator（线性 `try`）→ **`viewSnapshotID` 陈旧校验（必填，`validateViewSnapshot`）** → tap 走默认激活路由（`UIKitDefaultActivationResolver`，不做 hit-test / 坐标 / 祖先 fallback）；default route nil 时若目标**非 UIControl 且挂有手势**，走 `UIGestureTargetExecutor` adapter 派发手势 target-action（`activationRoute = gesture.targetAction`，响应含 `gestures`/`triggeredCount`）/ control 走 `sendActions(for:)`。复用调用方已 locate 的 `LocatedView` 避免二次遍历。失败日志不在执行器内记——统一由 handler 顶层 `catch` 后记 `error.failure.logMessage`。有 `execute(_:context:)` 注入入口供测试。
+- **依赖**：UIKit、`UIKitContextProvider`、`UIKitLocatorResolver`、`UIKitDefaultActivationResolver`、`UIGestureTargetExecutor`、`UIKitSnapshotStore`、`UIKitFingerprintCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
 - **被调用**：`UITapCommand`、`UIControlSendActionCommand`。
 
 ### `UIKitDefaultActivationResolver.swift` 🍎
 - **职责**：`@MainActor`，`ui.tap` 的"默认激活动作"路由判定（按 target 类型派发，非触摸注入）。
-- **关键点**：V1 路由表：`UIButton` → `sendActions(.touchUpInside)`（`activationRoute = control.touchUpInside`）；`UISwitch` → `setOn(!isOn)` + `sendActions(.valueChanged)`（`switch.toggle`，响应含 `previousValue`/`currentValue`）；`UITextField`/`UITextView` → `becomeFirstResponder`（`input.focus`，响应含 `isFirstResponder`，失败复用 `becomeFirstResponderFailed` 错误码）。`UISlider`/`UISegmentedControl`/普通 `UIView` 无默认激活路由 → executor 返回 `unsupported_target`。navigationBar 走 `ui.navigation.tapBarButton`、alert 走专用命令，均不并入本路由。
+- **关键点**：V1 路由表：`UIButton` → `sendActions(.touchUpInside)`（`activationRoute = control.touchUpInside`）；`UISwitch` → `setOn(!isOn)` + `sendActions(.valueChanged)`（`switch.toggle`，响应含 `previousValue`/`currentValue`）；`UITextField`/`UITextView` → `becomeFirstResponder`（`input.focus`，响应含 `isFirstResponder`，失败复用 `becomeFirstResponderFailed` 错误码）。`UISlider`/`UISegmentedControl`/无手势的普通 `UIView` 无默认激活路由 → executor 返回 `unsupported_target`；**挂有手势的非 UIControl view 不经本路由**——由 `executeTap` 的手势 adapter 分支（`UIGestureTargetExecutor`）处理，`availableActions` 不声明 tap（agent 据 `hasGestureRecognizers` 推断）。navigationBar 走 `ui.navigation.tapBarButton`、alert 走专用命令，均不并入本路由。
 - **依赖**：UIKit、`UIKitCommandError`、`UIKitCommandLogging`。
 - **被调用**：`UIKitActionExecutor`（tap 分支）。
 
@@ -212,7 +212,7 @@
 
 ### `UIViewTargetsModels.swift` ✅
 - **职责**：轻量目标的全部模型——`UIViewTargetsInput` + `UIViewTargetCandidate` + `UIViewTargetSummary` + 角色/状态/文本裁剪。
-- **关键点**：`UIViewTargetsInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；**`UIViewTargetsInput.shouldInclude` 是 canonical 目标发现决策核心**，纯 Foundation-only 逻辑。**包含策略改为 canonical-only**：只含 UIControl 系（UIButton/UISwitch/UISlider/UISegmentedControl/UITextField/自定义 UIControl）+ UIScrollView 系（UIScrollView/UITableView/UICollectionView/UITextView）；普通 UILabel / container / gesture-only view / 仅 identifier 或 label 的普通 view 不再进 targets（观察职责在 `ui.topViewHierarchy`）。按钮内部 label/image 不作为独立 target，文本汇总到父 target 的 `semanticText`。disabled control 仍 include（`availableActions` 为空）。`maxTargets` 默认 200（上限 512），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本。
+- **关键点**：`UIViewTargetsInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；**`UIViewTargetsInput.shouldInclude` 是 canonical 目标发现决策核心**，纯 Foundation-only 逻辑。**包含策略改为 canonical-only**：含 UIControl 系（UIButton/UISwitch/UISlider/UISegmentedControl/UITextField/自定义 UIControl）+ UIScrollView 系（UIScrollView/UITableView/UICollectionView/UITextView）+ **挂有 gesture recognizer 的非 control view**（手势 adapter 能派发其 target-action，故签发 viewSnapshotID 让 `ui.tap` 可达）；普通 UILabel / container / 仅 identifier 或 label 的普通 view 不再进 targets（观察职责在 `ui.topViewHierarchy`）。按钮内部 label/image 不作为独立 target，文本汇总到父 target 的 `semanticText`。disabled control 仍 include（`availableActions` 为空）。`maxTargets` 默认 200（上限 512），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本。
 - **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitSnapshotLimits`、`UIKitActionAvailability`、`UIViewHierarchyRect`。
 
 ### `UIViewTargetsCollector.swift` 🍎
@@ -279,6 +279,8 @@
 - **`UIScrollToElementExecutor.swift`** 🍎 — `@MainActor`，容器内 findTarget + `scrollRectToVisible`。用 UIKit 原生（自动最短滚动、保证可见），替代循环小步 scroll 避免污染 snapshot store（评审 M3）；不签 snapshot（滚动改变可见性会让旧 snapshot 整表 stale，后续 `ui.tap`/`ui.wait snapshotChanged` 必须用新 viewSnapshotID——agent 应重新 `ui.viewTargets`，不能靠 `ui.screenshot`，后者不签发 snapshot；见 agent-usage-protocol §5.3）。
 - **`UIAlertInspector.swift`** 🍎 — `@MainActor`，`findAlert`（cast topViewController）+ `summarize`（actions 的 index/title/role）。不依赖 present 转场（评审 M7），logic test 可靠。
 - **`UIAlertRespondExecutor.swift`** 🍎 — `@MainActor`。dryRun=true 返回 alert 信息；dryRun=false 在 Debug 下按 `buttonTitle`/`buttonIndex`/`role` 选按钮，调 `UIAlertController.explore_dismissWithAction(_:)`（系统私有 `_dismissWithAction:`，由系统自动 dismiss + 调 handler，嵌套 present 也由系统协调），返回 `{ performed, dismissed, button }`；未 present 的 alert（典型是 logic test 构造对象）回退 `UIAlertAction.explore_performHandler()` 直接调 handler block（`dismissed=false`）。Release 下 dryRun=false 回退 `alertButtonRequired`（私有 API 被 `#if DEBUG` 隔离）。早期版本曾判定「`UIAlertAction` handler 无公共触发路径，dryRun=false 必抛 alertButtonRequired」为公共 API 硬边界，现已被 Debug-only 私有入口打破，详见 `docs/superpowers/specs/2026-07-03-alert-respond-dryrun-false-design.md`。
+- **`UIGestureTargetExecutor.swift`** 🍎 — `@MainActor`。`ui.tap` 手势 target-action 显式 adapter（realTouch 合成触摸被 spike 否决后的降级方案）：遍历 `view.gestureRecognizers`，对每个调 `UIGestureRecognizer.explore_targetActionPairs()`（runtime 读私有 ivar），按 selector 签名派发（复用 `UINavigationBarButtonExecutor.invoke` 的 0/1/2 参适配，`method_getNumberOfArguments` 读实参个数），sender 传手势识别器本身。多手势/多 target **全触发**，返回 `gestures` 摘要列表（gestureType/targetType/action）。调用 `#if DEBUG` runtime 入口的隔离边界参照 `UIAlertRespondExecutor`（Release 返回 nil 让 executeTap fallthrough 到 `unsupported_target`）。由 `UIKitActionExecutor.executeTap` 在 default route nil + **非 UIControl** 时调用（排除 UIControl 是为避免误触发 UISlider 等内部手势）；`availableActions` 不声明 tap（agent 据 `hasGestureRecognizers` 字段推断可试 tap）。详见 `docs/superpowers/reviews/2026-07-04-ui-tap-gesture-adapter.md`。
+- **`Support/Runtime/UIGestureRecognizer+Trigger.swift`**（`#if DEBUG #if canImport(UIKit)`）— 封装手势 target-action 读取为 `explore_targetActionPairs() -> [(target: NSObject, action: Selector)]`。C API（`class_getInstanceVariable` + `ivar_getOffset` + 裸内存 `load`，**不用 KVC `value(forKey:)`**——Swift 无法 catch ObjC NSException，C API 在 ivar 不存在时返回 NULL）读 `UIGestureRecognizer._targets` → 每个 `UIGestureRecognizerTarget` 私有对象的 `_target` + `_action`。ivar 名用候选名列表 + runtime 探测（`GestureTargetField`），不硬编码；弱引用 target dealloc 后读出 nil 跳过（不 crash）。iOS 26 三个 ivar（`_targets`/`_target`/`_action`）未漂移，与 Lookin 一致，见手势 adapter 报告。
 - **`Support/Runtime/UIAlertController+TriggerAction.swift`**（`#if DEBUG`）— 封装系统私有 `_dismissWithAction:` 入口为 `explore_dismissWithAction(_:)`，让系统像真人点按钮一样自动 dismiss + 调 handler。`perform(_:with:)` 单参数调用；selector 名随 iOS 版本漂移需重新探测（备选路与放弃原因见设计文档 §14）。
 - **`Support/Runtime/UIAlertAction+Trigger.swift`**（`#if DEBUG`）— `explore_installHandlerCapture()` swizzle `actionWithTitle:style:handler:` 类工厂方法、用关联对象保存 handler block；`explore_performHandler()` 按「关联对象优先、KVC key `handler` 兜底」取 block 并按验证签名调用，作为未 present alert 的 fallback。关联对象 key 用 `UInt` 常量 + 函数返回指针，规避 Swift 6 全局可变状态。
 

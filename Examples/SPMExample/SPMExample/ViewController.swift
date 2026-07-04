@@ -27,6 +27,10 @@ final class ViewController: UIViewController {
     private let startButton = UIButton(type: .system)
     private let stopButton = UIButton(type: .system)
     private let tableView = UITableView()
+    /// 手势 adapter 真机验证 view：挂 `UITapGestureRecognizer`，target-action 累加计数并回写
+    /// accessibilityLabel，供 `ui.tap`（gesture 分支）远程触发后用 `debug.gestureTapCount` 校验副作用。
+    private let gestureDemoLabel = UILabel()
+    private var gestureTapCount = 0
     private nonisolated(unsafe) var eventsTask: Task<Void, Never>?
     #if DEBUG
     private var didRunLaunchAutomation = false
@@ -83,7 +87,17 @@ final class ViewController: UIViewController {
         server.register(action: "debug.probe",
                         description: "alive probe (非 DEBUG, 验证新 binary)",
                         input: EmptyCommandInput.self) { _ in
-            .success(["alive": .bool(true), "build": .string("spike-2026-07-04-probe")])
+            .success(["alive": .bool(true), "build": .string("gesture-adapter-2026-07-04")])
+        }
+
+        // 手势 adapter 真机验证：回读 gestureDemoLabel 的 tap 计数，校验 ui.tap gesture 分支
+        // 触发的 target-action 副作用真发生（不只是 executor 派发）。
+        server.register(action: "debug.gestureTapCount",
+                        description: "返回 gesture demo view 的 tap 计数（手势 adapter 验证）",
+                        input: EmptyCommandInput.self) { [weak self] _ in
+            await MainActor.run {
+                .success(["count": .double(Double(self?.gestureTapCount ?? -1))])
+            }
         }
 
         #if DEBUG
@@ -134,6 +148,19 @@ final class ViewController: UIViewController {
         startButton.addTarget(self, action: #selector(startTapped), for: .touchUpInside)
         stopButton.addTarget(self, action: #selector(stopTapped), for: .touchUpInside)
 
+        // 手势 adapter 验证 view：挂 UITapGestureRecognizer。ui.viewTargets 因 hasGestureRecognizers
+        // 把它列为 canonical target；ui.tap 走 gesture 分支远程触发 gestureDemoTapped。
+        gestureDemoLabel.text = "👆 gesture tap: 0"
+        gestureDemoLabel.accessibilityIdentifier = "example.gestureTap"
+        gestureDemoLabel.accessibilityLabel = "gesture-tap-count:0"
+        gestureDemoLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        gestureDemoLabel.textAlignment = .center
+        gestureDemoLabel.backgroundColor = .systemBlue.withAlphaComponent(0.12)
+        gestureDemoLabel.layer.cornerRadius = 8
+        gestureDemoLabel.clipsToBounds = true
+        gestureDemoLabel.isUserInteractionEnabled = true
+        gestureDemoLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(gestureDemoTapped)))
+
         tableView.dataSource = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
@@ -142,7 +169,7 @@ final class ViewController: UIViewController {
         buttonRow.spacing = 16
         buttonRow.translatesAutoresizingMaskIntoConstraints = false
 
-        let header = UIStackView(arrangedSubviews: [statusLabel, buttonRow])
+        let header = UIStackView(arrangedSubviews: [statusLabel, buttonRow, gestureDemoLabel])
         header.axis = .vertical
         header.spacing = 12
         header.translatesAutoresizingMaskIntoConstraints = false
@@ -153,6 +180,7 @@ final class ViewController: UIViewController {
             header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            gestureDemoLabel.heightAnchor.constraint(equalToConstant: 44),
             tableView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -182,6 +210,15 @@ final class ViewController: UIViewController {
 
     @objc private func stopTapped() {
         server.stop()
+    }
+
+    /// 手势 adapter 验证 view 的 target-action：累加计数并回写 label 文本 + accessibilityLabel。
+    /// ui.tap 的 gesture 分支远程触发它；`debug.gestureTapCount` 回读计数校验副作用真发生。
+    @objc private func gestureDemoTapped() {
+        gestureTapCount += 1
+        gestureDemoLabel.text = "👆 gesture tap: \(gestureTapCount)"
+        gestureDemoLabel.accessibilityLabel = "gesture-tap-count:\(gestureTapCount)"
+        appendLog("gesture demo tapped: \(gestureTapCount)")
     }
 
     /// push 进入 UIControl 测试页（载体页供 ui.control.sendAction 远程触发）。

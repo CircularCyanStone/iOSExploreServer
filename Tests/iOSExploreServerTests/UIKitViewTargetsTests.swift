@@ -90,12 +90,15 @@ func viewTargetsQueryShouldIncludeCandidates() {
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isHidden: true, isControl: true)) == false)
     // UIScrollView 系是 canonical（scroll / input）。
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isScrollView: true)) == true)
-    // 非 canonical：静态文本 / container / gesture 不再进入 targets（观察职责在 topViewHierarchy）。
+    // 非到此为止：静态文本 / container（仅 identifier 或 label 的 view）不再进入 targets
+    // （观察职责在 topViewHierarchy）。
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(hasStaticText: true)) == false)
     #expect(defaultQuery.shouldInclude(candidate: .testCandidate(hasSubviews: true)) == false)
     #expect(UIViewTargetsInput(includeStaticText: true).shouldInclude(candidate: .testCandidate(hasStaticText: true)) == false)
     #expect(UIViewTargetsInput(includeContainers: true).shouldInclude(candidate: .testCandidate(hasSubviews: true)) == false)
-    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isUserInteractionEnabled: true, hasGestureRecognizers: true)) == false)
+    // 挂有 gesture 的非 control view 是 canonical：手势 adapter（executeTap gesture 分支）能为其
+    // 派发 target-action，故 ui.viewTargets 签发 viewSnapshotID 让 ui.tap 可达。
+    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isUserInteractionEnabled: true, hasGestureRecognizers: true)) == true)
 }
 
 @Test("UIViewTargetSummary 转 JSON 保留轻量字段")

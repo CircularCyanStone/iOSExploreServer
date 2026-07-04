@@ -111,8 +111,11 @@ enum UIKitActionExecutor {
 
     /// 执行 tap 默认激活动作。
     ///
-    /// 先 locate、做统一 freshness 校验，再用 `UIKitDefaultActivationResolver` 决定默认激活路由；
-    /// 无确定路由的目标抛 `unsupported_target`。
+    /// 先 locate、做统一 freshness 校验，再用 `UIKitDefaultActivationResolver` 决定默认激活路由
+    /// （UIButton→touchUpInside / UISwitch→翻转+valueChanged / 文本输入→聚焦）。无确定公开路由
+    /// 但目标挂有 `UIGestureRecognizer` 时，走手势 target-action adapter（`UIGestureTargetExecutor`
+    /// runtime 读私有 ivar 派发）作为补充；adapter 也不可达（无 gesture / ivar 漂移 / Release）
+    /// 的目标才抛 `unsupported_target`。
     ///
     /// - Parameters:
     ///   - locator: canonical target 的统一定位器（identifier / path）。
@@ -132,6 +135,32 @@ enum UIKitActionExecutor {
         try validateViewSnapshot(located: located, viewSnapshotID: viewSnapshotID, context: context, action: tapAction)
 
         guard let route = UIKitDefaultActivationResolver.route(for: located.view) else {
+            // 无 default 公开路由：尝试手势 target-action adapter（依赖 `UIGestureRecognizer` 的
+            // 自定义 view）。adapter 是 executeTap 内部补充分支，不改 default 三路行为，也不改
+            // `ui.tap` schema/协议——agent 据 `ui.viewTargets` 响应的 `hasGestureRecognizers` 字段
+            // 推断可试 tap，用 path/identifier + viewSnapshotID 发 `ui.tap`，executor 在此触发。
+            // `availableActions` 不声明 tap：gesture 触发是启发式补充（runtime 读私有 ivar 派发），
+            // 非 UIButton/UISwitch/文本输入那样的确定公开激活路由。
+            //
+            // 只对非 `UIControl` 的 view 触发：`UISlider`/`UISegmentedControl` 等 UIControl 内部
+            // 也挂 gesture（用于自身交互），adapter 若介入会误触发其内部 target-action，破坏原本
+            // `unsupported_target` 语义；UIControl 子类应走 default route 或 `control.sendAction`。
+            //
+            // adapter 返回空（非 UIControl 但无 gesture，或 iOS 版本 ivar 漂移读不出 target-action，
+            // 或 Release 下 runtime 入口隔离成空壳）时，fallthrough 到 `unsupported_target`，与原行为一致。
+            if !(located.view is UIControl),
+               let triggered = UIGestureTargetExecutor.execute(on: located.view), !triggered.isEmpty {
+                UIKitCommandLogging.info("command",
+                    "ui tap default activation route=gesture.targetAction path=\(located.pathString) type=\(String(describing: Swift.type(of: located.view))) triggered=\(triggered.count)")
+                return [
+                    "activated": .bool(true),
+                    "activationRoute": .string("gesture.targetAction"),
+                    "path": .string(located.pathString),
+                    "type": .string(String(describing: Swift.type(of: located.view))),
+                    "gestures": .array(triggered.map { gestureTriggeredJSON($0) }),
+                    "triggeredCount": .double(Double(triggered.count)),
+                ]
+            }
             throw UIKitCommandError.unsupportedTarget(action: tapAction,
                                                       targetDescription: located.pathString,
                                                       type: String(describing: Swift.type(of: located.view)))
@@ -247,6 +276,17 @@ enum UIKitActionExecutor {
     /// locator 的日志/响应摘要，复用 `UIKitLocator` 文案。
     private static func locatorSummary(_ locator: UIKitLocator) -> String {
         locator.logSummary
+    }
+
+    /// 把一对已触发的手势 target-action 摘要序列化进 `ui.tap` 响应的 `gestures` 数组。
+    ///
+    /// 只输出类型名与 selector 名，不含 target 对象引用或原始 payload，避免泄露业务对象。
+    private static func gestureTriggeredJSON(_ pair: UIGestureTriggeredPair) -> JSONValue {
+        .object(JSON([
+            "gestureType": .string(pair.gestureType),
+            "targetType": .string(pair.targetType),
+            "action": .string(pair.action),
+        ]))
     }
 }
 

@@ -119,12 +119,16 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     /// - 任何 `UIControl`（`UIButton`/`UISwitch`/`UISlider`/`UISegmentedControl`/
     ///   `UITextField`/custom control，含 disabled——disabled 仍可观察，其 `availableActions`
     ///   由 capability resolver 决定为空）；
-    /// - `UIScrollView` 系（含 `UITextView`：input；纯 scroll view：scroll）。
+    /// - `UIScrollView` 系（含 `UITextView`：input；纯 scroll view：scroll）；
+    /// - 挂有 `UIGestureRecognizer` 的非 control view（手势 adapter 为其派发 target-action，
+    ///   见 `UIKitActionExecutor.executeTap` 的 gesture 分支）。
     ///
-    /// 普通 `UILabel`、container、gesture-only、仅 identifier 或 label 的 view 不再进入
-    /// targets（其观察职责在 `ui.topViewHierarchy`）。`includeStaticText`/`includeContainers`/
-    /// `includeDisabled` 字段保留 schema 兼容，但 canonical-only 规则下不再让非可执行 view
-    /// 进入 targets，也不再因 `includeDisabled=false` 排除 disabled canonical target。
+    /// 普通 `UILabel`、container、仅 identifier 或 label 的 view 不再进入 targets（其观察职责在
+    /// `ui.topViewHierarchy`）。挂有 gesture 的非 control view 进入 targets——手势 adapter 能为它
+    /// 派发 target-action，故它是可执行目标；`availableActions` 不声明 tap（capability 只认 default
+    /// route），agent 据 `hasGestureRecognizers` 字段推断可试 tap。`includeStaticText`/
+    /// `includeContainers`/`includeDisabled` 字段保留 schema 兼容，但 canonical-only 规则下不再让
+    /// 静态/容器 view 进入 targets，也不再因 `includeDisabled=false` 排除 disabled canonical target。
     ///
     /// 该方法只依赖 Foundation-only 的候选摘要，便于在非 UIKit 测试中覆盖采集器的包含策略。
     ///
@@ -134,6 +138,9 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
         if !includeHidden, candidate.isHidden { return false }
         if candidate.isControl { return true }
         if candidate.isScrollView { return true }
+        // 非 control/scroll 但挂有 gesture 的 view：手势 adapter（executeTap gesture 分支）能为它
+        // 派发 target-action，是可执行 target，签发 viewSnapshotID 让 ui.tap 可达。
+        if candidate.hasGestureRecognizers { return true }
         return false
     }
 
