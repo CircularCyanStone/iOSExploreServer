@@ -5,8 +5,30 @@ import UIKit
 
 /// 当前顶部控制器轻量交互目标查询命令。
 ///
-/// action 为 `ui.viewTargets`。命令面向事件下发前的目标发现，只返回 path、语义、短文本、
-/// window frame 和基础交互状态，不返回完整布局验收树。
+/// action 为 `ui.viewTargets`。命令面向**事件下发前的目标发现**：只返回可被现有公开命令
+/// （`ui.tap` / `ui.control.sendAction` / `ui.input`）直接操作的 canonical target——
+/// `UIControl`、`UIScrollView` 系、挂有 `UIGestureRecognizer` 的 view。普通 `UILabel`、
+/// container、纯展示 view 不进入列表（其观察职责在 `ui.topViewHierarchy`）。
+///
+/// 与 `ui.topViewHierarchy` 的关键差异：
+/// - **签发 `viewSnapshotID`**——`ui.tap` / `ui.control.sendAction` / `ui.input` 调用前
+///   **必须**先调本命令，并把同响应返回的 `viewSnapshotID` 原样传入；`topViewHierarchy`
+///   不签发指纹，不能用于事件下发。
+/// - **扁平 targets 数组** vs 后者的嵌套 root 树；本命令只覆盖 canonical target（典型页面
+///   nodeCount≈88，targetCount≈29），后者覆盖全量视图节点。
+/// - **cell 子 view 上挂 `indexPath`**：canonical target 通常是 cell 的内部子 view
+///   （`UIListContentView`、cell accessory button 等），`indexPath` 直接挂在这些 target 上，
+///   调用方按 section/item 选行不再依赖 subviews 物理顺序或 frame.y 猜——subviews 顺序由
+///   z-order 决定，与行号无关。`UITableViewCell` / `UICollectionViewCell` 节点本身因不是
+///   canonical target 不进入列表，要看 cell 节点本身用 `ui.topViewHierarchy`。
+/// - **indexPath 字段在两者都已存在**，按命令用途择优：要后续 tap/sendAction 选 `viewTargets`；
+///   只看 cell 与 indexPath 的映射（无 tap 意图）选 `topViewHierarchy`，结构更接近视图树。
+///
+/// 适用场景：
+/// - 选 table/collection 的某行 cell → 用本命令，按 `indexPath` 字段确认行号后用同响应的
+///   `path` + `viewSnapshotID` 直接 tap，单命令完成。
+/// - 已知 `accessibilityIdentifier` 想确认 view 是否可达 → 本命令比 `topViewHierarchy` 轻。
+/// - 看完整视图结构 / 颜色 / 字体 / 验收字段 → 用 `ui.topViewHierarchy`。
 struct ViewTargetsCommand: Command {
     /// typed 输入模型，负责 schema 暴露和 data 解析。
     typealias Input = UIViewTargetsInput
@@ -18,7 +40,7 @@ struct ViewTargetsCommand: Command {
     let action = ViewTargetsCommand.actionName
 
     /// `help` 命令展示的说明。
-    let description = "返回当前顶部控制器中可用于事件下发的轻量 UI 目标列表"
+    let description = "返回可被 ui.tap / ui.control.sendAction / ui.input 直接操作的 canonical target 列表，签发 viewSnapshotID；调用方按 indexPath 字段选 cell，不依赖 subviews 顺序或 y 坐标"
 
     /// 执行轻量目标查询。
     ///

@@ -349,6 +349,10 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     /// 与 `role` 无关，按真实 view 类型和 enabled 状态生成。非 canonical 目标或 disabled 控件
     /// 时为空，避免把静态节点标成可 tap；不会借祖先 `UIControl` 生成能力。
     public let availableActions: UIKitActionAvailability
+    /// cell 的 indexPath（仅 `UITableViewCell`/`UICollectionViewCell` 相关的 target 有效）。
+    ///
+    /// 调用方可据此直接按 section/item 选 cell，不再依赖 subviews 物理顺序或 frame.y 猜行。
+    public let indexPath: IndexPathSummary?
 
     /// 创建目标摘要。
     ///
@@ -367,6 +371,7 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     ///   - frame: window 坐标系 frame。
     ///   - state: 目标状态。
     ///   - availableActions: executor 实际可派发的动作集合。
+    ///   - indexPath: cell 的 indexPath。
     public init(path: String,
                 type: String,
                 role: UIViewTargetRole,
@@ -380,7 +385,8 @@ public struct UIViewTargetSummary: Sendable, Equatable {
                 semanticTextSource: String? = nil,
                 frame: UIViewHierarchyRect,
                 state: UIViewTargetState,
-                availableActions: UIKitActionAvailability = UIKitActionAvailability(actions: [])) {
+                availableActions: UIKitActionAvailability = UIKitActionAvailability(actions: []),
+                indexPath: IndexPathSummary? = nil) {
         self.path = path
         self.type = type
         self.role = role
@@ -395,13 +401,14 @@ public struct UIViewTargetSummary: Sendable, Equatable {
         self.frame = frame
         self.state = state
         self.availableActions = availableActions
+        self.indexPath = indexPath
     }
 
     /// 转为命令响应 JSON。
     ///
     /// - Returns: 包含轻量定位、语义、状态、建议动作和可执行动作字段的 JSON 对象。
     public func toJSON() -> JSON {
-        [
+        var json: JSON = [
             "path": .string(path),
             "type": .string(type),
             "role": .string(role.rawValue),
@@ -423,5 +430,12 @@ public struct UIViewTargetSummary: Sendable, Equatable {
             "hasGestureRecognizers": .bool(state.hasGestureRecognizers),
             "availableActions": .array(availableActions.rawValues.map(JSONValue.string)),
         ]
+        if let indexPath {
+            json["indexPath"] = .object([
+                "section": .double(Double(indexPath.section)),
+                "item": .double(Double(indexPath.item)),
+            ])
+        }
+        return json
     }
 }

@@ -205,8 +205,41 @@ enum UIViewTargetsCollector {
                                      isSelected: control?.isSelected,
                                      isHighlighted: control?.isHighlighted,
                                      hasGestureRecognizers: view.gestureRecognizers?.isEmpty == false),
-            availableActions: availableActions(for: view, rootView: rootView)
+            availableActions: availableActions(for: view, rootView: rootView),
+            indexPath: cellIndexPath(for: view)
         )
+    }
+
+    /// 提取 cell 的 indexPath（与 `UIViewHierarchyCollector.cellIndexPath(from:)` 同口径）。
+    ///
+    /// 在 `ui.viewTargets` 响应里给 cell 相关 target 暴露 indexPath，让调用方按 section/item 选行，
+    /// 不再依赖 subviews 物理顺序或 frame.y 猜——cell 的 subview 顺序由 z-order 决定，与行号无关。
+    /// target 本身可能不是 cell 而是其子 view（如 `UIListContentView`），此时向上找最近的 cell。
+    @MainActor
+    private static func cellIndexPath(for view: UIView) -> IndexPathSummary? {
+        if let cell = view as? UITableViewCell, let tv = cell.superview as? UITableView {
+            guard let ip = tv.indexPath(for: cell) else { return nil }
+            return IndexPathSummary(section: ip.section, item: ip.row)
+        }
+        if let cell = view as? UICollectionViewCell, let cv = cell.superview as? UICollectionView {
+            guard let ip = cv.indexPath(for: cell) else { return nil }
+            return IndexPathSummary(section: ip.section, item: ip.item)
+        }
+        // target 是 cell 的子 view（如 `UIListContentView`、accessory button 等）时，
+        // 向上找最近祖先 cell，再向 tableView/collectionView 反查 indexPath。
+        var current: UIView? = view.superview
+        while let ancestor = current {
+            if let cell = ancestor as? UITableViewCell, let tv = cell.superview as? UITableView {
+                guard let ip = tv.indexPath(for: cell) else { return nil }
+                return IndexPathSummary(section: ip.section, item: ip.row)
+            }
+            if let cell = ancestor as? UICollectionViewCell, let cv = cell.superview as? UICollectionView {
+                guard let ip = cv.indexPath(for: cell) else { return nil }
+                return IndexPathSummary(section: ip.section, item: ip.item)
+            }
+            current = ancestor.superview
+        }
+        return nil
     }
 
     /// 计算 path-target 的可执行动作，供 `summary` 与可测入口共用。
