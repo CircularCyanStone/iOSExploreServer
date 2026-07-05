@@ -458,6 +458,17 @@ public protocol UIViewHierarchyElement {
     var scroll: UIViewHierarchyScroll? { get }
     /// 子元素，顺序与真实 `subviews` 顺序一致。
     var subviews: [Child] { get }
+    /// cell 的 indexPath（仅 `UITableViewCell`/`UICollectionViewCell` 有效）。
+    ///
+    /// 默认实现返回 `nil`（非 cell 节点）；UIKit 采集器在 `UIKitViewElement` 中真实填充。
+    /// 该字段不穿过 Foundation-only builder 的协议抽象——只在 UIKit 采集器侧与 `UIViewHierarchyNode`
+    /// 之间传递，用于 `ui.topViewHierarchy` 响应中 cell 节点的定位。
+    var indexPath: IndexPathSummary? { get }
+}
+
+extension UIViewHierarchyElement {
+    /// 默认实现：非 cell 节点无 indexPath。
+    public var indexPath: IndexPathSummary? { nil }
 }
 
 /// 单个 UI 节点及其递归子节点。
@@ -489,6 +500,8 @@ public struct UIViewHierarchyNode: Sendable, Equatable {
     public let scroll: UIViewHierarchyScroll?
     /// 递归子节点。
     public let subviews: [UIViewHierarchyNode]
+    /// cell 的 indexPath（仅 `UITableViewCell`/`UICollectionViewCell` 节点有效）。
+    public let indexPath: IndexPathSummary?
 
     /// 创建 UI 层级节点。
     ///
@@ -505,6 +518,7 @@ public struct UIViewHierarchyNode: Sendable, Equatable {
     ///   - image: 图片验收信息。
     ///   - scroll: 滚动验收信息。
     ///   - subviews: 递归子节点。
+    ///   - indexPath: cell 的 indexPath（仅 cell 节点有效）。
     public init(path: String,
                 type: String,
                 accessibility: UIViewHierarchyAccessibility,
@@ -516,7 +530,8 @@ public struct UIViewHierarchyNode: Sendable, Equatable {
                 control: UIViewHierarchyControl? = nil,
                 image: UIViewHierarchyImage? = nil,
                 scroll: UIViewHierarchyScroll? = nil,
-                subviews: [UIViewHierarchyNode] = []) {
+                subviews: [UIViewHierarchyNode] = [],
+                indexPath: IndexPathSummary? = nil) {
         self.path = path
         self.type = type
         self.accessibility = accessibility
@@ -529,6 +544,7 @@ public struct UIViewHierarchyNode: Sendable, Equatable {
         self.image = image
         self.scroll = scroll
         self.subviews = subviews
+        self.indexPath = indexPath
     }
 
     /// 转为命令响应中的 JSON 对象。
@@ -550,6 +566,12 @@ public struct UIViewHierarchyNode: Sendable, Equatable {
         if let control { json["control"] = .object(control.toJSON()) }
         if let image { json["image"] = .object(image.toJSON()) }
         if let scroll { json["scroll"] = .object(scroll.toJSON()) }
+        if let indexPath {
+            json["indexPath"] = .object([
+                "section": .double(Double(indexPath.section)),
+                "item": .double(Double(indexPath.item)),
+            ])
+        }
         return json
     }
 
@@ -619,7 +641,8 @@ public enum UIViewHierarchyBuilder {
                                    control: includeDetails ? element.control : nil,
                                    image: includeDetails ? element.image : nil,
                                    scroll: includeDetails ? element.scroll : nil,
-                                   subviews: childNodes)
+                                   subviews: childNodes,
+                                   indexPath: element.indexPath)
     }
 
     /// 收集匹配节点。

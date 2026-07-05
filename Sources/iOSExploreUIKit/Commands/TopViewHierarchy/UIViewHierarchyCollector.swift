@@ -87,7 +87,13 @@ private struct UIKitViewElement: UIViewHierarchyElement {
     let control: UIViewHierarchyControl?
     let image: UIViewHierarchyImage?
     let scroll: UIViewHierarchyScroll?
+    /// 子元素，顺序与真实 `subviews` 顺序一致。
     let subviews: [UIKitViewElement]
+    /// cell 的 indexPath（仅 `UITableViewCell`/`UICollectionViewCell` 节点有效）。
+    let _indexPath: IndexPathSummary?
+
+    /// 实现 `UIViewHierarchyElement.indexPath`，返回 cell 的 indexPath。
+    var indexPath: IndexPathSummary? { _indexPath }
 
     /// 从 UIKit view 创建完整值快照。
     @MainActor
@@ -117,6 +123,24 @@ private struct UIKitViewElement: UIViewHierarchyElement {
         self.image = Self.imageInfo(from: view)
         self.scroll = Self.scrollInfo(from: view)
         self.subviews = view.subviews.map { UIKitViewElement(view: $0) }
+        self._indexPath = Self.cellIndexPath(from: view)
+    }
+
+    /// 提取 `UITableViewCell` / `UICollectionViewCell` 的 indexPath。
+    ///
+    /// 通过 `tableView.indexPath(for:)` / `collectionView.indexPath(for:)` 公有 API 定位。
+    /// cell 正在动画、不在 visibleCells 内、或不是 cell 时返回 `nil`（不报错）。
+    @MainActor
+    private static func cellIndexPath(from view: UIView) -> IndexPathSummary? {
+        if let cell = view as? UITableViewCell, let tv = cell.superview as? UITableView {
+            guard let ip = tv.indexPath(for: cell) else { return nil }
+            return IndexPathSummary(section: ip.section, item: ip.row)
+        }
+        if let cell = view as? UICollectionViewCell, let cv = cell.superview as? UICollectionView {
+            guard let ip = cv.indexPath(for: cell) else { return nil }
+            return IndexPathSummary(section: ip.section, item: ip.item)
+        }
+        return nil
     }
 
     /// 提取文本验收信息。

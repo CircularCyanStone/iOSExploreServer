@@ -2,6 +2,60 @@ import Testing
 @testable import iOSExploreServer
 @testable import iOSExploreUIKit
 
+@Test("UIViewHierarchyNode 转 JSON 保留 indexPath 字段")
+func viewHierarchyNodeJSONIncludesIndexPath() {
+    let node = UIViewHierarchyNode(
+        path: "root/0",
+        type: "UITableViewCell",
+        accessibility: UIViewHierarchyAccessibility(identifier: "cell.id"),
+        frame: UIViewHierarchyRect(x: 0, y: 50, width: 375, height: 44),
+        bounds: UIViewHierarchyRect(x: 0, y: 0, width: 375, height: 44),
+        state: UIViewHierarchyState(isHidden: false, alpha: 1, isOpaque: true, isUserInteractionEnabled: true),
+        text: nil,
+        appearance: nil,
+        control: nil,
+        image: nil,
+        scroll: nil,
+        subviews: [],
+        indexPath: IndexPathSummary(section: 0, item: 2)
+    )
+
+    let json = node.toJSON()
+    guard case .object(let indexPath)? = json["indexPath"] else { Issue.record("indexPath not object"); return }
+    #expect(indexPath["section"] == .double(0))
+    #expect(indexPath["item"] == .double(2))
+}
+
+@Test("UIViewHierarchyNode 默认 indexPath 为 nil 时不序列化")
+func viewHierarchyNodeJSONOmitsIndexPathWhenNil() {
+    let node = UIViewHierarchyNode(
+        path: "root/0", type: "UIButton",
+        accessibility: UIViewHierarchyAccessibility(),
+        frame: UIViewHierarchyRect(x: 0, y: 0, width: 44, height: 44),
+        bounds: UIViewHierarchyRect(x: 0, y: 0, width: 44, height: 44),
+        state: UIViewHierarchyState(isHidden: false, alpha: 1, isOpaque: true, isUserInteractionEnabled: true),
+        subviews: []
+    )
+
+    let json = node.toJSON()
+    #expect(json["indexPath"] == nil, "nil indexPath 不应出现")
+}
+
+@Test("UIViewHierarchyBuilder 传递 indexPath 到节点")
+func viewHierarchyBuilderPassesIndexPathToNode() {
+    let root = TestViewElement(type: "Root", subviews: [
+        TestViewElement(type: "UITableViewCell", indexPath: IndexPathSummary(section: 0, item: 2)),
+        TestViewElement(type: "UIView"),
+        TestViewElement(type: "UICollectionViewCell", indexPath: IndexPathSummary(section: 1, item: 3)),
+    ])
+
+    let node = UIViewHierarchyBuilder.build(from: root, query: .default)
+
+    #expect(node.subviews[0].indexPath == IndexPathSummary(section: 0, item: 2))
+    #expect(node.subviews[1].indexPath == nil)
+    #expect(node.subviews[2].indexPath == IndexPathSummary(section: 1, item: 3))
+}
+
 @Test("UIViewHierarchyNode 转 JSON 保留结构、语义、文本和外观字段")
 func viewHierarchyNodeJSONIncludesCoreAndAcceptanceFields() {
     let node = UIViewHierarchyNode(
@@ -180,6 +234,7 @@ private struct TestViewElement: UIViewHierarchyElement {
     var image: UIViewHierarchyImage?
     var scroll: UIViewHierarchyScroll?
     var subviews: [TestViewElement]
+    var indexPath: IndexPathSummary?
 
     init(type: String,
          accessibility: UIViewHierarchyAccessibility = UIViewHierarchyAccessibility(),
@@ -194,7 +249,8 @@ private struct TestViewElement: UIViewHierarchyElement {
          control: UIViewHierarchyControl? = nil,
          image: UIViewHierarchyImage? = nil,
          scroll: UIViewHierarchyScroll? = nil,
-         subviews: [TestViewElement] = []) {
+         subviews: [TestViewElement] = [],
+         indexPath: IndexPathSummary? = nil) {
         self.type = type
         self.accessibility = accessibility
         self.frame = frame
@@ -206,5 +262,6 @@ private struct TestViewElement: UIViewHierarchyElement {
         self.image = image
         self.scroll = scroll
         self.subviews = subviews
+        self.indexPath = indexPath
     }
 }

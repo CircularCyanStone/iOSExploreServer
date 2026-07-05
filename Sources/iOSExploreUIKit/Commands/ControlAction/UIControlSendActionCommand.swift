@@ -20,7 +20,7 @@ struct UIControlSendActionCommand: Command {
     let action = UIControlSendActionCommand.actionName
 
     /// `help` 命令展示的说明。
-    let description = "向指定 UIControl 发送 target-action 事件"
+    let description = "向指定 UIControl 发送 target-action 事件。调用前必须先调 ui.viewTargets，并把同响应返回的 viewSnapshotID 原样传入"
 
     /// 执行 sendAction。
     ///

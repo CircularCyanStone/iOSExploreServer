@@ -133,11 +133,8 @@ struct UICellSelectionAttempt: Sendable, Equatable {
     let indexPathSummary: IndexPathSummary?
 }
 
-/// 公有 API 路径解析到的 section/item 摘要，跨边界前从 IndexPath 抽出。
-struct IndexPathSummary: Sendable, Equatable {
-    let section: Int
-    let item: Int
-}
+// `IndexPathSummary` 定义已移至 `Support/Parsing/IndexPathSummary.swift`（Foundation-only
+// 共享 public 类型），同 module 内可直接引用，无需在此重复定义。
 
 @MainActor
 extension UIGestureTargetExecutor {

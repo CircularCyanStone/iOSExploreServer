@@ -22,7 +22,7 @@ struct UITapCommand: Command {
     let action = UITapCommand.actionName
 
     /// `help` 命令展示的说明。
-    let description = "对 ui.viewTargets 签发的 canonical target 执行默认激活动作 (按钮/开关/输入框)"
+    let description = "对已发现的目标执行默认激活动作 (按钮/开关/输入框)。调用前必须先调 ui.viewTargets，并把同响应返回的 viewSnapshotID 原样传入"
 
     /// 执行 tap 默认激活。
     ///
