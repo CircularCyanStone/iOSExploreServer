@@ -79,6 +79,9 @@ ui.viewTargets     ────┼──>  选定 path/identifier  ──>  ui.t
 | `unknown command input field 'snapshotID'` | 字段名拼错成 `snapshotID` | 改成 `viewSnapshotID` |
 | `stale_locator` | 快照已过期（页面变了） | 重新调 `ui.viewTargets` 拿新的 `viewSnapshotID` |
 | `unknown command input field 'identifier'` | 把 `accessibilityIdentifier` 写成 `identifier` | 改成 `accessibilityIdentifier` |
+| 视图明明在，viewTargets 这次没采到 / targetCount 偏少 | 目标处于 `reloadData` 等瞬时空档，subviews 短暂为空 | 重试一次 `ui.viewTargets` 即可，不需要推理变化。**非 bug**：业务侧高频 reload（如 SPMExample 日志面板每次 server 事件都 reloadData+scrollToRow）会在两次 cell 挂载之间留下"无 cell"瞬间，collector 按调用瞬时状态如实采，自然有时采不到。 |
+
+> 「targetCount 抖动」典型表现：相邻两次 `ui.viewTargets` 调用，targetCount 在两个固定值之间跳（如 11 ↔ 29，差值恰好等于某个 UITableView 的可见行数 + accessory）。subagent 端到端跳转案例里遇到过（2026-07-05），未影响最终 tap——用最后一次干净快照即可。
 
 ### 1.4 字段名速查（这几个最容易写错）
 
