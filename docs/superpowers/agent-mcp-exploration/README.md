@@ -262,9 +262,13 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 
 ### 6.1 Mac 侧 MCP server（让 agent 用 MCP 协议而非 curl 操作应用）
 
-这是"让 agent 操作应用"的最后一公里：把 iPhone 端 18 个 HTTP action 包装成 MCP 工具，agent 通过标准 MCP 协议调用，不再 `curl` 裸打。其中 `ui.waitAny → ui.viewTargets` 的固定编排（命中后自动重新观察）在这一层用代码固化，不再靠协议自觉。
+这是"让 agent 操作应用"的最后一公里：把 iPhone 端已注册 HTTP action 包装成 MCP 工具，agent 通过标准 MCP 协议调用，不再 `curl` 裸打。当前基础能力按 `help` 为准，README 已列出 core 4 + UIKit 14 + Diagnostics 2，即 20 个基础 action；宿主 App 自定义命令后续也可通过 `help` 动态发现进入 MCP 层。其中 `ui.waitAny → ui.viewTargets` 的固定编排（命中后自动重新观察）在这一层用代码固化，不再靠协议自觉。
 
-**真机计时已证明不需要 `returnObservation`**：USB 链路上一次 viewTargets 往返 **~10ms**（连续 8 次 8.7–14.5ms），相对 waitAny 秒级 timeout 占比 < 1%，round trip 不是瓶颈。方案 B（MCP 层编排）完全够用，iPhone 端 waitAny 响应保持只返回 matchedID。详见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md)。**开建时的范围、已定约束与起点 checklist 见 [2026-07-03-mac-mcp-server-scope.md](../specs/2026-07-03-mac-mcp-server-scope.md)。**
+**第一版范围已定为 A：本机 Mac MCP 包装器。** 它默认连接 `http://localhost:38321/`，复用现有模拟器直连或真机 `iproxy` 转发，不负责设备发现、`iproxy` 进程管理、用例报告或批量执行。技术方向是 TypeScript / Node MCP server，采用“固定推荐工具 + `help` 动态生成原子工具 + `call_action` 兜底”的混合动态发现设计。详见 [2026-07-06-mac-mcp-server-design.md](../specs/2026-07-06-mac-mcp-server-design.md)。
+
+**后续路线保留两层，不进入第一版：B 设备管理层、C 测试编排层。** B 负责发现真机/模拟器、管理 `iproxy`、多设备选择、端口占用和残留进程诊断；C 负责自然语言用例拆解、步骤状态、证据归档、结果报告和批量执行。把 B/C 放在这里，是为了防止后续只记得第一版 MCP 包装器，而遗忘项目可以继续演进到更自动的设备管理和测试编排。
+
+**真机计时已证明不需要 `returnObservation`**：USB 链路上一次 viewTargets 往返 **~10ms**（连续 8 次 8.7–14.5ms），相对 waitAny 秒级 timeout 占比 < 1%，round trip 不是瓶颈。final-observation 评估里的“Mac MCP 层编排”方案完全够用，iPhone 端 waitAny 响应保持只返回 matchedID。详见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md)。**开建时的范围、已定约束与起点 checklist 见 [2026-07-03-mac-mcp-server-scope.md](../specs/2026-07-03-mac-mcp-server-scope.md)。**
 
 ### 6.2 ui.alert.respond dryRun=false（已完成）
 
