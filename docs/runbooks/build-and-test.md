@@ -64,8 +64,32 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.viewTargets"}'
 # 以下两个动作必填 viewSnapshotID（snap-1 只是占位，实际取上一步 ui.viewTargets 返回的 data.viewSnapshotID）
 curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data":{"accessibilityIdentifier":"mine.header.avatar","viewSnapshotID":"snap-1","event":"touchUpInside"}}'
 curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"accessibilityIdentifier":"mine.header.avatar","viewSnapshotID":"snap-1"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.mark"}'
+curl -X POST http://localhost:38321/ -d '{"action":"debug.emitAppLog"}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["bridge"],"limit":20}}'
 ```
 5. App 日志面板应实时显示每个请求；curl 输出应为 envelope JSON。
+
+Diagnostics 示例 App 在 Debug 构建下已通过 `ViewController.exampleDiagnosticsConfiguration()` 直接打开 stdout/stderr/NSLog/os_log 四个 capture，不再使用环境变量或启动参数控制；Release 构建下四个 capture 全关。Release 构建或未开 capture 时，`app.logs.mark/read` 的 `capture.stdout`、`capture.stderr`、`capture.nslog` 与 `capture.oslog` 会显示 `notCaptured`，但 `explore` 内部日志和 `debug.emitAppLog` 写入的 `bridge` 日志仍可读取。验证进程日志捕获时，直接启动 Debug 构建即可：
+
+```bash
+# XcodeBuildMCP 模拟器启动示例；真机同理用 launch_app_device，并在 Mac 侧保留 iproxy。
+launch_app_sim(env={"IOS_EXPLORE_AUTOSTART":"1"})  # capture 在 Debug 代码里直配，无需 env
+
+curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.mark"}'
+curl -X POST http://localhost:38321/ -d '{"action":"debug.emitStdout","data":{"message":"stdout-curl-check-替换为唯一值"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"debug.emitStderr","data":{"message":"stderr-curl-check-替换为唯一值"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"debug.emitNSLog","data":{"message":"nslog-curl-check-替换为唯一值"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"debug.emitOSLog","data":{"message":"oslog-curl-check-替换为唯一值"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"debug.emitLogger","data":{"message":"logger-curl-check-替换为唯一值"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["stdout"],"limit":20}}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["stderr"],"limit":20}}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["nslog"],"limit":20}}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["oslog"],"limit":20}}'
+```
+
+stdout 结果应为 `source:"stdout"`、`level:"info"`；stderr 结果应为 `source:"stderr"`、`level:"error"`；NSLog 结果应为 `source:"nslog"`；`os_log` 与 Swift `Logger` 结果统一进入 `source:"oslog"`。如果当前 OS 或沙箱不允许 `OSLogStore` 读取当前进程日志，`capture.oslog.state` 会是 `unavailable`，这种情况要按状态排查，不要解释成“没有产生日志”。
 
 > 已在 iPhone12,1 / iOS 26.5 验证通过（见 `.git/sdd/progress.md`）。
 
@@ -74,5 +98,6 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"accessibili
 模拟器与 Mac 共享网络栈，Mac 可直接打模拟器里的 Server：
 ```bash
 curl -X POST http://127.0.0.1:38321/ -d '{"action":"ping"}'
+curl -X POST http://127.0.0.1:38321/ -d '{"action":"app.logs.mark"}'
 ```
 前提：模拟器 App 已点「启动 Server」。

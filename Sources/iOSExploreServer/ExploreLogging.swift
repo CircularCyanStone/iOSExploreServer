@@ -37,18 +37,31 @@ public struct ExploreLogRecord: Sendable, Equatable {
     }
 }
 
+/// 日志 observer 注册令牌。
+///
+/// Diagnostics 模块用该令牌在进程级 runtime 中持有一条订阅；调用
+/// `ExploreLogging.removeObserver(_:)` 可移除对应 observer。普通业务方通常不需要直接使用。
+public struct ExploreLogObservation: Sendable, Equatable {
+    fileprivate let id: UUID
+}
+
 /// `ExploreLogging` 的可变配置快照。
 ///
-/// 用值类型 + `Mutex` 整体替换，避免开关/等级/sink 三个字段各自加锁。
+/// 用值类型 + `Mutex` 整体替换，避免开关/等级/sink/observer 各自加锁。输出 sink 与
+/// observer 是两条独立路径：sink 受 `setEnabled` 和最小等级控制；observer 用于
+/// Diagnostics store，不受 Unified Logging 输出开关影响。
 private struct ExploreLoggingState: Sendable {
-    /// 日志总开关。
-    var isEnabled: Bool
+    /// 输出到 sink 的开关。
+    var outputEnabled: Bool
 
-    /// 最小输出等级。
-    var minimumLevel: ExploreLogLevel
+    /// 输出到 sink 的最小等级。
+    var outputMinimumLevel: ExploreLogLevel
 
     /// 实际消费 record 的输出端，默认写 Apple Unified Logging，测试可替换。
     var sink: @Sendable (ExploreLogRecord) -> Void
+
+    /// 旁路 observer，供 Diagnostics 在不打开 Unified Logging 输出时仍能录入日志。
+    var observers: [UUID: @Sendable (ExploreLogRecord) -> Void]
 }
 
 /// 日志输出配置入口。
@@ -60,28 +73,49 @@ public enum ExploreLogging {
     private static let defaultSubsystem = "iOSExploreServer"
 
     /// 全局配置状态，`Mutex` 保护读写。
-    private static let state = Mutex(ExploreLoggingState(isEnabled: false,
-                                                         minimumLevel: .debug,
-                                                         sink: osLogSink))
+    private static let state = Mutex(ExploreLoggingState(outputEnabled: false,
+                                                         outputMinimumLevel: .debug,
+                                                         sink: osLogSink,
+                                                         observers: [:]))
 
     /// 当前日志总开关。
     public static var isEnabled: Bool {
-        state.withLock { $0.isEnabled }
+        state.withLock { $0.outputEnabled }
     }
 
     /// 当前最小输出等级。
     public static var minimumLevel: ExploreLogLevel {
-        state.withLock { $0.minimumLevel }
+        state.withLock { $0.outputMinimumLevel }
     }
 
     /// 开启或关闭内部日志输出。
     public static func setEnabled(_ enabled: Bool) {
-        state.withLock { $0.isEnabled = enabled }
+        state.withLock { $0.outputEnabled = enabled }
     }
 
     /// 设置最小输出等级。低于该等级的日志会被丢弃。
     public static func setMinimumLevel(_ level: ExploreLogLevel) {
-        state.withLock { $0.minimumLevel = level }
+        state.withLock { $0.outputMinimumLevel = level }
+    }
+
+    /// 添加一条日志 observer。
+    ///
+    /// observer 在 `ExploreLogging` 锁外执行，不能阻塞日志状态读写。Diagnostics observer
+    /// 应只做有界内存 append，不做 IO，也不能再写回 `ExploreLogging`，避免递归。
+    ///
+    /// - Parameter observer: 接收日志 record 的闭包。
+    /// - Returns: 用于移除 observer 的令牌。
+    public static func addObserver(_ observer: @escaping @Sendable (ExploreLogRecord) -> Void) -> ExploreLogObservation {
+        let id = UUID()
+        state.withLock { $0.observers[id] = observer }
+        return ExploreLogObservation(id: id)
+    }
+
+    /// 移除一条日志 observer。
+    ///
+    /// - Parameter observation: `addObserver(_:)` 返回的令牌。
+    public static func removeObserver(_ observation: ExploreLogObservation) {
+        state.withLock { $0.observers.removeValue(forKey: observation.id) }
     }
 
     /// 派发一条日志到 sink。
@@ -92,11 +126,37 @@ public enum ExploreLogging {
     ///
     /// - Parameter record: 待派发的日志记录。
     static func emit(_ record: ExploreLogRecord) {
-        let sink: (@Sendable (ExploreLogRecord) -> Void)? = state.withLock { state in
-            guard state.isEnabled, record.level >= state.minimumLevel else { return nil }
-            return state.sink
+        dispatch(record)
+    }
+
+    /// 按需构造并派发日志。
+    ///
+    /// 没有 observer，且输出未开启或被等级过滤时，该方法不会构造 `message`，避免高频调试
+    /// 日志在关闭状态下仍产生字符串拼接成本。
+    static func emit(level: ExploreLogLevel, category: String, message: @autoclosure () -> String) {
+        let shouldBuild = state.withLock { state in
+            if state.observers.isEmpty == false { return true }
+            return state.outputEnabled && level >= state.outputMinimumLevel
         }
-        sink?(record)
+        guard shouldBuild else { return }
+        dispatch(ExploreLogRecord(level: level, category: category, message: message()))
+    }
+
+    private static func dispatch(_ record: ExploreLogRecord) {
+        let delivery: (observers: [@Sendable (ExploreLogRecord) -> Void], sink: (@Sendable (ExploreLogRecord) -> Void)?) = state.withLock { state in
+            let observers = Array(state.observers.values)
+            let sink: (@Sendable (ExploreLogRecord) -> Void)?
+            if state.outputEnabled, record.level >= state.outputMinimumLevel {
+                sink = state.sink
+            } else {
+                sink = nil
+            }
+            return (observers, sink)
+        }
+        for observer in delivery.observers {
+            observer(record)
+        }
+        delivery.sink?(record)
     }
 
     /// 默认 sink：按 category 建 `OSLog`，调用 `os_log` 写入统一日志系统。
@@ -113,9 +173,10 @@ public enum ExploreLogging {
     /// 重置为默认状态，仅测试用，避免用例间相互污染。
     static func resetForTesting() {
         state.withLock {
-            $0.isEnabled = false
-            $0.minimumLevel = .debug
+            $0.outputEnabled = false
+            $0.outputMinimumLevel = .debug
             $0.sink = osLogSink
+            $0.observers.removeAll()
         }
     }
 }
@@ -162,9 +223,7 @@ enum ExploreLogger {
     /// 统一的落盘入口：组装 record 并交给 `ExploreLogging.emit`。
     private static func log(_ level: ExploreLogLevel,
                             _ category: ExploreLogCategory,
-                            _ message: String) {
-        ExploreLogging.emit(ExploreLogRecord(level: level,
-                                             category: category.rawValue,
-                                             message: message))
+                            _ message: @autoclosure () -> String) {
+        ExploreLogging.emit(level: level, category: category.rawValue, message: message())
     }
 }

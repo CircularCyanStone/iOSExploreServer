@@ -198,6 +198,17 @@ public final class ExploreServer: Sendable {
         eventStream
     }
 
+    /// 返回当前已注册命令的元数据快照。
+    ///
+    /// 该方法与 `help` 命令读取同一份 router metadata，用于宿主 App 或测试在不发起 HTTP
+    /// 请求时确认显式注册结果。它只读取 action、description 与 input schema，不执行任何
+    /// handler，也不会暴露 router 的可变存储。
+    ///
+    /// - Returns: 按 action 排序的命令元数据列表。
+    public func commandMetadata() -> [(action: String, description: String, inputSchema: CommandInputSchema)] {
+        router.commandMetadata()
+    }
+
     /// 测试辅助：不经网络直接路由，验证命令注册状态。
     func routerSnapshotRoute(_ request: ExploreRequest) async -> ExploreResult {
         ExploreLogger.debug(.server, "server snapshot route action=\(request.action)")

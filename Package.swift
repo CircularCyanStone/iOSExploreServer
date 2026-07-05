@@ -21,6 +21,11 @@ let package = Package(
             name: "iOSExploreUIKit",
             targets: ["iOSExploreUIKit"]
         ),
+        // 进程日志诊断模块：依赖 core，提供 app.logs.* 与宿主业务日志桥接。
+        .library(
+            name: "iOSExploreDiagnostics",
+            targets: ["iOSExploreDiagnostics"]
+        ),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -34,9 +39,13 @@ let package = Package(
             name: "iOSExploreUIKit",
             dependencies: ["iOSExploreServer"]
         ),
+        .target(
+            name: "iOSExploreDiagnostics",
+            dependencies: ["iOSExploreServer"]
+        ),
         .testTarget(
             name: "iOSExploreServerTests",
-            dependencies: ["iOSExploreServer", "iOSExploreUIKit"]
+            dependencies: ["iOSExploreServer", "iOSExploreUIKit", "iOSExploreDiagnostics"]
         ),
     ]
 )

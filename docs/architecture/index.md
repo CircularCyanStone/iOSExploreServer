@@ -56,15 +56,20 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 
 **typed input factory 规则**：每个 UIKit 命令的入参先用 Foundation-only 的 `CommandInput` 模型（如 `UITapInput`）解析并校验，校验通过后才进入 `@MainActor` 的 resolver/executor；UIKit 类型绝不穿过 public 边界回到非隔离域。字段定义同时驱动解析和 `help.inputSchema.properties`，保证模型/解析逻辑可在 macOS `swift test` 覆盖，真实 `UIView` 采集只在 iOS 编译执行。
 
+## Diagnostics 扩展模块（`Sources/iOSExploreDiagnostics/`）
+
+Diagnostics 不依赖 UIKit，宿主通过 `server.registerDiagnosticsCommands()` 显式注册 `app.logs.mark` 和 `app.logs.read`。它提供进程内有界日志 store、`ExploreLogging` observer、宿主业务日志桥接 `ExploreAppLog.emit`、stdout/stderr fd capture、NSLog 行识别、Apple Unified Logging 当前进程轮询、cursor/gap/stale cursor 语义和 source 捕获状态。stdout/stderr/NSLog/os_log 默认不接管；当 Debug 配置打开 `captureStdout` / `captureStderr` / `captureNSLog` / `captureOSLog` 时，stdout 记为 `source=stdout level=info`，stderr 记为 `source=stderr level=error`，NSLog 记为 `source=nslog`，`os_log` 与 Swift `Logger` 通过 `OSLogStore(scope:.currentProcessIdentifier)` 记为 `source=oslog`。如果 OS 或沙箱不允许读取 unified logging，`capture.oslog` 会返回 `unavailable`。Release 构建下注册入口和 runtime 注册都会返回 disabled，不安装命令或捕获路径；bridge metadata 会先脱敏，再按数量与 key/value 字节上限裁剪，避免响应体被异常上下文撑大。
+
 ## 模块边界与共享源码
 
-- **SPM 包**（根 `Package.swift` + `Sources/` + `Tests/`）是主交付物，`swift test` 跑这里。两个 product：`iOSExploreServer`（core）与 `iOSExploreUIKit`（依赖 core）。
-- **framework 工程**（`iOSExploreServer/iOSExploreServer.xcodeproj`）有两个 framework target：
+- **SPM 包**（根 `Package.swift` + `Sources/` + `Tests/`）是主交付物，`swift test` 跑这里。三个 product：`iOSExploreServer`（core）、`iOSExploreUIKit`（依赖 core）与 `iOSExploreDiagnostics`（依赖 core）。
+- **framework 工程**（`iOSExploreServer/iOSExploreServer.xcodeproj`）有三个 framework target：
   - `iOSExploreServer.framework`：`PBXFileSystemSynchronizedRootGroup` 指向 `../Sources/iOSExploreServer/`。
   - `iOSExploreUIKit.framework`：指向 `../Sources/iOSExploreUIKit/`，链接并依赖 core framework。
-  - 两者与 SPM **共享同一份源码**，零漂移。Debug/Release 均 `SWIFT_VERSION=5.0`、`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`、相同 deployment target。
-- **SPMExample**（`Examples/`）是 UIKit App，本地 SPM 依赖同时选 core 与 `iOSExploreUIKit` product；它允许 `import UIKit`，并在 App 层注册需要 UIKit 的 handler（如 `device`）。
-- **显式注册**：core 初始化**不会**自动注册任何 UIKit 命令；宿主必须调用 `server.registerUIKitCommands()` 才开放 `ui.*`。未注册时 `help` 不含 UIKit action，是回归保护点。
+  - `iOSExploreDiagnostics.framework`：指向 `../Sources/iOSExploreDiagnostics/`，链接并依赖 core framework。
+  - 三者与 SPM **共享同一份源码**，零漂移。Debug/Release 均 `SWIFT_VERSION=5.0`、`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`、相同 deployment target。
+- **SPMExample**（`Examples/`）是 UIKit App，本地 SPM 依赖同时选 core、`iOSExploreUIKit` 与 `iOSExploreDiagnostics` product；它允许 `import UIKit`，并在 App 层注册需要 UIKit 的 handler（如 `device`），同时注册 Diagnostics 命令和 `debug.emitAppLog` 供真实 curl 验证 bridge 日志。SPMExample 在 Debug 构建下通过 `ViewController.exampleDiagnosticsConfiguration()` 直接打开 stdout/stderr/NSLog/os_log 四个 capture（Release 构建关闭），不再通过环境变量或启动参数控制；直接用 `debug.emitStdout` / `debug.emitStderr` / `debug.emitNSLog` / `debug.emitOSLog` / `debug.emitLogger` 产生可查询日志输出。
+- **显式注册**：core 初始化**不会**自动注册任何 UIKit 或 Diagnostics 命令；宿主必须调用 `server.registerUIKitCommands()` 才开放 `ui.*`，调用 `server.registerDiagnosticsCommands()` 才开放 `app.logs.*`。未注册时 `help` 不含对应 action，是回归保护点。
 
 ## 并发模型
 

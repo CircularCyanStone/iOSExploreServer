@@ -54,6 +54,13 @@ enum UIKitActionCapabilityResolver {
         if UIKitDefaultActivationResolver.route(for: view) != nil {
             collected.insert(.tap)
         }
+        // cell 子树：cellSelection adapter（executeTap 的 cellSelection 分支）能为其派发
+        // didSelectRow/Item，故声明 tap 让 agent 直接知道此 view 可点。与 hasGestureRecognizers
+        // 推断双保险：即使该子 view 未挂私有 gesture，只要它在 cell 子树内就声明 tap；
+        // executeTap 走 cellSelection 仍可达。
+        if view.explore_cellAncestor != nil {
+            collected.insert(.tap)
+        }
         if let control = view as? UIControl {
             collected.formUnion(controlActions(for: control))
         }

@@ -238,4 +238,7 @@ public enum ExploreError: String, Sendable {
 
     /// 找不到可滚动的容器视图，无法执行滚动命令。
     case scrollContainerUnavailable = "scroll_container_unavailable"
+
+    /// 日志 cursor 属于旧的捕获 session，调用方需要重新建立检查点。
+    case staleCursor = "stale_cursor"
 }

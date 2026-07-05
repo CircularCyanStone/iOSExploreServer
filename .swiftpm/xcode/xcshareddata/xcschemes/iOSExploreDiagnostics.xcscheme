@@ -15,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "FBBA97132FE80597009FFEC3"
-               BuildableName = "SPMExample.app"
-               BlueprintName = "SPMExample"
-               ReferencedContainer = "container:SPMExample.xcodeproj">
+               BlueprintIdentifier = "iOSExploreDiagnostics"
+               BuildableName = "iOSExploreDiagnostics"
+               BlueprintName = "iOSExploreDiagnostics"
+               ReferencedContainer = "container:">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -29,19 +29,6 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
       shouldAutocreateTestPlan = "YES">
-      <Testables>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "FBBA97292FE80598009FFEC3"
-               BuildableName = "SPMExampleTests.xctest"
-               BlueprintName = "SPMExampleTests"
-               ReferencedContainer = "container:SPMExample.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-      </Testables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -53,23 +40,6 @@
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "FBBA97132FE80597009FFEC3"
-            BuildableName = "SPMExample.app"
-            BlueprintName = "SPMExample"
-            ReferencedContainer = "container:SPMExample.xcodeproj">
-         </BuildableReference>
-      </BuildableProductRunnable>
-      <EnvironmentVariables>
-         <EnvironmentVariable
-            key = "IOS_EXPLORE_AUTOSTART"
-            value = "1"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -77,16 +47,15 @@
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
       debugDocumentVersioning = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
+      <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "FBBA97132FE80597009FFEC3"
-            BuildableName = "SPMExample.app"
-            BlueprintName = "SPMExample"
-            ReferencedContainer = "container:SPMExample.xcodeproj">
+            BlueprintIdentifier = "iOSExploreDiagnostics"
+            BuildableName = "iOSExploreDiagnostics"
+            BlueprintName = "iOSExploreDiagnostics"
+            ReferencedContainer = "container:">
          </BuildableReference>
-      </BuildableProductRunnable>
+      </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

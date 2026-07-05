@@ -10,6 +10,12 @@
 
 如果必须使用项目术语，也要在第一次出现时解释它在当前代码里的含义。例如说“兜底”时，要说明兜底的是哪条路径、在什么条件下启用、失败时返回什么错误；说“边界”时，要说明边界隔离了哪些类型或责任，避免哪些代码散落到调用方。
 
+## Claude Code 额外提醒：任务结束要说清效果
+
+每次任务结束时，最终回复必须按 `AGENTS.md` 的「任务完成汇报」规则，用普通开发者能直接理解的话说明：本次目标是什么、改了哪些模块或文件、运行效果变成什么、怎么使用或验证、还有哪些能力没有实现。不要只贴“测试通过”或“已更新文档”，也不要只说“第二阶段完成”“闭环打通”这类压缩短句。
+
+如果本次是阶段性功能，要额外解释这个阶段给用户带来的具体变化。例如 Diagnostics 进程日志捕获不是“Release 线上日志 SDK”，而是“在 Debug 下按配置捕获 stdout、stderr、NSLog、`os_log` 和 Swift `Logger`，让 Agent 能通过 `app.logs.read` 按 `stdout` / `stderr` / `nslog` / `oslog` 来源读到”。同时要明确默认关闭和系统限制，例如 `captureOSLog` 依赖当前进程 `OSLogStore`，系统不允许读取时会返回 `unavailable`，不能解释成“没有发生日志”。
+
 ## Claude Code 额外提醒：示例 App 验证要自动启动 Server
 
 做 `Examples/SPMExample` 的真实闭环验证时，不要重新研究“服务没启动，远程命令无法点击启动服务按钮”这个问题。固定做法是通过启动参数或环境变量让 `Examples/SPMExample/SPMExample/ViewController.swift` 在 Debug 启动后自动调用 `server.start()`，先让 38321 端口可访问，再继续用 `curl` 或 `ui.*` 命令验证页面交互。

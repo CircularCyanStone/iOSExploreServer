@@ -1,0 +1,380 @@
+import Darwin
+import Foundation
+import iOSExploreServer
+
+/// 单个标准流的捕获状态。
+struct StdIOCaptureStatus {
+    let state: String
+    let reason: String?
+
+    /// 捕获已安装并正在写入 store。
+    static let enabled = StdIOCaptureStatus(state: "enabled", reason: nil)
+
+    /// 捕获被配置关闭。
+    ///
+    /// - Parameter reason: 关闭原因。
+    static func notCaptured(reason: String) -> StdIOCaptureStatus {
+        StdIOCaptureStatus(state: "notCaptured", reason: reason)
+    }
+
+    /// 捕获请求已打开但安装失败。
+    ///
+    /// - Parameter reason: 失败原因。
+    static func unavailable(reason: String) -> StdIOCaptureStatus {
+        StdIOCaptureStatus(state: "unavailable", reason: reason)
+    }
+}
+
+#if DEBUG
+/// stdout/stderr fd 捕获器。
+///
+/// 该类型只属于 Diagnostics Debug runtime：安装时用 `dup` 保存原 fd、用 `pipe` + `dup2`
+/// 把标准流导入后台 `DispatchSourceRead`，读取端按行写入 `AppLogStore`。停止时恢复原 fd 并等待
+/// cancel handler 完成，确保测试 `resetForTesting()` 后不继续污染后续用例。
+final class StdIOCapture {
+    private let stdoutCapture: StdIOStreamCapture?
+    private let stderrCapture: StdIOStreamCapture?
+    private let stdoutStatus: StdIOCaptureStatus
+    private let stderrStatus: StdIOCaptureStatus
+    private let nslogStatus: StdIOCaptureStatus
+
+    /// 根据配置安装 stdout/stderr 捕获。
+    ///
+    /// - Parameters:
+    ///   - configuration: Diagnostics 注册配置。
+    ///   - store: 捕获到的日志写入的统一 store。
+    init(configuration: DiagnosticsConfiguration, store: AppLogStore) {
+        if configuration.captureStdout {
+            let result = StdIOStreamCapture.install(stream: .stdout,
+                                                    store: store,
+                                                    teeToOriginalStream: configuration.teeToOriginalStreams,
+                                                    capturePlainStream: true,
+                                                    captureNSLog: false)
+            stdoutCapture = result.capture
+            stdoutStatus = result.status
+        } else {
+            stdoutCapture = nil
+            stdoutStatus = .notCaptured(reason: "stdout capture is disabled")
+        }
+
+        if configuration.captureStderr || configuration.captureNSLog {
+            let result = StdIOStreamCapture.install(stream: .stderr,
+                                                    store: store,
+                                                    teeToOriginalStream: configuration.teeToOriginalStreams,
+                                                    capturePlainStream: configuration.captureStderr,
+                                                    captureNSLog: configuration.captureNSLog)
+            stderrCapture = result.capture
+            stderrStatus = configuration.captureStderr
+                ? result.status
+                : .notCaptured(reason: "stderr capture is disabled")
+            nslogStatus = configuration.captureNSLog
+                ? result.status
+                : .notCaptured(reason: "NSLog capture is disabled")
+        } else {
+            stderrCapture = nil
+            stderrStatus = .notCaptured(reason: "stderr capture is disabled")
+            nslogStatus = .notCaptured(reason: "NSLog capture is disabled")
+        }
+    }
+
+    /// 当前 stdout 捕获状态。
+    var stdout: StdIOCaptureStatus { stdoutStatus }
+
+    /// 当前 stderr 捕获状态。
+    var stderr: StdIOCaptureStatus { stderrStatus }
+
+    /// 当前 NSLog 捕获状态。
+    var nslog: StdIOCaptureStatus { nslogStatus }
+
+    /// 恢复已重定向的 fd 并等待后台读取端退出。
+    func stop() {
+        stdoutCapture?.stop()
+        stderrCapture?.stop()
+    }
+}
+
+private enum StdIOStream {
+    case stdout
+    case stderr
+
+    var descriptor: Int32 {
+        switch self {
+        case .stdout: return STDOUT_FILENO
+        case .stderr: return STDERR_FILENO
+        }
+    }
+
+    var source: AppLogSource {
+        switch self {
+        case .stdout: return .stdout
+        case .stderr: return .stderr
+        }
+    }
+
+    var level: AppLogLevel {
+        switch self {
+        case .stdout: return .info
+        case .stderr: return .error
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .stdout: return "stdout"
+        case .stderr: return "stderr"
+        }
+    }
+}
+
+private final class StdIOStreamCapture {
+    private let stream: StdIOStream
+    private let originalFD: Int32
+    private let readSource: DispatchSourceRead
+    private let reader: StdIOReadBuffer
+    private let cancelSemaphore: DispatchSemaphore
+    private let stopped = Mutex(false)
+
+    private init(stream: StdIOStream,
+                 originalFD: Int32,
+                 readSource: DispatchSourceRead,
+                 reader: StdIOReadBuffer,
+                 cancelSemaphore: DispatchSemaphore) {
+        self.stream = stream
+        self.originalFD = originalFD
+        self.readSource = readSource
+        self.reader = reader
+        self.cancelSemaphore = cancelSemaphore
+    }
+
+    deinit {
+        stop()
+    }
+
+    static func install(stream: StdIOStream,
+                        store: AppLogStore,
+                        teeToOriginalStream: Bool,
+                        capturePlainStream: Bool,
+                        captureNSLog: Bool) -> (capture: StdIOStreamCapture?, status: StdIOCaptureStatus) {
+        fflush(nil)
+
+        let originalFD = dup(stream.descriptor)
+        guard originalFD >= 0 else {
+            return failure(stream: stream, reason: "dup failed errno=\(errno)")
+        }
+
+        var pipeFDs: [Int32] = [0, 0]
+        guard pipe(&pipeFDs) == 0 else {
+            let currentErrno = errno
+            close(originalFD)
+            return failure(stream: stream, reason: "pipe failed errno=\(currentErrno)")
+        }
+
+        guard dup2(pipeFDs[1], stream.descriptor) >= 0 else {
+            let currentErrno = errno
+            close(pipeFDs[0])
+            close(pipeFDs[1])
+            close(originalFD)
+            return failure(stream: stream, reason: "dup2 failed errno=\(currentErrno)")
+        }
+        close(pipeFDs[1])
+
+        let flags = fcntl(pipeFDs[0], F_GETFL)
+        guard flags >= 0, fcntl(pipeFDs[0], F_SETFL, flags | O_NONBLOCK) >= 0 else {
+            let currentErrno = errno
+            _ = dup2(originalFD, stream.descriptor)
+            close(pipeFDs[0])
+            close(originalFD)
+            return failure(stream: stream, reason: "fcntl nonblock failed errno=\(currentErrno)")
+        }
+
+        let reader = StdIOReadBuffer(pipeReadFD: pipeFDs[0],
+                                     originalFD: originalFD,
+                                     stream: stream,
+                                     store: store,
+                                     teeToOriginalStream: teeToOriginalStream,
+                                     capturePlainStream: capturePlainStream,
+                                     captureNSLog: captureNSLog)
+        let queue = DispatchQueue(label: "com.coo.iOSExploreDiagnostics.stdio.\(stream.name)")
+        let source = DispatchSource.makeReadSource(fileDescriptor: pipeFDs[0], queue: queue)
+        let cancelSemaphore = DispatchSemaphore(value: 0)
+        source.setEventHandler {
+            reader.drainAvailableBytes()
+        }
+        source.setCancelHandler {
+            reader.flushPendingLine()
+            close(pipeFDs[0])
+            cancelSemaphore.signal()
+        }
+        source.resume()
+
+        ExploreLogging.emitExtension(level: .info,
+                                     category: "diagnostics.stdio",
+                                     message: "\(stream.name) capture enabled tee=\(teeToOriginalStream) plain=\(capturePlainStream) nslog=\(captureNSLog)")
+        return (StdIOStreamCapture(stream: stream,
+                                   originalFD: originalFD,
+                                   readSource: source,
+                                   reader: reader,
+                                   cancelSemaphore: cancelSemaphore), .enabled)
+    }
+
+    func stop() {
+        let shouldStop = stopped.withLock { stopped -> Bool in
+            if stopped { return false }
+            stopped = true
+            return true
+        }
+        guard shouldStop else { return }
+
+        fflush(nil)
+        if dup2(originalFD, stream.descriptor) < 0 {
+            ExploreLogging.emitExtension(level: .error,
+                                         category: "diagnostics.stdio",
+                                         message: "\(stream.name) capture restore failed errno=\(errno)")
+        }
+        reader.drainAvailableBytes()
+        close(originalFD)
+        readSource.cancel()
+        if cancelSemaphore.wait(timeout: .now() + .seconds(2)) == .timedOut {
+            ExploreLogging.emitExtension(level: .error,
+                                         category: "diagnostics.stdio",
+                                         message: "\(stream.name) capture cancel timed out")
+        }
+        ExploreLogging.emitExtension(level: .info,
+                                     category: "diagnostics.stdio",
+                                     message: "\(stream.name) capture stopped")
+    }
+
+    private static func failure(stream: StdIOStream,
+                                reason: String) -> (capture: StdIOStreamCapture?, status: StdIOCaptureStatus) {
+        ExploreLogging.emitExtension(level: .error,
+                                     category: "diagnostics.stdio",
+                                     message: "\(stream.name) capture unavailable reason=\(reason)")
+        return (nil, .unavailable(reason: reason))
+    }
+}
+
+private final class StdIOReadBuffer: Sendable {
+    private let pipeReadFD: Int32
+    private let originalFD: Int32
+    private let stream: StdIOStream
+    private let store: AppLogStore
+    private let teeToOriginalStream: Bool
+    private let capturePlainStream: Bool
+    private let captureNSLog: Bool
+    private let pending = Mutex<[UInt8]>([])
+
+    init(pipeReadFD: Int32,
+         originalFD: Int32,
+         stream: StdIOStream,
+         store: AppLogStore,
+         teeToOriginalStream: Bool,
+         capturePlainStream: Bool,
+         captureNSLog: Bool) {
+        self.pipeReadFD = pipeReadFD
+        self.originalFD = originalFD
+        self.stream = stream
+        self.store = store
+        self.teeToOriginalStream = teeToOriginalStream
+        self.capturePlainStream = capturePlainStream
+        self.captureNSLog = captureNSLog
+    }
+
+    func drainAvailableBytes() {
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = buffer.withUnsafeMutableBufferPointer { pointer in
+                read(pipeReadFD, pointer.baseAddress, pointer.count)
+            }
+            if count > 0 {
+                let bytes = Array(buffer.prefix(count))
+                if teeToOriginalStream {
+                    writeAll(bytes)
+                }
+                append(bytes)
+            } else if count == 0 || errno == EAGAIN || errno == EWOULDBLOCK {
+                break
+            } else if errno == EINTR {
+                continue
+            } else {
+                ExploreLogging.emitExtension(level: .error,
+                                             category: "diagnostics.stdio",
+                                             message: "\(stream.name) capture read failed errno=\(errno)")
+                break
+            }
+        }
+    }
+
+    func flushPendingLine() {
+        let line = pending.withLock { pending -> [UInt8] in
+            let line = pending
+            pending.removeAll(keepingCapacity: false)
+            return line
+        }
+        if line.isEmpty == false {
+            appendLine(line)
+        }
+    }
+
+    private func append(_ bytes: [UInt8]) {
+        pending.withLock { pending in
+            for byte in bytes {
+                if byte == 10 {
+                    appendLine(pending)
+                    pending.removeAll(keepingCapacity: true)
+                } else {
+                    pending.append(byte)
+                }
+            }
+        }
+    }
+
+    private func appendLine(_ bytes: [UInt8]) {
+        var lineBytes = bytes
+        if lineBytes.last == 13 {
+            lineBytes.removeLast()
+        }
+        let line = String(decoding: lineBytes, as: UTF8.self)
+        if stream == .stderr, captureNSLog, Self.looksLikeNSLogLine(line) {
+            store.append(source: .nslog,
+                         level: .info,
+                         category: "nslog",
+                         message: line)
+            return
+        }
+        guard capturePlainStream else { return }
+        store.append(source: stream.source,
+                     level: stream.level,
+                     category: "stdio",
+                     message: line)
+    }
+
+    private static func looksLikeNSLogLine(_ line: String) -> Bool {
+        guard line.count >= 24 else { return false }
+        let prefix = Array(line.prefix(24))
+        return prefix[4] == "-"
+            && prefix[7] == "-"
+            && prefix[10] == " "
+            && prefix[13] == ":"
+            && prefix[16] == ":"
+            && prefix[19] == "."
+            && prefix[23] == " "
+    }
+
+    private func writeAll(_ bytes: [UInt8]) {
+        bytes.withUnsafeBufferPointer { pointer in
+            guard let baseAddress = pointer.baseAddress else { return }
+            var written = 0
+            while written < pointer.count {
+                let count = write(originalFD, baseAddress.advanced(by: written), pointer.count - written)
+                if count > 0 {
+                    written += count
+                } else if count < 0, errno == EINTR {
+                    continue
+                } else {
+                    break
+                }
+            }
+        }
+    }
+}
+#endif

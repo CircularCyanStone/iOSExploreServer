@@ -148,6 +148,21 @@ enum UIKitActionExecutor {
             //
             // adapter 返回空（非 UIControl 但无 gesture，或 iOS 版本 ivar 漂移读不出 target-action，
             // 或 Release 下 runtime 入口隔离成空壳）时，fallthrough 到 `unsupported_target`，与原行为一致。
+            // [SPIKE] cell 子树优先：cell 内子 view 上挂的 _longPressGestureRecognized: 是误触，
+            // 先尝试 cellSelection 看是否能 invoke selectGestureHandler: 触发真实 didSelectRow。
+            if let cellAttempt = UIGestureTargetExecutor.executeCellSelection(on: located.view) {
+                UIKitCommandLogging.info("command",
+                    "ui tap cell selection route=\(cellAttempt.activationRoute) path=\(located.pathString) type=\(cellAttempt.viewType) container=\(cellAttempt.containerViewType ?? "nil") indexPath=\(cellAttempt.indexPathSummary.map { "\($0.section)-\($0.item)" } ?? "nil")")
+                return [
+                    "activated": .bool(cellAttempt.activated),
+                    "activationRoute": .string(cellAttempt.activationRoute),
+                    "path": .string(located.pathString),
+                    "type": .string(cellAttempt.viewType),
+                    "containerType": cellAttempt.containerViewType.map(JSONValue.string) ?? .null,
+                    "cellType": cellAttempt.cellType.map(JSONValue.string) ?? .null,
+                    "indexPath": cellAttempt.indexPathSummary.map { indexPathJSON($0) } ?? .null,
+                ]
+            }
             if !(located.view is UIControl),
                let triggered = UIGestureTargetExecutor.execute(on: located.view), !triggered.isEmpty {
                 UIKitCommandLogging.info("command",
@@ -286,6 +301,14 @@ enum UIKitActionExecutor {
             "gestureType": .string(pair.gestureType),
             "targetType": .string(pair.targetType),
             "action": .string(pair.action),
+        ]))
+    }
+
+    /// 把 cell selection 的 indexPath 摘要序列化进 `ui.tap` 响应。
+    private static func indexPathJSON(_ summary: IndexPathSummary) -> JSONValue {
+        .object(JSON([
+            "section": .double(Double(summary.section)),
+            "item": .double(Double(summary.item)),
         ]))
     }
 }

@@ -2,12 +2,15 @@ import Testing
 import Foundation
 import Network
 @testable import iOSExploreServer
+@testable import iOSExploreDiagnostics
 #if canImport(UIKit)
 @testable import iOSExploreUIKit
 #endif
 
 /// 集成测试用固定端口，避开生产默认 38321。
 private let testPort: UInt16 = 38399
+/// UIKit HTTP 集成测试专用端口，避免与其它 Swift Testing suite 并发抢占 `testPort`。
+private let uiTestPort: UInt16 = 38400
 
 private struct IntegrationGreetingInput: CommandInput, Equatable {
     static let nameField = CommandFields.requiredString("name", description: "名字")
@@ -160,10 +163,10 @@ func connectionLimitRejectsAdditionalConnection() async throws {
     _ = try await first
 }
 
-@Test("短连接快速连续请求完成后释放连接槽")
-func rapidSequentialRequestsReleaseConnectionSlots() async throws {
-    let server = ExploreServer(port: testPort,
-                               listenerConfiguration: .testing(maxConnections: 1))
+    @Test("短连接快速连续请求完成后释放连接槽")
+    func rapidSequentialRequestsReleaseConnectionSlots() async throws {
+        let server = ExploreServer(port: testPort,
+                                   listenerConfiguration: .testing(maxConnections: 1))
     try await startWithPortRetry(server)
     defer { server.stop() }
 
@@ -172,9 +175,40 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
         lastResponse = try await send(action: "ping", timeoutNanoseconds: 1_000_000_000)
     }
 
-    #expect(envelopeCode(lastResponse) == "ok")
-    #expect(lastResponse.contains(#""pong":true"#))
-}
+        #expect(envelopeCode(lastResponse) == "ok")
+        #expect(lastResponse.contains(#""pong":true"#))
+    }
+
+    @Test("Diagnostics mark/read 经真实 TCP 读取 action 后增量日志")
+    func diagnosticsMarkReadViaHTTP() async throws {
+        try await withProcessDiagnosticsTestIsolation {
+            ProcessDiagnosticsRuntime.shared.resetForTesting()
+            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            let server = ExploreServer(port: testPort)
+            server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
+                                                     captureStdout: false,
+                                                     captureStderr: false))
+            try await startWithPortRetry(server)
+            defer { server.stop() }
+
+            let markText = try await send(action: "app.logs.mark")
+            let markEnvelope = try responseEnvelope(markText)
+            let cursor = try cursorObject(from: markEnvelope)
+
+            ExploreAppLog.emit(.info, category: "tcp", message: "tcp bridge check")
+
+            let readText = try await send(action: "app.logs.read",
+                                          data: ["after": .object(cursor),
+                                                 "sources": .array([.string("bridge")])])
+            let readEnvelope = try responseEnvelope(readText)
+            #expect(readEnvelope["code"]?.stringValue == "ok")
+            let entries = readEnvelope["data"]?.objectValue?["entries"]?.arrayValue?.compactMap(\.objectValue) ?? []
+            #expect(entries.contains { entry in
+                entry["source"]?.stringValue == "bridge" &&
+                (entry["message"]?.stringValue ?? "").contains("tcp bridge check")
+            })
+        }
+    }
 
 #if canImport(UIKit)
 // MARK: - UIKit 操作三件套（screenshot/input/scroll）端到端
@@ -203,12 +237,14 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
     /// 形态稳定（顶层 `code/message`，无遗留 `ok`/`error` 字段）。
     @Test("ui.screenshot 经 HTTP 可达,无前台 scene 时返回 internal_error envelope")
     func screenshotReachableViaHTTP() async throws {
-        let server = ExploreServer(port: testPort, maxResponseBodyBytes: 8 * 1024 * 1024)
+        let server = ExploreServer(port: uiTestPort, maxResponseBodyBytes: 8 * 1024 * 1024)
         server.registerUIKitCommands(maxResponseBodyBytes: 8 * 1024 * 1024)
         try await startWithPortRetry(server)
         defer { server.stop() }
 
-        let text = try await send(action: "ui.screenshot")
+        let text = try await send(action: "ui.screenshot",
+                                  port: uiTestPort,
+                                  timeoutNanoseconds: 15_000_000_000)
         let code = envelopeCode(text)
         // 无前台 scene → hierarchyUnavailable → internal_error。
         // 仅断言 code 契约,不耦合 UIKit 内部 message 文案（final review I-1）。
@@ -223,12 +259,12 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
     /// 这是 registrar 计数的端到端回归点：经真实 HTTP `help` 取回命令列表，断言全部 14 个 `ui.*` action 都已注册并可被发现。
     @Test("registerUIKitCommands 后 help 经 HTTP 含 14 个 ui.* action")
     func helpListsAllUIKitActions() async throws {
-        let server = ExploreServer(port: testPort)
+        let server = ExploreServer(port: uiTestPort)
         server.registerUIKitCommands()
         try await startWithPortRetry(server)
         defer { server.stop() }
 
-        let text = try await send(action: "help")
+        let text = try await send(action: "help", port: uiTestPort)
         #expect(envelopeCode(text) == "ok")
         // 四个旧命令 + screenshot/input/keyboard.dismiss/scroll/navigation.back/navigation.tapBarButton/waitAny。
         #expect(text.contains(#""action":"ui.topViewHierarchy""#))
@@ -259,7 +295,7 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
     @Test("响应 body 超限时改发 response_too_large envelope")
     func responseTooLargeWhenBodyExceedsLimit() async throws {
         // 1MB 上限：超过即改发，无需 UIKit 截图参与。
-        let server = ExploreServer(port: testPort, maxResponseBodyBytes: 1 * 1024 * 1024)
+        let server = ExploreServer(port: uiTestPort, maxResponseBodyBytes: 1 * 1024 * 1024)
         server.register(action: "big", input: EmptyCommandInput.self) { _ in
             // 2MB body，稳超 1MB 上限。
             let payload = String(repeating: "x", count: 2 * 1024 * 1024)
@@ -268,7 +304,7 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
         try await startWithPortRetry(server)
         defer { server.stop() }
 
-        let text = try await send(action: "big")
+        let text = try await send(action: "big", port: uiTestPort)
         #expect(envelopeCode(text) == "response_too_large")
         #expect(text.contains("response body too large"))
         #expect(!text.contains(#""ok":"#))
@@ -281,13 +317,14 @@ func rapidSequentialRequestsReleaseConnectionSlots() async throws {
 /// 发送一条命令并返回响应文本。
 private func send(action: String,
                   data: JSON = [:],
+                  port: UInt16 = testPort,
                   timeoutNanoseconds: UInt64 = 5_000_000_000) async throws -> String {
     let payload: JSON = ["action": .string(action), "data": .object(data)]
     let body = JSONCoder.encode(payload)
     let request = Data("POST / HTTP/1.1\r\nContent-Length: \(body.count)\r\n\r\n".utf8) + body
 
     let conn = NWConnection(host: .ipv4(.loopback),
-                            port: NWEndpoint.Port(rawValue: testPort)!,
+                            port: NWEndpoint.Port(rawValue: port)!,
                             using: .tcp)
     try await startClientConnection(conn, timeoutNanoseconds: timeoutNanoseconds)
     defer { conn.cancel() }
@@ -359,6 +396,14 @@ private enum TestTimeoutError: Error {
     case timedOut
 }
 
+private struct IntegrationTestFailure: Error {
+    let message: String
+
+    init(_ message: String) {
+        self.message = message
+    }
+}
+
 /// 启动 server，遇到端口占用时短暂重试。
 ///
 /// `@Suite(.serialized)` 保证串行用例不并发 bind 同一端口，但 `HTTPListener.stop()` 内的
@@ -423,4 +468,23 @@ private func envelopeCode(_ text: String) -> String? {
         return nil
     }
     return code
+}
+
+private func responseEnvelope(_ text: String) throws -> JSON {
+    guard let bodyStart = text.range(of: "\r\n\r\n") else {
+        throw IntegrationTestFailure("HTTP response missing header/body separator")
+    }
+    let body = String(text[bodyStart.upperBound...])
+    guard let envelope = JSONCoder.decode(Data(body.utf8)) else {
+        throw IntegrationTestFailure("HTTP response body is not JSON")
+    }
+    return envelope
+}
+
+private func cursorObject(from envelope: JSON) throws -> JSON {
+    guard let data = envelope["data"]?.objectValue,
+          let cursor = data["cursor"]?.objectValue else {
+        throw IntegrationTestFailure("response missing data.cursor")
+    }
+    return cursor
 }

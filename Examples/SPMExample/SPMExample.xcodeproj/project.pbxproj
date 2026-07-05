@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		3380D24E99B51C5F73E18474 /* iOSExploreServer in Frameworks */ = {isa = PBXBuildFile; productRef = 9EB49219D493AEC683ED12AF /* iOSExploreServer */; };
 		3380D24E99B51C5F73E18475 /* iOSExploreUIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9EB49219D493AEC683ED12B0 /* iOSExploreUIKit */; };
+		3380D24E99B51C5F73E18476 /* iOSExploreDiagnostics in Frameworks */ = {isa = PBXBuildFile; productRef = 9EB49219D493AEC683ED12D1 /* iOSExploreDiagnostics */; };
 		FB3A36362FF7A0EB00733623 /* LookinServer in Frameworks */ = {isa = PBXBuildFile; productRef = FB3A36352FF7A0EB00733623 /* LookinServer */; };
 /* End PBXBuildFile section */
 
@@ -20,19 +21,11 @@
 			remoteGlobalIDString = FBBA97132FE80597009FFEC3;
 			remoteInfo = SPMExample;
 		};
-		FBBA97352FE80598009FFEC3 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = FBBA970C2FE80597009FFEC3 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = FBBA97132FE80597009FFEC3;
-			remoteInfo = SPMExample;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		FBBA97142FE80597009FFEC3 /* SPMExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SPMExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FBBA972A2FE80598009FFEC3 /* SPMExampleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SPMExampleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		FBBA97342FE80598009FFEC3 /* SPMExampleUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SPMExampleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -59,11 +52,6 @@
 			path = SPMExampleTests;
 			sourceTree = "<group>";
 		};
-		FBBA97372FE80598009FFEC3 /* SPMExampleUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = SPMExampleUITests;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -74,17 +62,11 @@
 				3380D24E99B51C5F73E18474 /* iOSExploreServer in Frameworks */,
 				FB3A36362FF7A0EB00733623 /* LookinServer in Frameworks */,
 				3380D24E99B51C5F73E18475 /* iOSExploreUIKit in Frameworks */,
+				3380D24E99B51C5F73E18476 /* iOSExploreDiagnostics in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		FBBA97272FE80598009FFEC3 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		FBBA97312FE80598009FFEC3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -99,7 +81,6 @@
 			children = (
 				FBBA97162FE80597009FFEC3 /* SPMExample */,
 				FBBA972D2FE80598009FFEC3 /* SPMExampleTests */,
-				FBBA97372FE80598009FFEC3 /* SPMExampleUITests */,
 				FBBA97152FE80597009FFEC3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -109,7 +90,6 @@
 			children = (
 				FBBA97142FE80597009FFEC3 /* SPMExample.app */,
 				FBBA972A2FE80598009FFEC3 /* SPMExampleTests.xctest */,
-				FBBA97342FE80598009FFEC3 /* SPMExampleUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -136,6 +116,7 @@
 			packageProductDependencies = (
 				9EB49219D493AEC683ED12AF /* iOSExploreServer */,
 				9EB49219D493AEC683ED12B0 /* iOSExploreUIKit */,
+				9EB49219D493AEC683ED12D1 /* iOSExploreDiagnostics */,
 				FB3A36352FF7A0EB00733623 /* LookinServer */,
 			);
 			productName = SPMExample;
@@ -163,27 +144,6 @@
 			productReference = FBBA972A2FE80598009FFEC3 /* SPMExampleTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		FBBA97332FE80598009FFEC3 /* SPMExampleUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = FBBA97452FE80598009FFEC3 /* Build configuration list for PBXNativeTarget "SPMExampleUITests" */;
-			buildPhases = (
-				FBBA97302FE80598009FFEC3 /* Sources */,
-				FBBA97312FE80598009FFEC3 /* Frameworks */,
-				FBBA97322FE80598009FFEC3 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				FBBA97362FE80598009FFEC3 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				FBBA97372FE80598009FFEC3 /* SPMExampleUITests */,
-			);
-			name = SPMExampleUITests;
-			productName = SPMExampleUITests;
-			productReference = FBBA97342FE80598009FFEC3 /* SPMExampleUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -198,10 +158,6 @@
 						CreatedOnToolsVersion = 26.2;
 					};
 					FBBA97292FE80598009FFEC3 = {
-						CreatedOnToolsVersion = 26.2;
-						TestTargetID = FBBA97132FE80597009FFEC3;
-					};
-					FBBA97332FE80598009FFEC3 = {
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = FBBA97132FE80597009FFEC3;
 					};
@@ -227,7 +183,6 @@
 			targets = (
 				FBBA97132FE80597009FFEC3 /* SPMExample */,
 				FBBA97292FE80598009FFEC3 /* SPMExampleTests */,
-				FBBA97332FE80598009FFEC3 /* SPMExampleUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -241,13 +196,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		FBBA97282FE80598009FFEC3 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		FBBA97322FE80598009FFEC3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -271,13 +219,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		FBBA97302FE80598009FFEC3 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -285,11 +226,6 @@
 			isa = PBXTargetDependency;
 			target = FBBA97132FE80597009FFEC3 /* SPMExample */;
 			targetProxy = FBBA972B2FE80598009FFEC3 /* PBXContainerItemProxy */;
-		};
-		FBBA97362FE80598009FFEC3 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = FBBA97132FE80597009FFEC3 /* SPMExample */;
-			targetProxy = FBBA97352FE80598009FFEC3 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -523,46 +459,6 @@
 			};
 			name = Release;
 		};
-		FBBA97462FE80598009FFEC3 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = UQ35W3765Z;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.coo.SPMExampleUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = SPMExample;
-			};
-			name = Debug;
-		};
-		FBBA97472FE80598009FFEC3 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = UQ35W3765Z;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.coo.SPMExampleUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = SPMExample;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -589,15 +485,6 @@
 			buildConfigurations = (
 				FBBA97432FE80598009FFEC3 /* Debug */,
 				FBBA97442FE80598009FFEC3 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		FBBA97452FE80598009FFEC3 /* Build configuration list for PBXNativeTarget "SPMExampleUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				FBBA97462FE80598009FFEC3 /* Debug */,
-				FBBA97472FE80598009FFEC3 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -632,6 +519,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference "../../" */;
 			productName = iOSExploreUIKit;
+		};
+		9EB49219D493AEC683ED12D1 /* iOSExploreDiagnostics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 197A958BB5FAEB325867D2B2 /* XCLocalSwiftPackageReference "../../" */;
+			productName = iOSExploreDiagnostics;
 		};
 		FB3A36352FF7A0EB00733623 /* LookinServer */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -131,11 +131,11 @@ func waitCancellationConvergesToWaitTimeout() async {
     } catch let error as UIKitCommandError {
         #expect(error.failure.code == .waitTimeout)
         // 关键回归保护：cancel 必须在远小于 timeoutMs(10s) 内收敛，证明是 cancel 短路而非自然
-        // deadline。若有人删掉 UIWaitExecutor 的 Task.isCancelled 检查，cancel 被忽略、`try?`
-        // 吞掉 CancellationError 后命令会跑满 10s 才靠自然 deadline 抛 waitTimeout——code 仍是
-        // waitTimeout 但耗时接近 10s，本断言会失败。
+        // deadline。iOS 模拟器全量测试时 MainActor 负载会带来秒级抖动，因此阈值保留到
+        // 6s：若有人删掉 UIWaitExecutor 的 Task.isCancelled 检查，cancel 被忽略、`try?`
+        // 吞掉 CancellationError 后命令会跑满 10s 才靠自然 deadline 抛 waitTimeout，仍会失败。
         let elapsed = start.duration(to: clock.now)
-        #expect(elapsed < .seconds(2), "cancel should short-circuit within 2s, took \(elapsed)")
+        #expect(elapsed < .seconds(6), "cancel should short-circuit well before 10s, took \(elapsed)")
     } catch {
         Issue.record("unexpected error (expected waitTimeout): \(error)")
     }

@@ -37,6 +37,20 @@ struct UIGestureTriggeredPair: Sendable {
 /// `#if DEBUG #if canImport(UIKit)` 双隔离（私有 ivar 读取绝不进 Release）；因此调用它的逻辑用
 /// `#if DEBUG ... #else 兜底 #endif` 包裹（参照 `UIAlertRespondExecutor.perform` 的隔离边界），
 /// Release 下 `execute(on:)` 直接返回 `nil`，让 `executeTap` fallthrough 到 `unsupported_target`。
+///
+/// ## cellSelection 独立路径
+///
+/// `executeCellSelection(on:)` 处理 `UITableViewCell`/`UICollectionViewCell` 子树内 view 的
+/// selection 触发。它与 `execute(on:)` 互斥：cell 子树不走普通手势 adapter（cell 子 view 的
+/// `_longPressGestureRecognized:` 是 prepareForReuse 相关手势，不是 selection 语义），由
+/// `executeTap` 的 route==nil 分支优先调本方法。本方法内部流程：
+/// 1. 向上找 `UITableViewCell`/`UICollectionViewCell` 祖先；不存在 → 返回 nil（不在 cell 子树）。
+/// 2. 继续向上找 `UITableView`/`UICollectionView` 祖先；不存在 → 返回 nil（异常状态）。
+/// 3. DEBUG：在 containerView 的 gestureRecognizers 中找 `selectGestureHandler:` 手势，只记日志
+///    不 invoke（已验证 `selectGestureHandler:` 无真实触摸事件流时静默跳过 `_selectRowAtIndexPath:`，
+///    见 spec §4.2 场景 B）。
+/// 4. 公有 API 兜底：`indexPath(for:)` + `delegate.didSelectRow/didSelectItem`。
+///    见 spec `docs/superpowers/specs/2026-07-05-uitableviewcell-tap-selection-design.md`。
 @MainActor
 enum UIGestureTargetExecutor {
     /// 对 view 上所有手势的所有 target-action 按签名派发。
@@ -97,6 +111,194 @@ enum UIGestureTargetExecutor {
             // func action() 或其他未知签名：按无参派发
             target.perform(action)
         }
+    }
+}
+
+// MARK: - Cell Selection
+
+/// cell selection adapter 的尝试结果摘要，跨 MainActor 边界回传到 handler。
+@MainActor
+struct UICellSelectionAttempt: Sendable, Equatable {
+    /// 是否成功触发 selection。
+    let activated: Bool
+    /// 实际触发的路由摘要。
+    let activationRoute: String
+    /// 入参 view 的运行时类型名。
+    let viewType: String
+    /// 外层 tableView/CollectionView 的运行时类型名。
+    let containerViewType: String?
+    /// 命中的 cell 类型名。
+    let cellType: String?
+    /// 公有 API 路径解析到的 indexPath 摘要。
+    let indexPathSummary: IndexPathSummary?
+}
+
+/// 公有 API 路径解析到的 section/item 摘要，跨边界前从 IndexPath 抽出。
+struct IndexPathSummary: Sendable, Equatable {
+    let section: Int
+    let item: Int
+}
+
+@MainActor
+extension UIGestureTargetExecutor {
+    /// 在 cell 子树内尝试触发 cell selection。
+    ///
+    /// 流程：
+    /// 1. 向上找 `UITableViewCell`/`UICollectionViewCell` 祖先；不存在 → 返回 nil（不在 cell 子树）。
+    /// 2. 继续向上找 `UITableView`/`UICollectionView` 祖先；不存在 → 返回 nil（异常状态）。
+    /// 3. DEBUG：在 containerView 的 gestureRecognizers 中找 `selectGestureHandler:` 手势，
+    ///    只记日志**不 invoke**（已 spike 验证：无真实触摸事件流时 `_UISelectionInteraction` 内部
+    ///    静默跳过 `_selectRowAtIndexPath:`，invoke 无效果）。
+    /// 4. 公有 API 路径：`indexPath(for:)` + `delegate.didSelectRow/didSelectItem`。
+    ///
+    /// - Parameter view: `executeTap` 传入的已定位 canonical target。
+    /// - Returns: `nil` 表示 view 不在 cell 子树内；`non-nil` 表示在 cell 子树内，已尝试触发。
+    static func executeCellSelection(on view: UIView) -> UICellSelectionAttempt? {
+        let viewType = String(describing: Swift.type(of: view))
+
+        // 1. 向上找 cell 祖先
+        guard let cell = view.explore_cellAncestor else {
+            UIKitCommandLogging.info("command",
+                "cell selection skip: view not in cell subtree viewType=\(viewType)")
+            return nil
+        }
+        let cellType = String(describing: Swift.type(of: cell))
+
+        // 2. 向上找 containerView 祖先
+        guard let container = cell.explore_containerViewAncestor else {
+            UIKitCommandLogging.info("command",
+                "cell selection skip: cell without tableView ancestor cellType=\(cellType) viewType=\(viewType)")
+            return nil
+        }
+        let containerType = String(describing: Swift.type(of: container))
+
+        // 3. DEBUG：记录 selectGestureHandler: 是否存在（仅观察，不 invoke）
+        #if DEBUG
+        let gestures = container.gestureRecognizers ?? []
+        var foundSelectGestureHandler = false
+        for (i, g) in gestures.enumerated() {
+            let gestureType = String(describing: Swift.type(of: g))
+            for pair in g.explore_targetActionPairs() {
+                let actionName = NSStringFromSelector(pair.action)
+                let targetType = String(describing: Swift.type(of: pair.target))
+                if actionName == "selectGestureHandler:" {
+                    foundSelectGestureHandler = true
+                    UIKitCommandLogging.info("command",
+                        "cell selection observed selectGestureHandler: on container=\(containerType) gesture[\(i)]=\(gestureType) target=\(targetType) — bypassed (B scenario)")
+                }
+            }
+        }
+        if !foundSelectGestureHandler {
+            UIKitCommandLogging.info("command",
+                "cell selection no selectGestureHandler: found on container=\(containerType) viewType=\(viewType)")
+        }
+        #endif
+
+        // 4. 公有 API 路径：indexPath(for:) + delegate.didSelectRow/didSelectItem
+        if let tableView = container as? UITableView {
+            return trySelectTableViewRow(tableView: tableView, cell: cell, viewType: viewType, cellType: cellType, containerType: containerType)
+        } else if let collectionView = container as? UICollectionView {
+            return trySelectCollectionViewItem(collectionView: collectionView, cell: cell, viewType: viewType, cellType: cellType, containerType: containerType)
+        } else {
+            UIKitCommandLogging.info("command",
+                "cell selection unsupported container type=\(containerType) viewType=\(viewType)")
+            return UICellSelectionAttempt(
+                activated: false,
+                activationRoute: "cell.select.unsupported-container",
+                viewType: viewType,
+                containerViewType: containerType,
+                cellType: cellType,
+                indexPathSummary: nil
+            )
+        }
+    }
+
+    /// 通过 UITableView 公有 API 触发 cell selection。
+    ///
+    /// 先 `indexPath(for:)` 定位 cell 的 indexPath，再调 `delegate.tableView?(tableView, didSelectRowAt:)`。
+    private static func trySelectTableViewRow(tableView: UITableView, cell: UIView, viewType: String, cellType: String, containerType: String) -> UICellSelectionAttempt? {
+        guard let typedCell = cell as? UITableViewCell else {
+            UIKitCommandLogging.info("command",
+                "cell selection cell not UITableViewCell actual=\(cellType)")
+            return UICellSelectionAttempt(
+                activated: false,
+                activationRoute: "cell.select.not-tableview-cell",
+                viewType: viewType,
+                containerViewType: containerType,
+                cellType: cellType,
+                indexPathSummary: nil
+            )
+        }
+        guard let indexPath = tableView.indexPath(for: typedCell) else {
+            UIKitCommandLogging.info("command",
+                "cell selection indexPath(for:) returned nil for cell=\(cellType)")
+            return UICellSelectionAttempt(
+                activated: false,
+                activationRoute: "cell.select.indexPath-nil",
+                viewType: viewType,
+                containerViewType: containerType,
+                cellType: cellType,
+                indexPathSummary: nil
+            )
+        }
+        let summary = IndexPathSummary(section: indexPath.section, item: indexPath.row)
+
+        // 调 delegate.didSelectRow
+        tableView.delegate?.tableView?(tableView, didSelectRowAt: indexPath)
+
+        UIKitCommandLogging.info("command",
+            "cell selection public API path activated tableView=\(containerType) section=\(indexPath.section) row=\(indexPath.row)")
+        return UICellSelectionAttempt(
+            activated: true,
+            activationRoute: "cell.select.public",
+            viewType: viewType,
+            containerViewType: containerType,
+            cellType: cellType,
+            indexPathSummary: summary
+        )
+    }
+
+    /// 通过 UICollectionView 公有 API 触发 cell selection。
+    private static func trySelectCollectionViewItem(collectionView: UICollectionView, cell: UIView, viewType: String, cellType: String, containerType: String) -> UICellSelectionAttempt? {
+        guard let typedCell = cell as? UICollectionViewCell else {
+            UIKitCommandLogging.info("command",
+                "cell selection cell not UICollectionViewCell actual=\(cellType)")
+            return UICellSelectionAttempt(
+                activated: false,
+                activationRoute: "cell.select.not-collectionview-cell",
+                viewType: viewType,
+                containerViewType: containerType,
+                cellType: cellType,
+                indexPathSummary: nil
+            )
+        }
+        guard let indexPath = collectionView.indexPath(for: typedCell) else {
+            UIKitCommandLogging.info("command",
+                "cell selection indexPath(for:) returned nil for cell=\(cellType)")
+            return UICellSelectionAttempt(
+                activated: false,
+                activationRoute: "cell.select.indexPath-nil",
+                viewType: viewType,
+                containerViewType: containerType,
+                cellType: cellType,
+                indexPathSummary: nil
+            )
+        }
+        let summary = IndexPathSummary(section: indexPath.section, item: indexPath.item)
+
+        // 调 delegate.didSelectItem
+        collectionView.delegate?.collectionView?(collectionView, didSelectItemAt: indexPath)
+
+        UIKitCommandLogging.info("command",
+            "cell selection public API path activated collectionView=\(containerType) section=\(indexPath.section) item=\(indexPath.item)")
+        return UICellSelectionAttempt(
+            activated: true,
+            activationRoute: "cell.select.public",
+            viewType: viewType,
+            containerViewType: containerType,
+            cellType: cellType,
+            indexPathSummary: summary
+        )
     }
 }
 #endif

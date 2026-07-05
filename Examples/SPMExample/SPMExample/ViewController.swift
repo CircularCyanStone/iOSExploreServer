@@ -6,8 +6,10 @@
 //
 
 import UIKit
+import OSLog
 import iOSExploreServer
 import iOSExploreUIKit
+import iOSExploreDiagnostics
 
 private struct ExampleGreetingInput: CommandInput {
     static let nameField = CommandFields.optionalString("name", description: "名字；缺省时返回 world")
@@ -20,23 +22,52 @@ private struct ExampleGreetingInput: CommandInput {
     }
 }
 
+#if DEBUG
+private struct ExampleStdIOMessageInput: CommandInput {
+    static let messageField = CommandFields.optionalString("message", description: "写入 stdout/stderr 的文本；缺省时使用默认诊断 marker。")
+    static let tokenField = CommandFields.optionalString("token", description: "兼容测试脚本的短 token；未传 message 时作为写入文本。")
+    static let inputSchema = CommandInputSchema(fields: [messageField.erased, tokenField.erased])
+
+    let message: String
+
+    static func parse(decoding decoder: inout CommandInputDecoder) throws -> ExampleStdIOMessageInput {
+        let messageValue = try decoder.read(messageField)
+        let tokenValue = try decoder.read(tokenField)
+        let message = messageValue ?? tokenValue ?? "SPMExample stdio diagnostic marker"
+        return ExampleStdIOMessageInput(message: message)
+    }
+}
+#endif
+
+/// 主页菜单项。
+private struct MenuItem {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let viewControllerType: UIViewController.Type
+}
+
 final class ViewController: UIViewController {
     private let server = ExploreServer()
     private var logLines: [String] = []
     private let statusLabel = UILabel()
     private let startButton = UIButton(type: .system)
     private let stopButton = UIButton(type: .system)
-    private let tableView = UITableView()
-    /// 手势 adapter 真机验证 view：挂 `UITapGestureRecognizer`，target-action 累加计数并回写
-    /// accessibilityLabel，供 `ui.tap`（gesture 分支）远程触发后用 `debug.gestureTapCount` 校验副作用。
+    private let menuTableView = UITableView()
+    private let logTableView = UITableView()
     private let gestureDemoLabel = UILabel()
     private var gestureTapCount = 0
     private nonisolated(unsafe) var eventsTask: Task<Void, Never>?
-    #if DEBUG
+#if DEBUG
     private var didRunLaunchAutomation = false
-    /// 合成触摸 spike 最近一次结果（供 `debug.syntheticTapSpike` 命令读取，真机验证用）。
-    private var lastSyntheticTapSpikeResult = "not run"
-    #endif
+#endif
+
+    /// 功能菜单数据。
+    private let menuItems: [MenuItem] = [
+        MenuItem(title: "弹窗测试", subtitle: "5 种 UIAlertController 案例，供 ui.alert.respond 验证", icon: "🔔", viewControllerType: AlertTestViewController.self),
+        MenuItem(title: "控件测试", subtitle: "UIButton / UISwitch / UISlider 等 6 类控件，供 ui.control.sendAction 验证", icon: "🎮", viewControllerType: ControlTestViewController.self),
+        MenuItem(title: "日志诊断测试", subtitle: "模拟网络请求、认证、业务事件等多种场景，验证所有日志来源", icon: "📋", viewControllerType: DiagnosticsTestViewController.self),
+    ]
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -45,30 +76,6 @@ final class ViewController: UIViewController {
         setupLayout()
         updateStatus(running: false)
 
-        // 顶部导航入口：进入 UIControl 测试页（供 ui.control.sendAction 命令压测）。
-        // 同时是 `ui.navigation.tapBarButton` 的真实闭环样本：补稳定 identifier，让 Agent
-        // 观察到 `navigationBar.rightItems[0]` 后可带 identifier 二次确认再触发，而不是坐标硬点。
-        let controlTestItem = UIBarButtonItem(
-            title: "控件测试",
-            style: .plain,
-            target: self,
-            action: #selector(openControlTest)
-        )
-        controlTestItem.accessibilityIdentifier = "example.controlTest"
-        navigationItem.rightBarButtonItem = controlTestItem
-
-        // 顶部导航左上角入口：进入 UIAlertController 测试页（供 ui.alert.respond 观察系统标准弹窗）。
-        // 与右侧「控件测试」对称，同样补稳定 identifier，供 ui.navigation.tapBarButton 真实闭环。
-        let alertTestItem = UIBarButtonItem(
-            title: "弹窗测试",
-            style: .plain,
-            target: self,
-            action: #selector(openAlertTest)
-        )
-        alertTestItem.accessibilityIdentifier = "example.alertTest"
-        navigationItem.leftBarButtonItem = alertTestItem
-
-        // 演示自定义命令 + UIKit 信息注入(register 同步,无需 Task)
         server.register(action: "greet", description: "按 name 打招呼", input: ExampleGreetingInput.self) { input in
             .success(["message": .string("Hello, \(input.name)")])
         }
@@ -79,48 +86,61 @@ final class ViewController: UIViewController {
             }
         }
 
-        // 显式开放 UIKit 命令（ui.topViewHierarchy / ui.viewTargets /
-        // ui.control.sendAction / ui.tap）。core 不自动注册，由宿主决定是否启用。
         server.registerUIKitCommands()
 
-        // 非 #if DEBUG probe：确认 viewDidLoad 执行 + 设备跑的是新 binary（含本改动）。
+        #if DEBUG
+        server.registerDiagnosticsCommands(Self.exampleDiagnosticsConfiguration())
+        #else
+        server.registerDiagnosticsCommands(.init(captureStdout: false, captureStderr: false))
+        #endif
+
         server.register(action: "debug.probe",
                         description: "alive probe (非 DEBUG, 验证新 binary)",
                         input: EmptyCommandInput.self) { _ in
             .success(["alive": .bool(true), "build": .string("gesture-adapter-2026-07-04")])
         }
 
-        // 手势 adapter 真机验证：回读 gestureDemoLabel 的 tap 计数，校验 ui.tap gesture 分支
-        // 触发的 target-action 副作用真发生（不只是 executor 派发）。
-        server.register(action: "debug.gestureTapCount",
-                        description: "返回 gesture demo view 的 tap 计数（手势 adapter 验证）",
-                        input: EmptyCommandInput.self) { [weak self] _ in
-            await MainActor.run {
-                .success(["count": .double(Double(self?.gestureTapCount ?? -1))])
-            }
+        server.register(action: "debug.emitAppLog",
+                        description: "写入一条 SPMExample bridge 诊断日志",
+                        input: EmptyCommandInput.self) { _ in
+            ExploreAppLog.emit(.info,
+                               category: "spm.example",
+                               message: "SPMExample bridge diagnostic marker")
+            return .success(["emitted": .bool(true)])
         }
 
         #if DEBUG
-        // Debug 工具：运行合成触摸 spike 并返回结果（真机验证 ui.tap realTouch 可行性）。
-        // 非生产命令，仅用于在真实 App 进程确认模拟器结论。
-        server.register(action: "debug.syntheticTapSpike",
-                        description: "运行合成触摸 spike，返回真机 4 场景结果",
-                        input: EmptyCommandInput.self) { [weak self] _ in
-            await MainActor.run {
-                guard let self else { return .success(["result": .string("host unavailable")]) }
-                self.runSyntheticTapSpike()
-                return .success(["result": .string(self.lastSyntheticTapSpikeResult)])
-            }
+        server.register(action: "debug.emitStdout",
+                        description: "向 stdout 写入一条 SPMExample 诊断文本",
+                        input: ExampleStdIOMessageInput.self) { input in
+            Self.emitStdIOMessage(input.message, source: "stdout")
+        }
+        server.register(action: "debug.emitStderr",
+                        description: "向 stderr 写入一条 SPMExample 诊断文本",
+                        input: ExampleStdIOMessageInput.self) { input in
+            Self.emitStdIOMessage(input.message, source: "stderr")
+        }
+        server.register(action: "debug.emitNSLog",
+                        description: "通过 NSLog 写入一条 SPMExample 诊断文本",
+                        input: ExampleStdIOMessageInput.self) { input in
+            Self.emitNSLogMessage(input.message)
+        }
+        server.register(action: "debug.emitOSLog",
+                        description: "通过 os_log 写入一条 SPMExample 诊断文本",
+                        input: ExampleStdIOMessageInput.self) { input in
+            Self.emitOSLogMessage(input.message)
+        }
+        server.register(action: "debug.emitLogger",
+                        description: "通过 Swift Logger 写入一条 SPMExample 诊断文本",
+                        input: ExampleStdIOMessageInput.self) { input in
+            Self.emitLoggerMessage(input.message)
         }
         #endif
 
-        // 订阅事件 → 日志面板
         eventsTask = Task { @MainActor [weak self, server] in
             for await event in server.events() {
                 guard let self else { return }
                 self.appendLog(Self.describe(event))
-                // 只有生命周期事件改变运行状态；请求/响应事件只记日志，
-                // 否则每来一个 curl 都会把 UI 误显示为「已停止」（server 其实仍在监听）。
                 switch event {
                 case .started: self.updateStatus(running: true)
                 case .stopped, .error: self.updateStatus(running: false)
@@ -142,59 +162,130 @@ final class ViewController: UIViewController {
     }
 
     private func setupLayout() {
+        // 状态栏区域
         statusLabel.font = .systemFont(ofSize: 15, weight: .medium)
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        // 手势 adapter 验证 view
+        gestureDemoLabel.text = "👆 gesture tap: 0"
+        gestureDemoLabel.accessibilityIdentifier = "example.gestureTap"
+        gestureDemoLabel.accessibilityLabel = "gesture-tap-count:0"
+        gestureDemoLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        gestureDemoLabel.textAlignment = .center
+        gestureDemoLabel.backgroundColor = .systemBlue.withAlphaComponent(0.1)
+        gestureDemoLabel.layer.cornerRadius = 8
+        gestureDemoLabel.clipsToBounds = true
+        gestureDemoLabel.isUserInteractionEnabled = true
+        gestureDemoLabel.translatesAutoresizingMaskIntoConstraints = false
+        gestureDemoLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(gestureDemoTapped)))
+
+        // 启动/停止按钮
         startButton.setTitle("启动 Server", for: .normal)
         stopButton.setTitle("停止", for: .normal)
         startButton.addTarget(self, action: #selector(startTapped), for: .touchUpInside)
         stopButton.addTarget(self, action: #selector(stopTapped), for: .touchUpInside)
+        startButton.translatesAutoresizingMaskIntoConstraints = false
+        stopButton.translatesAutoresizingMaskIntoConstraints = false
 
-        // 手势 adapter 验证 view：挂 UITapGestureRecognizer。ui.viewTargets 因 hasGestureRecognizers
-        // 把它列为 canonical target；ui.tap 走 gesture 分支远程触发 gestureDemoTapped。
-        gestureDemoLabel.text = "👆 gesture tap: 0"
-        gestureDemoLabel.accessibilityIdentifier = "example.gestureTap"
-        gestureDemoLabel.accessibilityLabel = "gesture-tap-count:0"
-        gestureDemoLabel.font = .systemFont(ofSize: 16, weight: .semibold)
-        gestureDemoLabel.textAlignment = .center
-        gestureDemoLabel.backgroundColor = .systemBlue.withAlphaComponent(0.12)
-        gestureDemoLabel.layer.cornerRadius = 8
-        gestureDemoLabel.clipsToBounds = true
-        gestureDemoLabel.isUserInteractionEnabled = true
-        gestureDemoLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(gestureDemoTapped)))
+        // 菜单列表 — 主体区域
+        menuTableView.delegate = self
+        menuTableView.dataSource = self
+        menuTableView.register(UITableViewCell.self, forCellReuseIdentifier: "menuCell")
+        menuTableView.translatesAutoresizingMaskIntoConstraints = false
+        menuTableView.isScrollEnabled = false
+        menuTableView.layer.cornerRadius = 12
+        menuTableView.layer.borderWidth = 1
+        menuTableView.layer.borderColor = UIColor.separator.cgColor
 
-        tableView.dataSource = self
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
-        tableView.translatesAutoresizingMaskIntoConstraints = false
+        // 菜单标题
+        let menuTitle = UILabel()
+        menuTitle.text = "功能菜单"
+        menuTitle.font = .systemFont(ofSize: 20, weight: .bold)
+        menuTitle.translatesAutoresizingMaskIntoConstraints = false
 
-        let buttonRow = UIStackView(arrangedSubviews: [startButton, stopButton])
-        buttonRow.spacing = 16
-        buttonRow.translatesAutoresizingMaskIntoConstraints = false
+        // 日志标题
+        let logTitle = UILabel()
+        logTitle.text = "事件日志"
+        logTitle.font = .systemFont(ofSize: 13, weight: .semibold)
+        logTitle.textColor = .secondaryLabel
+        logTitle.translatesAutoresizingMaskIntoConstraints = false
 
-        let header = UIStackView(arrangedSubviews: [statusLabel, buttonRow, gestureDemoLabel])
-        header.axis = .vertical
-        header.spacing = 12
-        header.translatesAutoresizingMaskIntoConstraints = false
+        // 日志面板 — 底部紧凑区域，自动滚动
+        logTableView.dataSource = self
+        logTableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
+        logTableView.translatesAutoresizingMaskIntoConstraints = false
+        logTableView.isScrollEnabled = true
+        logTableView.tag = 100
+        logTableView.layer.cornerRadius = 8
+        logTableView.layer.borderWidth = 1
+        logTableView.layer.borderColor = UIColor.separator.cgColor
+        logTableView.rowHeight = 20
 
-        view.addSubview(header)
-        view.addSubview(tableView)
+        view.addSubview(statusLabel)
+        view.addSubview(gestureDemoLabel)
+        view.addSubview(startButton)
+        view.addSubview(stopButton)
+        view.addSubview(menuTitle)
+        view.addSubview(menuTableView)
+        view.addSubview(logTitle)
+        view.addSubview(logTableView)
+
+        let menuRowHeight: CGFloat = 64
+        let menuTotalHeight = CGFloat(menuItems.count) * menuRowHeight
+
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            gestureDemoLabel.heightAnchor.constraint(equalToConstant: 44),
-            tableView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            // 状态行（顶部）
+            statusLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            statusLabel.heightAnchor.constraint(equalToConstant: 32),
+
+            gestureDemoLabel.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
+            gestureDemoLabel.leadingAnchor.constraint(equalTo: statusLabel.trailingAnchor, constant: 12),
+            gestureDemoLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            gestureDemoLabel.heightAnchor.constraint(equalToConstant: 32),
+
+            // 启动/停止按钮行
+            startButton.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 12),
+            startButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            startButton.heightAnchor.constraint(equalToConstant: 36),
+
+            stopButton.centerYAnchor.constraint(equalTo: startButton.centerYAnchor),
+            stopButton.leadingAnchor.constraint(equalTo: startButton.trailingAnchor, constant: 16),
+            stopButton.heightAnchor.constraint(equalToConstant: 36),
+
+            // 菜单标题
+            menuTitle.topAnchor.constraint(equalTo: startButton.bottomAnchor, constant: 20),
+            menuTitle.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            menuTitle.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            menuTitle.heightAnchor.constraint(equalToConstant: 24),
+
+            // 菜单列表（主体区域）
+            menuTableView.topAnchor.constraint(equalTo: menuTitle.bottomAnchor, constant: 8),
+            menuTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            menuTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            menuTableView.heightAnchor.constraint(equalToConstant: menuTotalHeight),
+
+            // 日志标题
+            logTitle.topAnchor.constraint(equalTo: menuTableView.bottomAnchor, constant: 16),
+            logTitle.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            logTitle.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            logTitle.heightAnchor.constraint(equalToConstant: 18),
+
+            // 日志面板（底部紧凑区域）
+            logTableView.topAnchor.constraint(equalTo: logTitle.bottomAnchor, constant: 4),
+            logTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            logTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            logTableView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
         ])
     }
+}
 
+// MARK: - Server 控制 & 状态
+extension ViewController {
     @objc private func startTapped() {
         startServer()
     }
 
-    /// 启动 ExploreServer 并把失败写入日志面板。
-    ///
-    /// 手动按钮和 Debug 启动参数共用同一条路径，避免测试工具自动启动 server 时走另一份逻辑。
     private func startServer() {
         Task {
             do {
@@ -212,8 +303,14 @@ final class ViewController: UIViewController {
         server.stop()
     }
 
-    /// 手势 adapter 验证 view 的 target-action：累加计数并回写 label 文本 + accessibilityLabel。
-    /// ui.tap 的 gesture 分支远程触发它；`debug.gestureTapCount` 回读计数校验副作用真发生。
+    @MainActor
+    private func updateStatus(running: Bool) {
+        statusLabel.text = running ? "● 监听中 :\(serverPort)" : "○ 已停止"
+        statusLabel.textColor = running ? .systemGreen : .secondaryLabel
+    }
+
+    private var serverPort: UInt16 { 38321 }
+
     @objc private func gestureDemoTapped() {
         gestureTapCount += 1
         gestureDemoLabel.text = "👆 gesture tap: \(gestureTapCount)"
@@ -221,35 +318,30 @@ final class ViewController: UIViewController {
         appendLog("gesture demo tapped: \(gestureTapCount)")
     }
 
-    /// push 进入 UIControl 测试页（载体页供 ui.control.sendAction 远程触发）。
-    @objc private func openControlTest() {
-        navigationController?.pushViewController(ControlTestViewController(), animated: true)
+    @MainActor
+    private func appendLog(_ line: String) {
+        logLines.insert(line, at: 0)
+        if logLines.count > 200 { logLines.removeLast() }
+        logTableView.reloadData()
+        // 新日志自动滚动到顶部（最新在最上面）
+        if logLines.isEmpty == false {
+            logTableView.scrollToRow(at: IndexPath(row: 0, section: 0), at: .top, animated: true)
+        }
     }
+}
 
-    /// push 进入 UIAlertController 测试页（载体页供 ui.alert.respond 远程观察系统标准弹窗）。
-    @objc private func openAlertTest() {
-        navigationController?.pushViewController(AlertTestViewController(), animated: true)
-    }
-
-    #if DEBUG
-    /// Debug 测试工具启动入口。
-    ///
-    /// 真实闭环验证不能依赖先远程点击“启动 Server”按钮，因为 server 未启动时 HTTP 命令本身
-    /// 不可达。这里读取启动参数/环境变量，允许 XcodeBuildMCP 或 xcodebuild launch 时自动启动
-    /// server，并可选进入弹窗测试页。未传这些开关时，示例 App 的手动体验保持不变。
+// MARK: - Launch Automation
+extension ViewController {
     private func runLaunchAutomationIfNeeded() {
         guard !didRunLaunchAutomation else { return }
         didRunLaunchAutomation = true
 
         let arguments = Set(ProcessInfo.processInfo.arguments)
         let environment = ProcessInfo.processInfo.environment
-        let shouldAutostart = arguments.contains("--ios-explore-autostart")
-            || environment["IOS_EXPLORE_AUTOSTART"] == "1"
+        let shouldAutostart = true
         let shouldOpenAlertTest = arguments.contains("--ios-explore-open-alert-test")
             || environment["IOS_EXPLORE_OPEN_ALERT_TEST"] == "1"
-        let shouldRunSyntheticTapTest = arguments.contains("--ios-explore-synthetic-tap-test")
-            || environment["IOS_EXPLORE_SYNTHETIC_TAP_TEST"] == "1"
-        print("iOSExplore launch automation autostart=\(shouldAutostart) openAlertTest=\(shouldOpenAlertTest) syntheticTap=\(shouldRunSyntheticTapTest) arguments=\(ProcessInfo.processInfo.arguments)")
+        print("iOSExplore launch automation autostart=\(shouldAutostart) openAlertTest=\(shouldOpenAlertTest) arguments=\(ProcessInfo.processInfo.arguments)")
 
         if shouldAutostart {
             appendLog("launch automation: start server")
@@ -259,175 +351,164 @@ final class ViewController: UIViewController {
             appendLog("launch automation: open alert test")
             openAlertTest()
         }
-        if shouldRunSyntheticTapTest {
-            appendLog("launch automation: synthetic tap test")
-            // 延迟让 view 完成 appear + 布局，再在真实 key window 上合成触摸。
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 800_000_000)
-                self?.runSyntheticTapSpike()
-            }
-        }
     }
 
-    /// 真机合成触摸 spike：在真实 App 进程（有 UIApplication / gestureEnvironment / scene）
-    /// 跑 4 场景，验证 `explore_sendSyntheticTap` 在真实 key window 上能否触发
-    /// gesture / plain view / 遮挡 / UIButton。结果存 `lastSyntheticTapSpikeResult`。
-    @MainActor
-    private func runSyntheticTapSpike() {
-        guard let window = view.window else {
-            lastSyntheticTapSpikeResult = "no window"
-            print("[synthetic-tap-spike] REAL aborted: no window")
-            return
+    private func openAlertTest() {
+        navigationController?.pushViewController(AlertTestViewController(), animated: true)
+    }
+}
+
+// MARK: - Diagnostics 配置 & Debug 命令
+extension ViewController {
+    #if DEBUG
+    static func exampleDiagnosticsConfiguration() -> DiagnosticsConfiguration {
+        DiagnosticsConfiguration(captureStdout: true,
+                                 captureStderr: true,
+                                 captureNSLog: true,
+                                 captureOSLog: true)
+    }
+
+    nonisolated static func emitStdIOMessage(_ message: String, source: String) -> ExploreResult {
+        let line = message + "\n"
+        let data = Data(line.utf8)
+        switch source {
+        case "stdout":
+            FileHandle.standardOutput.write(data)
+        case "stderr":
+            FileHandle.standardError.write(data)
+        default:
+            return .failure(code: .invalidData, message: "unsupported stdio source")
         }
-        let result = SyntheticTapSpikeRunner.runAll(in: view, window: window)
-        lastSyntheticTapSpikeResult = String(describing: result)
-        print("[synthetic-tap-spike] REAL iOS \(UIDevice.current.systemVersion) \(result)")
-        appendLog("synthetic tap: \(result)")
+        ExploreAppLog.emit(.info,
+                           category: "spm.example.stdio",
+                           message: "SPMExample \(source) debug command wrote bytes=\(data.count)")
+        return .success([
+            "source": .string(source),
+            "message": .string(message),
+            "bytes": .double(Double(data.count)),
+        ])
+    }
+
+    static func emitStdIOMessageForTesting(_ message: String, source: String) -> ExploreResult {
+        emitStdIOMessage(message, source: source)
+    }
+
+    nonisolated static func emitNSLogMessage(_ message: String) -> ExploreResult {
+        NSLog("%@", message)
+        ExploreAppLog.emit(.info,
+                           category: "spm.example.nslog",
+                           message: "SPMExample NSLog debug command emitted")
+        return .success([
+            "source": .string("nslog"),
+            "message": .string(message),
+        ])
+    }
+
+    static func emitNSLogMessageForTesting(_ message: String) -> ExploreResult {
+        emitNSLogMessage(message)
+    }
+
+    nonisolated static func emitOSLogMessage(_ message: String) -> ExploreResult {
+        os_log("%{public}@", log: OSLog(subsystem: "com.coo.SPMExample",
+                                        category: "diagnostics"),
+               type: .error,
+               message)
+        return .success([
+            "source": .string("oslog"),
+            "message": .string(message),
+            "api": .string("os_log"),
+        ])
+    }
+
+    static func emitOSLogMessageForTesting(_ message: String) -> ExploreResult {
+        emitOSLogMessage(message)
+    }
+
+    nonisolated static func emitLoggerMessage(_ message: String) -> ExploreResult {
+        if #available(iOS 14.0, macOS 11.0, *) {
+            let logger = Logger(subsystem: "com.coo.SPMExample", category: "diagnostics")
+            logger.error("\(message, privacy: .public)")
+            return .success([
+                "source": .string("oslog"),
+                "message": .string(message),
+                "api": .string("Logger"),
+            ])
+        }
+        return .failure(code: .unsupportedTarget,
+                        message: "Swift Logger requires iOS 14 or newer.")
+    }
+
+    static func emitLoggerMessageForTesting(_ message: String) -> ExploreResult {
+        emitLoggerMessage(message)
+    }
+
+    static func stdIOMessageForTesting(data: JSON) throws -> String {
+        try ExampleStdIOMessageInput.parse(from: data).message
     }
     #endif
 
-    @MainActor
-    private func updateStatus(running: Bool) {
-        statusLabel.text = running ? "● 监听中 :\(serverPort)" : "○ 已停止"
-        statusLabel.textColor = running ? .systemGreen : .secondaryLabel
+    #if DEBUG
+    func registeredCommandActionsForTesting() -> [String] {
+        server.commandMetadata().map(\.action)
+    }
+    #endif
+}
+
+// MARK: - 日志面板 TableView
+extension ViewController: UITableViewDataSource {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        tableView.tag == 100 ? logLines.count : menuItems.count
     }
 
-    private var serverPort: UInt16 { 38321 }
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        if tableView.tag == 100 {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath)
+            var config = cell.defaultContentConfiguration()
+            config.text = logLines[indexPath.row]
+            config.textProperties.font = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+            cell.contentConfiguration = config
+            return cell
+        } else {
+            let cell = tableView.dequeueReusableCell(withIdentifier: "menuCell", for: indexPath)
+            let item = menuItems[indexPath.row]
+            var config = cell.defaultContentConfiguration()
+            config.text = "\(item.icon)  \(item.title)"
+            config.secondaryText = item.subtitle
+            config.secondaryTextProperties.font = UIFont.systemFont(ofSize: 12)
+            config.secondaryTextProperties.color = .secondaryLabel
+            config.textProperties.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+            cell.accessoryType = .disclosureIndicator
+            cell.contentConfiguration = config
+            return cell
+        }
+    }
+}
 
-    @MainActor
-    private func appendLog(_ line: String) {
-        logLines.insert(line, at: 0)
-        if logLines.count > 200 { logLines.removeLast() }
-        tableView.reloadData()
+// MARK: - 菜单列表 Delegate
+extension ViewController: UITableViewDelegate {
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        tableView.tag == 100 ? 20 : 64
     }
 
-    private static func describe(_ event: ServerEvent) -> String {
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        guard tableView.tag != 100 else { return }
+
+        let item = menuItems[indexPath.row]
+        let vc = item.viewControllerType.init()
+        vc.title = item.title
+        navigationController?.pushViewController(vc, animated: true)
+    }
+
+    fileprivate static func describe(_ event: ServerEvent) -> String {
         switch event {
         case .started(let port): return "started :\(port)"
         case .stopped: return "stopped"
-        case .received(_, _, let action): return "← POST action=\(action ?? "?")"
+        case .received(_, _, let action):
+            let actionName = action ?? "?"
+            return "← POST action=\(actionName)"
         case .responded(let status, let ok): return "→ \(status) ok=\(ok)"
         case .error(let msg): return "error \(msg)"
         }
     }
 }
-
-extension ViewController: UITableViewDataSource {
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { logLines.count }
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath)
-        var config = cell.defaultContentConfiguration()
-        config.text = logLines[indexPath.row]
-        config.textProperties.font = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        cell.contentConfiguration = config
-        return cell
-    }
-}
-
-#if DEBUG
-/// 真机合成触摸 spike runner：在真实 App 进程跑 4 个场景，汇总结果。
-///
-/// 场景对齐 `UITouchSyntheticSpikeTests`（gesture / plain view / 遮挡 / UIButton），
-/// 但运行在真实 key window 上（有 UIApplication、gestureEnvironment、scene），用于确认
-/// 模拟器结论（iOS 26 UIEvent touches 挂载失败）在真机同样成立。
-@MainActor
-enum SyntheticTapSpikeRunner {
-    /// spike 4 场景结果汇总。
-    struct Result: CustomStringConvertible {
-        var gestureFired = false
-        var plainBegan = 0
-        var plainEnded = 0
-        var overlayFired = false
-        var bottomFired = false
-        var buttonFired = false
-        var hitTestDescription = "nil"
-        var attachedTouchCount = -1
-        var missing: [String] = []
-
-        var description: String {
-            "gesture=\(gestureFired) plainBegan=\(plainBegan) plainEnded=\(plainEnded) "
-                + "overlay=\(overlayFired) bottom=\(bottomFired) button=\(buttonFired) "
-                + "hitTest=\(hitTestDescription) attached=\(attachedTouchCount) missing=\(missing)"
-        }
-    }
-
-    /// 手势 / target-action 计数器（gesture 的 target 是弱引用，由 `runAll` 局部变量强持有）。
-    @MainActor
-    final class Counter: NSObject {
-        var fired = false
-        @objc func didTap() { fired = true }
-    }
-
-    /// 普通 view touches 计数器（非 UIControl）。
-    @MainActor
-    final class Recorder: UIView {
-        var began = 0
-        var ended = 0
-        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { began &+= 1 }
-        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { ended &+= 1 }
-    }
-
-    /// 在 container（已挂 window）上跑 4 场景，返回汇总。
-    ///
-    /// 每个场景临时把测试 view 加到 container 顶层，合成 tap 其中心点（转 window 坐标），
-    /// 跑完移除，互不干扰。counter / recorder 由本方法局部变量强持有，sendTap 同步验证期间 alive。
-    static func runAll(in container: UIView, window: UIWindow) -> Result {
-        var r = Result()
-        let frame = CGRect(x: 40, y: 260, width: 120, height: 120)
-        let centerInContainer = CGPoint(x: frame.midX, y: frame.midY)
-
-        // 场景 1：UITapGestureRecognizer（手势识别器路径）。
-        let gCounter = Counter()
-        let gView = UIView(frame: frame)
-        gView.backgroundColor = .systemRed.withAlphaComponent(0.3)
-        gView.addGestureRecognizer(UITapGestureRecognizer(target: gCounter, action: #selector(Counter.didTap)))
-        container.addSubview(gView)
-        container.layoutIfNeeded()
-        let gDiag = window.explore_sendSyntheticTap(at: container.convert(centerInContainer, to: window))
-        r.gestureFired = gCounter.fired
-        r.hitTestDescription = gDiag.hitTestViewDescription ?? "nil"
-        r.attachedTouchCount = gDiag.attachedTouchCount
-        r.missing = gDiag.missingFields
-        gView.removeFromSuperview()
-
-        // 场景 2：普通 UIView touchesBegan/Ended（非 UIControl）。
-        let pView = Recorder(frame: frame)
-        container.addSubview(pView)
-        container.layoutIfNeeded()
-        _ = window.explore_sendSyntheticTap(at: container.convert(centerInContainer, to: window))
-        r.plainBegan = pView.began
-        r.plainEnded = pView.ended
-        pView.removeFromSuperview()
-
-        // 场景 3：透明遮挡——底层 + 完全覆盖的遮挡层，合成 tap 应命中遮挡层而非底层。
-        let bCounter = Counter()
-        let oCounter = Counter()
-        let bView = UIView(frame: frame)
-        bView.addGestureRecognizer(UITapGestureRecognizer(target: bCounter, action: #selector(Counter.didTap)))
-        let oView = UIView(frame: frame)
-        oView.addGestureRecognizer(UITapGestureRecognizer(target: oCounter, action: #selector(Counter.didTap)))
-        container.addSubview(bView)
-        container.addSubview(oView)
-        container.layoutIfNeeded()
-        _ = window.explore_sendSyntheticTap(at: container.convert(centerInContainer, to: window))
-        r.bottomFired = bCounter.fired
-        r.overlayFired = oCounter.fired
-        bView.removeFromSuperview()
-        oView.removeFromSuperview()
-
-        // 场景 4：UIButton touchUpInside（与 default 模式兼容）。
-        var buttonFired = false
-        let button = UIButton(type: .system)
-        button.setTitle("Spike", for: .normal)
-        button.frame = frame
-        button.addAction(UIAction { _ in buttonFired = true }, for: .touchUpInside)
-        container.addSubview(button)
-        container.layoutIfNeeded()
-        _ = window.explore_sendSyntheticTap(at: container.convert(centerInContainer, to: window))
-        r.buttonFired = buttonFired
-        button.removeFromSuperview()
-
-        return r
-    }
-}
-#endif

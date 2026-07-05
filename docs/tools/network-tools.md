@@ -19,7 +19,7 @@
 { "code": "unknown_action", "message": "no handler for 'foo'" }
 ```
 
-错误码：`unknown_action` / `invalid_data` / `internal_error` / `bad_request`。
+错误码：`unknown_action` / `invalid_data` / `internal_error` / `bad_request` / `stale_cursor` 等。通信层错误用 HTTP 状态码，业务失败用 HTTP 200 + 顶层 `code/message`。
 
 ## 内置命令
 
@@ -32,6 +32,39 @@
 | `ui.viewTargets` | 可选筛选参数 | 返回 canonical targets、可用动作与 `viewSnapshotID`（UIKit 平台） |
 | `ui.control.sendAction` | `accessibilityIdentifier` 或 `path` + `viewSnapshotID` + `event` | 向指定 UIControl 发送显式 target-action 事件（UIKit 平台） |
 | `ui.tap` | `accessibilityIdentifier` 或 `path` + `viewSnapshotID` | 对 canonical target 执行默认激活动作（UIKit 平台） |
+| `app.logs.mark` | 忽略 | 当前进程日志 cursor 与 source 捕获状态（Diagnostics 显式注册后） |
+| `app.logs.read` | `after` cursor、`limit`、`sources`、`minimumLevel` | 当前进程内已捕获日志的增量列表（Diagnostics 显式注册后） |
+
+## Diagnostics 命令
+
+> Diagnostics 命令由独立模块 `iOSExploreDiagnostics` 提供，core **不会自动注册**。宿主 App 必须在创建 `ExploreServer` 后显式调用 `server.registerDiagnosticsCommands()` 才开放 `app.logs.*`。
+
+标准用法是动作前打检查点，动作后读增量日志：
+
+```bash
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.mark"}'
+curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"...","id":1},"limit":100}}'
+```
+
+`app.logs.*` 只承诺返回当前 App 进程内、Diagnostics Runtime 启用后、iOSExplore 实际捕获并保留的日志。稳定来源包括 `explore`（内部命令/路由日志）、`bridge`（宿主 `ExploreAppLog.emit`），以及配置打开后的 stdout/stderr/NSLog/Apple Unified Logging 捕获。stdout/stderr 默认关闭；打开后 stdout 每行返回 `source="stdout"` / `level="info"`，stderr 每行返回 `source="stderr"` / `level="error"`。`NSLog` 通过 stderr 行识别进入 `source="nslog"`；`os_log` 与 Swift `Logger` 通过当前进程 `OSLogStore` 进入 `source="oslog"`，如果系统不允许读取会在 `capture.oslog` 返回 `unavailable`。
+
+`app.logs.read` 是按 cursor 向新日志方向读取的增量命令。省略 `after` 时只返回当前可见的最近 `limit` 条，并把 `nextCursor` 指到这次读到的最新 id；它不支持向更旧日志翻页，因此该场景下 `hasMore=false`。需要连续消费时，后续请求传入上一轮返回的 `nextCursor`。
+
+`Examples/SPMExample` 在 Debug 构建下已通过 `ViewController.exampleDiagnosticsConfiguration()` 直接打开 stdout/stderr/NSLog/os_log 四个 capture（Release 构建关闭），无需任何环境变量或启动参数。直接用示例 App 的 Debug 命令写入唯一文本：
+
+```bash
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.mark"}'
+curl -X POST http://localhost:38321/ -d '{"action":"debug.emitStdout","data":{"message":"stdout-curl-check-001"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"debug.emitStderr","data":{"message":"stderr-curl-check-001"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"debug.emitNSLog","data":{"message":"nslog-curl-check-001"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"debug.emitOSLog","data":{"message":"oslog-curl-check-001"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"debug.emitLogger","data":{"message":"logger-curl-check-001"}}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["stdout"],"limit":20}}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["stderr"],"limit":20}}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["nslog"],"limit":20}}'
+curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["oslog"],"limit":20}}'
+```
 
 ## UIKit 命令
 

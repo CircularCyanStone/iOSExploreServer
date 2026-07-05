@@ -1,5 +1,7 @@
 import Testing
+import Foundation
 @testable import iOSExploreServer
+@testable import iOSExploreDiagnostics
 
 /// 所有 touch `ExploreLogging` 全局 sink 的测试集中在本 suite 并标 `.serialized`。
 ///
@@ -26,6 +28,7 @@ struct ExploreLoggingTests {
     @Test("开启日志后输出记录")
     func loggingEnabledEmitsRecord() {
         ExploreLogging.resetForTesting()
+        let token = "logging-enabled-\(UUID().uuidString)"
         let records = Mutex<[ExploreLogRecord]>([])
         ExploreLogging.setSinkForTesting { record in
             records.withLock { $0.append(record) }
@@ -33,18 +36,20 @@ struct ExploreLoggingTests {
         defer { ExploreLogging.resetForTesting() }
 
         ExploreLogging.setEnabled(true)
-        ExploreLogger.info(.server, "server started")
+        ExploreLogger.info(.server, token)
 
         let snapshot = records.withLock { $0 }
-        #expect(snapshot.count == 1)
-        #expect(snapshot.first?.level == .info)
-        #expect(snapshot.first?.category == "server")
-        #expect(snapshot.first?.message == "server started")
+        let matches = snapshot.filter { $0.message == token }
+        #expect(matches.count == 1)
+        #expect(matches.first?.level == .info)
+        #expect(matches.first?.category == "server")
     }
 
     @Test("最小等级会过滤更低等级日志")
     func loggingMinimumLevelFiltersLowerPriorityRecords() {
         ExploreLogging.resetForTesting()
+        let debugToken = "filtered-debug-\(UUID().uuidString)"
+        let errorToken = "filtered-error-\(UUID().uuidString)"
         let records = Mutex<[ExploreLogRecord]>([])
         ExploreLogging.setSinkForTesting { record in
             records.withLock { $0.append(record) }
@@ -53,13 +58,14 @@ struct ExploreLoggingTests {
 
         ExploreLogging.setEnabled(true)
         ExploreLogging.setMinimumLevel(.error)
-        ExploreLogger.debug(.router, "route entered")
-        ExploreLogger.error(.router, "route failed")
+        ExploreLogger.debug(.router, debugToken)
+        ExploreLogger.error(.router, errorToken)
 
         let snapshot = records.withLock { $0 }
-        #expect(snapshot.count == 1)
-        #expect(snapshot.first?.level == .error)
-        #expect(snapshot.first?.message == "route failed")
+        #expect(snapshot.contains { $0.message == debugToken } == false)
+        let matches = snapshot.filter { $0.message == errorToken }
+        #expect(matches.count == 1)
+        #expect(matches.first?.level == .error)
     }
 
     @Test("Router 输出命中、未知 action 和异常日志")
@@ -139,12 +145,192 @@ struct ExploreLoggingTests {
     @Test("扩展日志进入既有 sink")
     func extensionLogUsesCoreSink() {
         defer { ExploreLogging.resetForTesting() }
+        let token = "extension-log-\(UUID().uuidString)"
         let records = Mutex<[ExploreLogRecord]>([])
         ExploreLogging.setEnabled(true)
         ExploreLogging.setSinkForTesting { record in
             records.withLock { $0.append(record) }
         }
-        ExploreLogging.emitExtension(level: .info, category: "uikit.action", message: "tap completed")
-        #expect(records.withLock { $0.map(\.category) } == ["uikit.action"])
+        ExploreLogging.emitExtension(level: .info, category: "uikit.action", message: token)
+        #expect(records.withLock { records in
+            records.filter { $0.message == token }.map(\.category) == ["uikit.action"]
+        })
+    }
+
+    @Test("output 关闭时 observer 仍收到日志")
+    func observerReceivesRecordWhenOutputDisabled() {
+        ExploreLogging.resetForTesting()
+        defer { ExploreLogging.resetForTesting() }
+        let token = "observer-output-disabled-\(UUID().uuidString)"
+        let outputRecords = Mutex<[ExploreLogRecord]>([])
+        let observedRecords = Mutex<[ExploreLogRecord]>([])
+        ExploreLogging.setSinkForTesting { record in
+            outputRecords.withLock { $0.append(record) }
+        }
+        _ = ExploreLogging.addObserver { record in
+            observedRecords.withLock { $0.append(record) }
+        }
+
+        ExploreLogger.info(.server, token)
+
+        #expect(outputRecords.withLock { records in
+            records.contains { $0.message == token } == false
+        })
+        #expect(observedRecords.withLock { records in
+            records.filter { $0.message == token }.count == 1
+        })
+    }
+
+    @Test("removeObserver 后不再收到日志")
+    func removedObserverStopsReceivingRecords() {
+        ExploreLogging.resetForTesting()
+        defer { ExploreLogging.resetForTesting() }
+        let observedRecords = Mutex<[ExploreLogRecord]>([])
+        let token = "removed-observer-\(UUID().uuidString)"
+        let observation = ExploreLogging.addObserver { record in
+            observedRecords.withLock { $0.append(record) }
+        }
+
+        ExploreLogging.removeObserver(observation)
+        ExploreLogger.info(.server, token)
+
+        #expect(observedRecords.withLock { records in
+            records.contains { $0.message == token } == false
+        })
+    }
+
+    @Test("没有 observer 且 output 关闭时不构造 message")
+    func disabledLoggingWithoutObserversDoesNotBuildMessage() {
+        ExploreLogging.resetForTesting()
+        defer { ExploreLogging.resetForTesting() }
+        let didBuildMessage = Mutex(false)
+
+        ExploreLogger.debug(.server, expensiveMessage(didBuildMessage))
+
+        #expect(didBuildMessage.withLock { $0 } == false)
+    }
+
+    @Test("有 observer 时只构造一次 message 并同时投递 output")
+    func observerAndOutputShareSingleBuiltMessage() {
+        ExploreLogging.resetForTesting()
+        defer { ExploreLogging.resetForTesting() }
+        let buildCount = Mutex(0)
+        let outputRecords = Mutex<[ExploreLogRecord]>([])
+        let observedRecords = Mutex<[ExploreLogRecord]>([])
+        ExploreLogging.setEnabled(true)
+        ExploreLogging.setSinkForTesting { record in
+            outputRecords.withLock { $0.append(record) }
+        }
+        _ = ExploreLogging.addObserver { record in
+            observedRecords.withLock { $0.append(record) }
+        }
+
+        ExploreLogger.info(.server, countedMessage(buildCount))
+
+        #expect(buildCount.withLock { $0 } == 1)
+        #expect(outputRecords.withLock { records in
+            records.filter { $0.message == "built once" }.count == 1
+        })
+        #expect(observedRecords.withLock { records in
+            records.filter { $0.message == "built once" }.count == 1
+        })
+    }
+
+    @Test("Diagnostics 注册后 output 关闭时 read 仍能读到 explore 日志")
+    func diagnosticsReadReturnsExploreLogsWhenOutputDisabled() async throws {
+        try await withProcessDiagnosticsTestIsolation {
+            ExploreLogging.resetForTesting()
+            ProcessDiagnosticsRuntime.shared.resetForTesting()
+            defer { ExploreLogging.resetForTesting() }
+            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            let server = ExploreServer()
+            _ = server.registerDiagnosticsCommands(.init(captureStdout: false, captureStderr: false))
+            let mark = try cursor(from: await server.routerSnapshotRoute(ExploreRequest(action: "app.logs.mark")))
+
+            _ = await server.routerSnapshotRoute(ExploreRequest(action: "ping"))
+
+            let result = await server.routerSnapshotRoute(ExploreRequest(action: "app.logs.read",
+                                                                        data: ["after": .object(mark.toJSON())]))
+            let entries = try entries(from: result)
+            #expect(entries.contains { $0["source"]?.stringValue == "explore" &&
+                ($0["message"]?.stringValue ?? "").contains("router route start action=ping")
+            })
+        }
+    }
+
+    @Test("ExploreAppLog runtime 未安装时不构造 message")
+    func appLogDoesNotBuildMessageWhenRuntimeIsMissing() async {
+        await withProcessDiagnosticsTestIsolation {
+            ProcessDiagnosticsRuntime.shared.resetForTesting()
+            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            let didBuildMessage = Mutex(false)
+
+            ExploreAppLog.emit(.info, category: "auth", message: expensiveMessage(didBuildMessage))
+
+            #expect(didBuildMessage.withLock { $0 } == false)
+        }
+    }
+
+    @Test("ExploreAppLog bridge 关闭时不构造 message")
+    func appLogDoesNotBuildMessageWhenBridgeIsDisabled() async {
+        await withProcessDiagnosticsTestIsolation {
+            ProcessDiagnosticsRuntime.shared.resetForTesting()
+            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            let server = ExploreServer()
+            _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
+                                                         enableBridge: false,
+                                                         captureStdout: false,
+                                                         captureStderr: false))
+            let didBuildMessage = Mutex(false)
+
+            ExploreAppLog.emit(.info, category: "auth", message: expensiveMessage(didBuildMessage))
+
+            #expect(didBuildMessage.withLock { $0 } == false)
+        }
+    }
+
+    private func expensiveMessage(_ flag: Mutex<Bool>) -> String {
+        flag.withLock { $0 = true }
+        return "expensive"
+    }
+
+    private func countedMessage(_ count: Mutex<Int>) -> String {
+        count.withLock { $0 += 1 }
+        return "built once"
+    }
+}
+
+private extension AppLogCursor {
+    func toJSON() -> JSON {
+        [
+            "captureSessionID": .string(captureSessionID),
+            "id": .double(Double(id)),
+        ]
+    }
+}
+
+private func cursor(from result: ExploreResult) throws -> AppLogCursor {
+    guard case .success(let data) = result,
+          let cursorObject = data["cursor"]?.objectValue,
+          let session = cursorObject["captureSessionID"]?.stringValue,
+          let id = cursorObject["id"]?.doubleValue else {
+        throw ExploreLoggingTestFailure("missing cursor")
+    }
+    return AppLogCursor(captureSessionID: session, id: UInt64(id))
+}
+
+private func entries(from result: ExploreResult) throws -> [JSON] {
+    guard case .success(let data) = result,
+          let values = data["entries"]?.arrayValue else {
+        throw ExploreLoggingTestFailure("missing entries")
+    }
+    return values.compactMap(\.objectValue)
+}
+
+private struct ExploreLoggingTestFailure: Error {
+    let message: String
+
+    init(_ message: String) {
+        self.message = message
     }
 }

@@ -27,7 +27,7 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 请求：`POST /`，body `{"action":"<name>","data":{...}}`。
 响应：`{"code":"ok","data":{...}}` 或 `{"code":"...","message":"..."}`。
 
-### 命令清单（18 个内置 action）
+### 命令清单
 
 **core 内置**（`ExploreServer.init` 自动注册；只依赖 Foundation + Network）：
 
@@ -69,6 +69,26 @@ server.registerUIKitCommands()   // 一次性注册 14 个 ui.* 命令
 
 `ui.*` 典型闭环：先 `ui.viewTargets` 观察页面拿到 canonical target 的 `path` 与本次 `viewSnapshotID`（仅此命令签发，`ui.screenshot` / `ui.topViewHierarchy` 都不再签发）→ 优先用 `accessibilityIdentifier`，必要时用 `path + viewSnapshotID` 调动作。`ui.tap` / `ui.control.sendAction` 必填 `viewSnapshotID` 并校验 freshness；`ui.input` / `ui.scroll` 只有在 `path + viewSnapshotID` 组合下做可选陈旧防护；滚动后应重新 `ui.viewTargets`。动作后用 `ui.wait` 等待明确反馈，或重新 `ui.viewTargets` 观察页面；必要时用 `ui.screenshot` 留失败证据。`ui.tap` 成功只表示激活动作已发出，不表示测试步骤成功。可直接照跑的 JSON/curl 闭环见 `docs/superpowers/agent-mcp-exploration/curl-json-loop-protocol.md`。
 
+**Diagnostics 扩展**（`server.registerDiagnosticsCommands()` 显式注册；不依赖 UIKit）：
+
+| action | 说明 |
+|---|---|
+| `app.logs.mark` | 建立当前进程日志检查点，返回 `captureSessionID + id` cursor |
+| `app.logs.read` | 读取 cursor 之后由 iOSExplore 实际捕获并保留的增量日志 |
+
+已支持 `explore`（iOSExplore 内部日志）、`bridge`（宿主主动 `ExploreAppLog.emit`），以及默认关闭、Debug 下显式开启的 stdout/stderr/NSLog/Apple Unified Logging 捕获。宿主用 `DiagnosticsConfiguration(captureStdout: true, captureStderr: true, captureNSLog: true, captureOSLog: true)` 开启后，stdout 每行以 `source="stdout"` / `level="info"` 写入，stderr 每行以 `source="stderr"` / `level="error"` 写入，`NSLog` 识别为 `source="nslog"`，`os_log` 与 Swift `Logger` 通过当前进程 `OSLogStore` 写入 `source="oslog"`。如果当前 OS 或沙箱不允许读取 unified logging，`capture.oslog` 会返回 `unavailable`，不会伪装成没有日志。
+
+```swift
+import iOSExploreServer
+import iOSExploreDiagnostics
+
+let server = ExploreServer()
+server.registerDiagnosticsCommands()
+ExploreAppLog.emit(.error, category: "auth", message: "login failed token=...")
+```
+
+`Examples/SPMExample` 已在 Debug 集成 `iOSExploreDiagnostics`，`help` 会列出 `app.logs.mark/read`。示例 App 在 Debug 构建下通过 `ViewController.exampleDiagnosticsConfiguration()` 直接打开 stdout/stderr/NSLog/os_log 四个 capture（Release 构建关闭），不再通过环境变量或启动参数控制。它提供 `debug.emitAppLog`、`debug.emitStdout`、`debug.emitStderr`、`debug.emitNSLog`、`debug.emitOSLog`、`debug.emitLogger` 六个验证命令。典型流程是先 `app.logs.mark`，再触发其中一个 debug 命令，最后 `app.logs.read(after:)` 按 `sources:["bridge"]`、`sources:["stdout"]`、`sources:["stderr"]`、`sources:["nslog"]` 或 `sources:["oslog"]` 读取对应日志。
+
 ### 注册自定义命令
 
 ```swift
@@ -90,9 +110,9 @@ server.register(action: "greet", description: "按 name 打招呼", input: Greet
 
 ## 现状与路线图
 
-**已实现**：18 个内置 action（core 4 + UIKit 14）。Example App 额外注册 `greet` / `device`，`help` 实测共 20 个 action。现有能力链已覆盖查询（`viewTargets` / `topViewHierarchy`）→ 看屏（`screenshot`）→ 操作（`tap` / `input` / `scroll` / `control` / `navigation` / `keyboard`）→ 等待（`ui.wait` 单条件 / `ui.waitAny` 多分支）。
+**已实现**：core 4 个 action 自动注册；UIKit 扩展显式注册 14 个 `ui.*` action；Diagnostics 扩展显式注册 2 个 `app.logs.*` action。Example App 额外注册 `greet` / `device` / `debug.emitAppLog` / `debug.emitStdout` / `debug.emitStderr`，并显式开放 UIKit 与 Diagnostics 命令。现有能力链已覆盖查询（`viewTargets` / `topViewHierarchy`）→ 看屏（`screenshot`）→ 操作（`tap` / `input` / `scroll` / `control` / `navigation` / `keyboard`）→ 等待（`ui.wait` 单条件 / `ui.waitAny` 多分支）→ 读取动作后的进程内增量日志（`app.logs.mark/read`）。
 
-**质量**：macOS `swift test` 210 用例 + iOS framework 310 用例全绿；历史三层验证记录见 `docs/superpowers/agent-mcp-exploration/runtime-validation-2026-07-02.md`。
+**质量**：macOS `swift test` 225 用例 + iOS framework 344 用例全绿；历史三层验证记录见 `docs/superpowers/agent-mcp-exploration/runtime-validation-2026-07-02.md`。
 
 **最近修复**：HTTPListener 连接槽耗尽后 server 不响应（Network 层 `newConnectionLimit` 被误设为业务上限，连接关闭后不释放）。
 
@@ -100,14 +120,14 @@ server.register(action: "greet", description: "按 name 打招呼", input: Greet
 
 ## 调试日志
 
-组件默认不输出内部日志。调试时在 App 启动阶段开启：
+组件默认不输出内部日志到 Unified Logging。调试时在 App 启动阶段开启：
 
 ```swift
 ExploreLogging.setEnabled(true)
 ExploreLogging.setMinimumLevel(.debug)
 ```
 
-日志走 Apple Unified Logging，subsystem 为 `iOSExploreServer`，category 包括 `server`、`listener`、`http`、`router`、`command`。可在 Xcode 控制台或 macOS Console 中按 subsystem/category 过滤查看。
+日志走 Apple Unified Logging，subsystem 为 `iOSExploreServer`，category 包括 `server`、`listener`、`http`、`router`、`command`。可在 Xcode 控制台或 macOS Console 中按 subsystem/category 过滤查看。若已注册 `iOSExploreDiagnostics`，`ExploreLogging` 的内部日志还会进入 Diagnostics 内存 store，即使 Unified Logging output 没有开启。
 
 ## 开发
 
