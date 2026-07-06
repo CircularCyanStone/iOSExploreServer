@@ -21,7 +21,7 @@ struct InputCommand: Command {
     let action = InputCommand.actionName
 
     /// `help` 命令展示的说明。
-    let description = "向 UITextField/UITextView/UISearchTextField 注入文本 (UITextInput.insertText)。调用前必须先调 ui.viewTargets，并把同响应返回的 viewSnapshotID 原样传入"
+    let description = "向 UITextField/UITextView/UISearchTextField 注入文本 (UITextInput.insertText)。目标用 accessibilityIdentifier 或 path 定位；viewSnapshotID 仅允许与 path 搭配做可选陈旧校验，identifier 定位不能带 viewSnapshotID"
 
     /// 执行文本注入。
     ///

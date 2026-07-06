@@ -57,4 +57,13 @@ func alertRespondCommandSchemaMatchesInputFields() {
 func waitAnyCommandSchemaMatchesInputFields() {
     #expect(WaitAnyCommand.Input.inputSchema.fields.map(\.name) == UIWaitAnyInput.inputSchema.fields.map(\.name))
 }
+
+@Test("ui.input 命令 description 写明 viewSnapshotID 只与 path 搭配")
+func inputCommandDescriptionExplainsViewSnapshotPathOnly() {
+    let description = InputCommand().description
+    #expect(description.contains("accessibilityIdentifier 或 path"))
+    #expect(description.contains("viewSnapshotID 仅允许与 path 搭配"))
+    #expect(description.contains("identifier 定位不能带 viewSnapshotID"))
+    #expect(description.contains("必须先调 ui.viewTargets") == false)
+}
 #endif
