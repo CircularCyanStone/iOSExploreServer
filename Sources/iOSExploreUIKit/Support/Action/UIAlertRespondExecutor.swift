@@ -67,12 +67,46 @@ enum UIAlertRespondExecutor {
         } catch {
             throw UIKitCommandError.alertButtonTriggerFailed(action: actionName, reason: "\(error)")
         }
-        UIKitCommandLogging.info("command", "ui alert respond complete dryRun=false performed=true dismissed=\(dismissed) viaSystemDismiss=\(isPresented) selector=\(selectorDescription(input))")
+        // dismiss 是 UIKit 动画转场；为防止 alert.respond 返回后 agent 立即 observe 仍看到
+        // UIAlertController 残留在 presentedViewController 链上，这里在主线程上 RunLoop
+        // 轮询直到顶层 presented chain 真正清空（或最多 ~800ms）再返回。
+        let waitedMs: Int
+        if isPresented {
+            waitedMs = waitForPresentedViewControllerToClear(on: alert, maxAttempts: 50, intervalMs: 16)
+        } else {
+            waitedMs = 0
+        }
+        UIKitCommandLogging.info("command", "ui alert respond complete dryRun=false performed=true dismissed=\(dismissed) viaSystemDismiss=\(isPresented) selector=\(selectorDescription(input)) dismissWaitMs=\(waitedMs)")
         return [
             "performed": .bool(true),
             "dismissed": .bool(dismissed),
+            "dismissWaitMs": .double(Double(waitedMs)),
             "button": buttonJSON(selected.button),
         ]
+    }
+
+    /// dismiss 后在主线程 RunLoop 上轮询，等待 presented chain 清空。
+    ///
+    /// - Parameters:
+    ///   - alert: 刚执行过 dismiss 的 alert controller。
+    ///   - maxAttempts: 最多轮询次数。
+    ///   - intervalMs: 每轮让出 runloop 的时长（毫秒）。
+    /// - Returns: 实际等待毫秒数（向上取到整轮），供日志和返回。
+    private static func waitForPresentedViewControllerToClear(on alert: UIAlertController,
+                                                              maxAttempts: Int,
+                                                              intervalMs: Int) -> Int {
+        let rootView = alert.presentingViewController
+        let intervalSec = CFTimeInterval(intervalMs) / 1000.0
+        for attempt in 0..<maxAttempts {
+            if rootView?.presentedViewController == nil {
+                return attempt * intervalMs
+            }
+            // 用 `CFRunLoopRunInMode` 而非 `RunLoop.run(until:)`：后者每次只跑一次 pass，
+            // 不让 UIKit 把 dismiss 转场真正交付到 runloop 上；前者在 default mode 持续
+            // service 整个 interval，与真机主 RunLoop 行为一致，dismiss 才能真正落地。
+            CFRunLoopRunInMode(.defaultMode, intervalSec, false)
+        }
+        return maxAttempts * intervalMs
     }
 
     /// 按请求选择一个 `UIAlertAction` 与对应摘要。
