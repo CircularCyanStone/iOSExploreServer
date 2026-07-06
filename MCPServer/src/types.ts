@@ -14,6 +14,10 @@ export type IOSExploreFailureEnvelope = {
 
 export type IOSExploreEnvelope = IOSExploreSuccessEnvelope | IOSExploreFailureEnvelope;
 
+export function isFailureEnvelope(envelope: IOSExploreEnvelope): envelope is IOSExploreFailureEnvelope {
+  return envelope.code !== "ok";
+}
+
 export type CommandMetadata = {
   action: string;
   description: string;
