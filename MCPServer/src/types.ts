@@ -47,7 +47,13 @@ export type MCPTextContent = {
   text: string;
 };
 
+export type MCPImageContent = {
+  type: "image";
+  data: string;
+  mimeType: string;
+};
+
 export type MCPToolResult = {
-  content: MCPTextContent[];
+  content: Array<MCPTextContent | MCPImageContent>;
   isError?: boolean;
 };

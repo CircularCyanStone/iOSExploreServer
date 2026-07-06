@@ -27,7 +27,7 @@ describe("ToolRegistry", () => {
     expect(result.toolCount).toBe(1);
     expect(result.conflicts).toEqual([]);
     expect(registry.tools()[0]).toMatchObject({
-      name: "ios_ui_viewTargets",
+      name: "ui_viewTargets",
       action: "ui.viewTargets"
     });
   });

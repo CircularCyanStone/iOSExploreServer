@@ -6,7 +6,7 @@ import { ToolRegistry } from "./toolRegistry.js";
 
 const config = loadConfig();
 const client = new IOSExploreClient(config);
-const fixedToolNames = new Set(["health_check", "refresh_tools", "call_action", "observe", "wait_and_observe"]);
+const fixedToolNames = new Set(["health_check", "refresh_tools", "call_action"]);
 const registry = new ToolRegistry({ fixedToolNames, client });
 const staticTools = createStaticTools({ client, registry });
 

@@ -14,14 +14,14 @@ describe("server handlers", () => {
         }
       },
       registry: {
-        tools: () => [{ name: "ios_ping", description: "ping", inputSchema: {}, action: "ping" }],
+        tools: () => [{ name: "ping", description: "ping", inputSchema: {}, action: "ping" }],
         findByName: () => undefined
       },
       client: { call: async () => ({}) }
     });
 
     const listed = await handlers.listTools();
-    expect(listed.tools.map(tool => tool.name)).toEqual(["health_check", "ios_ping"]);
+    expect(listed.tools.map(tool => tool.name)).toEqual(["health_check", "ping"]);
   });
 
   test("calls dynamic tool by original action", async () => {
@@ -30,7 +30,7 @@ describe("server handlers", () => {
       staticTools: {},
       registry: {
         tools: () => [],
-        findByName: () => ({ name: "ios_ping", description: "ping", inputSchema: {}, action: "ping" })
+        findByName: () => ({ name: "ping", description: "ping", inputSchema: {}, action: "ping" })
       },
       client: {
         call: async (action, data = {}) => {
@@ -40,8 +40,44 @@ describe("server handlers", () => {
       }
     });
 
-    const result = await handlers.callTool("ios_ping", { verbose: true });
+    const result = await handlers.callTool("ping", { verbose: true });
     expect(calls).toEqual([{ action: "ping", data: { verbose: true } }]);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ pong: true });
+    expect(JSON.parse(textContent(result))).toEqual({ pong: true });
+  });
+
+  test("returns png screenshots as image content with metadata text", async () => {
+    const handlers = createToolHandlers({
+      staticTools: {},
+      registry: {
+        tools: () => [],
+        findByName: () => ({ name: "ui_screenshot", description: "screenshot", inputSchema: {}, action: "ui.screenshot" })
+      },
+      client: {
+        call: async () => ({
+          image: "base64png",
+          format: "png",
+          width: 100,
+          height: 200,
+          scale: 2
+        })
+      }
+    });
+
+    const result = await handlers.callTool("ui_screenshot", {});
+    expect(result.content).toEqual([
+      { type: "image", data: "base64png", mimeType: "image/png" },
+      {
+        type: "text",
+        text: JSON.stringify({ format: "png", width: 100, height: 200, scale: 2 })
+      }
+    ]);
   });
 });
+
+function textContent(result: { content: Array<{ type: string; text?: string }> }): string {
+  const first = result.content[0];
+  if (first?.type !== "text" || typeof first.text !== "string") {
+    throw new Error("expected first content block to be text");
+  }
+  return first.text;
+}

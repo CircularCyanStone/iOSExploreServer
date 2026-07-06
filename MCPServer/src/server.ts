@@ -39,7 +39,17 @@ export function createToolHandlers(options: {
       const dynamic = options.registry.findByName(name);
       if (dynamic?.action) {
         try {
-          return jsonResult(await options.client.call(dynamic.action, args));
+          const data = await options.client.call(dynamic.action, args);
+          if (dynamic.action === "ui.screenshot" && typeof data.image === "string" && data.format === "png") {
+            const { image, ...rest } = data;
+            return {
+              content: [
+                { type: "image", data: image, mimeType: "image/png" },
+                { type: "text", text: JSON.stringify(rest) }
+              ]
+            };
+          }
+          return jsonResult(data);
         } catch (error) {
           return errorResult(normalizeUnknownError(error));
         }
