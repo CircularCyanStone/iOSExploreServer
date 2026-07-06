@@ -37,6 +37,8 @@ ui.viewTargets     ────┼──>  选定 path/identifier  ──>  ui.t
 
 > 一句话：**`viewTargets` 用于"操作"，`topViewHierarchy` 用于"观察"**。需要 `viewSnapshotID` → viewTargets；需要看完整结构/验收字段 → topViewHierarchy。
 
+MCP 调用方优先走 `MCPServer` 的 `observe` 和 `wait_and_observe` 固定工具；需要精细控制或排障时再调用动态 `ios_*` 原子工具或 `call_action`。
+
 下表是各命令的前置/后置关系速查：
 
 | 命令 | 前置发现命令 | 必须从发现命令带上的字段 | 执行后是否换页 / 改视图 |
