@@ -20,7 +20,7 @@ struct UIControlSendActionCommand: Command {
     let action = UIControlSendActionCommand.actionName
 
     /// `help` 命令展示的说明。
-    let description = "向指定 UIControl 发送 target-action 事件。调用前必须先调 ui.viewTargets，并把同响应返回的 viewSnapshotID 原样传入"
+    let description = "向指定 UIControl 发送 target-action 事件。调用前必须先调 ui.viewTargets，并把同响应返回的 viewSnapshotID 原样传入；value 字段对 UISlider/UISegmentedControl/UIStepper/UISwitch 有效，缺省则只发事件不改值"
 
     /// 执行 sendAction。
     ///
@@ -29,13 +29,14 @@ struct UIControlSendActionCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的 control action 输入。
     /// - Returns: 成功时返回目标摘要；失败时返回 `invalid_data` 或 UI 不可用错误。
     func handle(_ input: UIControlSendActionInput) async throws -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start target=\(input.target.logSummary) event=\(input.event.rawValue)")
+        UIKitCommandLogging.info("command", "command \(action) start target=\(input.target.logSummary) event=\(input.event.rawValue) valueProvided=\(input.value != nil)")
         do {
             let plan = UIKitActionPlan.controlEvent(locator: input.target.locator,
                                                     event: input.event,
+                                                    value: input.value,
                                                     viewSnapshotID: input.viewSnapshotID)
             let data = try await UIKitActionExecutor.execute(plan)
-            UIKitCommandLogging.info("command", "command \(action) completed target=\(input.target.logSummary) event=\(input.event.rawValue) type=\(data["type"]?.stringValue ?? "unknown")")
+            UIKitCommandLogging.info("command", "command \(action) completed target=\(input.target.logSummary) event=\(input.event.rawValue) valueProvided=\(input.value != nil) type=\(data["type"]?.stringValue ?? "unknown")")
             return .success(data)
         } catch let error as UIKitCommandError {
             UIKitCommandLogging.error("command", error.failure.logMessage)

@@ -228,6 +228,113 @@ func sendActionOnUIControlReturnsSent() throws {
     #expect(data["type"]?.stringValue == "UIButton")
 }
 
+@Test("executor control.sendAction valueChanged 可设置 UISlider value") @MainActor
+func sendActionSetsSliderValueBeforeValueChanged() throws {
+    let context = UIKitTestHost.context { root in
+        let slider = UISlider()
+        slider.frame = CGRect(x: 100, y: 100, width: 200, height: 30)
+        slider.value = 0.1
+        root.addSubview(slider)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
+
+    let data = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
+                                                             event: .valueChanged,
+                                                             value: .double(0.85),
+                                                             viewSnapshotID: viewSnapshotID),
+                                               context: context)
+
+    let slider = try #require(context.rootView.subviews.first as? UISlider)
+    #expect(data["sent"]?.boolValue == true)
+    #expect(slider.value == Float(0.85))
+}
+
+@Test("executor control.sendAction valueChanged 可设置 UISegmentedControl selectedSegmentIndex") @MainActor
+func sendActionSetsSegmentedControlSelectedIndexBeforeValueChanged() throws {
+    let context = UIKitTestHost.context { root in
+        let segmented = UISegmentedControl(items: ["一", "二", "三"])
+        segmented.frame = CGRect(x: 100, y: 100, width: 240, height: 30)
+        segmented.selectedSegmentIndex = 0
+        root.addSubview(segmented)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
+
+    let data = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
+                                                             event: .valueChanged,
+                                                             value: .double(2),
+                                                             viewSnapshotID: viewSnapshotID),
+                                               context: context)
+
+    let segmented = try #require(context.rootView.subviews.first as? UISegmentedControl)
+    #expect(data["sent"]?.boolValue == true)
+    #expect(segmented.selectedSegmentIndex == 2)
+}
+
+@Test("executor control.sendAction valueChanged 可设置 UIStepper value") @MainActor
+func sendActionSetsStepperValueBeforeValueChanged() throws {
+    let context = UIKitTestHost.context { root in
+        let stepper = UIStepper()
+        stepper.frame = CGRect(x: 100, y: 100, width: 100, height: 32)
+        stepper.minimumValue = 0
+        stepper.maximumValue = 10
+        stepper.value = 1
+        root.addSubview(stepper)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
+
+    let data = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
+                                                             event: .valueChanged,
+                                                             value: .double(4),
+                                                             viewSnapshotID: viewSnapshotID),
+                                               context: context)
+
+    let stepper = try #require(context.rootView.subviews.first as? UIStepper)
+    #expect(data["sent"]?.boolValue == true)
+    #expect(stepper.value == 4)
+}
+
+@Test("executor control.sendAction valueChanged 可用 bool 设置 UISwitch isOn") @MainActor
+func sendActionSetsSwitchValueFromBoolBeforeValueChanged() throws {
+    let context = UIKitTestHost.context { root in
+        let toggle = UISwitch()
+        toggle.frame = CGRect(x: 100, y: 100, width: 51, height: 31)
+        toggle.isOn = false
+        root.addSubview(toggle)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
+
+    let data = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
+                                                             event: .valueChanged,
+                                                             value: .bool(true),
+                                                             viewSnapshotID: viewSnapshotID),
+                                               context: context)
+
+    let toggle = try #require(context.rootView.subviews.first as? UISwitch)
+    #expect(data["sent"]?.boolValue == true)
+    #expect(toggle.isOn == true)
+}
+
+@Test("executor control.sendAction valueChanged 可用 0 或 1 设置 UISwitch isOn") @MainActor
+func sendActionSetsSwitchValueFromNumberBeforeValueChanged() throws {
+    let context = UIKitTestHost.context { root in
+        let toggle = UISwitch()
+        toggle.frame = CGRect(x: 100, y: 100, width: 51, height: 31)
+        toggle.isOn = true
+        root.addSubview(toggle)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
+
+    let data = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
+                                                             event: .valueChanged,
+                                                             value: .double(0),
+                                                             viewSnapshotID: viewSnapshotID),
+                                               context: context)
+
+    let toggle = try #require(context.rootView.subviews.first as? UISwitch)
+    #expect(data["sent"]?.boolValue == true)
+    #expect(toggle.isOn == false)
+}
+
 @Test("executor control.sendAction 非 UIControl(canonical scrollView) 抛 invalid_data") @MainActor
 func sendActionNonControlReturnsInvalidData() {
     let context = UIKitTestHost.context { root in

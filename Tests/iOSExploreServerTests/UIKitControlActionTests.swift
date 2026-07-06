@@ -20,6 +20,30 @@ func sendActionInputParsesPathWithViewSnapshotIDAndEvent() throws {
     #expect(query.viewSnapshotID == "view_snapshot_test")
 }
 
+@Test("UIControlSendActionInput 解析可选 value")
+func sendActionInputParsesOptionalValue() throws {
+    let query = try UIControlSendActionInput.parse(from: [
+        "path": "root/0",
+        "viewSnapshotID": "view_snapshot_test",
+        "event": "valueChanged",
+        "value": 0.85,
+    ])
+
+    #expect(query.value == .double(0.85))
+}
+
+@Test("UIControlSendActionInput 解析 UISwitch bool value")
+func sendActionInputParsesSwitchBoolValue() throws {
+    let query = try UIControlSendActionInput.parse(from: [
+        "path": "root/0",
+        "viewSnapshotID": "view_snapshot_test",
+        "event": "valueChanged",
+        "value": true,
+    ])
+
+    #expect(query.value == .bool(true))
+}
+
 @Test("UIControlSendActionInput 从 identifier + viewSnapshotID + event 解析")
 func sendActionInputParsesIdentifierWithViewSnapshotIDAndEvent() throws {
     let query = try UIControlSendActionInput.parse(from: [
@@ -70,13 +94,19 @@ func sendActionInputRejectsMixedPathAndIdentifier() {
 }
 
 @Test("UIControlSendActionInput schema 使用 viewSnapshotID 且无坐标")
-func sendActionInputSchemaUsesViewSnapshotID() {
+func sendActionInputSchemaUsesViewSnapshotID() throws {
     #expect(UIControlSendActionInput.inputSchema.fields.map(\.name) == [
         "accessibilityIdentifier",
         "path",
         "viewSnapshotID",
         "event",
+        "value",
     ])
+    let valueField = try #require(UIControlSendActionInput.inputSchema.fields.first { $0.name == "value" })
+    #expect(valueField.schema.type == .number)
+    #expect(valueField.schema.required == false)
+    #expect(valueField.schema.allowsNull == true)
+    #expect(valueField.schema.description.contains("UISlider/UISegmentedControl/UIStepper/UISwitch"))
 }
 
 @Test("UIControlSendActionEvent 支持常用 UIControl 事件名")

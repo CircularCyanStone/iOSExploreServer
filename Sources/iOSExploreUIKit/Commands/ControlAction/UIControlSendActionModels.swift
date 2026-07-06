@@ -26,8 +26,10 @@ public enum UIControlSendActionEvent: String, Sendable, Equatable, CaseIterable 
 ///
 /// 它是精确 UIKit event 工具：对自身为 `UIControl` 的 canonical target 发送调用方显式指定的
 /// `UIControl.Event`。命令要求调用方明确提供一个定位条件（`accessibilityIdentifier` 或 `path`
-/// 二选一）、必填的 `viewSnapshotID` 和一个事件名。它不做 hit-test、不接受坐标、不找祖先
-/// control、不承担默认激活。成功只表示已向该 UIControl 发出指定 event。
+/// 二选一）、必填的 `viewSnapshotID` 和一个事件名。可选 `value` 字段只对
+/// `UISlider`/`UISegmentedControl`/`UIStepper`/`UISwitch` 生效；缺省则只发事件不改值。
+/// 它不做 hit-test、不接受坐标、不找祖先 control、不承担默认激活。成功只表示已向该
+/// UIControl 发出指定 event。
 public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
@@ -38,12 +40,18 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
             type: UIControlSendActionEvent.self,
             description: "事件名: touchDown / touchUpInside / valueChanged / editingChanged / editingDidBegin / editingDidEnd"
         )
+        static let value = CommandFields.number(
+            "value",
+            required: false,
+            description: "可选目标值；对 UISlider/UISegmentedControl/UIStepper/UISwitch 有效，缺省则只发事件不改值"
+        )
 
         static let all: [AnyCommandField] = [
             accessibilityIdentifier.erased,
             path.erased,
             viewSnapshotID.erased,
             event.erased,
+            value.erased,
         ]
     }
 
@@ -60,6 +68,8 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     public let target: UIKitViewLookupTarget
     /// 要发送的 UIControl 事件。
     public let event: UIControlSendActionEvent
+    /// 要在发送事件前写入控件的可选值；缺省表示只派发事件，不修改控件当前值。
+    public let value: JSONValue?
     /// `ui.viewTargets` 签发的结构化 target 指纹快照标识，必填；executor 用它做陈旧校验。
     public let viewSnapshotID: String
 
@@ -69,9 +79,14 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     ///   - target: 目标控件定位方式。
     ///   - event: 要发送的 UIControl 事件。
     ///   - viewSnapshotID: `ui.viewTargets` 签发的 viewSnapshotID。
-    public init(target: UIKitViewLookupTarget, event: UIControlSendActionEvent, viewSnapshotID: String) {
+    ///   - value: 要在发送事件前写入控件的可选值。
+    public init(target: UIKitViewLookupTarget,
+                event: UIControlSendActionEvent,
+                viewSnapshotID: String,
+                value: JSONValue? = nil) {
         self.target = target
         self.event = event
+        self.value = value
         self.viewSnapshotID = viewSnapshotID
     }
 
@@ -84,12 +99,13 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIControlSendActionInput {
         let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
         let event = try decoder.read(Fields.event)
+        let value = try decoder.read(Fields.value)
         let target = try UIKitLocatorInput.parse(decoder: &decoder,
                                                  identifierField: Fields.accessibilityIdentifier,
                                                  pathField: Fields.path)
         guard let viewSnapshotID else {
             throw CommandInputParseError("viewSnapshotID is required")
         }
-        return UIControlSendActionInput(target: target, event: event, viewSnapshotID: viewSnapshotID)
+        return UIControlSendActionInput(target: target, event: event, viewSnapshotID: viewSnapshotID, value: value)
     }
 }

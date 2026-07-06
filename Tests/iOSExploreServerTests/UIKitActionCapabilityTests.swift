@@ -66,6 +66,14 @@ func segmentedControlDoesNotDeclareTap() {
     #expect(availability.actions.contains(.controlValueChanged))
 }
 
+@Test("UIStepper 不声明 tap，仅 valueChanged") @MainActor
+func stepperDoesNotDeclareTap() {
+    let stepper = UIStepper()
+    let availability = UIKitActionCapabilityResolver.resolve(view: stepper, rootView: stepper)
+    #expect(!availability.actions.contains(.tap))
+    #expect(availability.actions.contains(.controlValueChanged))
+}
+
 @Test("未知自定义 UIControl 不声明 tap，仅 touchDown/touchUpInside") @MainActor
 func unknownCustomControlDoesNotDeclareTap() {
     final class CustomControl: UIControl {}

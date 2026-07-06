@@ -103,7 +103,7 @@ enum UIKitActionCapabilityResolver {
     ///
     /// - `UITextField` 声明编辑开始、变化和结束事件（input 由 `UITextInput` 路径补充，
     ///   tap 由默认激活路由补充）；
-    /// - 值型控件（`UISwitch`/`UISlider`/`UISegmentedControl`）声明 `valueChanged`
+    /// - 值型控件（`UISwitch`/`UISlider`/`UISegmentedControl`/`UIStepper`）声明 `valueChanged`
     ///   （其中 UISwitch 的 tap 由路由 switchToggle 声明，slider/segmented 无 tap）；
     /// - 其余 `UIControl`（如 `UIButton`、未知自定义 control）声明按下和抬起事件
     ///   （UIButton 的 tap 由路由 controlTouchUpInside 声明，自定义 control 无 tap）。
@@ -111,7 +111,7 @@ enum UIKitActionCapabilityResolver {
         if control is UITextField {
             return [.controlEditingChanged, .controlEditingDidBegin, .controlEditingDidEnd]
         }
-        if control is UISwitch || control is UISlider || control is UISegmentedControl {
+        if control is UISwitch || control is UISlider || control is UISegmentedControl || control is UIStepper {
             return [.controlValueChanged]
         }
         return [.controlTouchDown, .controlTouchUpInside]

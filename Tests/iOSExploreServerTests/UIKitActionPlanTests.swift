@@ -1,4 +1,5 @@
 import Testing
+@testable import iOSExploreServer
 @testable import iOSExploreUIKit
 
 // MARK: - Foundation-only 值类型测试（macOS 可编译）
@@ -30,13 +31,15 @@ func tapActionPlanPreservesIdentifier() {
 func controlActionPlanPreservesLocatorAndEvent() {
     let plan = UIKitActionPlan.controlEvent(locator: .accessibilityIdentifier("switch"),
                                             event: .valueChanged,
+                                            value: .double(1),
                                             viewSnapshotID: "view_snapshot_test")
-    guard case .controlEvent(let locator, let event, let viewSnapshotID) = plan else {
+    guard case .controlEvent(let locator, let event, let value, let viewSnapshotID) = plan else {
         Issue.record("expected control plan")
         return
     }
     #expect(locator == .accessibilityIdentifier("switch"))
     #expect(event == .valueChanged)
+    #expect(value == .double(1))
     #expect(viewSnapshotID == "view_snapshot_test")
 }
 

@@ -64,8 +64,12 @@ enum UIKitActionExecutor {
         switch plan {
         case .tap(let locator, let viewSnapshotID):
             return try executeTap(locator: locator, viewSnapshotID: viewSnapshotID, context: context)
-        case .controlEvent(let locator, let event, let viewSnapshotID):
-            return try executeControlEvent(locator: locator, event: event, viewSnapshotID: viewSnapshotID, context: context)
+        case .controlEvent(let locator, let event, let value, let viewSnapshotID):
+            return try executeControlEvent(locator: locator,
+                                           event: event,
+                                           value: value,
+                                           viewSnapshotID: viewSnapshotID,
+                                           context: context)
         }
     }
 
@@ -237,18 +241,22 @@ enum UIKitActionExecutor {
 
     /// 执行 control.sendAction 动作。
     ///
-    /// 先 locate、做统一 freshness 校验、校验目标自身为 `UIControl` 且当前声明该精确 event，
-    /// 再 `sendActions(for:)`。不做 hit-test、不找祖先 control。
+    /// 先 locate、做统一 freshness 校验、校验目标自身为 `UIControl` 且当前声明该精确 event；
+    /// 若携带 `value`，先按控件真实类型写入 `UISlider.value`、
+    /// `UISegmentedControl.selectedSegmentIndex`、`UIStepper.value` 或 `UISwitch.isOn`，再
+    /// `sendActions(for:)`。不做 hit-test、不找祖先 control。
     ///
     /// - Parameters:
     ///   - locator: 目标控件的统一定位器（identifier / path）。
     ///   - event: 要发送的 UIControl 事件。
+    ///   - value: 要在发送事件前写入控件的可选值。
     ///   - viewSnapshotID: `ui.viewTargets` 签发的结构化快照标识。
     ///   - context: 当前 UIKit 查询上下文（由 `execute(_:)` 注入）。
     /// - Returns: control.sendAction 语义 JSON（sent / event / type 等）。
     /// - Throws: `UIKitCommandError`——定位失败 / 非 control / 能力不支持 / 陈旧。
     private static func executeControlEvent(locator: UIKitLocator,
                                             event: UIControlSendActionEvent,
+                                            value: JSONValue?,
                                             viewSnapshotID: String,
                                             context: UIKitContextProvider.Context) throws -> JSON {
         let target = locatorSummary(locator)
@@ -273,7 +281,9 @@ enum UIKitActionExecutor {
                                                       requestedAction: requestedAction.rawValue)
         }
 
-        UIKitCommandLogging.info("command", "ui control send action mainactor target=\(located.pathString) type=\(String(describing: Swift.type(of: control))) event=\(event.rawValue) enabled=\(control.isEnabled)")
+        applyValue(value, to: control)
+
+        UIKitCommandLogging.info("command", "ui control send action mainactor target=\(located.pathString) type=\(String(describing: Swift.type(of: control))) event=\(event.rawValue) enabled=\(control.isEnabled) valueProvided=\(value != nil)")
         control.sendActions(for: event.uiControlEvent)
         return [
             "sent": .bool(true),
@@ -291,6 +301,24 @@ enum UIKitActionExecutor {
     /// locator 的日志/响应摘要，复用 `UIKitLocator` 文案。
     private static func locatorSummary(_ locator: UIKitLocator) -> String {
         locator.logSummary
+    }
+
+    /// 在派发 valueChanged 前按 UIKit 控件类型写入调用方提供的目标值。
+    ///
+    /// 非 value 型控件或不适配当前控件类型的 JSON 值会被忽略，保持旧的“只发事件”语义；这样
+    /// 调用方缺省或误带 value 时不会改变 touch/editing 事件的派发路径。
+    private static func applyValue(_ value: JSONValue?, to control: UIControl) {
+        guard let value else { return }
+
+        if let slider = control as? UISlider, let newValue = value.doubleValue {
+            slider.value = Float(newValue)
+        } else if let segmented = control as? UISegmentedControl, let index = value.intValue {
+            segmented.selectedSegmentIndex = index
+        } else if let stepper = control as? UIStepper, let newValue = value.doubleValue {
+            stepper.value = newValue
+        } else if let switchView = control as? UISwitch, let isOn = value.switchBoolValue {
+            switchView.isOn = isOn
+        }
     }
 
     /// 把一对已触发的手势 target-action 摘要序列化进 `ui.tap` 响应的 `gestures` 数组。
@@ -333,6 +361,32 @@ private extension UIControlSendActionEvent {
         case .editingDidEnd:
             return .editingDidEnd
         }
+    }
+}
+
+private extension JSONValue {
+    /// 当 JSON number 可精确表达为 Swift `Int` 时返回整数值。
+    var intValue: Int? {
+        guard let value = doubleValue,
+              value.isFinite,
+              value.rounded(.towardZero) == value else {
+            return nil
+        }
+        return Int(exactly: value)
+    }
+
+    /// UISwitch 接受的布尔输入：JSON bool 或 JSON number 0/1。
+    var switchBoolValue: Bool? {
+        if let value = boolValue {
+            return value
+        }
+        if doubleValue == 0 {
+            return false
+        }
+        if doubleValue == 1 {
+            return true
+        }
+        return nil
     }
 }
 #endif

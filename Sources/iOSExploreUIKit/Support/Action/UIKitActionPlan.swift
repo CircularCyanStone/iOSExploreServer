@@ -1,4 +1,5 @@
 import Foundation
+import iOSExploreServer
 
 /// UIKit 动作计划。
 ///
@@ -30,11 +31,16 @@ public enum UIKitActionPlan: Sendable, Equatable {
     case tap(locator: UIKitLocator, viewSnapshotID: String)
     /// 向 `UIControl` 发送 target-action 事件。executor 会 resolve locator、用
     /// `viewSnapshotID` 做陈旧校验、校验目标自身为 `UIControl` 且当前声明该精确事件，
-    /// 再 `sendActions(for:)`。不做 hit-test、不找祖先 control。
+    /// 若携带 `value`，executor 会先对 `UISlider`/`UISegmentedControl`/`UIStepper`/`UISwitch`
+    /// 写入目标值，再 `sendActions(for:)`。不做 hit-test、不找祖先 control。
     ///
     /// - Parameters:
     ///   - locator: 目标控件的统一定位器（identifier / path）。
     ///   - event: 要发送的 UIControl 事件。
+    ///   - value: 要在发送事件前写入控件的可选值；缺省表示只发事件不改值。
     ///   - viewSnapshotID: `ui.viewTargets` 签发的结构化 target 指纹快照标识，必填。
-    case controlEvent(locator: UIKitLocator, event: UIControlSendActionEvent, viewSnapshotID: String)
+    case controlEvent(locator: UIKitLocator,
+                      event: UIControlSendActionEvent,
+                      value: JSONValue? = nil,
+                      viewSnapshotID: String)
 }

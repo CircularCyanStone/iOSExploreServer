@@ -240,6 +240,39 @@ public enum CommandFields {
         }
     }
 
+    /// JSON number 字段：按 required 决定是否必填，并保留原始 `JSONValue` 供执行层区分数字/布尔。
+    ///
+    /// 常规数值命令优先使用 `optionalFiniteNumber` 或整数工厂；本工厂用于需要把可选原始 JSON
+    /// 值穿过 typed input 边界的命令，例如 `ui.control.sendAction` 的 `value`。schema 对外声明
+    /// 为 number；运行时额外接受 boolean，供 UISwitch 这类布尔值控件在同一个字段里表达开关状态。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - required: 字段是否必填。
+    ///   - description: 字段说明。
+    /// - Returns: 解析为可选 `JSONValue` 的命令字段。
+    public static func number(_ name: String, required: Bool, description: String) -> CommandField<JSONValue?> {
+        CommandField(name: name,
+                     schema: CommandFieldSchema(type: .number,
+                                                required: required,
+                                                description: description,
+                                                allowsNull: !required)) { raw in
+            guard let raw = raw, raw != .null else {
+                if required {
+                    throw CommandInputParseError("missing required parameter '\(name)'")
+                }
+                return nil
+            }
+            if let parsed = raw.doubleValue, parsed.isFinite {
+                return .double(parsed)
+            }
+            if let parsed = raw.boolValue {
+                return .bool(parsed)
+            }
+            throw CommandInputParseError("\(name) must be a finite number")
+        }
+    }
+
     /// 可选非负整数字段：缺失或 null 返回 nil，存在但非有限整数或小于 0 抛出解析错误。
     ///
     /// - Parameters:
