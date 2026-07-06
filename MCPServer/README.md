@@ -32,6 +32,14 @@ npm run build
 
 `ui.wait`、`ui.waitAny`、`wait_and_observe` 会按业务 `timeoutMs + 5000` 自动放宽 HTTP timeout。
 
+## 端到端测试指南
+
+完整的端到端测试流程（真机/模拟器 + curl/MCP JSON-RPC + MCPServer + UI 交互）见：
+
+→ [docs/investigations/mcp-e2e-test.md](../docs/investigations/mcp-e2e-test.md)
+
+覆盖：基础 API 验证、日志能力验证、MCPServer JSON-RPC 测试、UI 交互验证、故障排查表、快速验证清单。
+
 ## 推荐调用顺序
 
 ```text
