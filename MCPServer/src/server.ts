@@ -1,9 +1,10 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { IOSExploreStructuredError } from "./errors.js";
 import { errorResult, jsonResult } from "./result.js";
 import type { IOSExploreCaller } from "./toolRegistry.js";
-import type { JSONObject, MCPToolResult, ToolDefinition } from "./types.js";
+import type { JSONObject, MCPToolResult, StructuredError, ToolDefinition } from "./types.js";
 
 type StaticToolLike = {
   name: string;
@@ -15,6 +16,7 @@ type StaticToolLike = {
 type RegistryLike = {
   tools(): ToolDefinition[];
   findByName(name: string): ToolDefinition | undefined;
+  refresh(): Promise<unknown>;
 };
 
 export function createToolHandlers(options: {
@@ -36,11 +38,26 @@ export function createToolHandlers(options: {
       if (fixed) {
         return fixed.handler(args);
       }
-      const dynamic = options.registry.findByName(name);
+      let dynamic = options.registry.findByName(name);
+      if (!dynamic && isIOSExploreDynamicToolName(name)) {
+        await options.registry.refresh();
+        dynamic = options.registry.findByName(name);
+      }
       if (dynamic?.action) {
         try {
           return jsonResult(await options.client.call(dynamic.action, args));
         } catch (error) {
+          if (isTransportError(error)) {
+            await sleep(200);
+            try {
+              return jsonResult(await options.client.call(dynamic.action, args));
+            } catch (retryError) {
+              if (isTransportError(retryError)) {
+                return errorResult(await enrichTransportError(retryError, options.client));
+              }
+              return errorResult(normalizeUnknownError(retryError));
+            }
+          }
           return errorResult(normalizeUnknownError(error));
         }
       }
@@ -82,9 +99,44 @@ function toMCPTool(tool: StaticToolLike | ToolDefinition) {
   };
 }
 
-function normalizeUnknownError(error: unknown) {
+function isIOSExploreDynamicToolName(name: string): boolean {
+  return name.startsWith("ios_");
+}
+
+function isTransportError(error: unknown): error is IOSExploreStructuredError {
+  return error instanceof IOSExploreStructuredError && error.source === "transport";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function enrichTransportError(error: IOSExploreStructuredError, client: IOSExploreCaller): Promise<StructuredError & JSONObject> {
+  const normalized = normalizeUnknownError(error);
+  return {
+    ...normalized,
+    retry: { attempted: true, delayMs: 200, succeeded: false },
+    healthCheck: await pingHealthCheck(client),
+    nextSteps: [
+      "iOSExplore App 当前不可达；如果是真机调试，请确认 App 仍在运行、iproxy 仍在监听 38321，并用 XcodeBuildMCP launch_app_device 以 IOS_EXPLORE_AUTOSTART=1 重启后再试。"
+    ]
+  };
+}
+
+async function pingHealthCheck(client: IOSExploreCaller): Promise<JSONObject> {
+  try {
+    return { ok: true, ping: await client.call("ping") };
+  } catch (error) {
+    return { ok: false, error: normalizeUnknownError(error) };
+  }
+}
+
+function normalizeUnknownError(error: unknown): StructuredError {
+  if (error instanceof IOSExploreStructuredError) {
+    return error.toJSON();
+  }
   if (typeof error === "object" && error !== null && "source" in error && "message" in error) {
-    return error as { source: "mcp_server"; message: string; code?: string };
+    return error as StructuredError;
   }
   return {
     source: "mcp_server" as const,
