@@ -35,7 +35,7 @@ final class UnifiedLogCapture: @unchecked Sendable {
                                                            captureNSLog: configuration.captureNSLog,
                                                            captureOSLog: configuration.captureOSLog)
                 stopHandler = { capture.stop() }
-                flushHandler = { capture.drain() }
+                flushHandler = { capture.requestDrain() }
                 nslogCaptureStatus = configuration.captureNSLog
                     ? .enabled
                     : .notCaptured(reason: "NSLog capture is disabled")
@@ -85,8 +85,11 @@ final class UnifiedLogCapture: @unchecked Sendable {
         stopHandler?()
     }
 
-    /// 立即读取一次当前进程 unified logging。
-    func flush() {
+    /// 请求后台读取一次当前进程 unified logging。
+    ///
+    /// `OSLogStore.getEntries` 在真机日志量较大时可能耗时明显，调用方不能同步等待它完成。
+    /// 该方法只把 drain 投递到 unified log 捕获自己的串行队列，保证 `app.logs.read` 能及时返回。
+    func requestFlush() {
         flushHandler?()
     }
 }
@@ -98,6 +101,7 @@ private final class UnifiedLogPollingCapture: @unchecked Sendable {
     private let appStore: AppLogStore
     private let captureNSLog: Bool
     private let captureOSLog: Bool
+    private let queue: DispatchQueue
     private let timer: DispatchSourceTimer
     private let cancelSemaphore: DispatchSemaphore
     private let state: Mutex<UnifiedLogPollingState>
@@ -107,7 +111,9 @@ private final class UnifiedLogPollingCapture: @unchecked Sendable {
         self.appStore = store
         self.captureNSLog = captureNSLog
         self.captureOSLog = captureOSLog
-        self.timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "com.coo.iOSExploreDiagnostics.oslog"))
+        let queue = DispatchQueue(label: "com.coo.iOSExploreDiagnostics.oslog")
+        self.queue = queue
+        self.timer = DispatchSource.makeTimerSource(queue: queue)
         self.cancelSemaphore = DispatchSemaphore(value: 0)
         self.state = Mutex(UnifiedLogPollingState(stopped: false,
                                                   scanStartDate: Date(timeIntervalSinceNow: -2),
@@ -142,6 +148,12 @@ private final class UnifiedLogPollingCapture: @unchecked Sendable {
         ExploreLogging.emitExtension(level: .info,
                                      category: "diagnostics.oslog",
                                      message: "os_log capture stopped")
+    }
+
+    func requestDrain() {
+        queue.async { [weak self] in
+            self?.drain()
+        }
     }
 
     func drain() {
@@ -201,6 +213,11 @@ private final class UnifiedLogPollingCapture: @unchecked Sendable {
                             ])
         }
         if captureOSLog, isNSLog == false {
+            // 跳过 Apple 系统框架（subsystem 以 "com.apple." 开头）的 unified log entry。
+            // OSLogStore(scope: .currentProcessIdentifier) 会读到当前进程内 Foundation、
+            // UIKit、CFNetwork 等系统框架产生的 entry，对调试宿主 App 自身行为没有价值。
+            // 宿主自己写的 os_log / Swift Logger 使用的 subsystem 不会以 "com.apple." 开头。
+            guard Self.isAppleSystemSubsystem(entry.subsystem) == false else { return }
             appStore.append(source: .oslog,
                             level: AppLogLevel(entry.level),
                             category: entry.category,
@@ -210,6 +227,14 @@ private final class UnifiedLogPollingCapture: @unchecked Sendable {
                                 "category": entry.category,
                             ])
         }
+    }
+
+    /// 判断 entry 是否属于 Apple 系统框架。
+    ///
+    /// 系统框架（Foundation、UIKit、CFNetwork、CoreText 等）的 subsystem 一律以
+    /// `com.apple.` 开头。空 subsystem 不视为系统框架（部分宿主代码会以空字符串写日志）。
+    private static func isAppleSystemSubsystem(_ subsystem: String) -> Bool {
+        subsystem.lowercased().hasPrefix("com.apple.")
     }
 
     private static func entryKey(_ entry: OSLogEntryLog) -> String {

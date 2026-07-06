@@ -9,6 +9,7 @@ private struct ProcessDiagnosticsRuntimeState {
 #if DEBUG
     var stdioCapture: StdIOCapture?
     var unifiedLogCapture: UnifiedLogCapture?
+    var pendingCaptureFlushOverride: (@Sendable () -> Void)?
 #endif
 }
 
@@ -118,16 +119,39 @@ public final class ProcessDiagnosticsRuntime: Sendable {
         state.withLock { $0.store }
     }
 
-    /// 读取日志前刷新需要主动轮询的捕获来源。
+    /// 读取日志前请求刷新需要主动轮询的捕获来源。
     ///
     /// stdout/stderr/NSLog 由 fd read source 推送；Apple Unified Logging 可能延迟落入
-    /// `OSLogStore`，因此在 `app.logs.read` 前主动拉取一次，降低 Agent 读到空结果的概率。
+    /// `OSLogStore`，因此在 `app.logs.read` 前发起一次后台拉取，降低 Agent 后续读到空结果的概率。
+    /// 这里不能同步等待 `OSLogStore.getEntries`：真机日志量较大时该系统调用可能长时间不返回，
+    /// 会阻塞 `app.logs.read` 响应并让 Agent 误判 MCP 服务不可用。
     func flushPendingCaptures() {
 #if DEBUG
-        let unifiedLogCapture = state.withLock { $0.unifiedLogCapture }
-        unifiedLogCapture?.flush()
+        let snapshot = state.withLock { state in
+            (state.pendingCaptureFlushOverride, state.unifiedLogCapture)
+        }
+        if let override = snapshot.0 {
+            ExploreLogging.emitExtension(level: .debug,
+                                         category: "diagnostics.runtime",
+                                         message: "pending capture flush requested mode=testOverride")
+            DispatchQueue.global(qos: .utility).async(execute: override)
+            return
+        }
+        snapshot.1?.requestFlush()
 #endif
     }
+
+#if DEBUG
+    /// 测试辅助：替换 `app.logs.read` 前的 pending capture flush。
+    ///
+    /// 该 hook 用来复现系统日志刷新长时间不返回时，读取命令仍应立即响应的契约。
+    /// `resetForTesting()` 会清掉 hook，避免污染其它测试。
+    func setPendingCaptureFlushOverrideForTesting(_ override: (@Sendable () -> Void)?) {
+        state.withLock { state in
+            state.pendingCaptureFlushOverride = override
+        }
+    }
+#endif
 
     /// 当前各日志来源捕获状态。
     ///

@@ -29,4 +29,31 @@ describe("schemaMapper", () => {
     expect(mapped.descriptionSuffix).toContain("iOSExplore constraints");
     expect(mapped.descriptionSuffix).toContain("textExists 需 text");
   });
+
+  test("moves array enum onto items schema", () => {
+    const mapped = mapInputSchema({
+      type: "object",
+      properties: {
+        sources: {
+          type: ["array", "null"],
+          description: "日志来源过滤",
+          enum: ["explore", "bridge", "stdout"]
+        }
+      }
+    });
+
+    expect(mapped.inputSchema).toEqual({
+      type: "object",
+      properties: {
+        sources: {
+          type: ["array", "null"],
+          description: "日志来源过滤",
+          items: {
+            type: "string",
+            enum: ["explore", "bridge", "stdout"]
+          }
+        }
+      }
+    });
+  });
 });

@@ -124,6 +124,27 @@ private enum StdIOStream {
         case .stderr: return "stderr"
         }
     }
+
+    /// 当前标准流对应的 C `FILE*`。
+    ///
+    /// Swift `print()` 会经过 C `stdout` 的用户态缓冲；fd 重定向完成后需要同步调整该
+    /// `FILE*` 的缓冲模式，避免日志长时间停在进程内缓冲区而没有进入 pipe。
+    var filePointer: UnsafeMutablePointer<FILE> {
+        switch self {
+        case .stdout: return Darwin.stdout
+        case .stderr: return Darwin.stderr
+        }
+    }
+
+    /// 捕获安装后的 C 标准流缓冲模式。
+    ///
+    /// stdout 使用行缓冲，让 `print(...)\n` 及时进入 fd；stderr 保持无缓冲语义，贴近系统默认错误流行为。
+    var captureBufferMode: Int32 {
+        switch self {
+        case .stdout: return _IOLBF
+        case .stderr: return _IONBF
+        }
+    }
 }
 
 private final class StdIOStreamCapture {
@@ -175,6 +196,11 @@ private final class StdIOStreamCapture {
             close(pipeFDs[1])
             close(originalFD)
             return failure(stream: stream, reason: "dup2 failed errno=\(currentErrno)")
+        }
+        if setvbuf(stream.filePointer, nil, stream.captureBufferMode, 0) != 0 {
+            ExploreLogging.emitExtension(level: .error,
+                                         category: "diagnostics.stdio",
+                                         message: "\(stream.name) capture setvbuf failed errno=\(errno)")
         }
         close(pipeFDs[1])
 

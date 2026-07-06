@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import OSLog
 import Testing
@@ -112,6 +113,40 @@ struct DiagnosticsCommandTests {
         }
     }
 
+    @Test("app.logs.read 不等待 pending capture flush 完成")
+    func readDoesNotWaitForPendingCaptureFlush() async throws {
+        try await withProcessDiagnosticsTestIsolation {
+            ProcessDiagnosticsRuntime.shared.resetForTesting()
+            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            let server = ExploreServer()
+            _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
+                                                         captureStdout: false,
+                                                         captureStderr: false,
+                                                         captureOSLog: false))
+            let mark = try cursor(from: await server.routerSnapshotRoute(ExploreRequest(action: "app.logs.mark")))
+
+            ExploreAppLog.emit(.info,
+                               category: "test.flush",
+                               message: "flush should not block read")
+            ProcessDiagnosticsRuntime.shared.setPendingCaptureFlushOverrideForTesting {
+                Thread.sleep(forTimeInterval: 2)
+            }
+
+            let start = Date()
+            let result = await server.routerSnapshotRoute(ExploreRequest(action: "app.logs.read",
+                                                                        data: ["after": .object(mark.toJSON()),
+                                                                               "sources": .array([.string("bridge")])]))
+            let elapsed = Date().timeIntervalSince(start)
+            let entries = try entries(from: result)
+
+            #expect(elapsed < 1.0)
+            #expect(entries.contains { entry in
+                entry["source"]?.stringValue == "bridge" &&
+                entry["category"]?.stringValue == "test.flush"
+            })
+        }
+    }
+
     @Test("captureSessionID 不匹配时 read 返回 stale_cursor")
     func readReturnsStaleCursorForDifferentCaptureSession() async {
         await withProcessDiagnosticsTestIsolation {
@@ -147,6 +182,35 @@ struct DiagnosticsCommandTests {
             let mark = try cursor(from: await server.routerSnapshotRoute(ExploreRequest(action: "app.logs.mark")))
 
             writeLine(token, to: .standardOutput)
+
+            let entries = try await waitForEntry(after: mark, source: "stdout", token: token, server: server)
+            #expect(entries.contains { entry in
+                entry["source"]?.stringValue == "stdout" &&
+                entry["level"]?.stringValue == "info" &&
+                entry["category"]?.stringValue == "stdio" &&
+                entry["message"]?.stringValue == token
+            })
+        }
+    }
+
+    @Test("stdout capture 打开后可捕获 Swift print 输出")
+    func stdoutCaptureRecordsSwiftPrintOutput() async throws {
+        try await withProcessDiagnosticsTestIsolation {
+            ProcessDiagnosticsRuntime.shared.resetForTesting()
+            defer {
+                ProcessDiagnosticsRuntime.shared.resetForTesting()
+                setvbuf(stdout, nil, _IOLBF, 0)
+            }
+            let token = "stdout-print-capture-\(UUID().uuidString)"
+            let server = ExploreServer()
+            setvbuf(stdout, nil, _IOFBF, 0)
+            _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
+                                                         captureStdout: true,
+                                                         captureStderr: false,
+                                                         teeToOriginalStreams: false))
+            let mark = try cursor(from: await server.routerSnapshotRoute(ExploreRequest(action: "app.logs.mark")))
+
+            print(token)
 
             let entries = try await waitForEntry(after: mark, source: "stdout", token: token, server: server)
             #expect(entries.contains { entry in
@@ -334,6 +398,49 @@ struct DiagnosticsCommandTests {
                 entry["source"]?.stringValue == "oslog" &&
                 (entry["message"]?.stringValue ?? "").contains(token)
             })
+        }
+    }
+
+    @Test("os_log 捕获会过滤 com.apple. 系统来源")
+    func osLogCaptureFiltersAppleSystemSubsystem() async throws {
+        guard #available(macOS 11.0, iOS 15.0, *) else { return }
+        try await withProcessDiagnosticsTestIsolation {
+            ProcessDiagnosticsRuntime.shared.resetForTesting()
+            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            let systemToken = "apple-system-\(UUID().uuidString)"
+            let appToken = "app-custom-\(UUID().uuidString)"
+            let server = ExploreServer()
+            _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
+                                                         captureStdout: false,
+                                                         captureStderr: false,
+                                                         captureNSLog: false,
+                                                         captureOSLog: true,
+                                                         teeToOriginalStreams: false))
+            let mark = try cursor(from: await server.routerSnapshotRoute(ExploreRequest(action: "app.logs.mark")))
+
+            // 模拟系统框架日志（subsystem 以 com.apple. 开头）—— 不应被捕获
+            os_log("%{public}@", log: OSLog(subsystem: "com.apple.Foundation",
+                                            category: "nslog"),
+                   type: .info,
+                   systemToken)
+            // 模拟宿主 App 自己的日志 —— 应被捕获
+            os_log("%{public}@", log: OSLog(subsystem: "com.coo.SPMExample",
+                                            category: "test"),
+                   type: .info,
+                   appToken)
+
+            let entries = try await waitForEntry(after: mark,
+                                                 source: "oslog",
+                                                 token: appToken,
+                                                 server: server,
+                                                 attempts: 80)
+            #expect(entries.contains { entry in
+                entry["source"]?.stringValue == "oslog" &&
+                (entry["message"]?.stringValue ?? "").contains(appToken)
+            })
+            #expect(entries.contains { entry in
+                (entry["message"]?.stringValue ?? "").contains(systemToken)
+            } == false)
         }
     }
 

@@ -13,7 +13,7 @@ export function mapInputSchema(schema: JSONObject): SchemaMapping {
     if (key.startsWith("x-iosExplore-")) {
       extensionLines.push(...extensionValueLines(key, value));
     } else {
-      inputSchema[key] = value;
+      inputSchema[key] = normalizeSchemaValue(value);
     }
   }
 
@@ -24,6 +24,37 @@ export function mapInputSchema(schema: JSONObject): SchemaMapping {
         ? ""
         : `\n\niOSExplore constraints:\n${extensionLines.map(line => `- ${line}`).join("\n")}`
   };
+}
+
+function normalizeSchemaValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(normalizeSchemaValue);
+  }
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  const normalized: JSONObject = {};
+  for (const [key, child] of Object.entries(value)) {
+    normalized[key] = normalizeSchemaValue(child);
+  }
+
+  const type = normalized.type;
+  const isArrayType = type === "array" || (Array.isArray(type) && type.includes("array"));
+  const enumValues = normalized.enum;
+  if (isArrayType && Array.isArray(enumValues) && normalized.items === undefined) {
+    delete normalized.enum;
+    normalized.items = {
+      type: "string",
+      enum: enumValues
+    };
+  }
+
+  return normalized;
+}
+
+function isPlainObject(value: unknown): value is JSONObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function extensionValueLines(key: string, value: unknown): string[] {
