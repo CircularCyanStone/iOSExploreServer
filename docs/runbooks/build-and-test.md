@@ -3,8 +3,8 @@
 ## SPM 库（主）
 
 ```bash
-swift build                              # 构建（core + iOSExploreUIKit）
-swift test                               # 全量测试（macOS SPM 当前 210 个，含端到端、UIKit 模型/解析/snapshot store；iOS framework 下当前 310 个，额外覆盖 UIKit 指纹状态与动作能力）
+swift build                              # 构建（core + iOSExploreUIKit + iOSExploreDiagnostics）
+swift test                               # 全量测试（macOS SPM 当前 225 个，含端到端、UIKit 模型/解析/snapshot store/Diagnostics；iOS framework 下当前 344 个，额外覆盖 UIKit 指纹状态与动作能力）
 swift test --enable-code-coverage        # 带覆盖率（当前行覆盖 86.62%）
 swift test --filter Integration          # 只跑端到端集成测试
 ```
@@ -15,10 +15,10 @@ swift test --filter Integration          # 只跑端到端集成测试
 
 ## framework 工程（手动编 `.framework`）
 
-framework 工程有两个 target，与 SPM 共享同一份 `Sources/` 源码：
+framework 工程有三个 framework target，与 SPM 共享同一份 `Sources/` 源码：
 
 ```bash
-# 构建两个 framework（iOSExploreServer + iOSExploreUIKit）
+# 构建三个 framework（iOSExploreServer + iOSExploreUIKit + iOSExploreDiagnostics）
 xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj \
            -scheme iOSExploreServer \
            -sdk iphonesimulator \

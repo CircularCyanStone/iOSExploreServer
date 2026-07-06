@@ -268,7 +268,7 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 
 **后续路线保留两层，不进入第一版：B 设备管理层、C 测试编排层。** B 负责发现真机/模拟器、管理 `iproxy`、多设备选择、端口占用和残留进程诊断；C 负责自然语言用例拆解、步骤状态、证据归档、结果报告和批量执行。把 B/C 放在这里，是为了防止后续只记得第一版 MCP 包装器，而遗忘项目可以继续演进到更自动的设备管理和测试编排。
 
-**真机计时已证明不需要 `returnObservation`**：USB 链路上一次 viewTargets 往返 **~10ms**（连续 8 次 8.7–14.5ms），相对 waitAny 秒级 timeout 占比 < 1%，round trip 不是瓶颈。final-observation 评估里的“Mac MCP 层编排”方案完全够用，iPhone 端 waitAny 响应保持只返回 matchedID。详见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md)。**开建时的范围、已定约束与起点 checklist 见 [2026-07-03-mac-mcp-server-scope.md](../specs/2026-07-03-mac-mcp-server-scope.md)。**
+**真机计时已证明不需要 `returnObservation`**：USB 链路上一次 viewTargets 往返 **~10ms**（连续 8 次 8.7–14.5ms），相对 waitAny 秒级 timeout 占比 < 1%，round trip 不是瓶颈。final-observation 评估里的“Mac MCP 层编排”方案完全够用，iPhone 端 waitAny 响应保持只返回 matchedID。详见 [2026-07-03-final-observation-after-action.md](../specs/2026-07-03-final-observation-after-action.md)。旧的 [2026-07-03-mac-mcp-server-scope.md](../specs/2026-07-03-mac-mcp-server-scope.md) 只保留为历史起点记录；开工范围、已定约束和验收要求以 [2026-07-06-mac-mcp-server-design.md](../specs/2026-07-06-mac-mcp-server-design.md) 为准。
 
 ### 6.2 ui.alert.respond dryRun=false（已完成）
 

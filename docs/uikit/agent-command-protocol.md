@@ -20,14 +20,14 @@ ui.viewTargets     ────┼──>  选定 path/identifier  ──>  ui.t
                                                             ui.alert.respond
 ```
 
-**铁律**：任何 `ui.*` 交互命令执行**之前**，**必须**先在同一个 UI 稳定状态下调用过一次 `ui.viewTargets`（或 `ui.topViewHierarchy`），并把那次响应里的 `viewSnapshotID`（或层次快照）原样作为后续交互命令的参数带上。
+**铁律**：任何 `ui.*` 交互命令执行**之前**，**必须**先在同一个 UI 稳定状态下调用过一次发现命令。`ui.tap` / `ui.control.sendAction` 必须带 `ui.viewTargets` 签发的 `viewSnapshotID`；`ui.input` / `ui.scroll` 只有在 `path` 定位时可选带 `viewSnapshotID` 做陈旧校验，identifier 定位不能带 `viewSnapshotID`。
 **铁律二**：执行命令之后如果换了页面、或想点新的目标，**必须重新**调用发现命令；带旧 `viewSnapshotID` 给新页面目标会触发 `stale_locator`。
 
 **两个发现命令怎么选**（决策树）：
 
 | 你要做什么 | 用哪个 | 原因 |
 |---|---|---|
-| 要执行 `ui.tap` / `ui.control.sendAction` / `ui.input` | `ui.viewTargets` | 它签发 `viewSnapshotID`；`topViewHierarchy` 不签发，不能直接接 tap |
+| 要执行 `ui.tap` / `ui.control.sendAction`，或给 `ui.input` / `ui.scroll` 的 path 定位做陈旧校验 | `ui.viewTargets` | 它签发 `viewSnapshotID`；`topViewHierarchy` 不签发，不能直接接 tap/control |
 | 选 table/collection 的某行 cell | `ui.viewTargets` | cell 子 view 带 `indexPath`，直接按 `indexPath.item` 选行 + 同响应拿 `path` + `viewSnapshotID` 单命令 tap |
 | 已知 `accessibilityIdentifier` 想确认 view 是否可达 | `ui.viewTargets` | 轻、扁平；只返回 canonical target |
 | 看页面整体结构、容器嵌套 | `ui.topViewHierarchy` | 嵌套 root 树，覆盖全量 view |
@@ -45,7 +45,7 @@ ui.viewTargets     ────┼──>  选定 path/identifier  ──>  ui.t
 | `ui.viewTargets` | 无 | — | 否（纯读，**签发 `viewSnapshotID`**） |
 | `ui.tap` | `ui.viewTargets`（强） | `viewSnapshotID` + (`path` 或 `accessibilityIdentifier`) | 是（可能 push / pop / 弹窗） |
 | `ui.control.sendAction` | `ui.viewTargets`（强） | `viewSnapshotID` + (`path` 或 `accessibilityIdentifier`) + `event` | 通常否，但 control 状态会变 |
-| `ui.input` | `ui.viewTargets`（强） | `viewSnapshotID` + (`path` 或 `accessibilityIdentifier`) + `text` | 否（仅文本） |
+| `ui.input` | `ui.viewTargets`（推荐） | `text` + (`path` 或 `accessibilityIdentifier`)；仅 `path` 可选带 `viewSnapshotID` | 否（仅文本） |
 | `ui.scroll` | `ui.viewTargets` | `direction`；定位字段+`viewSnapshotID`（如要滚特定 view） | 否（仅滚动） |
 | `ui.scrollToElement` | `ui.topViewHierarchy`（推荐先看一眼） | `value` + `match` | 否（仅滚动） |
 | `ui.screenshot` | 无 | — | 否（纯读） |
@@ -63,7 +63,7 @@ ui.viewTargets     ────┼──>  选定 path/identifier  ──>  ui.t
 
 ### 1.1 它是什么、为什么必须有
 
-`viewSnapshotID` 是 `ui.viewTargets` 响应里**签发**的一个字符串（形如 `snap-9`），代表"那一瞬间 view 树的指纹快照"。后续 `ui.tap` / `ui.control.sendAction` / `ui.input` 强制要求带上它，原因在 [reading-guide.md 第 3 步](./reading-guide.md)：执行 click 期间 UI 可能正在异步变化（动画、异步 reload），用旧 path 找当前 view 不一定对，所以要校验"执行时的 view 树指纹 == 发现时的指纹"，否则报 `stale_locator`。
+`viewSnapshotID` 是 `ui.viewTargets` 响应里**签发**的一个字符串（形如 `snap-9`），代表"那一瞬间 view 树的指纹快照"。后续 `ui.tap` / `ui.control.sendAction` 强制要求带上它；`ui.input` / `ui.scroll` 只有在 `path` 定位时可选带上它。原因在 [reading-guide.md 第 3 步](./reading-guide.md)：执行 click 期间 UI 可能正在异步变化（动画、异步 reload），用旧 path 找当前 view 不一定对，所以要校验"执行时的 view 树指纹 == 发现时的指纹"，否则报 `stale_locator`。
 
 ### 1.2 调用方必须记住的三条
 

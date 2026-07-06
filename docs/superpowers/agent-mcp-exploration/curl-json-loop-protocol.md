@@ -206,8 +206,8 @@ curl -sS -X POST "$BASE" -H 'Content-Type: application/json' \
 | `wait_timeout` | 重新 observe，再判断业务失败、条件错误、目标不可见、弹窗遮挡或网络慢。 |
 | `unsupported_target` | 目标没有默认 tap；改用 `ui.control.sendAction` 或专用命令。 |
 | `alert_unavailable` | 当前无 `UIAlertController`；如果只是排查弹窗，可以继续下一步。 |
-| `alert_button_required` | 多按钮 alert 未指定 `buttonTitle`/`buttonIndex`/`role`。 | 补上明确选择器再重试 `dryRun=false`。 |
-| `alert_release_unsupported` | Release 构建 `dryRun=false` 回退（私有 API 被 `#if DEBUG` 隔离）。 | 改 `dryRun=true` 查询，触发交宿主自定义 action 或人工。 |
+| `alert_button_required` | 多按钮 alert 未指定 `buttonTitle`/`buttonIndex`/`role`；补上明确选择器再重试 `dryRun=false`。 |
+| `alert_release_unsupported` | Release 构建 `dryRun=false` 回退（私有 API 被 `#if DEBUG` 隔离）；改 `dryRun=true` 查询，触发交宿主自定义 action 或人工。 |
 | `navigation_bar_item_mismatch` | 页面或按钮已变化；重新 observe navigationBar 区块。 |
 
 ## 4. 不要做的事

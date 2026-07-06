@@ -116,7 +116,7 @@ server.register(action: "greet", description: "按 name 打招呼", input: Greet
 
 **最近修复**：HTTPListener 连接槽耗尽后 server 不响应（Network 层 `newConnectionLimit` 被误设为业务上限，连接关闭后不释放）。
 
-**下一步**：Agent 使用协议已写入 `docs/superpowers/agent-mcp-exploration/agent-usage-protocol.md`，可运行的 curl/JSON 闭环写入 `docs/superpowers/agent-mcp-exploration/curl-json-loop-protocol.md`。navigationBar / UIBarButtonItem 可达性与 `ui.tap` 结构化默认激活已完成；`ui.alert.respond` 的 `dryRun=false` 已实现——通过 Debug-only 私有方法 `_dismissWithAction:` 让系统自动 dismiss + 调 handler，五案例（simple/threeButtons/loginInput/actionSheet/nested）真机验证通过；多结果等待（`ui.waitAny`）已完成——一次轮询等待多个可能结局，按命中 `matchedID` 分支。目标是让 Agent 能按自然语言测试目标持续观察、操作并验证 App，而不是只暴露一组零散命令。
+**下一步**：Agent 使用协议已写入 `docs/superpowers/agent-mcp-exploration/agent-usage-protocol.md`，可运行的 curl/JSON 闭环写入 `docs/superpowers/agent-mcp-exploration/curl-json-loop-protocol.md`。navigationBar / UIBarButtonItem 可达性、`ui.tap` 结构化默认激活、`ui.alert.respond dryRun=false`、`ui.waitAny` 均已完成。当前剩余主任务是实现 Mac 本机 MCP server，把现有 HTTP action 包装成 MCP tools，并在工具层固化 `observe → act → wait_and_observe → verify` 调用顺序；设计见 `docs/superpowers/specs/2026-07-06-mac-mcp-server-design.md`。
 
 ## 调试日志
 
