@@ -180,4 +180,25 @@ func alertRespondExposesTextFields() throws {
     #expect(textFields[1].objectValue?["placeholder"]?.stringValue == "密码")
     #expect(textFields[1].objectValue?["isSecure"]?.boolValue == true)
 }
+
+/// 验证 dryRun=false 且未 present 的 alert：dismissWaitMs 应该为 0。
+@Test("alert respond dryRun=false 未 present 时 dismissWaitMs 为 0") @MainActor
+func alertRespondDismissWaitMsIsZeroForUnpresentedAlert() throws {
+    let alert = UIAlertController(title: "确认", message: nil, preferredStyle: .alert)
+    var performedTitle: String?
+    alert.addAction(UIAlertAction(title: "OK", style: .default) { action in
+        performedTitle = action.title
+    })
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    let context = UIKitContextProvider.Context(window: window,
+                                               rootViewController: alert,
+                                               topViewController: alert,
+                                               rootView: alert.view)
+    let input = UIAlertRespondInput(dryRun: false, buttonTitle: "OK")
+    let data = try UIAlertRespondExecutor.execute(input: input, context: context)
+    #expect(performedTitle == "OK")
+    #expect(data["performed"]?.boolValue == true)
+    // 未 present — 不走 wait 路径
+    #expect(data["dismissWaitMs"]?.doubleValue ?? -1 == 0)
+}
 #endif
