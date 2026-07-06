@@ -1,4 +1,4 @@
-import type { JSONObject, JSONValue } from "./types.js";
+import type { JSONObject } from "./types.js";
 
 export type SchemaMapping = {
   inputSchema: JSONObject;
@@ -26,7 +26,7 @@ export function mapInputSchema(schema: JSONObject): SchemaMapping {
   };
 }
 
-function extensionValueLines(key: string, value: JSONValue): string[] {
+function extensionValueLines(key: string, value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.map(item => `${key}: ${String(item)}`);
   }

@@ -1,6 +1,6 @@
 export type JSONPrimitive = string | number | boolean | null;
 export type JSONValue = JSONPrimitive | JSONObject | JSONValue[];
-export type JSONObject = { [key: string]: JSONValue };
+export type JSONObject = { [key: string]: unknown }; // loose object for JSON-serializable data
 
 export type IOSExploreSuccessEnvelope = {
   code: "ok";
