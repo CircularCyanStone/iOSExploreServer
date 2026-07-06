@@ -52,8 +52,9 @@ describe("static tools", () => {
       registry: fakeRegistry(0)
     });
 
+    // detailLevel is topViewHierarchy-only; maxDepth is shared with ui.viewTargets and stays.
     await (tools.observe!).handler({ detailLevel: "full", maxDepth: 2, maxTargets: 100 });
-    expect(calls).toEqual([{ action: "ui.viewTargets", data: { maxTargets: 100 } }]);
+    expect(calls).toEqual([{ action: "ui.viewTargets", data: { maxDepth: 2, maxTargets: 100 } }]);
   });
 
   test("observe can call ui.topViewHierarchy in hierarchy mode", async () => {
@@ -142,7 +143,67 @@ describe("static tools", () => {
       },
       {
         action: "ui.viewTargets",
-        data: { includeHidden: true, accessibilityIdentifier: "login.submit" }
+        data: { includeHidden: true, accessibilityIdentifier: "login.submit", maxDepth: 2 }
+      }
+    ]);
+  });
+
+  test("wait_and_observe schema rejects detailLevel inside viewTargetsOptions", () => {
+    const schema = createStaticTools({
+      client: { call: async () => ({}) },
+      registry: fakeRegistry(0)
+    }).wait_and_observe!.inputSchema;
+
+    const viewTargetsOptionsSchema = (schema as { properties: { viewTargetsOptions: { properties: Record<string, unknown>; additionalProperties: boolean } } }).properties.viewTargetsOptions;
+
+    // schema-level additionalProperties:false lists which fields are allowed
+    const allowedFields = Object.keys(viewTargetsOptionsSchema.properties);
+    expect(allowedFields.sort()).toEqual(
+      [
+        "includeHidden",
+        "includeDisabled",
+        "includeStaticText",
+        "includeContainers",
+        "maxDepth",
+        "accessibilityIdentifier",
+        "accessibilityIdentifierPrefix",
+        "textLimit",
+        "maxTargets"
+      ].sort()
+    );
+    expect(viewTargetsOptionsSchema.additionalProperties).toBe(false);
+    // detailLevel is a topViewHierarchy-only field and must NOT be in viewTargetsOptions' allowed set
+    expect(allowedFields).not.toContain("detailLevel");
+  });
+
+  test("wait_and_observe handler passes viewTargetsOptions.maxDepth through to ui.viewTargets", async () => {
+    const calls: Array<{ action: string; data: JSONObject }> = [];
+    const tools = createStaticTools({
+      client: {
+        call: async (action, data = {}) => {
+          calls.push({ action, data });
+          return action === "ui.waitAny" ? { satisfied: true } : { viewSnapshotID: "snap-after", targets: [] };
+        }
+      },
+      registry: fakeRegistry(0)
+    });
+
+    await (tools.wait_and_observe!).handler({
+      conditions: [{ id: "idle", mode: "idle" }],
+      viewTargetsOptions: {
+        maxDepth: 3,
+        maxTargets: 100
+      }
+    });
+
+    expect(calls).toEqual([
+      {
+        action: "ui.waitAny",
+        data: { conditions: [{ id: "idle", mode: "idle" }] }
+      },
+      {
+        action: "ui.viewTargets",
+        data: { maxDepth: 3, maxTargets: 100 }
       }
     ]);
   });

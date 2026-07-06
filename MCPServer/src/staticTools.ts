@@ -9,6 +9,7 @@ const viewTargetsOptionKeys = [
   "includeDisabled",
   "includeStaticText",
   "includeContainers",
+  "maxDepth",
   "accessibilityIdentifier",
   "accessibilityIdentifierPrefix",
   "textLimit",
@@ -130,7 +131,19 @@ function waitAndObserveSchema(): JSONObject {
       viewTargetsOptions: {
         type: "object",
         description:
-          "传给 ui.viewTargets 的可选参数。viewTargetsOptions 只能传 ui.viewTargets 真实字段（accessibilityIdentifier / includeHidden 等），不接受 topViewHierarchy 相关的 detailLevel/maxDepth 等。"
+          "传给 ui.viewTargets 的可选参数。只能传 ui.viewTargets 真实字段（includeHidden / includeDisabled / includeStaticText / includeContainers / maxDepth / accessibilityIdentifier / accessibilityIdentifierPrefix / textLimit / maxTargets），不接受 ui.topViewHierarchy 专用的 detailLevel 或 ui.waitAny 专用的 conditions 等字段。",
+        properties: {
+          includeHidden: { type: "boolean" },
+          includeDisabled: { type: "boolean" },
+          includeStaticText: { type: "boolean" },
+          includeContainers: { type: "boolean" },
+          maxDepth: { type: "integer" },
+          accessibilityIdentifier: { type: "string" },
+          accessibilityIdentifierPrefix: { type: "string" },
+          textLimit: { type: "integer" },
+          maxTargets: { type: "integer" }
+        },
+        additionalProperties: false
       }
     },
     required: ["conditions"]
