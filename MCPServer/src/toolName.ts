@@ -11,7 +11,7 @@ export type ActionToolMap = {
 };
 
 export function toolNameForAction(action: string): string {
-  return `ios_${action.replace(/[^A-Za-z0-9_]/g, "_")}`;
+  return action.replace(/[^A-Za-z0-9_]/g, "_");
 }
 
 export function buildActionToolMap(commands: CommandMetadata[], fixedToolNames: Set<string>): ActionToolMap {

@@ -8,7 +8,7 @@ describe("MCP result helpers", () => {
     const first = result.content[0];
     expect(first).toBeDefined();
     expect(first!.type).toBe("text");
-    expect(first!.text).toBe(JSON.stringify({ ok: true }, null, 2));
+    expect(first!.type === "text" ? first!.text : undefined).toBe(JSON.stringify({ ok: true }, null, 2));
   });
 
   test("errorResult keeps structured payload", () => {
@@ -16,7 +16,7 @@ describe("MCP result helpers", () => {
     expect(result.isError).toBe(true);
     const first = result.content[0];
     expect(first).toBeDefined();
-    expect(JSON.parse(first!.text)).toEqual({
+    expect(JSON.parse(first!.type === "text" ? first!.text : "{}")).toEqual({
       source: "transport",
       code: "connection_failed",
       message: "down"

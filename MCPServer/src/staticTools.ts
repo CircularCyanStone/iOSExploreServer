@@ -3,6 +3,19 @@ import { errorResult, jsonResult } from "./result.js";
 import type { IOSExploreCaller } from "./toolRegistry.js";
 import type { JSONObject, MCPToolResult, StructuredError } from "./types.js";
 
+const topViewHierarchyOptionKeys = ["includeHidden", "detailLevel", "maxDepth", "accessibilityIdentifier", "accessibilityIdentifierPrefix"] as const;
+const viewTargetsOptionKeys = [
+  "includeHidden",
+  "includeDisabled",
+  "includeStaticText",
+  "includeContainers",
+  "maxDepth",
+  "accessibilityIdentifier",
+  "accessibilityIdentifierPrefix",
+  "textLimit",
+  "maxTargets"
+] as const;
+
 type RegistryLike = {
   refresh(): Promise<{ toolCount: number; conflicts: unknown[]; error?: unknown }>;
   tools(): unknown[];
@@ -57,16 +70,21 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
     },
     observe: {
       name: "observe",
-      description: "默认观察入口：调用 ui.viewTargets，返回 targets、navigationBar 与新的 viewSnapshotID。",
-      inputSchema: { type: "object", properties: {} },
-      handler: async input => jsonResult(await client.call("ui.viewTargets", input))
+      description: "默认观察入口：调用 ui.viewTargets，返回 targets、navigationBar 与新的 viewSnapshotID；mode=topViewHierarchy 时返回完整层级树。",
+      inputSchema: observeSchema(),
+      handler: async input => {
+        if (input.mode === "topViewHierarchy") {
+          return jsonResult(await client.call("ui.topViewHierarchy", pickAllowedFields(input, topViewHierarchyOptionKeys)));
+        }
+        return jsonResult(await client.call("ui.viewTargets", pickAllowedFields(withoutKey(input, "mode"), viewTargetsOptionKeys)));
+      }
     },
     wait_and_observe: {
       name: "wait_and_observe",
       description: "先调用 ui.waitAny，再调用 ui.viewTargets。wait_timeout 后仍尽量返回最新 observation。",
       inputSchema: waitAndObserveSchema(),
       handler: async input => {
-        const viewTargetsOptions = objectValue(input.viewTargetsOptions);
+        const viewTargetsOptions = pickAllowedFields(objectValue(input.viewTargetsOptions), viewTargetsOptionKeys);
         try {
           const wait = await client.call("ui.waitAny", withoutKey(input, "viewTargetsOptions"));
           const observation = await client.call("ui.viewTargets", viewTargetsOptions);
@@ -80,6 +98,18 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
           return errorResult(normalized as StructuredError);
         }
       }
+    }
+  };
+}
+
+function observeSchema(): JSONObject {
+  return {
+    type: "object",
+    properties: {
+      mode: { type: "string", enum: ["viewTargets", "topViewHierarchy"], default: "viewTargets" },
+      detailLevel: { type: "string", enum: ["basic", "appearance", "full"], description: "仅 mode=topViewHierarchy 时透传给 ui.topViewHierarchy。" },
+      includeHidden: { type: "boolean", description: "mode=topViewHierarchy 时透传给 ui.topViewHierarchy；默认 viewTargets 模式下按 ui.viewTargets 原字段透传。" },
+      maxDepth: { type: "integer", description: "mode=topViewHierarchy 时透传给 ui.topViewHierarchy；默认 viewTargets 模式下按 ui.viewTargets 原字段透传。" }
     }
   };
 }
@@ -98,7 +128,23 @@ function waitAndObserveSchema(): JSONObject {
       intervalMs: { type: "number" },
       stableMs: { type: "number" },
       includeHidden: { type: "boolean" },
-      viewTargetsOptions: { type: "object", description: "传给 ui.viewTargets 的可选参数。" }
+      viewTargetsOptions: {
+        type: "object",
+        description:
+          "传给 ui.viewTargets 的可选参数。只能传 ui.viewTargets 真实字段（includeHidden / includeDisabled / includeStaticText / includeContainers / maxDepth / accessibilityIdentifier / accessibilityIdentifierPrefix / textLimit / maxTargets），不接受 ui.topViewHierarchy 专用的 detailLevel 或 ui.waitAny 专用的 conditions 等字段。",
+        properties: {
+          includeHidden: { type: "boolean" },
+          includeDisabled: { type: "boolean" },
+          includeStaticText: { type: "boolean" },
+          includeContainers: { type: "boolean" },
+          maxDepth: { type: "integer" },
+          accessibilityIdentifier: { type: "string" },
+          accessibilityIdentifierPrefix: { type: "string" },
+          textLimit: { type: "integer" },
+          maxTargets: { type: "integer" }
+        },
+        additionalProperties: false
+      }
     },
     required: ["conditions"]
   };
@@ -112,6 +158,11 @@ function withoutKey(input: JSONObject, key: string): JSONObject {
   const copy: JSONObject = { ...input };
   delete copy[key];
   return copy;
+}
+
+function pickAllowedFields(input: JSONObject, keys: readonly string[]): JSONObject {
+  const allowed = new Set(keys);
+  return Object.fromEntries(Object.entries(input).filter(([key]) => allowed.has(key)));
 }
 
 function normalizeError(error: unknown): StructuredError {

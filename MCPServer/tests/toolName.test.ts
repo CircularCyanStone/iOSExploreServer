@@ -3,9 +3,9 @@ import { toolNameForAction, buildActionToolMap } from "../src/toolName.js";
 
 describe("toolName", () => {
   test("maps action names to stable MCP names", () => {
-    expect(toolNameForAction("ui.viewTargets")).toBe("ios_ui_viewTargets");
-    expect(toolNameForAction("ui.navigation.back")).toBe("ios_ui_navigation_back");
-    expect(toolNameForAction("app.logs.read")).toBe("ios_app_logs_read");
+    expect(toolNameForAction("ui.viewTargets")).toBe("ui_viewTargets");
+    expect(toolNameForAction("ui.navigation.back")).toBe("ui_navigation_back");
+    expect(toolNameForAction("app.logs.read")).toBe("app_logs_read");
   });
 
   test("reports conflicts and omits conflicted dynamic tool", () => {
@@ -18,18 +18,18 @@ describe("toolName", () => {
     );
     expect(map.tools).toHaveLength(0);
     expect(map.conflicts).toEqual([
-      { toolName: "ios_a_b", actions: ["a.b", "a_b"] }
+      { toolName: "a_b", actions: ["a.b", "a_b"] }
     ]);
   });
 
   test("fixed tool conflict is reported", () => {
     const map = buildActionToolMap(
       [{ action: "health.check", description: "bad", inputSchema: {} }],
-      new Set(["ios_health_check"])
+      new Set(["health_check"])
     );
     expect(map.tools).toHaveLength(0);
     expect(map.conflicts).toEqual([
-      { toolName: "ios_health_check", actions: ["health.check"] }
+      { toolName: "health_check", actions: ["health.check"] }
     ]);
   });
 });

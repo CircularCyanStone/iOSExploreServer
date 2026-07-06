@@ -15,7 +15,7 @@ describe("server handlers", () => {
         }
       },
       registry: {
-        tools: () => [{ name: "ios_ping", description: "ping", inputSchema: {}, action: "ping" }],
+        tools: () => [{ name: "ping", description: "ping", inputSchema: {}, action: "ping" }],
         findByName: () => undefined,
         refresh: async () => ({ toolCount: 1, conflicts: [] })
       },
@@ -23,7 +23,7 @@ describe("server handlers", () => {
     });
 
     const listed = await handlers.listTools();
-    expect(listed.tools.map(tool => tool.name)).toEqual(["health_check", "ios_ping"]);
+    expect(listed.tools.map(tool => tool.name)).toEqual(["health_check", "ping"]);
   });
 
   test("calls dynamic tool by original action", async () => {
@@ -32,7 +32,7 @@ describe("server handlers", () => {
       staticTools: {},
       registry: {
         tools: () => [],
-        findByName: () => ({ name: "ios_ping", description: "ping", inputSchema: {}, action: "ping" }),
+        findByName: () => ({ name: "ping", description: "ping", inputSchema: {}, action: "ping" }),
         refresh: async () => ({ toolCount: 1, conflicts: [] })
       },
       client: {
@@ -43,12 +43,41 @@ describe("server handlers", () => {
       }
     });
 
-    const result = await handlers.callTool("ios_ping", { verbose: true });
+    const result = await handlers.callTool("ping", { verbose: true });
     expect(calls).toEqual([{ action: "ping", data: { verbose: true } }]);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ pong: true });
+    expect(JSON.parse(textContent(result))).toEqual({ pong: true });
   });
 
-  test("refreshes registry once when an ios dynamic tool is missing, then calls the refreshed action", async () => {
+  test("returns png screenshots as image content with metadata text", async () => {
+    const handlers = createToolHandlers({
+      staticTools: {},
+      registry: {
+        tools: () => [],
+        findByName: () => ({ name: "ui_screenshot", description: "screenshot", inputSchema: {}, action: "ui.screenshot" }),
+        refresh: async () => ({ toolCount: 1, conflicts: [] })
+      },
+      client: {
+        call: async () => ({
+          image: "base64png",
+          format: "png",
+          width: 100,
+          height: 200,
+          scale: 2
+        })
+      }
+    });
+
+    const result = await handlers.callTool("ui_screenshot", {});
+    expect(result.content).toEqual([
+      { type: "image", data: "base64png", mimeType: "image/png" },
+      {
+        type: "text",
+        text: JSON.stringify({ format: "png", width: 100, height: 200, scale: 2 })
+      }
+    ]);
+  });
+
+  test("refreshes registry once when an iOS dynamic tool is missing, then calls the refreshed action", async () => {
     const calls: Array<{ action: string; data: JSONObject }> = [];
     let refreshed = false;
     const handlers = createToolHandlers({
@@ -56,7 +85,7 @@ describe("server handlers", () => {
       registry: {
         tools: () => [],
         findByName: (name: string): ToolDefinition | undefined =>
-          refreshed && name === "ios_ui_newAction"
+          refreshed && name === "ui_newAction"
             ? { name, description: "new action", inputSchema: {}, action: "ui.newAction" }
             : undefined,
         refresh: async () => {
@@ -72,10 +101,11 @@ describe("server handlers", () => {
       }
     });
 
-    const result = await handlers.callTool("ios_ui_newAction", { value: 1 });
+    const result = await handlers.callTool("ui_newAction", { value: 1 });
 
     expect(calls).toEqual([{ action: "ui.newAction", data: { value: 1 } }]);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ called: "ui.newAction" });
+    const firstText = result.content.find(c => c.type === "text")!;
+    expect(JSON.parse(firstText.text)).toEqual({ called: "ui.newAction" });
   });
 
   test("retries a dynamic call once after transport failure before returning success", async () => {
@@ -84,7 +114,7 @@ describe("server handlers", () => {
       staticTools: {},
       registry: {
         tools: () => [],
-        findByName: () => ({ name: "ios_ping", description: "ping", inputSchema: {}, action: "ping" }),
+        findByName: () => ({ name: "ping", description: "ping", inputSchema: {}, action: "ping" }),
         refresh: async () => ({ toolCount: 1, conflicts: [] })
       },
       client: {
@@ -103,13 +133,14 @@ describe("server handlers", () => {
       }
     });
 
-    const result = await handlers.callTool("ios_ping", { verbose: true });
+    const result = await handlers.callTool("ping", { verbose: true });
 
     expect(calls).toEqual([
       { action: "ping", data: { verbose: true } },
       { action: "ping", data: { verbose: true } }
     ]);
-    expect(JSON.parse(result.content[0]!.text)).toEqual({ pong: true, attempt: 2 });
+    const secondText = result.content.find(c => c.type === "text")!;
+    expect(JSON.parse(secondText.text)).toEqual({ pong: true, attempt: 2 });
   });
 
   test("adds ping health details when the retry after a transport failure also fails", async () => {
@@ -118,7 +149,7 @@ describe("server handlers", () => {
       staticTools: {},
       registry: {
         tools: () => [],
-        findByName: () => ({ name: "ios_ping", description: "ping", inputSchema: {}, action: "ping" }),
+        findByName: () => ({ name: "ping", description: "ping", inputSchema: {}, action: "ping" }),
         refresh: async () => ({ toolCount: 1, conflicts: [] })
       },
       client: {
@@ -134,8 +165,9 @@ describe("server handlers", () => {
       }
     });
 
-    const result = await handlers.callTool("ios_ping", {});
-    const body = JSON.parse(result.content[0]!.text);
+    const result = await handlers.callTool("ping", {});
+    const textContent = result.content.find(c => c.type === "text")!;
+    const body = JSON.parse(textContent.text);
 
     expect(result.isError).toBe(true);
     expect(calls).toEqual(["ping", "ping", "ping"]);
@@ -148,3 +180,11 @@ describe("server handlers", () => {
     });
   });
 });
+
+function textContent(result: { content: Array<{ type: string; text?: string }> }): string {
+  const first = result.content[0];
+  if (first?.type !== "text" || typeof first.text !== "string") {
+    throw new Error("expected first content block to be text");
+  }
+  return first.text;
+}
