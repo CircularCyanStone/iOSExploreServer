@@ -69,10 +69,15 @@ enum UIAlertRespondExecutor {
         }
         // dismiss 是 UIKit 动画转场；为防止 alert.respond 返回后 agent 立即 observe 仍看到
         // UIAlertController 残留在 presentedViewController 链上，这里在主线程上 RunLoop
-        // 轮询直到顶层 presented chain 真正清空（或最多 ~800ms）再返回。
+        // 轮询直到顶层 presented chain 真正清空（或最多 ~1500ms）再返回。
+        //
+        // maxAttempts=95 × 16ms ≈ 1520ms：嵌套 alert（第 1 层 dismiss → 第 2 层 present）
+        // 在较复杂 view 层级下可能耗时 800-1200ms 完成转场。此前 T2-AlertDismiss 用 800ms
+        // 仍偶现 stale read（见 docs/investigations/mcp-spim-example-e2e-issues.md P6），
+        // 提至 ~1500ms 覆盖更多嵌套场景。
         let waitedMs: Int
         if isPresented {
-            waitedMs = waitForPresentedViewControllerToClear(on: alert, maxAttempts: 50, intervalMs: 16)
+            waitedMs = waitForPresentedViewControllerToClear(on: alert, maxAttempts: 95, intervalMs: 16)
         } else {
             waitedMs = 0
         }
@@ -81,6 +86,7 @@ enum UIAlertRespondExecutor {
             "performed": .bool(true),
             "dismissed": .bool(dismissed),
             "dismissWaitMs": .double(Double(waitedMs)),
+            "presentedAfterDismiss": .bool(rootView?.presentedViewController != nil),
             "button": buttonJSON(selected.button),
         ]
     }
