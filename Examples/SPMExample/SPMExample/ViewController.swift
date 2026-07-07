@@ -24,7 +24,10 @@ private struct ExampleGreetingInput: CommandInput {
 
 #if DEBUG
 private struct ExampleStdIOMessageInput: CommandInput {
-    static let messageField = CommandFields.optionalString("message", description: "写入 stdout/stderr 的文本；缺省时使用默认诊断 marker。")
+    /// 注意：字段名是 `message` 而非 `text`（与其他命令走不同命名风格）。
+    /// `text` 是 ui.input 的注入文本字段；这里的 `message` 是 logger/stdio 消息语义。
+    /// 如果不确定，查一下 `debug.emitStdout` 的描述：message = 诊断文本。
+    static let messageField = CommandFields.optionalString("message", description: "写入 stdout/stderr 的文本（注意字段名是 message 不是 text）；缺省时使用默认诊断 marker。")
     static let tokenField = CommandFields.optionalString("token", description: "兼容测试脚本的短 token；未传 message 时作为写入文本。")
     static let inputSchema = CommandInputSchema(fields: [messageField.erased, tokenField.erased])
 
