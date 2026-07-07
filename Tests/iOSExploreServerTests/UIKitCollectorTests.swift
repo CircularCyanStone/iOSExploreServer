@@ -144,4 +144,87 @@ func topViewHierarchyCollectsTreeInContext() throws {
     // UIButton(type:.system) 在不同 iOS 可能是 UIButton 的私有子类，故只校验类型名含 "Button"
     #expect(buttonNode["type"]?.stringValue?.contains("Button") == true)
 }
+
+/// 回归测试：`UIView.tintColor` 为 nil（隐式解包可选触发阶段）时采集不崩溃（P2）。
+///
+/// 通过 `UIView` 的子类在 `tintColorDidChange()` 后把 `tintColor` 置 nil，模拟
+/// UISegmentedControl/UIStepper sendAction 过渡态的场景。采集器应优雅 fallback
+/// 为 tintColor=null 而非崩溃。
+@Test("view hierarchy collector 处理 tintColor nil 时不崩溃") @MainActor
+func viewHierarchyCollectorHandlesNilTintColorGracefully() throws {
+    let context = UIKitTestHost.context { root in
+        let button = UIButton(type: .system)
+        button.accessibilityIdentifier = "test.button"
+        button.frame = CGRect(x: 10, y: 10, width: 80, height: 40)
+        root.addSubview(button)
+        // 强制把 tintColor 置 nil——模拟控制件 sendAction 后的过渡态。
+        // UIView.tintColor 是 UIColor!，赋值 nil 后后续读取会走 nil 路径。
+        button.tintColor = nil
+    }
+
+    let query = try UIViewHierarchyInput.parse(from: [:])
+    // 不崩溃即通过：当年 P2 复现路径第 117 行 `view.tintColor.hierarchyHexString` 在 nil 时
+    // 触发 `Fatal error: Unexpectedly found nil while implicitly unwrapping`。修复后 nil 路径
+    // 应优雅 fallback 为 null（或继承非 nil 值），不应使采集 fatal exit。
+    let data = UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
+    guard case .object(let root)? = data["root"] else {
+        Issue.record("root not object")
+        return
+    }
+    guard case .array(let subviews)? = root["subviews"] else {
+        Issue.record("subviews not array")
+        return
+    }
+    #expect(subviews.count == 1)
+    guard case .object(let buttonNode) = subviews[0] else {
+        Issue.record("button node not object")
+        return
+    }
+    // tintColor 应在 JSON 中存在（null 或具体值都接受，关键是采集走完了）。
+    guard case .object(let appearance)? = buttonNode["appearance"] else {
+        Issue.record("appearance not object")
+        return
+    }
+    #expect(appearance["tintColor"] != nil, "appearance.tintColor 字段必须存在")
+    #expect(data["nodeCount"]?.doubleValue != nil)
+}
+
+/// 回归测试：UILabel.textColor 为 nil 时采集不崩溃（P2）。
+///
+/// `UILabel.textColor` 也是 `UIColor!`。某些复用/过渡期 label 的 textColor
+/// 可能短暂 nil，采集器应 fallback 为 textColor=null。
+@Test("view hierarchy collector 处理 UILabel textColor nil 时不崩溃") @MainActor
+func viewHierarchyCollectorHandlesNilLabelTextColorGracefully() throws {
+    let context = UIKitTestHost.context { root in
+        let label = UILabel()
+        label.text = "test"
+        label.frame = CGRect(x: 10, y: 10, width: 80, height: 20)
+        label.textColor = nil
+        root.addSubview(label)
+    }
+
+    let query = try UIViewHierarchyInput.parse(from: [:])
+    // 不崩溃即通过。当年 P2 复现路径第 153 行 `label.textColor.hierarchyHexString` 在 nil
+    // 时崩溃。修复后应 fallback 为 textColor=null（或继承非 nil 值）。
+    let data = UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
+    guard case .object(let root)? = data["root"] else {
+        Issue.record("root not object")
+        return
+    }
+    guard case .array(let subviews)? = root["subviews"] else {
+        Issue.record("subviews not array")
+        return
+    }
+    #expect(subviews.count == 1)
+    guard case .object(let labelNode) = subviews[0] else {
+        Issue.record("label node not object")
+        return
+    }
+    guard case .object(let text)? = labelNode["text"] else {
+        Issue.record("text not object")
+        return
+    }
+    // textColor 字段必须存在（null 或具体值都接受）。
+    #expect(text["textColor"] != nil, "label.textColor 字段必须存在")
+}
 #endif

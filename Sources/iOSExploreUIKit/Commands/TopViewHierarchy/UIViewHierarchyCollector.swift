@@ -114,7 +114,13 @@ private struct UIKitViewElement: UIViewHierarchyElement {
         self.text = Self.textInfo(from: view)
         self.appearance = UIViewHierarchyAppearance(
             backgroundColor: view.backgroundColor?.hierarchyHexString,
-            tintColor: view.tintColor.hierarchyHexString,
+            // `UIView.tintColor` 在 UIKit 中的声明类型是 `UIColor!`（隐式解包可选），
+            // 当 view 处于 tintColorDidChange 传播/动画过渡/脱离 window 等情况时会返回 nil，
+            // 直接 `.hierarchyHexString` 会触发 `Fatal error: Unexpectedly found nil while
+            // implicitly unwrapping an Optional value`，导致 App 整个 hang。这里强制走
+            // optional unwrap → nil 即写 `tintColor: null`，避免崩溃。
+            // 见 docs/investigations/mcp-spim-example-e2e-issues.md P2。
+            tintColor: view.tintColor?.hierarchyHexString,
             cornerRadius: Double(view.layer.cornerRadius),
             borderWidth: Double(view.layer.borderWidth),
             borderColor: view.layer.borderColor.flatMap { UIColor(cgColor: $0).hierarchyHexString }
@@ -122,7 +128,19 @@ private struct UIKitViewElement: UIViewHierarchyElement {
         self.control = Self.controlInfo(from: view)
         self.image = Self.imageInfo(from: view)
         self.scroll = Self.scrollInfo(from: view)
-        self.subviews = view.subviews.map { UIKitViewElement(view: $0) }
+        // 采集子视图前先做 window 归属守卫：sendAction (UISegmentedControl/UIStepper 等)
+        // 之后短暂窗口内 subviews 数组可能含已脱离层级的过渡 view，对它们继续递归会读到
+        // 不一致的 superview/window 状态、放大 nil-unwrap 风险。仍把这种 view 作为节点
+        // 计入根（保持 nodeCount），但它不进入 window 层级时子树标空，避免错误的子树快照。
+        let isInWindowHierarchy = Self.isAttachedToWindow(view)
+        let subviews: [UIView]
+        if isInWindowHierarchy {
+            subviews = view.subviews
+        } else {
+            UIKitCommandLogging.info("command", "ui hierarchy collect skip detached subtree type=\(self.type) reason=nil-window")
+            subviews = []
+        }
+        self.subviews = subviews.map { UIKitViewElement(view: $0) }
         self._indexPath = Self.cellIndexPath(from: view)
     }
 
@@ -143,14 +161,42 @@ private struct UIKitViewElement: UIViewHierarchyElement {
         return nil
     }
 
+    /// 判断一个 view 是否仍处在 window 层级之中（superview 链可达 keyWindow）。
+    ///
+    /// 用于在 `init(view:)` 采集子树前做守卫：`UIControl.sendAction` 之后某些控件（如
+    /// `UISegmentedControl` 切段、`UIStepper` 加减、`UITextField` 切 first responder）的
+    /// 子视图会短暂进入"已从父节点取下但 superview 引用还没 nil 化"的过渡态，继续递归会
+    /// 读到不一致的属性。这里不阻断根节点本身（根节点一定是 rootView 的祖先链上的某个真实
+    /// view），但避免对"已脱离 window 的过渡 view"再向下采集子树，把它们的 subviews 强制写空。
+    ///
+    /// - Parameter view: 待采集的 view。
+    /// - Returns: `true` 当 view 仍在 window 层级中或本身就是 keyWindow；`false` 表示脱离。
+    @MainActor
+    private static func isAttachedToWindow(_ view: UIView) -> Bool {
+        // 沿 superview 链向上走直到找到 `window != nil` 的祖先（含自身是 keyWindow 的情况，
+        // 因为 UIWindow.window 返回 self，永远非 nil）。整条链都 window==nil 才视为脱离。
+        // 比 `viewIfLoaded.window != nil` 更严：能覆盖 rootVC.view 已 viewDidLoad 但还未
+        // 被 add 到 window 的过渡场景，但此时该 view 本也不会出现在 context.rootView 里。
+        var current: UIView? = view
+        while let candidate = current {
+            if candidate.window != nil { return true }
+            current = candidate.superview
+        }
+        return false
+    }
+
     /// 提取文本验收信息。
     @MainActor
     private static func textInfo(from view: UIView) -> UIViewHierarchyText? {
         if let label = view as? UILabel {
+            // `UILabel.textColor` 在 UIKit 中声明为 `UIColor!`（隐式解包可选）。某些过渡态
+            // （如 UIStepper value 切换触发 cell 复用、UISegmentedControl 重置 segment）下
+            // label.textColor 可能短暂为 nil，直接 `.hierarchyHexString` 会崩溃。改走
+            // optional unwrap，nil 时写 textColor=null。见 P2。
             return UIViewHierarchyText(value: label.text,
                                        fontName: label.font.fontName,
                                        fontSize: Double(label.font.pointSize),
-                                       textColor: label.textColor.hierarchyHexString,
+                                       textColor: label.textColor?.hierarchyHexString,
                                        textAlignment: label.textAlignment.hierarchyDescription,
                                        numberOfLines: label.numberOfLines)
         }
