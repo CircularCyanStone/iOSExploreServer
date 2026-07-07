@@ -65,10 +65,10 @@ export function createToolHandlers(options: {
               if (isTransportError(retryError)) {
                 return errorResult(await enrichTransportError(retryError, options.client));
               }
-              return errorResult(normalizeUnknownError(retryError));
+              return normalizedResult(retryError);
             }
           }
-          return errorResult(normalizeUnknownError(error));
+          return normalizedResult(error);
         }
       }
       return errorResult({
@@ -157,4 +157,17 @@ function normalizeUnknownError(error: unknown): StructuredError {
     code: "unexpected_error",
     message: error instanceof Error ? error.message : String(error)
   };
+}
+
+/**
+ * 将动态工具执行中 catch 到的错误，按来源区分处理：
+ * - ios_envelope（App 端业务失败）→ 正常响应 isError=false
+ * - transport/http/mcp_server → 真实错误 isError=true
+ */
+function normalizedResult(error: unknown): MCPToolResult {
+  const normalized = normalizeUnknownError(error);
+  if (normalized.source === "ios_envelope") {
+    return jsonResult(normalized as unknown as JSONObject, false);
+  }
+  return errorResult(normalized);
 }

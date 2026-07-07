@@ -207,6 +207,92 @@ describe("static tools", () => {
       }
     ]);
   });
+
+  // ----- call_action 修复测试 -----
+
+  test("call_action forwards action and data to client.call", async () => {
+    const calls: Array<{ action: string; data: JSONObject }> = [];
+    const tools = createStaticTools({
+      client: {
+        call: async (action, data = {}) => {
+          calls.push({ action, data });
+          return { pong: true };
+        }
+      },
+      registry: fakeRegistry(0)
+    });
+
+    const result = await (tools.call_action!).handler({ action: "echo", data: { msg: "hello" } });
+    expect(calls).toEqual([{ action: "echo", data: { msg: "hello" } }]);
+    expect(JSON.parse(textContent(result))).toEqual({ pong: true });
+    expect(result.isError).toBeFalsy();
+  });
+
+  test("call_action returns error when action is empty string", async () => {
+    const tools = createStaticTools({
+      client: { call: async () => ({}) },
+      registry: fakeRegistry(0)
+    });
+
+    const result = await (tools.call_action!).handler({ action: "", data: {} });
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "mcp_server", code: "missing_action" });
+    expect(result.isError).toBe(true);
+  });
+
+  test("call_action returns error when action field is missing", async () => {
+    const tools = createStaticTools({
+      client: { call: async () => ({}) },
+      registry: fakeRegistry(0)
+    });
+
+    // input.action 会是 undefined → 被转为 ""
+    const result = await (tools.call_action!).handler({ data: {} });
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "mcp_server", code: "missing_action" });
+    expect(result.isError).toBe(true);
+  });
+
+  test("call_action returns ios_envelope failure as non-error result", async () => {
+    const tools = createStaticTools({
+      client: {
+        call: async () => {
+          const error = new Error("no handler") as Error & { source: string; code: string };
+          error.source = "ios_envelope";
+          error.code = "unknown_action";
+          throw error;
+        }
+      },
+      registry: fakeRegistry(0)
+    });
+
+    const result = await (tools.call_action!).handler({ action: "nonexistent", data: {} });
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "ios_envelope", code: "unknown_action" });
+    // ios_envelope 业务失败标记为 isError=false，不中断 Agent 流程
+    expect(result.isError).toBe(false);
+  });
+
+  test("call_action returns transport error as error result", async () => {
+    const tools = createStaticTools({
+      client: {
+        call: async () => {
+          const error = new Error("fetch failed") as Error & { source: string; code: string; action: string };
+          error.source = "transport";
+          error.code = "connection_failed";
+          error.action = "echo";
+          throw error;
+        }
+      },
+      registry: fakeRegistry(0)
+    });
+
+    const result = await (tools.call_action!).handler({ action: "echo", data: {} });
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "transport", code: "connection_failed" });
+    // transport 错误仍是真实错误
+    expect(result.isError).toBe(true);
+  });
 });
 
 function textContent(result: { content: Array<{ type: string; text?: string }> }): string {

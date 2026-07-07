@@ -66,7 +66,18 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
         },
         required: ["action"]
       },
-      handler: async input => jsonResult(await client.call(String(input.action), objectValue(input.data)))
+      handler: async input => {
+        const action = String(input.action ?? "");
+        if (!action) {
+          return errorResult({ source: "mcp_server" as const, code: "missing_action", message: "call_action requires an 'action' field" });
+        }
+        try {
+          return jsonResult(await client.call(action, objectValue(input.data)));
+        } catch (error) {
+          const normalized = normalizeError(error);
+          return resultForFailure(normalized);
+        }
+      }
     },
     observe: {
       name: "observe",
@@ -165,12 +176,28 @@ function pickAllowedFields(input: JSONObject, keys: readonly string[]): JSONObje
   return Object.fromEntries(Object.entries(input).filter(([key]) => allowed.has(key)));
 }
 
+function resultForFailure(error: StructuredError): MCPToolResult {
+  // ios_envelope 来源的错误是 App 端的业务失败（如 unknown_action, alert_unavailable,
+  // wait_timeout 等），属于正常的业务响应而非通信/系统错误。
+  // 标记为 isError=false 避免 Agent 把"正常业务反馈"误判为"工具调用出错了"。
+  if (error.source === "ios_envelope") {
+    return jsonResult(error as unknown as JSONObject, false);
+  }
+  return errorResult(error);
+}
+
 function normalizeError(error: unknown): StructuredError {
   if (error instanceof IOSExploreStructuredError) {
     return error.toJSON();
   }
+  // 有明确 source 的对象，保留原始 source（transport/http/ios_envelope），
+  // 不全部覆盖为 ios_envelope。只在没有 source 时默认 ios_envelope。
   if (typeof error === "object" && error !== null && "source" in error && "code" in error) {
-    return { source: "ios_envelope" as const, code: (error as { code: string }).code, message: (error as { message?: string }).message ?? String(error) };
+    const err = error as { source?: string; code: string; message?: string };
+    if (err.source === "transport" || err.source === "http" || err.source === "ios_envelope") {
+      return { source: err.source, code: err.code, message: err.message ?? String(error) } as StructuredError;
+    }
+    return { source: "ios_envelope" as const, code: err.code, message: err.message ?? String(error) };
   }
   return {
     source: "mcp_server" as const,
