@@ -18,7 +18,7 @@ struct NavigationBackCommand: Command {
     let action = NavigationBackCommand.actionName
 
     /// `help` 命令展示的说明。
-    let description = "返回上一页: auto 先 dismiss 再 navigation pop"
+    let description = "返回上一页。strategy=auto（默认）先尝试 dismiss 再尝试 navigation pop；strategy=dismiss 只走 dismiss；strategy=navigationController 只走 popViewController（注：旧文档中的 mode 字段已废弃，请用 strategy）"
 
     /// 执行导航返回。
     ///

@@ -18,6 +18,10 @@ public enum NavigationBackStrategy: String, Sendable, Equatable, CaseIterable {
 ///
 /// 命令可在无参数时按自动策略返回上一页；`animated` 默认关闭以减少转场等待，`waitAfterMs`
 /// 用于执行后短暂等待转场稳定，便于 agent 紧接着读取 UI 状态。
+///
+/// 输入字段使用 `strategy` 而非 `mode`：旧版本文档中提到的 `mode` 字段
+/// （auto/dismiss/pop）从未被实现。实际已存在的字段是 `strategy`
+/// （NavigationBackStrategy 枚举，含 auto / navigationController / dismiss 三个值）。
 public struct UINavigationBackInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let strategy = CommandFields.enumValue(
