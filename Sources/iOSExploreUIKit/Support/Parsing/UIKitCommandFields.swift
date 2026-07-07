@@ -6,16 +6,22 @@ import iOSExploreServer
 /// 这些字段只描述 Foundation-only 的输入形态，既供 `ui.topViewHierarchy` 和
 /// `ui.viewTargets` 暴露 schema，也供 typed input 解析时保持默认值和错误文案一致。
 public enum UIKitFilterFields {
-    /// 按 accessibilityIdentifier 精确筛选。
+    /// 按 accessibilityIdentifier 精确筛选（完全相等匹配，不是子串/前缀）。
+    ///
+    /// 示例：identifier='test.button' 只匹配 accessibilityIdentifier 恰好为
+    /// 'test.button' 的 view；identifierPrefix='test.' 匹配所有以 'test.' 开头的 view。
     public static let accessibilityIdentifier = CommandFields.optionalString(
         "accessibilityIdentifier",
-        description: "按 accessibilityIdentifier 精确筛选"
+        description: "按 accessibilityIdentifier 精确筛选（完全相等，非子串/前缀；前缀匹配用 identifierPrefix）"
     )
 
-    /// 按 accessibilityIdentifier 前缀筛选。
+    /// 按 accessibilityIdentifier 前缀筛选（匹配开头一致的所有 view）。
+    ///
+    /// 示例：identifierPrefix='mine.' 匹配所有 accessibilityIdentifier 以 'mine.' 开头的
+    /// view（如 'mine.header.avatar'、'mine.menu.settings'）。
     public static let accessibilityIdentifierPrefix = CommandFields.optionalString(
         "accessibilityIdentifierPrefix",
-        description: "按 accessibilityIdentifier 前缀筛选"
+        description: "按 accessibilityIdentifier 前缀筛选（匹配开头一致的所有 view）"
     )
 
     /// 最大递归深度，缺失时不限制。
