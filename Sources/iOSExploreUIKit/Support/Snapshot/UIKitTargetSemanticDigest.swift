@@ -20,6 +20,14 @@ import iOSExploreServer
 enum UIKitTargetSemanticDigest {
     /// 计算 view 的语义摘要哈希。
     ///
+    /// 判断"页面结构未变，但语义变了"的核心参数：逐字段 mix 稳定语义，swift tap 只有
+    /// `ancestorDigest`（结构环境）或某语义字段变化才会导致陈旧判定。
+    ///
+    /// 注意：`isSelected` / `isHighlighted` 等交互瞬态**不参与** semanticDigest，避免
+    /// 按钮抬起瞬间因 selected 翻转导致误判陈旧。这些状态由 `UIKitTargetFingerprint`
+    /// 顶层字段 `isSelected` / `isEnabled` 处理，它们在 fingerprint 的顶层的 `==`
+    /// 比对中是独立字段——只有 `semanticDigest` 字段本身变了才涉及语义陈旧。
+    ///
     /// - Parameter view: canonical target 真实 view。
     /// - Returns: 稳定的 64 位语义摘要哈希。
     static func digest(for view: UIView) -> UInt64 {
