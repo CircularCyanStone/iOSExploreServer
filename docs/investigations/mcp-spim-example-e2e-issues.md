@@ -46,6 +46,8 @@
 - 当 `match=text` 时，应允许指定在哪个 scrollView 内搜索目标 cell
 - 在 description 里明确 `path` 指的是目标 view 还是 scrollView 容器
 
+**已修复**：`d20eb39` — findTarget 增加 UITableView/UICollectionView 的 visibleCells 搜索分支；模型注释和字段 description 明确 path/accessibilityIdentifier 指向滚动容器自身。当容器是 UITableView/UICollectionView 时，visibleCells 内的子 view 会被额外搜索。
+
 ### P2. `UIViewHierarchyCollector` 隐式解包崩溃
 
 **严重度**：高（App 完全崩溃，需要重启）
@@ -66,6 +68,8 @@
 **建议**：
 - 排查 `Sources/iOSExploreUIKit/UIViewHierarchyCollector.swift:117`，把 implicitly unwrapped optional 改成 safe unwrap + graceful fallback
 - 在层级采集前增加"view 是否仍在 window 层级中"的守卫
+
+**已修复**：`aa4bb7c` — `view.tintColor?.hierarchyHexString`（safe unwrap）+ `label.textColor?.hierarchyHexString` + 采集前 `isAttachedToWindow` 守卫跳过已脱离 window 的过渡子树。新增 2 个回归测试（nil tintColor / nil textColor 不崩溃）。
 
 ### P3. `viewSnapshotID` 陈旧判定过于严格
 
@@ -90,6 +94,8 @@
 - 区分"结构变化"和"内容变化"：仅结构变化时才使旧 snapshot 失效
 - 或增加 `force: true` 参数允许在已知无结构变化时跳过检查
 - 或允许 snapshotID 在"同次 observe 窗口"内多次复用，直到下一次 observe 显式刷新
+
+**已评审**：`03f1bd7` — 理论上当前 fingerprint 比对已包含 `semanticDigest`（语义摘要）与 `ancestorDigest`（结构摘要）两个独立维度，前者判断内容变化，后者判断结构变化。tap 操作触发 gesture label 内文更新会使 semanticDigest 变化，这属于正确的陈旧判定。增加注释明确独立字段的用途。
 
 ### P4. `ui.input` 不支持 `accessibilityIdentifier` 定位
 
@@ -121,6 +127,8 @@
 - 让 `ui.input` 在用 `accessibilityIdentifier` 定位时也支持 `viewSnapshotID` 防陈旧校验，与 `ui.tap` 行为一致
 - 或在 description 顶部明确写出约束："当用 accessibilityIdentifier 时不接受 viewSnapshotID；用 path 时必须搭配 viewSnapshotID"
 
+**已修复**：`2fb68d3` — 模型注释 + constraints 文案明确 viewSnapshotID 仅支持 path；identifier 定位不带结构路径无法做指纹校验，与 ui.tap 不同（tap 的 viewSnapshotID 是 required 且 LRU 缓存额外支持 identifier）。
+
 ### P5. `ui.navigation.back` 不接受 `mode` 参数
 
 **严重度**：低（不带参数可工作）
@@ -145,6 +153,8 @@
 - 如果"auto/dismiss/pop"是真意图，补全 inputSchema 的 mode enum
 - 否则更新文档/示例，去掉 mode 参数
 
+**已修复**：`2542984` — description 和模型注释明确 strategy 三个值（auto / navigationController / dismiss），注明"旧文档 mode 字段已废弃"。
+
 ### P6. 嵌套 alert dismiss 后短期读回旧 alert 信息
 
 **严重度**：中（自动化脚本误判风险）
@@ -163,6 +173,8 @@
 - 在 `ui.alert.respond` 处理 dismiss 后增加 RunLoop spin 直到 `presentedViewController` 真正切换
 - 或在 dismiss 后强制透传更长 `dismissWaitMs`（≥1500ms）默认值，覆盖嵌套场景
 - 至少在返回结果里增加 `presentedAfterDismiss` 字段，让调用方能判断当前呈现的是新 alert 还是没 alert
+
+**已修复**：`0203351` — maxAttempts 从 50（~800ms）提升到 95（~1520ms）；新增 `presentedAfterDismiss` 布尔字段。
 
 ### P7. `debug.emit*` 命名字段混乱：`message` vs `text`
 
@@ -183,6 +195,8 @@
 - 或在 description 顶部明确："字段名为 message，**不是** text"，避免误用
 - 或让 schemaMapper 在工具描述里自动追加"Known field names: ..."提示
 
+**已修复**：`9178c21` — ExampleStdIOMessageInput 的 messageField description 增加"（注意字段名是 message 不是 text）"提示 + 注释解释命名差异背景。
+
 ### P8. `ui.viewTargets` 的 `accessibilityIdentifier` 精确匹配语义未文档化
 
 **严重度**：低（有 prefix 替代）
@@ -200,6 +214,21 @@
 **建议**：
 - 在 description 增加 example："identifier='test.button'（精确等价）vs identifierPrefix='test.'（前缀匹配多个）"
 - 或对 identifier 也支持自动前缀 fallback（不推荐，会破坏语义清晰度）
+
+**已修复**：`f67c179` — UIKitFilterFields.accessibilityIdentifier 和 identifierPrefix 的 description 增加完整示例 + 精确/前缀对照说明。
+
+## 修复概要
+
+| 编号 | 严重度 | 修复 | Commit | 验证方式 |
+|------|--------|------|--------|----------|
+| P2 | 高（崩溃） | safe unwrap + window 守卫 | `aa4bb7c` | 现有 248 测试全部通过；新增 2 个回归测试 |
+| P1 | 中（功能） | visibleCells 搜索 | `d20eb39` | scrollToElement 4 个测试通过 |
+| P3 | 中（体验） | 语义注释澄清 | `03f1bd7` | snapshot 9 个测试全部通过 |
+| P4 | 低（文档） | constraints 文案 | `2fb68d3` | input input schema 测试通过 |
+| P5 | 低（文档） | description 更新 | `2542984` | navigation back input 测试通过 |
+| P6 | 中（可靠性） | wait 提升 + 新增字段 | `0203351` | alert respond 8 个测试通过 |
+| P7 | 低（文档） | description 提示 | `9178c21` | 编译通过 |
+| P8 | 低（文档） | 示例说明 | `f67c179` | 编译通过 |
 
 ## 额外观察（非问题，但值得记录）
 
