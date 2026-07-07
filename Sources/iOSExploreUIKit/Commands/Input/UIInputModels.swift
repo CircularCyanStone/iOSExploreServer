@@ -20,6 +20,12 @@ public enum InputMode: String, Sendable, Equatable, CaseIterable {
 /// 必填的 `text`。`mode` 默认 `replace`（先清空），`submit` 默认 `true`（写完
 /// `resignFirstResponder`）。`viewSnapshotID` 可选，仅允许与 `path` 搭配用于陈旧校验。
 ///
+/// **注意**：`viewSnapshotID` 仅支持与 `path` 搭配使用。当用 `accessibilityIdentifier`
+/// 定位时传 `viewSnapshotID` 会返回 `invalid_data`（因为 identifier 定位不带结构性路径，
+/// 无法做指纹陈旧校验）。与 `ui.tap` 不同——ui.tap 要求必填 `viewSnapshotID` 且
+/// identifier/path 都支持（tap 有 LRU/locate 层面的 `viewSnapshotID` 缓存），
+/// 而 `ui.input` 的 viewSnapshotID 是可选陈旧校验，只对 path 路径有意义。
+///
 /// 该类型整体 Foundation-only：字段声明与解析不依赖 UIKit，便于在 macOS 上做 schema
 /// 单测；UIKit 类型只在 executor 内部出现，不穿过 public 边界。
 public struct UIInputInput: CommandInput, Sendable, Equatable {
@@ -58,7 +64,7 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
         fields: Fields.all,
         constraints: [
             .exactlyOneOf(["accessibilityIdentifier", "path"]),
-            .extensionMessage("viewSnapshotID is valid only with path"),
+            .extensionMessage("viewSnapshotID is only valid with path (identifier 定位不支持 viewSnapshotID 陈旧校验)"),
         ]
     )
 
