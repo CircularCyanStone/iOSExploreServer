@@ -12,8 +12,16 @@ public enum ScrollToElementMatch: String, Sendable, Equatable, CaseIterable {
 /// `ui.scrollToElement` 的命令参数。
 ///
 /// 在指定滚动容器内查找目标（按文本或 identifier），用 `UIScrollView.scrollRectToVisible`
-/// 一次性滚到目标可见。`container` 缺省时用 keyWindow 最前 scrollView。命令不签发 viewSnapshotID：
-/// 滚动后画面变化，agent 应重新 `ui.viewTargets` 取新 viewSnapshotID 再交互。
+/// 一次性滚到目标可见。
+///
+/// `path` / `accessibilityIdentifier` **指向滚动容器自身**（即 `UIScrollView`，
+/// 含 `UITableView` / `UICollectionView`），而非目标元素。这是与 `ui.scroll` 的重要区别：
+/// `ui.scroll` 的 path 指向触发滚动的目标 view，而 `ui.scrollToElement` 的定位字段
+/// 明确指向滚动容器（locator 缺省时回退到 keyWindow 最前 scrollView）。当容器是
+/// `UITableView` / `UICollectionView` 时，visibleCells 内的子 view 会被额外搜索。
+///
+/// 命令不签发 viewSnapshotID：滚动后画面变化，agent 应重新 `ui.viewTargets` 取新
+/// viewSnapshotID 再交互。
 public struct UIScrollToElementInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let match = CommandFields.enumValue(
@@ -50,7 +58,11 @@ public struct UIScrollToElementInput: CommandInput, Sendable, Equatable {
     public let match: ScrollToElementMatch
     /// 匹配值。
     public let value: String
-    /// 滚动容器定位（nil = foremost scrollView）。
+    /// 滚动容器定位（nil = 不指定容器，从 keyWindow 最前 scrollView 搜索）。
+    ///
+    /// 指向滚动容器自身（UIScrollView/UITableView/UICollectionView），**不是**目标元素。
+    /// 缺省时 executor 从 keyWindow 最前 scrollView 搜索。
+    /// 当容器是 UITableView 或 UICollectionView 时，executor 额外搜索 visibleCells。
     public let container: UIKitViewLookupTarget?
     /// 是否动画。
     public let animated: Bool

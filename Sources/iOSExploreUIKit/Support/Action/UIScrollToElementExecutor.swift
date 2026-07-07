@@ -67,7 +67,44 @@ enum UIScrollToElementExecutor {
     }
 
     /// 在 root 子树内按匹配方式找第一个目标 view。
+    ///
+    /// `UITableView` 与 `UICollectionView` 的内容在 cell 内而非直接 subview，
+    /// 因此额外搜索 `visibleCells`（这是唯一能在不触发 cell 注册/dataSource reload
+    /// 情况下读到已有 cell 内容的路径）。非 scrollView 实体的 root 走标准 UIView
+    /// 深度优先。
+    ///
+    /// - Parameters:
+    ///   - match: 匹配方式（text / accessibilityIdentifier）。
+    ///   - value: 匹配值。
+    ///   - root: 搜索根（scrollView 或普通 view）。
+    /// - Returns: 找到的第一个视图，nil 表示未找到。
     private static func findTarget(match: ScrollToElementMatch, value: String, in root: UIView) -> UIView? {
+        // UITableView / UICollectionView：优先搜索 visibleCells 内容。
+        if let tableView = root as? UITableView {
+            for cell in tableView.visibleCells {
+                if let found = findTargetDepthFirst(match: match, value: value, in: cell.contentView) {
+                    return found
+                }
+                // 部分 cell 把 label 直接挂在 cell 一级而非 contentView（iOS <16 兼容）。
+                if let found = findTargetDepthFirst(match: match, value: value, in: cell) {
+                    return found
+                }
+            }
+            return nil
+        }
+        if let collectionView = root as? UICollectionView {
+            for cell in collectionView.visibleCells {
+                if let found = findTargetDepthFirst(match: match, value: value, in: cell.contentView) {
+                    return found
+                }
+            }
+            return nil
+        }
+        return findTargetDepthFirst(match: match, value: value, in: root)
+    }
+
+    /// 纯 UIView 深度优先搜索（不含 visibleCells 逻辑）。
+    private static func findTargetDepthFirst(match: ScrollToElementMatch, value: String, in root: UIView) -> UIView? {
         var found: UIView?
         func walk(_ view: UIView) {
             if found != nil { return }
