@@ -68,7 +68,14 @@ enum UIKitActionCapabilityResolver {
             collected.insert(.input)
         }
         if view is UIScrollView, !(view is UITextView) {
-            collected.insert(.scroll)
+            // isScrollEnabled=false 时不声明 scroll 能力，避免 discovery（availableActions=['scroll']）
+            // 与 executor（scroll to element/scroll 被 isScrollEnabled=false 拒绝）的分叉。
+            // SPMExample 的 menuTableView 设了 isScrollEnabled=false 触发过此问题。
+            if let scrollView = view as? UIScrollView, !scrollView.isScrollEnabled {
+                // scroll disabled → 不声明 scroll
+            } else {
+                collected.insert(.scroll)
+            }
         }
         return UIKitActionAvailability(actions: ordered(collected))
     }

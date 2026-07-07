@@ -86,7 +86,7 @@ enum UIAlertRespondExecutor {
             "performed": .bool(true),
             "dismissed": .bool(dismissed),
             "dismissWaitMs": .double(Double(waitedMs)),
-            "presentedAfterDismiss": .bool(rootView?.presentedViewController != nil),
+            "presentedAfterDismiss": .bool(alert.presentingViewController?.presentedViewController != nil),
             "button": buttonJSON(selected.button),
         ]
     }
