@@ -29,10 +29,12 @@ func viewTargetsCollectsCanonicalTargetsOnly() {
     }
 
     let data = UIViewTargetsCollector.collect(query: .default, context: context)
-    // button（UIControl）+ tagged（hasAccessibilityIdentifier）都是 full target，均采集；
-    // plain 无识别信息且不可操作，不采集。Task 3 的 isFull 六条规则让 hasAccessibilityIdentifier
-    // 的 view 进入 full（agent 按 id 定位有价值），故 targetCount=2。
-    #expect(data["targetCount"]?.doubleValue == 2)
+    // button（UIControl）+ tagged（hasAccessibilityIdentifier）都是 full target；
+    // root 容器 + plain 空容器是 minimal 结构节点（维持层级）。Task 6 后全节点输出：
+    // fullCount=2（button+tagged），minimalCount=2（root+plain），targetCount=4。
+    #expect(data["fullCount"]?.doubleValue == 2)
+    #expect(data["minimalCount"]?.doubleValue == 2)
+    #expect(data["targetCount"]?.doubleValue == 4)
     #expect(data["truncated"]?.boolValue == false)
     #expect(data["viewSnapshotID"]?.stringValue != nil)
     #expect(data["snapshotID"] == nil)
@@ -41,13 +43,16 @@ func viewTargetsCollectsCanonicalTargetsOnly() {
         Issue.record("targets not array")
         return
     }
-    #expect(targets.count == 2)
+    #expect(targets.count == 4)
 
-    guard case .object(let buttonTarget) = targets[0] else {
-        Issue.record("button target not object")
+    // minimal 节点 toJSON 只含 path/type（无 role）；按 role 定位 button（root/0）。
+    guard case .object(let buttonTarget)? = targets.first(where: {
+        if case .object(let o) = $0 { return o["path"]?.stringValue == "root/0" }
+        return false
+    }) else {
+        Issue.record("button target at root/0 missing")
         return
     }
-    #expect(buttonTarget["path"]?.stringValue == "root/0")
     #expect(buttonTarget["role"]?.stringValue == "button")
     guard case .array(let buttonActions)? = buttonTarget["availableActions"] else {
         Issue.record("button availableActions not array")
@@ -72,7 +77,9 @@ func viewTargetsSignsFingerprintsForReturnedPathsOnly() throws {
 
     let query = UIViewTargetsInput(maxTargets: 1)
     let data = UIViewTargetsCollector.collect(query: query, context: context)
-    #expect(data["targetCount"]?.doubleValue == 1)
+    // root（minimal）+ button1（full，fullCount=1 触发截断）。minimal 不占配额，button2 不签发。
+    #expect(data["targetCount"]?.doubleValue == 2)
+    #expect(data["fullCount"]?.doubleValue == 1)
     #expect(data["truncated"]?.boolValue == true)
     guard let viewSnapshotID = data["viewSnapshotID"]?.stringValue else {
         Issue.record("viewSnapshotID should be signed")
@@ -105,7 +112,12 @@ func viewTargetsAggregatesButtonSemanticText() throws {
     }
 
     let data = UIViewTargetsCollector.collect(query: .default, context: context)
-    guard case .array(let targets)? = data["targets"], case .object(let buttonTarget)? = targets.first else {
+    // minimal 节点（root 容器） toJSON 无 role；按 role 找 button full target。
+    guard case .array(let targets)? = data["targets"],
+          case .object(let buttonTarget)? = targets.first(where: {
+              if case .object(let o) = $0 { return o["role"]?.stringValue == "button" }
+              return false
+          }) else {
         Issue.record("button target missing")
         return
     }
@@ -127,15 +139,20 @@ func viewTargetsRollsUpButtonInternalLabel() throws {
     }
     // UIButton(type:.system) 内部有渲染 title 的 UIButtonLabel（UILabel 子类，有 .text）。
     // 不做 rollup 时它命中 hasStaticText → full → 被签发，agent tap 它会返回 unsupported_target
-    // （label 无默认激活路由），破坏"签发=可操作"。rollup 后它不进 targets、不签发 fingerprint。
+    // （label 无默认激活路由），破坏"签发=可操作"。rollup 后控件子树整棵剪枝：内部 label 既不
+    // 进 full 也不进 minimal，更不签发 fingerprint（Task 6 的 isInControlSubtree 剪枝）。
 
     let data = UIViewTargetsCollector.collect(query: .default, context: context)
-    // 只有 button 本身（root/0）是 target；内部 title label 被 rollup，不独立采集。
-    // 若 rollup 失效，UIButtonLabel 会命中 hasStaticText 进 full，targetCount ≥ 2。
-    #expect(data["targetCount"]?.doubleValue == 1)
+    // root（minimal）+ button（full）。内部 title label 被剪枝，不出现在 targets。
+    // 若剪枝失效，UIButtonLabel 会命中 hasStaticText 进 full 或沦为 minimal，targetCount > 2。
+    #expect(data["targetCount"]?.doubleValue == 2)
+    #expect(data["fullCount"]?.doubleValue == 1)
 
     guard case .array(let targets)? = data["targets"],
-          case .object(let buttonTarget)? = targets.first else {
+          case .object(let buttonTarget)? = targets.first(where: {
+              if case .object(let o) = $0 { return o["role"]?.stringValue == "button" }
+              return false
+          }) else {
         Issue.record("button target missing")
         return
     }

@@ -21,7 +21,7 @@ enum UIViewTargetsCollector {
     /// - Returns: screen、targetCount、visitedNodeCount、targets、viewSnapshotID 的 JSON。
     /// - Throws: `UIKitCommandError.hierarchyUnavailable`——UIKit 上下文不可用时。
     static func collect(query: UIViewTargetsInput) throws -> JSON {
-        UIKitCommandLogging.info("command", "ui view targets collect mainactor start includeHidden=\(query.includeHidden) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit)")
+        UIKitCommandLogging.info("command", "ui view targets collect mainactor start includeHidden=\(query.includeHidden) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit) maxTargets=\(query.maxTargets) maxVisitedNodes=\(query.maxVisitedNodes)")
         let context = try UIKitContextProvider.currentContext(action: ViewTargetsCommand.actionName)
         return collect(query: query, context: context)
     }
@@ -38,6 +38,7 @@ enum UIViewTargetsCollector {
     /// - Returns: targets 列表 JSON（含 viewSnapshotID）。
     static func collect(query: UIViewTargetsInput, context: UIKitContextProvider.Context) -> JSON {
         var visitedNodeCount = 0
+        var fullCount = 0
         var collected: [CollectedTarget] = []
         let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
         let truncated = collect(view: context.rootView,
@@ -47,14 +48,16 @@ enum UIViewTargetsCollector {
                 depth: 0,
                 query: query,
                 visitedNodeCount: &visitedNodeCount,
+                fullCount: &fullCount,
                 collected: &collected)
 
-        // 只为最终返回（含 maxTargets 截断）的 canonical target 签发指纹：
-        // returned target paths == viewSnapshotID 签发 fingerprint paths == tap/sendAction 可执行集合。
+        // 只为最终返回的 full target 签发指纹：returned full paths == viewSnapshotID 签发
+        // fingerprint paths == tap/sendAction 可执行集合。minimal 节点不签发（强制 actions=[]、
+        // toJSON 只输出 path+type），避免 agent 对不可操作的结构节点发起操作。
         let snapContext = UIKitFingerprintCollector.context(window: context.window,
                                                              topViewController: context.topViewController)
         let fingerprints = Dictionary(
-            uniqueKeysWithValues: collected.map { target in
+            uniqueKeysWithValues: collected.filter { $0.isFull }.map { target in
                 (target.summary.path,
                  UIKitFingerprintCollector.fingerprint(for: target.view,
                                                         path: target.summary.path,
@@ -67,14 +70,18 @@ enum UIViewTargetsCollector {
                                                               query: query)
         let snapshotFields = UIKitSnapshotResponse.fields(for: viewSnapshotID)
 
+        let minimalCount = collected.count - fullCount
         var data: JSON = [
             "screen": .object(screenJSON(window: context.window,
                                          rootViewController: context.rootViewController,
                                          topViewController: context.topViewController)),
             "targetCount": .double(Double(collected.count)),
+            "fullCount": .double(Double(fullCount)),
+            "minimalCount": .double(Double(minimalCount)),
             "visitedNodeCount": .double(Double(visitedNodeCount)),
             "targets": .array(collected.map { .object($0.summary.toJSON()) }),
             "maxTargets": .double(Double(query.maxTargets)),
+            "maxVisitedNodes": .double(Double(query.maxVisitedNodes)),
             "truncated": .bool(truncated),
             "truncationReason": truncated ? .string("maxTargets") : .null,
             "viewSnapshotID": snapshotFields.id,
@@ -85,22 +92,44 @@ enum UIViewTargetsCollector {
         data["navigationBar"] = .object(
             UINavigationBarInspector.summarize(topViewController: context.topViewController).toJSON()
         )
-        UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(collected.count) fingerprints=\(fingerprints.count) topViewController=\(String(describing: type(of: context.topViewController)))")
+        UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(collected.count) fullCount=\(fullCount) minimalCount=\(minimalCount) fingerprints=\(fingerprints.count) topViewController=\(String(describing: type(of: context.topViewController)))")
         return data
     }
 
-    /// 一条已采集的 canonical target：summary（跨边界 Sendable）+ 真实 view（仅 MainActor 域内，
-    /// 用于同帧采集指纹，不跨边界、不入响应）。
+    /// 一条已采集的节点：summary（跨边界 Sendable）+ 真实 view（仅 MainActor 域内，用于同帧
+    /// 采集指纹，不跨边界、不入响应）+ `isFull` 标记。
+    ///
+    /// `isFull` 决定该节点是否参与指纹签发：只有 full 节点签发 fingerprint 并进入
+    /// `viewSnapshotID`，minimal 节点只输出 path+type 维持层级，不签发、不占 `maxTargets` 配额。
     private struct CollectedTarget {
         let summary: UIViewTargetSummary
         let view: UIView
+        let isFull: Bool
     }
 
-    /// 递归遍历 view 树，并把符合 canonical 策略和筛选条件的节点收集进 `collected`。
+    /// 递归遍历 view 树，按 full/minimal 分档收集节点。
     ///
-    /// identifier 筛选只影响当前节点是否输出，不会提前剪枝子树，避免漏掉深层控件。
-    /// 隐藏节点在 `includeHidden=false` 时会剪枝整棵子树。`maxTargets` 截断后立即停止，
-    /// 保证签发集合 == 返回集合。
+    /// **全节点输出**：full 与 minimal 节点都进 `collected`，让 agent 能看到完整层级结构
+    /// （minimal 节点只输出 `{path, type}`，不引诱操作）。
+    ///
+    /// **分档**：每个节点先用 `makeCandidate(for:)` + `query.isFull` 判定 full/minimal。
+    /// full 节点（且通过 identifier 筛选）用完整 `summary(for:)`；minimal 节点用
+    /// `minimalSummary(for:)`（强制 `actions=[]`、`isMinimal=true`）。
+    ///
+    /// **截断只数 full**：`fullCount` 独立于 `collected.count`，只有 full 节点触发 `maxTargets`
+    /// 检查。minimal 不占配额——否则一棵 full 稀疏的树会被大量 minimal 提前耗尽配额，
+    /// 让真正可操作的深层 full 节点被丢弃。
+    ///
+    /// **identifier 筛选 §3.10**：筛选只作用于 full 输出（`isFull && matchesId`）；
+    /// minimal 节点不受筛选，维持层级结构完整性，让 agent 即便按 identifier 过滤也能看到
+    /// 目标所在的父子路径。
+    ///
+    /// **控件子树剪枝**：`UIControl` 子树内的非 full 节点（rolled-up 展示节点 + 内部结构节点）
+    /// 不作为 minimal 输出——其语义已由父 control 的 full target 表达，独立输出只会泄露控件
+    /// 渲染细节。整棵子树剪枝（cell 子树不受影响，cell 非 UIControl）。
+    ///
+    /// **深树保护**：`visitedNodeCount` 超过 `maxVisitedNodes` 时立即停止（含 minimal 与 full），
+    /// 防止异常深树让 collector 跑飞。返回 `true` 表示发生截断（`maxTargets` 或 `maxVisitedNodes`）。
     private static func collect(view: UIView,
                                 rootView: UIView,
                                 window: UIWindow,
@@ -108,17 +137,32 @@ enum UIViewTargetsCollector {
                                 depth: Int,
                                 query: UIViewTargetsInput,
                                 visitedNodeCount: inout Int,
+                                fullCount: inout Int,
                                 collected: inout [CollectedTarget]) -> Bool {
         visitedNodeCount += 1
+        if visitedNodeCount > query.maxVisitedNodes { return true }
         if !query.includeHidden, view.isHidden {
             return false
         }
 
-        if isFull(view: view, query: query),
-           matchesIdentifier(view: view, query: query) {
+        let candidate = makeCandidate(for: view)
+        let isFull = query.isFull(candidate: candidate)
+        // §3.10: identifier 筛选只影响 full 输出；minimal 结构节点不受筛用于维持层级。
+        if isFull, matchesIdentifier(view: view, query: query) {
             let summary = summary(for: view, rootView: rootView, window: window, path: path, query: query)
-            collected.append(CollectedTarget(summary: summary, view: view))
-            if collected.count >= query.maxTargets { return true }
+            collected.append(CollectedTarget(summary: summary, view: view, isFull: true))
+            fullCount += 1
+            if fullCount >= query.maxTargets { return true }
+        } else if !isFull {
+            // 控件子树内的非 full 节点（含 rolled-up 展示节点与内部结构节点）不作为 minimal 输出：
+            // 其语义已由父 control 的 full target 表达（semanticText / availableActions），
+            // 独立输出控件内部结构对 agent 无层级价值，只会泄露渲染细节并引诱误操作。
+            // 由于 control 子树内所有后代都在同一 UIControl 内，整棵子树剪枝（不收集、不递归）。
+            // cell 子树不受影响：cell 非 UIControl，cell 内 label 的 isInControlSubtree=false（spec §3.4）。
+            guard !candidate.isInControlSubtree else { return false }
+            // minimal 结构节点：维持层级，不签发、强制 actions=[]、toJSON 只输出 path+type。
+            let summary = minimalSummary(for: view, path: path, window: window)
+            collected.append(CollectedTarget(summary: summary, view: view, isFull: false))
         }
 
         if let maxDepth = query.maxDepth, depth >= maxDepth {
@@ -133,9 +177,65 @@ enum UIViewTargetsCollector {
                     depth: depth + 1,
                     query: query,
                     visitedNodeCount: &visitedNodeCount,
+                    fullCount: &fullCount,
                     collected: &collected) { return true }
         }
         return false
+    }
+
+    /// 从真实 `UIView` 构造 Foundation-only 候选摘要（full/minimal 判定的唯一构造点）。
+    ///
+    /// `isFull(view:query:)` 与 `collect` 递归共用此入口，保证目标输出与指纹签发用同一份
+    /// candidate（Task 8 的 fingerprint collector 亦复用，不重复提取）。`isInControlSubtree`
+    /// 在此计算：自身非 `UIControl` 且祖先链含 `UIControl`（`explore_controlAncestor`），
+    /// 让 `hasStaticText` 的控件内嵌展示节点 rollup 到父 control。
+    static func makeCandidate(for view: UIView) -> UIViewTargetCandidate {
+        // 自身是 UIControl 时不计入 control 子树——它走 isControl 规则独立 full，
+        // 不应被 rollup 排除。
+        let isInControlSubtree = !(view is UIControl) && view.explore_controlAncestor != nil
+        return UIViewTargetCandidate(
+            isHidden: view.isHidden,
+            isControl: view is UIControl,
+            isUserInteractionEnabled: view.isUserInteractionEnabled,
+            hasGestureRecognizers: view.gestureRecognizers?.isEmpty == false,
+            hasAccessibilityIdentifier: view.accessibilityIdentifier?.isEmpty == false,
+            hasAccessibilityLabel: view.accessibilityLabel?.isEmpty == false,
+            hasStaticText: textualValue(from: view)?.isEmpty == false,
+            isScrollView: view is UIScrollView,
+            isInControlSubtree: isInControlSubtree
+        )
+    }
+
+    /// 生成 minimal 档摘要（结构节点）：强制 `isMinimal=true`、`availableActions=[]`。
+    ///
+    /// 即便 `toJSON` 因 `isMinimal=true` 只输出 `{path, type}`，模型仍需完整构造（`frame`/`state`
+    /// 是非可选字段）。`indexPath` 对 minimal cell 容器有定位价值，保留；`actions` 强制空避免
+    /// 引诱 agent 对不可操作节点发起 `ui.tap`/`ui.control.sendAction`。
+    private static func minimalSummary(for view: UIView, path: [Int], window: UIWindow) -> UIViewTargetSummary {
+        UIViewTargetSummary(
+            path: UIKitViewLookupTarget.pathString(from: path),
+            type: String(describing: Swift.type(of: view)),
+            role: role(for: view),
+            accessibilityIdentifier: nil,
+            accessibilityLabel: nil,
+            title: nil,
+            text: nil,
+            placeholder: nil,
+            value: nil,
+            semanticText: nil,
+            semanticTextSource: nil,
+            frame: UIViewHierarchyRect(rect: view.convert(view.bounds, to: window)),
+            state: UIViewTargetState(isHidden: view.isHidden,
+                                     alpha: Double(view.alpha),
+                                     isUserInteractionEnabled: view.isUserInteractionEnabled,
+                                     isEnabled: nil,
+                                     isSelected: nil,
+                                     isHighlighted: nil,
+                                     hasGestureRecognizers: view.gestureRecognizers?.isEmpty == false),
+            availableActions: UIKitActionAvailability(actions: []),
+            indexPath: cellIndexPath(for: view),
+            isMinimal: true
+        )
     }
 
     /// 判断 view 是否为 full 节点（符合 `UIViewTargetsInput.isFull` 的 canonical 策略）。
@@ -148,24 +248,11 @@ enum UIViewTargetsCollector {
     /// title label）rollup 到父 control，不独立 full。cell 子树因 cell 非 `UIControl`
     /// 不命中，cell 内 label 仍 full。
     static func isFull(view: UIView, query: UIViewTargetsInput) -> Bool {
-        // 自身是 UIControl 时不计入 control 子树——它走 isControl 规则独立 full，
-        // 不应被 rollup 排除。
-        let isInControlSubtree = !(view is UIControl) && view.explore_controlAncestor != nil
-        let candidate = UIViewTargetCandidate(
-            isHidden: view.isHidden,
-            isControl: view is UIControl,
-            isUserInteractionEnabled: view.isUserInteractionEnabled,
-            hasGestureRecognizers: view.gestureRecognizers?.isEmpty == false,
-            hasAccessibilityIdentifier: view.accessibilityIdentifier?.isEmpty == false,
-            hasAccessibilityLabel: view.accessibilityLabel?.isEmpty == false,
-            hasStaticText: textualValue(from: view)?.isEmpty == false,
-            isScrollView: view is UIScrollView,
-            isInControlSubtree: isInControlSubtree
-        )
+        let candidate = makeCandidate(for: view)
         let full = query.isFull(candidate: candidate)
         // rollup 命中日志：控件内嵌展示节点被 rollup 到父 control，不独立 full。
         // 仅在命中 rollup 排除时记录，帮助定位"按钮内 label 为何不在 targets"的疑问。
-        if !full, candidate.hasStaticText, isInControlSubtree {
+        if !full, candidate.hasStaticText, candidate.isInControlSubtree {
             UIKitCommandLogging.info("command", "ui view targets rollup: static-text node in UIControl subtree (\(String(describing: type(of: view)))) rolled up to parent control, not emitted as full target")
         }
         return full

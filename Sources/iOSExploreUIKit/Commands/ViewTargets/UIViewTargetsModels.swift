@@ -20,7 +20,16 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
             "maxTargets",
             range: 1...UIKitSnapshotLimits.maxFingerprints,
             default: 200,
-            description: "单次响应最多返回的目标数, 默认 200, 上限 512"
+            description: "单次响应最多返回的 full 目标数, 默认 200, 上限 512 (minimal 不占配额)"
+        )
+        /// DFS 访问节点上限，独立于 `maxTargets`：无论节点是否输出（full/minimal），访问到上限即停止，
+        /// 防止异常深的 view 树（如递归嵌套容器、巨大 tableView 缓存）让 collector 跑飞。
+        /// minimal 节点不占 `maxTargets` 配额，若无此上限，一棵全是 minimal 的深树仍可能失控。
+        static let maxVisitedNodes = CommandFields.int(
+            "maxVisitedNodes",
+            range: 100...20000,
+            default: 2000,
+            description: "DFS 访问节点上限, 防深树失控, 默认 2000 (含 full 与 minimal)"
         )
 
         static let all: [AnyCommandField] = [
@@ -30,6 +39,7 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
             accessibilityIdentifierPrefix.erased,
             textLimit.erased,
             maxTargets.erased,
+            maxVisitedNodes.erased,
         ]
     }
 
@@ -46,8 +56,10 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     public let accessibilityIdentifierPrefix: String?
     /// title/text/placeholder/value 的最大返回字符数。
     public let textLimit: Int
-    /// 单次响应最多返回的目标数。
+    /// 单次响应最多返回的 full 目标数（minimal 不占配额）。
     public let maxTargets: Int
+    /// DFS 访问节点上限（含 full 与 minimal），防深树失控。
+    public let maxVisitedNodes: Int
 
     /// 默认查询：面向事件下发前的低成本目标发现。
     public static let `default` = UIViewTargetsInput()
@@ -60,18 +72,22 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     ///   - accessibilityIdentifier: accessibilityIdentifier 精确匹配条件。
     ///   - accessibilityIdentifierPrefix: accessibilityIdentifier 前缀匹配条件。
     ///   - textLimit: 文本字段最大字符数。
+    ///   - maxTargets: 单次响应最多返回的 full 目标数（minimal 不占配额）。
+    ///   - maxVisitedNodes: DFS 访问节点上限（含 full 与 minimal），防深树失控。
     public init(includeHidden: Bool = false,
                 maxDepth: Int? = nil,
                 accessibilityIdentifier: String? = nil,
                 accessibilityIdentifierPrefix: String? = nil,
                 textLimit: Int = 80,
-                maxTargets: Int = 200) {
+                maxTargets: Int = 200,
+                maxVisitedNodes: Int = 2000) {
         self.includeHidden = includeHidden
         self.maxDepth = maxDepth
         self.accessibilityIdentifier = accessibilityIdentifier
         self.accessibilityIdentifierPrefix = accessibilityIdentifierPrefix
         self.textLimit = textLimit
         self.maxTargets = maxTargets
+        self.maxVisitedNodes = maxVisitedNodes
     }
 
     /// 是否包含 identifier 筛选条件。
@@ -105,7 +121,8 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     ///
     /// 该方法只依赖 Foundation-only 的候选摘要，便于在非 UIKit 测试中覆盖采集器的包含策略。
     ///
-    /// - Parameter candidate: 从真实 view 或测试用例抽取出的候选摘要。
+    /// - Parameter candidate: 从真实 view 或测试用例抽取出的候选摘要（collector 由
+    ///   `UIViewTargetsCollector.makeCandidate(for:)` 统一构造，保证 full 判定与指纹签发同口径）。
     /// - Returns: 当前查询参数下该候选是否为 full 节点。
     public func isFull(candidate: UIViewTargetCandidate) -> Bool {
         if !includeHidden, candidate.isHidden { return false }
@@ -131,7 +148,8 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
             accessibilityIdentifier: try decoder.read(Fields.accessibilityIdentifier),
             accessibilityIdentifierPrefix: try decoder.read(Fields.accessibilityIdentifierPrefix),
             textLimit: try decoder.read(Fields.textLimit),
-            maxTargets: try decoder.read(Fields.maxTargets)
+            maxTargets: try decoder.read(Fields.maxTargets),
+            maxVisitedNodes: try decoder.read(Fields.maxVisitedNodes)
         )
     }
 }

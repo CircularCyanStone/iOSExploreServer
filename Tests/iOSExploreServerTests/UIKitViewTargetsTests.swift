@@ -26,6 +26,7 @@ func viewTargetsInputSchemaUsesExpectedFieldOrder() {
         "accessibilityIdentifierPrefix",
         "textLimit",
         "maxTargets",
+        "maxVisitedNodes",
     ])
 }
 
@@ -240,14 +241,22 @@ import UIKit
 ///
 /// 优先级：accessibilityIdentifier → accessibilityLabel → accessibilityValue →
 /// buttonTitle → segmentTitle → labelText → placeholder → textViewText。
-/// 从 collect 结果里取第 1 个 target 的 summary JSON，失败时记录并返回 nil。
+/// 从 collect 结果里取第 1 个 **full** target 的 summary JSON，失败时记录并返回 nil。
+///
+/// Task 6 后 minimal 结构节点也进 targets（DFS 顺序下根容器通常是最先入列的 minimal，
+/// 其 toJSON 只含 path/type 无 role）。semanticText 等字段只存在于 full target，故这里
+/// 跳过 minimal（无 `role` key），返回第一个 full target。
 @MainActor
 private func firstTargetSummary(from data: JSON) -> JSON? {
-    // 两个条件放同一个 guard：targets.first 是 JSONValue?，需要 ? 模式匹配；
-    // 拆成两个 guard 会让前一个 guard-let 把 first 解包成非可选，后者 ? 模式就编译失败。
-    guard case .array(let targets)? = data["targets"],
-          case .object(let target)? = targets.first else {
-        Issue.record("targets not array or first target not object")
+    guard case .array(let targets)? = data["targets"] else {
+        Issue.record("targets not array")
+        return nil
+    }
+    guard case .object(let target)? = targets.first(where: { json in
+        if case .object(let obj) = json { return obj["role"] != nil }
+        return false
+    }) else {
+        Issue.record("no full target found")
         return nil
     }
     return target
