@@ -17,7 +17,7 @@ import UIKit
 /// 联动外层取决于 UIKit 的祖先链转发；若外层未联动而目标仍被裁切，agent 可显式传 `container`
 /// 指向外层 scrollView 再调一次。
 ///
-/// 不签发 viewSnapshotID：滚动后画面变化，旧 viewSnapshotID 失效，agent 应重新 `ui.viewTargets`。
+/// 不签发 viewSnapshotID：滚动后画面变化，旧 viewSnapshotID 失效，agent 应重新 `ui.inspect`。
 @MainActor
 enum UIScrollToElementExecutor {
     /// 执行一次滚动到目标。
