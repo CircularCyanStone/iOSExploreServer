@@ -113,6 +113,76 @@ func waitSnapshotChangedSatisfiedOnContentChange() async throws {
     #expect(data["satisfied"]?.boolValue == true)
 }
 
+@Test("wait snapshotChanged 视图树不变时超时不满足（无假阳性）") @MainActor
+func waitSnapshotChangedUnchangedWhenViewTreeStable() async throws {
+    let button = UIButton(type: .system)
+    button.accessibilityIdentifier = "stable-btn"
+    button.isEnabled = true
+    button.frame = CGRect(x: 10, y: 10, width: 100, height: 40)
+    let context = UIKitTestHost.context { root in
+        root.addSubview(button)
+    }
+    // 用初始 view 树签发 snapshot（whole table）。
+    let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
+    let initialTable = UIKitFingerprintCollector.collectFingerprints(
+        rootView: context.rootView, query: .default, digest: digest)
+    let snapshotContext = UIKitFingerprintCollector.context(
+        window: context.window, topViewController: context.topViewController)
+    let snapshotStore = UIKitSnapshotStore()
+    let snapshotID = try #require(snapshotStore.insert(context: snapshotContext, targets: initialTable, query: .default))
+
+    // 不改任何东西 → 重采 whole table 与签发表逐字相等 → matchesWholeTable 返回 true（未变化）
+    // → executor 永远不 satisfied → 超时收敛 waitTimeout。这条保护「未变化」负样本，
+    // 防止 collectMatching 与签发口径意外漂移导致首轮即误报 changed。
+    let input = UIWaitInput(mode: .snapshotChanged, timeoutMs: 300, intervalMs: 50, viewSnapshotID: snapshotID)
+    do {
+        _ = try await UIWaitExecutor.execute(input: input, snapshotStore: snapshotStore) { context }
+        Issue.record("expected waitTimeout (table unchanged), got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .waitTimeout)
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
+}
+
+@Test("wait snapshotChanged 检测 full 节点 UILabel 状态变化（v1 漏掉场景）") @MainActor
+func waitSnapshotChangedDetectsFullNodeLabelTextChange() async throws {
+    // UILabel 自身非 UIControl：v1（shouldInclude 3 条白名单）不会把它采集进指纹表，
+    // 故 cell / 容器内 UILabel 的任何变化在 v1 下都检测不到；v2 isFull 六条里 hasStaticText
+    // 命中 → label 进入签发表，其状态变化（isHidden / alpha / 显式 a11y label 等）被指纹字段
+    // 捕获 → whole table 不一致被检出。本测试锁定该 v2 修复不被回退。
+    //
+    // 注意触发方式：用 `isHidden`（fingerprint 顶层字段，稳定可检测）。**不**用 `label.text`：
+    // fingerprint 出于隐私不存文本，且 UILabel.accessibilityLabel 在未显式赋值时 getter 返回
+    // nil（iOS 的「文本兜底」发生在 UIAccessibility 解析层，不进属性 getter），故 text 变化
+    // 不会让 semanticDigest 变化——纯文本内容变化应走 textExists 模式（见同文件既有注释）。
+    let label = UILabel(frame: CGRect(x: 10, y: 10, width: 200, height: 30))
+    label.text = "提交"
+    let context = UIKitTestHost.context { root in
+        root.addSubview(label)
+    }
+    let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
+    let initialTable = UIKitFingerprintCollector.collectFingerprints(
+        rootView: context.rootView, query: .default, digest: digest)
+    // 回归保护：带静态文本的 UILabel 必须被签发进 whole table（v1 漏掉的就是它根本不在表里）。
+    #expect(!initialTable.isEmpty, "UILabel with non-empty text must be a full node (hasStaticText)")
+
+    let snapshotContext = UIKitFingerprintCollector.context(
+        window: context.window, topViewController: context.topViewController)
+    let snapshotStore = UIKitSnapshotStore()
+    let snapshotID = try #require(snapshotStore.insert(context: snapshotContext, targets: initialTable, query: .default))
+
+    // 第二轮隐藏 label → fingerprint 的 isHidden 字段从 false 变 true → whole table 不同 → satisfied。
+    var callCount = 0
+    let input = UIWaitInput(mode: .snapshotChanged, timeoutMs: 2000, intervalMs: 50, viewSnapshotID: snapshotID)
+    let data = try await UIWaitExecutor.execute(input: input, snapshotStore: snapshotStore) {
+        callCount += 1
+        if callCount > 1 { label.isHidden = true }
+        return context
+    }
+    #expect(data["satisfied"]?.boolValue == true)
+}
+
 @Test("wait cancel 收敛到 waitTimeout 而非 internal_error") @MainActor
 func waitCancellationConvergesToWaitTimeout() async {
     let context = UIKitTestHost.context { _ in }

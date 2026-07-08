@@ -364,6 +364,14 @@ public final class UIKitSnapshotStore {
     ///   - context: 当前页面身份摘要。
     ///   - currentTable: 当前重新采集的 path→fingerprint 表（应与签发时同 query）。
     /// - Returns: nil=snapshot 未知/过期；true=表与身份均一致（未变化）；false=已变化。
+    ///
+    /// - Note: **已知限制（spec §5）**：本方法做全表相等比较
+    ///   （`entry.fingerprints == currentTable`），但 `UIKitFingerprintCollector.collectMatching`
+    ///   重采时不遵循 `maxTargets` 截断——签发侧（`UIViewTargetsCollector.collect`）会在 full
+    ///   节点数达 `maxTargets`（默认 200）时停止追加 full，而重采侧无此上限。当 full 节点数
+    ///   超过 `maxTargets` 时，stored（截断后的 full 子集）≠ current（全量 full），首轮即误报
+    ///   「已变化」。默认场景下 full 节点数（典型 ≈24）远低于 200，不触发；极端深树触发属已知
+    ///   限制，后续若要修需让重采也按同一 `maxTargets` 截断（或在签发时存原始计数供比对裁剪）。
     func matchesWholeTable(viewSnapshotID: String,
                            context: UIKitSnapshotContext,
                            currentTable: [String: UIKitTargetFingerprint]) -> Bool? {
