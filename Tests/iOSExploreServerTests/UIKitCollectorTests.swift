@@ -98,7 +98,6 @@ func viewTargetsAggregatesButtonSemanticText() throws {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.setTitle("提交订单", for: .normal)
-        button.accessibilityIdentifier = "checkout.submit"
         button.frame = CGRect(x: 10, y: 10, width: 120, height: 40)
         root.addSubview(button)
     }
@@ -109,7 +108,11 @@ func viewTargetsAggregatesButtonSemanticText() throws {
         return
     }
     // 按钮内部 label 不作为独立 target；其标题汇总到父 button 的 semanticText。
+    // 故意不设 accessibilityIdentifier：semanticText 新优先级里 identifier 最高，
+    // 设了会遮蔽 buttonTitle；此处要锁定的是「标题汇总到父 target」这条 source=buttonTitle 路径。
+    // identifier 与 title 共存时 identifier 胜出，由 semanticTextIdentifierBeatsButtonTitle 覆盖。
     #expect(buttonTarget["semanticText"]?.stringValue == "提交订单")
+    #expect(buttonTarget["semanticTextSource"]?.stringValue == "buttonTitle")
 }
 
 @Test("topViewHierarchy 采集注入 view 树的层级结构（不签发 viewSnapshotID）") @MainActor
