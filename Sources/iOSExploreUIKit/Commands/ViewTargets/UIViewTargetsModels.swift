@@ -325,6 +325,16 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     ///
     /// 调用方可据此直接按 section/item 选 cell，不再依赖 subviews 物理顺序或 frame.y 猜行。
     public let indexPath: IndexPathSummary?
+    /// 是否为 minimal 档（仅输出 `{path, type}` 的结构节点）。
+    ///
+    /// minimal 用于 collector 把无识别信息的结构节点（如 `UITableViewCell` 内层容器
+    /// `UIView`）暴露给 agent 做父子结构遍历与路径定位，但不签 fingerprint、不输出
+    /// `availableActions`/`frame`/`state` 等字段，避免引诱 agent 对不可操作的节点发起
+    /// `ui.tap`/`ui.control.sendAction`。full 档（默认）输出全部字段，行为与改造前一致。
+    ///
+    /// 模型字段保持非 Optional：minimal 档的精简由 `toJSON` 分档短路完成（缺失即缺席），
+    /// 不把 `frame`/`state`/`role` 改成 `Optional`，避免波及所有现有构造点与等值判定。
+    public let isMinimal: Bool
 
     /// 创建目标摘要。
     ///
@@ -344,6 +354,8 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     ///   - state: 目标状态。
     ///   - availableActions: executor 实际可派发的动作集合。
     ///   - indexPath: cell 的 indexPath。
+    ///   - isMinimal: 是否为 minimal 档，默认 `false`（full）。现有 collector 构造点不传此参数，
+    ///     保持 full 输出与改造前逐字节一致；仅 collector 对结构节点显式置 `true`。
     public init(path: String,
                 type: String,
                 role: UIViewTargetRole,
@@ -358,7 +370,8 @@ public struct UIViewTargetSummary: Sendable, Equatable {
                 frame: UIViewHierarchyRect,
                 state: UIViewTargetState,
                 availableActions: UIKitActionAvailability = UIKitActionAvailability(actions: []),
-                indexPath: IndexPathSummary? = nil) {
+                indexPath: IndexPathSummary? = nil,
+                isMinimal: Bool = false) {
         self.path = path
         self.type = type
         self.role = role
@@ -374,12 +387,23 @@ public struct UIViewTargetSummary: Sendable, Equatable {
         self.state = state
         self.availableActions = availableActions
         self.indexPath = indexPath
+        self.isMinimal = isMinimal
     }
 
     /// 转为命令响应 JSON。
     ///
-    /// - Returns: 包含轻量定位、语义、状态、建议动作和可执行动作字段的 JSON 对象。
+    /// 按 `isMinimal` 分档输出：
+    /// - minimal 档只输出 `{path, type}`，让 agent 能看到结构但不对其发起操作；
+    /// - full 档输出全部字段（定位、语义、状态、可执行动作等），行为与改造前一致。
+    ///
+    /// - Returns: minimal 档为仅含 `path`/`type` 的 JSON 对象；full 档为完整字段 JSON 对象。
     public func toJSON() -> JSON {
+        if isMinimal {
+            return [
+                "path": .string(path),
+                "type": .string(type),
+            ]
+        }
         var json: JSON = [
             "path": .string(path),
             "type": .string(type),
