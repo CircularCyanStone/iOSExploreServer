@@ -12,7 +12,7 @@
 |---|---|---|
 | 根目录 | 3 | 注册入口、日志、错误工厂（被所有层依赖） |
 | `Commands/TopViewHierarchy/` | 3 | `ui.topViewHierarchy` 命令（adapter + models + collector） |
-| `Commands/ViewTargets/` | 3 | `ui.viewTargets` 命令（adapter + models + collector） |
+| `Commands/ViewTargets/` | 3 | `ui.inspect` 命令（adapter + models + collector） |
 | `Commands/Screenshot/` | 3 | `ui.screenshot` 命令（adapter + models + collector） |
 | `Commands/Tap/` | 2 | `ui.tap` 命令（adapter + models） |
 | `Commands/ControlAction/` | 2 | `ui.control.sendAction` 命令（adapter + models） |
@@ -111,7 +111,7 @@
 
 ### `UIKitActionPlan.swift` ✅
 - **职责**：动作执行意图（tap / controlEvent 两种 case 的枚举）。
-- **关键点**：Foundation-only，只描述"做什么 + 作用在哪个 locator"，不持 UIKit 对象；**tap / controlEvent 均携带必填 `viewSnapshotID`**（由 `ui.viewTargets` 签发，executor 执行前做陈旧校验）。
+- **关键点**：Foundation-only，只描述"做什么 + 作用在哪个 locator"，不持 UIKit 对象；**tap / controlEvent 均携带必填 `viewSnapshotID`**（由 `ui.inspect` 签发，executor 执行前做陈旧校验）。
 - **依赖**：`UIKitLocator`、`UIControlSendActionEvent`。
 
 ### `UIKitActionCapabilityResolver.swift` 🍎
@@ -138,13 +138,13 @@
 
 ### `UIKitSnapshotStore.swift` ✅（类标 `@MainActor`，但内部纯计算可 macOS 测）
 - **职责**：UIKit 视图树指纹快照存储，解决"path 陈旧"问题。
-- **关键点**：**仅 `ui.viewTargets` 签发 `viewSnapshotID` 返回给调用方**（`ui.screenshot` / `ui.topViewHierarchy` 不再签发）；交互命令携带它时，executor 执行前用 `isStale(viewSnapshotID:path:context:current:) -> Bool` 比对指纹（含 `semanticDigest`），true 时 `throw UIKitCommandError.staleLocator`（`invalid_data`，固定消息 "locator is stale; call ui.viewTargets first"）。容量 **8 条快照 × 每条最多 512 指纹**，TTL **30 秒**，淘汰策略"先过期后 LRU"。时间可注入（`setNow`），测试推进时间即可触发过期。
+- **关键点**：**仅 `ui.inspect` 签发 `viewSnapshotID` 返回给调用方**（`ui.screenshot` / `ui.topViewHierarchy` 不再签发）；交互命令携带它时，executor 执行前用 `isStale(viewSnapshotID:path:context:current:) -> Bool` 比对指纹（含 `semanticDigest`），true 时 `throw UIKitCommandError.staleLocator`（`invalid_data`，固定消息 "locator is stale; call ui.inspect first"）。容量 **8 条快照 × 每条最多 512 指纹**，TTL **30 秒**，淘汰策略"先过期后 LRU"。时间可注入（`setNow`），测试推进时间即可触发过期。
 - **依赖**：`UIKitCommandLogging`。
 - **被调用**：`UIViewTargetsCollector`（insert）、executor（isStale）。
 
 ### `UIKitSnapshotResponse.swift` ✅
 - **职责**：snapshot 签发结果 → 响应字段的统一映射。
-- **关键点**：`ui.viewTargets` 用它回写 `viewSnapshotID` / `snapshotUnavailableReason`，避免响应 schema 漂移。超限未签发时显式给 `snapshotUnavailableReason = "fingerprintLimit"`，不静默降级。
+- **关键点**：`ui.inspect` 用它回写 `viewSnapshotID` / `snapshotUnavailableReason`，避免响应 schema 漂移。超限未签发时显式给 `snapshotUnavailableReason = "fingerprintLimit"`，不静默降级。
 - **依赖**：core `JSONValue`。
 
 ### `UIKitFingerprintCollector.swift` 🍎
@@ -198,7 +198,7 @@
 
 ### `UIViewHierarchyCollector.swift` 🍎
 - **职责**：`@MainActor`，从真实 `UIView` 递归读取属性生成完整快照。
-- **关键点**：`collectTopViewHierarchy(query:) throws -> JSON`（无 context 入口，取真实 context 失败 throw `hierarchyUnavailable`）；`collectTopViewHierarchy(query:context:) -> JSON`（注入入口，测试用）。`UIKitViewElement` 是 `UIViewHierarchyElement` 的 UIKit 实现；读 UIKit 后交给 Foundation-only 的 `UIViewHierarchyBuilder`。**不再签发 viewSnapshotID**（纯观察职责；动作所需的 `viewSnapshotID` 由 `ui.viewTargets` 签发）。
+- **关键点**：`collectTopViewHierarchy(query:) throws -> JSON`（无 context 入口，取真实 context 失败 throw `hierarchyUnavailable`）；`collectTopViewHierarchy(query:context:) -> JSON`（注入入口，测试用）。`UIKitViewElement` 是 `UIViewHierarchyElement` 的 UIKit 实现；读 UIKit 后交给 Foundation-only 的 `UIViewHierarchyBuilder`。**不再签发 viewSnapshotID**（纯观察职责；动作所需的 `viewSnapshotID` 由 `ui.inspect` 签发）。
 - **依赖**：UIKit、`UIKitContextProvider`、`UIViewHierarchyBuilder`/`UIViewHierarchyModels`、`UIKitCommandError`/`UIKitCommandLogging`。
 
 ### `TopViewHierarchyCommand.swift` 🍎
@@ -208,20 +208,20 @@
 
 ---
 
-## `Commands/ViewTargets/`（`ui.viewTargets`）
+## `Commands/ViewTargets/`（`ui.inspect`）
 
 ### `UIViewTargetsModels.swift` ✅
 - **职责**：轻量目标的全部模型——`UIViewTargetsInput` + `UIViewTargetCandidate` + `UIViewTargetSummary` + 角色/状态/文本裁剪。
-- **关键点**：`UIViewTargetsInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；**`UIViewTargetsInput.shouldInclude` 是 canonical 目标发现决策核心**，纯 Foundation-only 逻辑。**包含策略改为 canonical-only**：含 UIControl 系（UIButton/UISwitch/UISlider/UISegmentedControl/UITextField/自定义 UIControl）+ UIScrollView 系（UIScrollView/UITableView/UICollectionView/UITextView）+ **挂有 gesture recognizer 的非 control view**（手势 adapter 能派发其 target-action，故签发 viewSnapshotID 让 `ui.tap` 可达）；普通 UILabel / container / 仅 identifier 或 label 的普通 view 不再进 targets（观察职责在 `ui.topViewHierarchy`）。按钮内部 label/image 不作为独立 target，文本汇总到父 target 的 `semanticText`。disabled control 仍 include（`availableActions` 为空）。`maxTargets` 默认 200（上限 512），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本。
+- **关键点**：`UIViewTargetsInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；**`UIViewTargetsInput.isFull` 是 full/minimal 分档决策核心**（纯 Foundation-only 逻辑），`shouldInclude` 保留为 schema 兼容字段、canonical-only 时代已不再参与决策。**full 判定**：UIControl 系（UIButton/UISwitch/UISlider/UISegmentedControl/UITextField/自定义 UIControl）+ UIScrollView 系（UIScrollView/UITableView/UICollectionView/UITextView）+ **挂有 gesture recognizer 的非 control view** + **`explore_cellAncestor != nil` 的 cell 子树 view**（含 `UIListContentView`、cell 内 `UILabel`、cell accessory）——后者让 agent 能直接按 cell 标题文本定位子 label。不满足 full 的节点（普通 UILabel/container/纯展示 view）作为 **minimal 结构节点**输出：`toJSON` 只给 `{path, type}`、强制 `availableActions=[]`、`isMinimal=true`、**不签发指纹**（仅维持层级可见性，让 agent 知道这些节点存在但不可操作）。按钮内部 label/image 不作为独立 full target，文本汇总到父 target 的 `semanticText`。disabled control 仍 include（`availableActions` 为空）。`maxTargets` 默认 200（上限 512，仅计 full 节点），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本；identifier 筛选只作用于 full 输出，不影响 minimal 节点可见性。
 - **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitSnapshotLimits`、`UIKitActionAvailability`、`UIViewHierarchyRect`。
 
 ### `UIViewTargetsCollector.swift` 🍎
-- **职责**：`@MainActor`，递归遍历 view 树采集 canonical 轻量目标摘要并签发 `viewSnapshotID`。
-- **关键点**：`collect(query:) throws -> JSON`（无 context 入口）；`collect(query:context:) -> JSON`（注入入口）。刻意不复用完整层级快照（不读颜色/字体/图片）。identifier 筛选不提前剪枝子树。**`availableActions` 只认目标自身的 control 身份**（不向上借祖先 control）。**不变式**：returned target paths == `viewSnapshotID` 签发的 fingerprint paths == tap/sendAction 可执行 paths（`maxTargets` 截断后只为最终 returned targets 签发指纹）。响应字段是 `viewSnapshotID`（不是 `snapshotID`）。
+- **职责**：`@MainActor`，递归遍历 view 树，**对每个节点判 full/minimal 分档**采集摘要并为 full 节点签发 `viewSnapshotID`。
+- **关键点**：`collect(query:) throws -> JSON`（无 context 入口）；`collect(query:context:) -> JSON`（注入入口）。刻意不复用完整层级快照（不读颜色/字体/图片）。identifier 筛选不提前剪枝子树。**分档**：每个节点先用 `makeCandidate(for:)` + `query.isFull` 判定 full/minimal——full 节点走 `summary(for:)`（完整 `availableActions`/文本/状态）、minimal 节点走 `minimalSummary(for:)`（强制 `isMinimal=true`、`actions=[]`、`toJSON` 只输出 `{path, type}`）。**`availableActions` 只认目标自身的 control 身份**（不向上借祖先 control），唯一例外是 `explore_cellAncestor != nil` 的 cell 子树 view（capability resolver 累加 `.tap`，由 cellSelection adapter 派发 `didSelectRow/didSelectItem`）。**不变式**：full returned target paths == `viewSnapshotID` 签发的 fingerprint paths == tap/sendAction 可执行 paths（minimal 节点不签发、不可操作；对 minimal 节点调 `ui.tap`/`ui.control.sendAction` 返回 `not_actionable`）。响应字段是 `viewSnapshotID`（不是 `snapshotID`）。
 - **依赖**：UIKit、`UIKitContextProvider`、`UIKitFingerprintCollector`、`UIKitSnapshotStore`、`UIKitSnapshotResponse`、`UIKitActionCapabilityResolver`、`UIViewTargetsModels`、`UIKitCommandError`/`UIKitCommandLogging`。
 
 ### `ViewTargetsCommand.swift` 🍎
-- **职责**：`ui.viewTargets` 命令 adapter。
+- **职责**：`ui.inspect` 命令 adapter。
 - **关键点**：薄 adapter——typed input 已由 `AnyCommand` 解析完成；handler `try await collector`。响应含 `targetCount`/`visitedNodeCount`/`truncated`/`viewSnapshotID`。
 - **依赖**：`UIViewTargetsInput`、`UIViewTargetsCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
 
@@ -276,7 +276,7 @@
 - **`UIKeyboardDismissExecutor.swift`** 🍎 — `@MainActor`，first responder 查找与收起。无 responder 时 success noop（dismissed=false）；auto 先 resign 再 endEditing(true)；失败 throw `keyboardDismissFailed`；settle 用 RunLoop。
 - **`UINavigationBackExecutor.swift`** 🍎 — `@MainActor`，dismiss/pop 决策。auto 先 dismiss（presenting!=nil）再 navigationController pop（count>1）；返回**实际生效策略**；不可用 throw `navigationBackUnavailable`。
 - **`UINavigationBarButtonExecutor.swift`** 🍎 — `@MainActor`，触发 `UIBarButtonItem`。由 `UINavigationBarInspector` 摘出 leftItems/rightItems，按 `placement + index` 选定按钮，依 selector 签名派发 target-action（避开 `UIApplication.sendAction` 在单测里不派发无参 action 的问题）；按钮不存在/不匹配/disabled/无可触发动作分别对应明确错误码。navigationBar 按钮走此专用命令，**不并入 `ui.tap`**。
-- **`UIScrollToElementExecutor.swift`** 🍎 — `@MainActor`，容器内 findTarget + `scrollRectToVisible`。用 UIKit 原生（自动最短滚动、保证可见），替代循环小步 scroll 避免污染 snapshot store（评审 M3）；不签 snapshot（滚动改变可见性会让旧 snapshot 整表 stale，后续 `ui.tap`/`ui.wait snapshotChanged` 必须用新 viewSnapshotID——agent 应重新 `ui.viewTargets`，不能靠 `ui.screenshot`，后者不签发 snapshot；见 agent-usage-protocol §5.3）。
+- **`UIScrollToElementExecutor.swift`** 🍎 — `@MainActor`，容器内 findTarget + `scrollRectToVisible`。用 UIKit 原生（自动最短滚动、保证可见），替代循环小步 scroll 避免污染 snapshot store（评审 M3）；不签 snapshot（滚动改变可见性会让旧 snapshot 整表 stale，后续 `ui.tap`/`ui.wait snapshotChanged` 必须用新 viewSnapshotID——agent 应重新 `ui.inspect`，不能靠 `ui.screenshot`，后者不签发 snapshot；见 agent-usage-protocol §5.3）。
 - **`UIAlertInspector.swift`** 🍎 — `@MainActor`，`findAlert`（cast topViewController）+ `summarize`（actions 的 index/title/role）。不依赖 present 转场（评审 M7），logic test 可靠。
 - **`UIAlertRespondExecutor.swift`** 🍎 — `@MainActor`。dryRun=true 返回 alert 信息；dryRun=false 在 Debug 下按 `buttonTitle`/`buttonIndex`/`role` 选按钮，调 `UIAlertController.explore_dismissWithAction(_:)`（系统私有 `_dismissWithAction:`，由系统自动 dismiss + 调 handler，嵌套 present 也由系统协调），返回 `{ performed, dismissed, button }`；未 present 的 alert（典型是 logic test 构造对象）回退 `UIAlertAction.explore_performHandler()` 直接调 handler block（`dismissed=false`）。Release 下 dryRun=false 回退 `alertRespondDisabledInRelease` / `alert_release_unsupported`（私有 API 被 `#if DEBUG` 隔离，补按钮参数也不能启用触发）。早期版本曾判定「`UIAlertAction` handler 无公共触发路径，dryRun=false 必抛 alertButtonRequired」为公共 API 硬边界，现已被 Debug-only 私有入口打破，详见 `docs/superpowers/specs/2026-07-03-alert-respond-dryrun-false-design.md`。
 - **`UIGestureTargetExecutor.swift`** 🍎 — `@MainActor`。`ui.tap` 手势 target-action 显式 adapter（realTouch 合成触摸被 spike 否决后的降级方案）：遍历 `view.gestureRecognizers`，对每个调 `UIGestureRecognizer.explore_targetActionPairs()`（runtime 读私有 ivar），按 selector 签名派发（复用 `UINavigationBarButtonExecutor.invoke` 的 0/1/2 参适配，`method_getNumberOfArguments` 读实参个数），sender 传手势识别器本身。多手势/多 target **全触发**，返回 `gestures` 摘要列表（gestureType/targetType/action）。调用 `#if DEBUG` runtime 入口的隔离边界参照 `UIAlertRespondExecutor`（Release 返回 nil 让 executeTap fallthrough 到 `unsupported_target`）。由 `UIKitActionExecutor.executeTap` 在 default route nil + **非 UIControl** 时调用（排除 UIControl 是为避免误触发 UISlider 等内部手势）；`availableActions` 不声明 tap（agent 据 `hasGestureRecognizers` 字段推断可试 tap）。详见 `docs/superpowers/reviews/2026-07-04-ui-tap-gesture-adapter.md`。**cell selection adapter（`executeCellSelection(on:)`）** 同居此文件：从入参 view 向上找 `UITableViewCell`/`UICollectionViewCell` → `UITableView`/`UICollectionView`（`explore_cellAncestor` / `explore_containerViewAncestor`，见 `UIKitInternalUtils.swift`）；DEBUG 私有路径只**观察** `selectGestureHandler:` 手势不 invoke（spike 已证 `perform(:with:)` 不真正触发 `_selectRowAtIndexPath:`，依赖真实触摸事件流，见 spec §4.2）；公有 API 路径 `indexPath(for:) + delegate.didSelectRow/didSelectItem` 升为主路径（`route = cell.select.public`，响应含 `indexPath` 摘要）；`indexPath(for:)` 返回 nil 时返回 `activated=false, route=cell.select.indexPath-nil`；不在 cell 子树返回 `nil` 让 executeTap 走原 gesture adapter。由 `UIKitActionExecutor.executeTap` 在 default route nil 时**先于** gesture adapter 调用（cell 子 view 的 `_longPressGestureRecognized:` 是 prepareForReuse 误触，必须先 cellSelection）。跨边界 `Sendable` 摘要：`UICellSelectionAttempt`（activated/route/viewType/containerViewType/cellType/indexPathSummary）+ `IndexPathSummary`（section/item）。详见 `docs/superpowers/specs/2026-07-05-uitableviewcell-tap-selection-design.md`。
@@ -287,7 +287,7 @@
 
 ### `Support/Navigation/`
 
-- **`UINavigationBarInspector.swift`** 🍎 — `@MainActor`，读顶部控制器 `navigationItem` 的 leftItems/rightItems 摘要（每个按钮含 `placement`、`index`、`title`、`accessibilityIdentifier`、`isEnabled`、`availableActions`）。`ui.viewTargets` / `ui.topViewHierarchy` 响应均追加 `navigationBar` 区块；`UINavigationBarButtonExecutor` 也复用本类型定位按钮。不依赖 UIKit 私有 view。
+- **`UINavigationBarInspector.swift`** 🍎 — `@MainActor`，读顶部控制器 `navigationItem` 的 leftItems/rightItems 摘要（每个按钮含 `placement`、`index`、`title`、`accessibilityIdentifier`、`isEnabled`、`availableActions`）。`ui.inspect` / `ui.topViewHierarchy` 响应均追加 `navigationBar` 区块；`UINavigationBarButtonExecutor` 也复用本类型定位按钮。不依赖 UIKit 私有 view。
 
 ---
 
@@ -299,6 +299,6 @@
 | throw 化 + 文件夹重组 | `docs/superpowers/specs/2026-06-24-uikit-throw-and-folder-reorg-design.md` |
 | typed command input 与 inputSchema 重构 | `docs/superpowers/specs/2026-06-25-typed-command-input-schema-design.md` |
 | `ui.topViewHierarchy` 设计 | `docs/superpowers/specs/2026-06-22-uikit-view-hierarchy-design.md` |
-| `ui.viewTargets` 设计 | `docs/superpowers/specs/2026-06-23-uikit-view-targets-design.md` |
+| `ui.inspect` 设计 | `docs/superpowers/specs/2026-06-23-uikit-view-targets-design.md` |
 | view targets 加固（identifier 不截断、能力一致性） | `docs/superpowers/specs/2026-06-24-uikit-view-targets-hardening-design.md` |
 | core 协议总设计 | `docs/superpowers/specs/2026-06-21-ios-explore-server-design.md` |

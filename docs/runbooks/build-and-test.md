@@ -60,8 +60,8 @@ App 启动后默认「○ 已停止」，点「启动 Server」开始监听 `:38
 curl -X POST http://localhost:38321/ -d '{"action":"greet","data":{"name":"Claude"}}'
 curl -X POST http://localhost:38321/ -d '{"action":"device"}'
 curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":{"maxDepth":2}}'
-curl -X POST http://localhost:38321/ -d '{"action":"ui.viewTargets"}'
-# 以下两个动作必填 viewSnapshotID（snap-1 只是占位，实际取上一步 ui.viewTargets 返回的 data.viewSnapshotID）
+curl -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}'
+# 以下两个动作必填 viewSnapshotID（snap-1 只是占位，实际取上一步 ui.inspect 返回的 data.viewSnapshotID）
 curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data":{"accessibilityIdentifier":"mine.header.avatar","viewSnapshotID":"snap-1","event":"touchUpInside"}}'
 curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"accessibilityIdentifier":"mine.header.avatar","viewSnapshotID":"snap-1"}}'
 curl -X POST http://localhost:38321/ -d '{"action":"app.logs.mark"}'

@@ -29,7 +29,7 @@
 | `echo` | 任意对象 | 原样回显入参 `data` |
 | `info` | 忽略 | `{ "system":..., "app":..., "bundle":... }`（来自 `ProcessInfo`/`Bundle`） |
 | `ui.topViewHierarchy` | 可选筛选参数 | 当前顶部控制器 view 层级或匹配节点列表（UIKit 平台） |
-| `ui.viewTargets` | 可选筛选参数 | 返回 canonical targets、可用动作与 `viewSnapshotID`（UIKit 平台） |
+| `ui.inspect` | 可选筛选参数 | 返回 canonical targets、可用动作与 `viewSnapshotID`（UIKit 平台） |
 | `ui.control.sendAction` | `accessibilityIdentifier` 或 `path` + `viewSnapshotID` + `event` | 向指定 UIControl 发送显式 target-action 事件（UIKit 平台） |
 | `ui.tap` | `accessibilityIdentifier` 或 `path` + `viewSnapshotID` | 对 canonical target 执行默认激活动作（UIKit 平台） |
 | `app.logs.mark` | 忽略 | 当前进程日志 cursor 与 source 捕获状态（Diagnostics 显式注册后） |
@@ -75,8 +75,8 @@ curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"afte
 定位参数按优先级解析：**`accessibilityIdentifier` 精确 → `path` 只读 → 按命令语义使用 `viewSnapshotID` 陈旧防护**。
 
 - `accessibilityIdentifier`（优先）：按业务层 identifier **精确匹配，不截断、不做 prefix 匹配**。匹配多个 view 返回 `invalid_data`，避免误触发。
-- `path`：来自 `ui.viewTargets` / `ui.topViewHierarchy` 的只读路径（`root/0/2`），仅描述当前 view 树内位置，不写回业务 UI。动作授权以 `ui.viewTargets` 为准。
-- `viewSnapshotID`：只由 `ui.viewTargets` 签发，代表本次返回 canonical targets 的结构指纹表，不是截图 ID。`ui.tap` / `ui.control.sendAction` 必填，且 identifier/path 都校验 freshness；`ui.input` / `ui.scroll` 仅在 `path + viewSnapshotID` 组合下做可选陈旧校验；`ui.wait(snapshotChanged)` 必填；`ui.screenshot` / `ui.topViewHierarchy` 不签发。页面已变动、snapshot 过期/淘汰或 path 未被签发时返回 `stale_locator`，固定提示调用方重新 `ui.viewTargets`。
+- `path`：来自 `ui.inspect` / `ui.topViewHierarchy` 的只读路径（`root/0/2`），仅描述当前 view 树内位置，不写回业务 UI。动作授权以 `ui.inspect` 为准。
+- `viewSnapshotID`：只由 `ui.inspect` 签发，代表本次返回 canonical targets 的结构指纹表，不是截图 ID。`ui.tap` / `ui.control.sendAction` 必填，且 identifier/path 都校验 freshness；`ui.input` / `ui.scroll` 仅在 `path + viewSnapshotID` 组合下做可选陈旧校验；`ui.wait(snapshotChanged)` 必填；`ui.screenshot` / `ui.topViewHierarchy` 不签发。页面已变动、snapshot 过期/淘汰或 path 未被签发时返回 `stale_locator`，固定提示调用方重新 `ui.inspect`。
 
 ### `ui.topViewHierarchy`
 
@@ -96,17 +96,17 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":
 - `accessibilityIdentifier`: 按 identifier 精确筛选。
 - `accessibilityIdentifierPrefix`: 按 identifier 前缀筛选。
 
-无筛选时响应 `data.root` 是完整树；带 identifier 筛选时响应 `data.matches` 是匹配节点列表。每个节点包含 `path`、`type`、accessibility 字段、`frame`、`bounds`、`state`、`text`、`appearance`、`control`、`image`、`scroll` 和 `subviews`。`ui.topViewHierarchy` 不签发 `viewSnapshotID`；动作前需要调用 `ui.viewTargets` 获取可执行 canonical target 与 freshness 标识。
+无筛选时响应 `data.root` 是完整树；带 identifier 筛选时响应 `data.matches` 是匹配节点列表。每个节点包含 `path`、`type`、accessibility 字段、`frame`、`bounds`、`state`、`text`、`appearance`、`control`、`image`、`scroll` 和 `subviews`。`ui.topViewHierarchy` 不签发 `viewSnapshotID`；动作前需要调用 `ui.inspect` 获取可执行 canonical target 与 freshness 标识。
 
 事件下发前可先用轻量目标发现命令获取扁平 targets 列表：
 
 ```bash
 curl -X POST http://localhost:38321/ \
   -H 'Content-Type: application/json' \
-  -d '{"action":"ui.viewTargets","data":{"includeStaticText":true,"textLimit":80}}'
+  -d '{"action":"ui.inspect","data":{"includeStaticText":true,"textLimit":80}}'
 ```
 
-`ui.viewTargets` 可选参数：`includeHidden`/`includeDisabled`/`includeStaticText`/`includeContainers`（schema 兼容；canonical-only 规则下普通 label/container/gesture view 不进 targets）、`maxDepth`、`accessibilityIdentifier`/`accessibilityIdentifierPrefix`（筛选）、`textLimit`（展示文本截断，默认 80，上限 200）、`maxTargets`（最多返回目标数，默认 `200`，范围 `1...512`；达到上限时响应 `truncated=true`，应缩小筛选范围后重新查询）。每个 target 含 `path`、`role`、`availableActions`、短文本与基础交互状态；disabled target 仍可观察，但 `availableActions` 为空。响应含 `viewSnapshotID`，签发集合与最终返回 targets 一致。
+`ui.inspect` 可选参数：`includeHidden`/`includeDisabled`/`includeStaticText`/`includeContainers`（schema 兼容字段，canonical-only 时代已不参与决策，保留只为不破坏旧调用方）、`maxDepth`、`accessibilityIdentifier`/`accessibilityIdentifierPrefix`（筛选，**只作用于 full 节点**，不影响 minimal 节点可见性）、`textLimit`（展示文本截断，默认 80，上限 200）、`maxTargets`（最多返回 full 目标数，默认 `200`，范围 `1...512`；达到上限时响应 `truncated=true`，应缩小筛选范围后重新查询）。响应里每个节点带 `isFull`/`isMinimal` 分档：**full 节点**含完整 `path`、`role`、`availableActions`、短文本与基础交互状态并进入 `viewSnapshotID` 签发集合（可被 `ui.tap`/`ui.control.sendAction` 直接操作）；**minimal 节点**只输出 `{path, type}`、强制 `availableActions=[]`、不签发指纹（仅维持层级可见性，让 agent 看见 cell 内 `UILabel` 等子节点位置）。对 minimal 节点调 `ui.tap`/`ui.control.sendAction` 返回业务码 `not_actionable`。disabled target 仍可观察，但 `availableActions` 为空。cell 内 `UILabel`/子 view 通过 `cellAncestor` 自动进 full，可直接按标题文本定位。响应含 `viewSnapshotID`，签发集合与最终返回的 full targets 一致。
 
 ### `ui.control.sendAction`
 
@@ -117,7 +117,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data
 curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data":{"path":"root/0/2/1","viewSnapshotID":"snap-1","event":"valueChanged"}}'
 ```
 
-定位参数与上文「定位语义」一致：`accessibilityIdentifier`（精确，不截断，匹配多个返回 `invalid_data`）或 `path`，并且必须携带 `ui.viewTargets` 返回的 `viewSnapshotID` 做陈旧防护。
+定位参数与上文「定位语义」一致：`accessibilityIdentifier`（精确，不截断，匹配多个返回 `invalid_data`）或 `path`，并且必须携带 `ui.inspect` 返回的 `viewSnapshotID` 做陈旧防护。
 
 事件名：
 
@@ -132,7 +132,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data
 
 ### `ui.tap`
 
-对 `ui.viewTargets` 签发的 canonical target 执行默认激活动作。它不是触摸注入，不接受坐标，不做 `window.hitTest`，也不找祖先 `UIControl` fallback：
+对 `ui.inspect` 签发的 canonical target 执行默认激活动作。它不是触摸注入，不接受坐标，不做 `window.hitTest`，也不找祖先 `UIControl` fallback：
 
 ```bash
 curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"accessibilityIdentifier":"mine.header.avatar","viewSnapshotID":"snap-1"}}'
@@ -142,7 +142,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"path":"root
 定位方式二选一，且必须携带 `viewSnapshotID`：
 
 - `accessibilityIdentifier`: 按业务 identifier **精确**定位 view，不截断。
-- `path`: 按 `ui.viewTargets` 返回的只读路径定位 view。
+- `path`: 按 `ui.inspect` 返回的只读路径定位 view。
 
 默认激活路由：
 
@@ -188,7 +188,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 curl -X POST http://localhost:38321/ -d '{"action":"info"}'
 curl -X POST http://localhost:38321/ -d '{"action":"greet","data":{"name":"Claude"}}'
 curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":{"maxDepth":2}}'
-curl -X POST http://localhost:38321/ -d '{"action":"ui.viewTargets"}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}'
 curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"accessibilityIdentifier":"mine.header.avatar","viewSnapshotID":"snap-1"}}'
 curl -X POST http://localhost:38321/ -d '{"action":"ui.wait","data":{"mode":"snapshotChanged","viewSnapshotID":"snap-1","timeoutMs":3000}}'
 curl -X POST http://localhost:38321/ -d '{"action":"ui.waitAny","data":{"timeoutMs":8000,"conditions":[{"id":"home","mode":"targetExists","accessibilityIdentifier":"home.root"},{"id":"err","mode":"textExists","text":"密码错误"}]}}'

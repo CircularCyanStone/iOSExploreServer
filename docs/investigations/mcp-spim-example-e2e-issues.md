@@ -217,6 +217,172 @@
 
 **已修复**：`f67c179` — UIKitFilterFields.accessibilityIdentifier 和 identifierPrefix 的 description 增加完整示例 + 精确/前缀对照说明。
 
+### P9. `ui.viewTargets` 不收集 cell 内 UILabel，导致按文本定位 cell 失效
+
+> **状态：✅ 已修复**（2026-07-09，commit `8f650b1` + `53d2eab`）。方案：`ui.inspect`（`ui.viewTargets` 改名后）重设计为**全节点输出 + full/minimal 两档**——`8f650b1` 让 collector 对每个节点判 full/minimal 分档，cell 内 `UILabel`/子 view 经 `53d2eab` 引入的 `explore_cellAncestor` 标记自动进 **full**（capability resolver 累加 `.tap`，由 cellSelection adapter 派发 `didSelectRow/didSelectItem`），agent 可直接按 cell 标题文本定位子 label path 并 tap，无需 `ui.topViewHierarchy` 二次解析；纯展示的普通 UILabel 仍以 minimal 节点（只 `{path,type}`、`availableActions=[]`、不签发指纹）出现，对它 tap 返回 `not_actionable`。下方复现/影响/源码定位/建议为**历史记录保留原貌**（`ui.viewTargets` 是当时事实），不回改。
+
+**严重度**：高（agent 无法通过"滚动测试"等 cell 标题文本定位目标）
+
+**复现**（2026-04-28 端到端验证点击"滚动测试" cell）：
+- 在 SPMExample 主页调 `ui_viewTargets {"includeStaticText": true, "includeContainers": true, "maxDepth": 8}`
+- 返回 27 个目标，主菜单 `root/5` 下 4 个 `UIListContentView` cell（path `root/5/0/1` ~ `root/5/3/1`）的 `text` / `title` / `accessibilityLabel` / `semanticText` **全部为 null**
+- 仅 `_UITableCellAccessoryButton`（chevron）带 `accessibilityLabel: "chevron"`，但不区分 cell
+- 同步调 `ui_topViewHierarchy {"detailLevel":"full"}` 可见每个 cell 内 `UIListContentView` 有两个子 `UILabel`，主标题分别是 `"📜  滚动测试"` / `"📋  日志诊断测试"` / `"🎮  控件测试"` / `"🔔  弹窗测试"`——**这些子 UILabel 没有被 viewTargets flatten 进 targets**
+
+**影响**：
+- agent 拿到 viewTargets 无法用"滚动测试"文本反查目标 path
+- `ui.scrollToElement {"match":"text","value":"滚动测试"}` 也因此找不到目标（与 P1 同源）——cell 标题文本不在 viewTargets，也不在 findTarget 的搜索集里
+- 整个 agent 探索流程被迫降级为"按 indexPath 顺序猜"或"用 hierarchy 二次解析"
+
+**源码与实测定位**（2026-04-28 二次排查）：
+
+入口流程：`UIViewTargetsCollector.collect` 递归遍历 subviews，对每个 view 调 `shouldInclude(view:query:)` 决定是否收入。根因有两层：
+
+1. **`shouldInclude` 不消费 `includeStaticText`**（`Sources/iOSExploreUIKit/Commands/ViewTargets/UIViewTargetsModels.swift:137-145`）：
+
+   ```swift
+   public func shouldInclude(candidate: UIViewTargetCandidate) -> Bool {
+       if !includeHidden, candidate.isHidden { return false }
+       if candidate.isControl { return true }
+       if candidate.isScrollView { return true }
+       if candidate.hasGestureRecognizers { return true }
+       return false   // ← includeStaticText / includeContainers / hasStaticText / hasSubviews 全没读
+   }
+   ```
+   注释（L129-131）明确写："`includeStaticText`/`includeContainers`/`includeDisabled` 字段保留 schema 兼容，但 canonical-only 规则下不再让静态/容器 view 进入 targets"。即字段被故意降级为死字段。
+
+2. **`UIListContentView` 自身有 gesture → 收入 targets**；**子 UILabel 无 gesture/control/scrollView → 被 canonical 过滤掉**
+
+   - `UIListContentView` 的 viewTargets 输出：`hasGestureRecognizers: true`, `availableActions: ["tap"]`，被 `hasGestureRecognizers` 分支放行
+   - cell 内主标题 `UILabel`（`📜  滚动测试`、`📋 日志诊断测试` 等）：`isControl=false`, `isScrollView=false`, `hasGestureRecognizers=false`, `hasStaticText=true`——但 `shouldInclude` 不读 `hasStaticText`，落入 `return false`
+   - 实测：`includeStaticText=false` vs `=true` 调用 viewTargets，返回都是 27 个目标，path 差集为空，root/5 子树都只有 `UIListContentView` + `_UITableCellAccessoryButton`，没有 `UILabel`
+
+**根因总结**：cell 标题文本在层级里的 `UILabel` 上，但 `shouldInclude` 的 canonical-only 策略 L144 的 `return false` 把所有"纯文本节点"过滤掉了，且 `includeStaticText` 被故意降级为 schema 兼容字段不参与决策。`UIListContentView` 自己 `text=null, accessibilityLabel=null`，因为 `textualValue(from:)`（Collector L333-336）只对 `UILabel` 取 `.text`，UIListContentView 不是 UILabel 返回 nil；`semanticText`（L263-301）按 identifier→label→value→buttonTitle→**labelText**（UILabel）→placeholder→textViewText 顺序找，UIListContentView 同样落空。
+
+**与 collector 设计意图的冲突**（来自端到端测试的真实反馈）：
+
+collector 文档（L11-15）声明的不变式："`ui.viewTargets` 返回的 canonical target path 集合 **等于** viewSnapshotID 签发的 path 集合，**等于** `ui.tap` / `ui.control.sendAction` / `ui.input` 允许操作的 path 集合"——意图是让 viewTargets 成为 agent **观察 + 操作的统一入口**。
+
+但 L126-128 又写："普通 `UILabel`、container、纯展示 view 不再进入 targets（其观察职责在 `ui.topViewHierarchy`）"。
+
+这两条在 table/collection 主导的 iOS app 里直接打架：
+- agent 想点的目标（cell）→ cell 自身没标识文本（`text`/`accessibilityLabel` 全 null）
+- cell 的"名字"（"滚动测试"等）→ 落在子 `UILabel` 上 → 该 UILabel 被 canonical 策略踢出 viewTargets
+- 结果：viewTargets 看到的 4 个 cell 全是"无名目标"，agent 无法按文本反查 path
+
+**真实端到端闭环验证（2026-04-28）**：
+- 任务：点击主页 cell "滚动测试" → push 到 ScrollTestViewController
+- 用 viewTargets 流程：拿到 4 个 `UIListContentView` 全 null 文本 → **无法定位**
+- 退路：调 `ui.topViewHierarchy`（detailLevel=full）→ 肉眼解析层级 → 在 `root/5/0/1/0` 的 UILabel 上读到 `accessibilityLabel="📜  滚动测试"` → 再人工对应到 viewTargets 的 `root/5/0/1` path → 才能调 `ui_tap`
+- 若没有 topViewHierarchy 兜底，viewTargets 流程完全无法完成 agent 任务
+
+这证明了 canonical-only 策略在"以 cell 为主要交互单元"的真实 App 里**确实存在功能性缺陷**，不是文档表述问题。
+
+**建议**：
+
+放开的原则——**不是让纯文本节点变可点**（label 不可点，让它进 targets 会给 agent 错误信号），**而是让 cell 容器自身携带内容文本**，使 viewTargets 重新成为"按文本找 cell"的有效入口：
+
+- 方案 A（最小改动）：`shouldInclude` 在 L143 后补 `if includeStaticText, candidate.hasStaticText { return true }`，让 `includeStaticText=true` 时纯文本 label 进入 targets
+  - 优点：兼容老 schema、改动小
+  - 缺点：① label 不能点，作为 target 给 agent 错误的"可操作"信号 ② targetCount 会膨胀 ③ cell 文本要二次反查父子关系才能定位到容器
+  - 不推荐独立使用
+
+- 方案 B（推荐）：在 `summary(for:)` 给 `UIListContentView` / `UITableViewCell` / `UICollectionViewCell` 增加 `cellTitle` / `innerText` 字段，自动从 `contentView` 子树第一个非空 `UILabel.text` 提取并提升到容器 summary
+  - 优点：① viewTargets 不增加伪 target ② 每个 cell 自带名字，agent 按 `text` 反查直接拿到 cell path ③ 点击仍走 cell 容器（`hasGestureRecognizers` 那条不变）④ 与 collector "agent 拿到 target 就能直接操作"的设计意图一致
+  - 改动：`UIViewTargetsCollector.summary(for:)` 增加对 cell 系 view 的文本回填逻辑，`UIViewTargetSummary` 增 `cellTitle: String?` 字段
+  - 推荐路径
+
+- 方案 C（清理）：把 `includeStaticText` / `includeContainers` 从 schema 移除（description 明确说已不生效），避免继续误导 agent
+  - 与方案 B 配套上线，独立做没意义
+
+**推荐组合**：方案 B + 方案 C。**不应保留当前死字段状态**——schema 声明行为 ≠ 实际行为会持续误导 agent 探索。
+
+**已修复**（见本节顶部状态行；最终实现并非方案 A/B/C 之一，而是 full/minimal 分档 + cellAncestor，等价覆盖方案 B 的"agent 按文本找 cell"目标）
+
+**建议**（历史保留）：
+- viewTargets 在遇到 `UIListContentView` / `_UITableViewCellContentView` 时自动 flatten 其子 `UILabel`，把它们的 `text` / `accessibilityLabel` 提升到 cell 的 `semanticText` 字段（或在 cell 上增加 `innerText` / `cellTitle` 字段）
+- 或在 `includeStaticText: true` 时递归收集 cell 内所有 static text，作为独立 target 返回（path 形如 `root/5/0/1/0`），让 agent 可直接 tap 该子 label
+
+**已修复**（见本节顶部状态行）
+
+### P10. `ui_tap` 强制要求 viewSnapshotID，不接受纯 path 点击
+
+**严重度**：中（脚本不友好，每次点击前必须先 observe）
+
+**复现**：
+- 已知 path `root/5/0/1` 是稳定的 cell 路径，调用 `ui_tap {"path":"root/5/0/1"}`（不带 viewSnapshotID）
+- 返回：
+  ```json
+  {
+    "source": "ios_envelope",
+    "message": "viewSnapshotID is required",
+    "code": "invalid_data",
+    "action": "ui.tap"
+  }
+  ```
+- 加上 `viewSnapshotID: "snap-11"`（最近一次 viewTargets 拿到的）后点击成功
+
+**矛盾点**：
+- path 在没有 navigation / layout 变化时本就是稳定的（同一 cell 的 `root/5/0/1` 不会变）
+- 但 tap 仍强制要求 snapshotID，导致调用链必须 `viewTargets → tap → viewTargets → tap → ...`
+- P3 已记录"snapshot 陈旧判定严格"——这里更进一步，连"无 snapshot 直接点"都不允许
+- 对比 `ui.input` 的 P4：`ui.input` 传 viewSnapshotID 时**反而**要求 path，与 tap 行为完全相反
+
+**建议**：
+- 允许 `ui_tap` 在仅传 `path`（不传 snapshotID）时跳过陈旧校验
+- 或提供 `force: true` / `skipSnapshotCheck: true`，明确承担风险
+- 或把 snapshotID 校验降级为 soft warning，返回中加 `snapshotCheck: "skipped"` 字段
+
+**未修复**
+
+### P11. viewTargets path 索引与 indexPath 逆序，agent 易误判
+
+**严重度**：低（探索脚本可绕开，但很容易踩错）
+
+**复现**：
+- 主页 menuTableView（`root/5`）自上而下显示 cell：`📜 滚动测试`（item=0 视觉位置）、`📋 日志诊断测试`、`🎮 控件测试`、`🔔 弹窗测试`
+- 但 viewTargets 返回的 path 与 indexPath 配对为：
+
+  | viewTargets path | indexPath.item |
+  |---|---|
+  | `root/5/0/1` | **3** |
+  | `root/5/1/1` | 2 |
+  | `root/5/2/1` | 1 |
+  | `root/5/3/1` | 0 |
+
+- 即：path 第二段是 cell 在 `subviews` 数组里的"反向栈序"索引（subviews[0] 是最后添加的 cell），而 indexPath.item 是顺向 row（0 是顶部）
+- `topViewHierarchy` 节点 `root/5/0` 经核对实际是"滚动测试" cell（即 indexPath.item=3 的那个）—— 两种索引方向相反
+
+**推断**：
+- viewTargets 的 path 直接采用 UIView `subviews` 数组下标（UIKit 把新 cell insert 到 subviews[0]），与 UIKit `indexPath`（用户语义：0 是顶部）方向相反
+- agent 若按"path 末段递增 = 视觉自上而下"直觉去 navigate，会点到错误的 cell
+
+**建议**：
+- 在 viewTargets 返回的每个 cell target 上额外补 `visualIndex` / `row` 字段，明确"自上而下的视觉行"
+- 或在 description 中明确"path 第二段是 subviews 数组下标，与 indexPath 方向相反"
+- 或 collector 把 cells 排序成顺向 path（path 末段等于 indexPath.item），代价是其它非 cell 容器的 path 也要统一规范
+
+**未修复**
+
+### P12. 主菜单仅收集 4 个 cell，但 `root/5` 实际 cell 数更多
+
+**严重度**：低（当前 4 cell 已覆盖 SPMExample 全部菜单，但若 menu 扩充会被截断）
+
+**复现**：
+- viewTargets 在 `root/5` 下返回 4 个 `UIListContentView`（item 0-3）
+- `topViewHierarchy` 中 `root/5` 的 `subviews` 也只有 4 个 `UITableViewCell` + 2 个 scroll indicator
+- 即当前 menu 实际就 4 项 → viewTargets 收集完整
+- 但 viewTargets 同时返回 `truncated: false`，说明没有截断；如果未来菜单扩到 10 项，需重新验证是否还在 maxTargets=200 / maxDepth=8 限制内被全收
+
+**推断**：
+- 当前不会触发问题；但 viewTargets 在 cell 总数较多时是否会截断 menu cell，未在本次测试覆盖
+
+**建议**：
+- 补充一个 menu 项超过 maxTargets 的回归测试，验证 viewTargets 在 cell 数 > 200 时的行为
+- 或在 viewTargets 返回中明确 `visibleCellCount` / `totalCellCount` 字段，让 agent 知道是否有未收集的 cell
+
+**未修复**
+
 ## 修复概要
 
 | 编号 | 严重度 | 修复 | Commit | 验证方式 |
@@ -229,6 +395,10 @@
 | P6 | 中（可靠性） | wait 提升 + 新增字段 | `0203351` | alert respond 8 个测试通过 |
 | P7 | 低（文档） | description 提示 | `9178c21` | 编译通过 |
 | P8 | 低（文档） | 示例说明 | `f67c179` | 编译通过 |
+| P9 | 高（功能） | 已修复 | `8f650b1`+`53d2eab` | ui.inspect 全节点+full/minimal 两档；cell 内 UILabel 经 cellAncestor 进 full 可直接 tap，纯展示 UILabel 以 minimal 出现、tap 返回 `not_actionable` |
+| P10 | 中（体验） | 待修复 | — | 端到端：`ui_tap {"path":...}` 不带 snapshotID 报 invalid_data |
+| P11 | 低（易误用） | 待修复 | — | 端到端：path `root/5/0/1` 对应 indexPath item=3，方向相反 |
+| P12 | 低（边界） | 待验证 | — | 当前 menu=4 项未触发；扩 menu 后需回归 |
 
 ## 额外观察（非问题，但值得记录）
 
@@ -273,8 +443,8 @@
 
 ## 下一步建议
 
-1. **优先修 P2**（崩溃）：直接定位 `UIViewHierarchyCollector.swift:117` 的 implicitly unwrapped optional
-2. **修 P1**：让 `ui.scrollToElement` 接受 scrollView 容器 path，或新增 `containerPath`
-3. **修 P3**：放宽 snapshot 陈旧判定，加 `force: true` 或区分结构/内容变化
+1. **优先修 P9**（文本定位不可用）：让 viewTargets 在遇到 `UIListContentView` 时 flattern 子 `UILabel` 的文本到 cell 的 `semanticText` 或新增 `cellTitle` 字段
+2. **修 P10**（snapshotID 强制）：允许 `ui_tap {"path":...}` 不带 snapshotID，跳过陈旧校验（加 `skipSnapshotCheck: true` 显式承担风险）
+3. **修 P11**（path 倒序）：在 viewTargets 中新增 `visualIndex` / `row` 字段，明确视觉行
 4. **修 P6**：增加 dismiss 后的 RunLoop spin 等待，覆盖嵌套 alert 场景（与 T2-AlertDismiss commit 关联）
-5. P4 / P5 / P7 / P8：均为文档/语义清晰度问题，可在下个文档迭代中补全
+5. P4 / P5 / P7 / P8 / P12：均为文档/语义清晰度问题，可在下个文档迭代中补全

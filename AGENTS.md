@@ -124,7 +124,8 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
   - `Support/Parsing/` — UIKit 命令复用的 Foundation-only 字段声明与定位解析入口：`UIKitCommandFields`（筛选字段/定位字段）、`UIKitLocatorInput`（identifier/path 二选一与 path 文法桥接）；单字段取值统一走 core `CommandInputDecoder`，解析错误统一为 `CommandInputParseError`，由 `AnyCommand` 转 `invalid_data`。
   - `UIKitCommandLogging.swift` — 日志入口，复用 core `ExploreLogging.emitExtension`，category 统一 `command`。
   - `UIKitCommandError.swift` — UIKit 错误工厂（conform `Error`）。
-  - `Commands/TopViewHierarchy/`、`Commands/ViewTargets/`、`Commands/Tap/`、`Commands/ControlAction/`、`Commands/Screenshot/`、`Commands/Input/`、`Commands/Scroll/`、`Commands/Keyboard/`、`Commands/Navigation/`、`Commands/Wait/`、`Commands/ScrollToElement/`、`Commands/Alert/` — 14 个 `ui.*` 命令（adapter + typed query 模型；查询命令含 collector）。`Commands/Navigation/` 现含 `ui.navigation.back` 与 `ui.navigation.tapBarButton`；后者由 `Support/Navigation/UINavigationBarInspector.swift`（读 navigationItem 摘要）+ `Support/Action/UINavigationBarButtonExecutor.swift`（按签名派发 target-action）支撑，`ui.viewTargets` / `ui.topViewHierarchy` 响应均追加 `navigationBar` 区块。
+  - `Commands/TopViewHierarchy/`、`Commands/ViewTargets/`、`Commands/Tap/`、`Commands/ControlAction/`、`Commands/Screenshot/`、`Commands/Input/`、`Commands/Scroll/`、`Commands/Keyboard/`、`Commands/Navigation/`、`Commands/Wait/`、`Commands/ScrollToElement/`、`Commands/Alert/` — 14 个 `ui.*` 命令（adapter + typed query 模型；查询命令含 collector）。`Commands/Navigation/` 现含 `ui.navigation.back` 与 `ui.navigation.tapBarButton`；后者由 `Support/Navigation/UINavigationBarInspector.swift`（读 navigationItem 摘要）+ `Support/Action/UINavigationBarButtonExecutor.swift`（按签名派发 target-action）支撑，`ui.inspect` / `ui.topViewHierarchy` 响应均追加 `navigationBar` 区块。
+  - `ui.inspect`（`Commands/ViewTargets/`）重设计为**全节点输出 + full/minimal 两档**：每个被采集的节点带 `isFull` 标记——full 节点含完整 `availableActions`/文本/状态并**进入 `viewSnapshotID` 签发集合**（可被 `ui.tap`/`ui.control.sendAction` 直接操作）；minimal 节点只给 `path`+`type`+必要定位字段、强制 `availableActions=[]`、**不签发指纹**（仅用于让 agent 看见 cell 内 `UILabel` 等子节点位置）。对 minimal 节点调 `ui.tap`/`ui.control.sendAction` 返回业务码 `not_actionable`（`invalid_data`，固定提示该节点不可操作）。cell 内 `UILabel`/子 view 通过 `cellAncestor` 自动进 full（capability resolver 在 `isInteractable` 通过后追加 `explore_cellAncestor != nil` 分支累加 `.tap`），agent 可直接按 cell 标题文本定位并 tap 子 label path，无需 `ui.topViewHierarchy` 二次解析；cell 容器本身仍走 `hasGestureRecognizers`/`didSelectRow` adapter 路径，不因 minimal 改变可点性。
 - `Sources/iOSExploreDiagnostics/` — 进程日志扩展模块（依赖 core，不依赖 UIKit）。宿主显式调用 `server.registerDiagnosticsCommands()` 后注册 `app.logs.mark` / `app.logs.read`，安装 `ExploreLogging` observer，把 iOSExplore 内部日志写入有界 `AppLogStore`；宿主可用 `ExploreAppLog.emit` 主动写入 bridge 业务日志。stdout/stderr/NSLog/os_log capture 已接入但默认关闭，由 `DiagnosticsConfiguration.captureStdout` / `captureStderr` / `captureNSLog` / `captureOSLog` 控制；打开后 stdout 为 `source=stdout level=info`，stderr 为 `source=stderr level=error`，NSLog 为 `source=nslog`，`os_log` 与 Swift `Logger` 通过当前进程 `OSLogStore` 进入 `source=oslog`。停止或 `resetForTesting()` 时会 flush stdout/stderr/NSLog 相关无换行尾部并恢复 fd；`OSLogStore` 不可用时 `capture.oslog` 返回 `unavailable`，避免误解为“没有发生日志”。
 - `iOSExploreServer/iOSExploreServer.xcodeproj/` — framework 工程，三个 target：`iOSExploreServer.framework`（`PBXFileSystemSynchronizedRootGroup` 指向 `../Sources/iOSExploreServer/`）、`iOSExploreUIKit.framework`（指向 `../Sources/iOSExploreUIKit/`，链接并依赖 core framework）与 `iOSExploreDiagnostics.framework`（指向 `../Sources/iOSExploreDiagnostics/`，链接并依赖 core framework）；测试 target 同时链接三个 framework。Debug/Release 均 `SWIFT_VERSION=5.0`、`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`（Swift 6.2 工具链要求，详见 runbooks）。
 - `Examples/SPMExample/` — UIKit 测试 App，本地 SPM 依赖同时选 core、`iOSExploreUIKit` 与 `iOSExploreDiagnostics` product；`ViewController` 显式 `server.registerUIKitCommands()` 开放 UIKit 命令，显式 `server.registerDiagnosticsCommands()` 开放 `app.logs.mark/read`；启动/停止按钮 + 请求日志面板 + `greet`/`device` 自定义命令演示，`debug.emitAppLog` 用于真实 curl 验证 bridge 日志，`debug.emitStdout` / `debug.emitStderr` / `debug.emitNSLog` / `debug.emitOSLog` / `debug.emitLogger` 用于验证进程日志读取。示例 App 在 Debug 构建下通过 `ViewController.exampleDiagnosticsConfiguration()` 直接打开 stdout/stderr/NSLog/os_log 四个 capture（Release 构建关闭），不再通过环境变量或启动参数控制。
@@ -145,7 +146,16 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 - 阅读 / 改 `Sources/iOSExploreUIKit` 子包（从哪看 / 整体设计 / 逐文件档案）
   → `docs/uikit/README.md`（[阅读指南](docs/uikit/reading-guide.md) / [文件档案](docs/uikit/uikit-file-reference.md)）
 
-## 关键约束速记
+## 开发阶段规则：只留最合理的设计，不留妥协
+
+本项目仍处于开发阶段（未 Release），所有接口/字段/优先级/模块边界都还没有外部兼容性承诺。
+
+- **任何设计不合理的地方都应推到最合理方案，不保留"能用就先这样"的妥协代码。**
+- 改名、改类型、改优先级、推翻现有设计——只要经过评估确认当前方案不合理，就直接改，不考虑"改了有没有风险"（合理即改）。
+- 不改的情况只有一种：改动会导致 App 崩溃或破坏已通过的核心测试（Git 可回溯，回归可修）。
+- 评估时先说清楚"现状是什么、问题在哪"，然后直接给最合理的方案，不需要在妥协方案上消耗讨论时间。
+
+该规则同样适用于 `MCPServer/`（TypeScript MCP 适配层）——它也是项目的一部分，一样是开发期。
 
 - 改完代码先 `swift test` 再说完成；集成测试串行（`@Suite(.serialized)`，端口 38399 不能并行）；iOS 模拟器 framework 测试用 `startWithPortRetry` 规避 cancel 异步释放端口的竞态。
 - 内置命令在 `ExploreServer.init` 同步注册一次；不要在每次 `start()` 重注册。**UIKit 命令不在此列**——core 不自动注册任何 `ui.*`，宿主必须显式 `server.registerUIKitCommands()`。
