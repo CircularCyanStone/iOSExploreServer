@@ -241,4 +241,12 @@ public enum ExploreError: String, Sendable {
 
     /// 日志 cursor 属于旧的捕获 session，调用方需要重新建立检查点。
     case staleCursor = "stale_cursor"
+
+    /// 目标不可操作：该 path 未签发 fingerprint（`ui.inspect` 的 minimal 结构节点），
+    /// `ui.tap` / `ui.control.sendAction` 无法对其派发动作。
+    ///
+    /// 区别于 `unsupportedTarget`（目标已定位、类型在默认激活覆盖范围外，仍可由专门 adapter
+    /// 处理）：这里目标本身只是结构/装饰节点，没有任何 `availableActions`，补参数或换 adapter
+    /// 都无意义。调用方应回到 `ui.inspect` 结果里挑 `availableActions` 非空的目标重试。
+    case notActionable = "not_actionable"
 }
