@@ -5,7 +5,7 @@ import UIKit
 
 /// 当前顶部控制器轻量交互目标查询命令。
 ///
-/// action 为 `ui.viewTargets`。命令面向**事件下发前的目标发现**：只返回可被现有公开命令
+/// action 为 `ui.inspect`。命令面向**事件下发前的目标发现**：只返回可被现有公开命令
 /// （`ui.tap` / `ui.control.sendAction` / `ui.input`）直接操作的 canonical target——
 /// `UIControl`、`UIScrollView` 系、挂有 `UIGestureRecognizer` 的 view。普通 `UILabel`、
 /// container、纯展示 view 不进入列表（其观察职责在 `ui.topViewHierarchy`）。
@@ -34,7 +34,7 @@ struct ViewTargetsCommand: Command {
     typealias Input = UIViewTargetsInput
 
     /// 固定 action 名，供注册、日志和错误工厂复用。
-    static let actionName = "ui.viewTargets"
+    static let actionName = "ui.inspect"
 
     /// 命令名。
     let action = ViewTargetsCommand.actionName

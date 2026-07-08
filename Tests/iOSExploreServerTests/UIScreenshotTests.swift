@@ -45,7 +45,7 @@ struct UIScreenshotTests {
         // 防空白位图假通过：至少存在一个非透明像素。
         #expect(Self.hasNonTransparentPixel(img))
 
-        // screenshot 不签发 viewSnapshotID（Task 3）：结构化 freshness / locator 是 ui.viewTargets
+        // screenshot 不签发 viewSnapshotID（Task 3）：结构化 freshness / locator 是 ui.inspect
         // 的专属职责，screenshot 仅是视觉证据。
         #expect(data["snapshotID"] == nil)
         #expect(data["viewSnapshotID"] == nil)

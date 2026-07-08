@@ -8,7 +8,7 @@ import UIKit
 /// 采集器运行在 `MainActor`，从当前顶部控制器根 view 递归读取 canonical interaction target
 /// 摘要。它刻意不复用完整层级快照，避免读取颜色、字体、图片等高成本验收字段。
 ///
-/// 重构后的核心不变式（spec §7）：`ui.viewTargets` 最终返回的 canonical target path 集合
+/// 重构后的核心不变式（spec §7）：`ui.inspect` 最终返回的 canonical target path 集合
 /// **等于** `viewSnapshotID` 内签发 fingerprint 的 path 集合，也**等于** `ui.tap` /
 /// `ui.control.sendAction` 允许操作的 path 集合。为此采集器先完成所有筛选与 `maxTargets`
 /// 截断，再只为最终返回的 target 逐个采集指纹并签发，禁止签发未返回的 path（否则 Agent 仍
@@ -340,7 +340,7 @@ enum UIViewTargetsCollector {
 
     /// 提取 cell 的 indexPath（与 `UIViewHierarchyCollector.cellIndexPath(from:)` 同口径）。
     ///
-    /// 在 `ui.viewTargets` 响应里给 cell 相关 target 暴露 indexPath，让调用方按 section/item 选行，
+    /// 在 `ui.inspect` 响应里给 cell 相关 target 暴露 indexPath，让调用方按 section/item 选行，
     /// 不再依赖 subviews 物理顺序或 frame.y 猜——cell 的 subview 顺序由 z-order 决定，与行号无关。
     /// target 本身可能不是 cell 而是其子 view（如 `UIListContentView`），此时向上找最近的 cell。
     @MainActor

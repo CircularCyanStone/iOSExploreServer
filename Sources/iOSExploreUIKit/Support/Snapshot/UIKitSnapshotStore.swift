@@ -154,13 +154,13 @@ public struct UIKitSnapshotContext: Sendable, Equatable {
 
 /// UIKit 视图树指纹快照存储。
 ///
-/// 解决"path 陈旧"问题：`ui.viewTargets` 查询时对当前 view 树生成轻量指纹并签发一个
+/// 解决"path 陈旧"问题：`ui.inspect` 查询时对当前 view 树生成轻量指纹并签发一个
 /// `viewSnapshotID` 返回给调用方；交互命令（tap/control.sendAction）携带该 `viewSnapshotID`
 /// 时，executor 在执行前校验对应 path 的指纹（含 `semanticDigest`）是否仍匹配，不匹配则返回
 /// `stale_locator`（"view snapshot expired or target changed; call ui.inspect first..."），
 /// 避免页面变化或语义变化后 path 指向错误 view 造成误操作。
 ///
-/// `viewSnapshotID` 是 UIKit 结构指纹快照标识（**不是**截图 ID）。只有 `ui.viewTargets`
+/// `viewSnapshotID` 是 UIKit 结构指纹快照标识（**不是**截图 ID）。只有 `ui.inspect`
 /// 会签发它；`ui.screenshot` 不再签发。
 ///
 /// 容量与淘汰策略：

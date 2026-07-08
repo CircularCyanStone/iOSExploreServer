@@ -7,7 +7,7 @@ import UIKit
 ///
 /// action 为 `ui.tap`。命令只负责解析请求并构造 `UIKitActionPlan.tap`，再
 /// `await UIKitActionExecutor.execute(plan)`。`ui.tap` 是 Agent 层默认激活动作：对
-/// `ui.viewTargets` 签发的 canonical target 执行其类型对应的默认激活路由（UIButton →
+/// `ui.inspect` 签发的 canonical target 执行其类型对应的默认激活路由（UIButton →
 /// touchUpInside、UISwitch → 翻转 + valueChanged、文本输入 → 聚焦）。它不是触摸注入、
 /// 不接受坐标、不做 hit-test、不找祖先 UIControl fallback。执行逻辑全部收敛在
 /// `UIKitActionExecutor` 中，本命令不再内联执行逻辑。
@@ -22,7 +22,7 @@ struct UITapCommand: Command {
     let action = UITapCommand.actionName
 
     /// `help` 命令展示的说明。
-    let description = "对已发现的目标执行默认激活动作 (按钮/开关/输入框)。调用前必须先调 ui.viewTargets，并把同响应返回的 viewSnapshotID 原样传入"
+    let description = "对已发现的目标执行默认激活动作 (按钮/开关/输入框)。调用前必须先调 ui.inspect，并把同响应返回的 viewSnapshotID 原样传入"
 
     /// 执行 tap 默认激活。
     ///

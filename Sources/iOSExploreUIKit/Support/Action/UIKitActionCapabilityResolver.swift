@@ -5,7 +5,7 @@ import UIKit
 
 /// UIKit 动作能力的唯一解析器。
 ///
-/// collector（`ui.viewTargets` 输出 `availableActions`）与 executor（`UIKitActionExecutor`
+/// collector（`ui.inspect` 输出 `availableActions`）与 executor（`UIKitActionExecutor`
 /// 决定 tap / control 派发）共用本类型，确保"声明可执行"与"实际可派发"走同一份规则。
 ///
 /// 重构后的规则：

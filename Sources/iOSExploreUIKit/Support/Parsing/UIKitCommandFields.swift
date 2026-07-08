@@ -4,7 +4,7 @@ import iOSExploreServer
 /// UIKit 查询命令复用的筛选字段声明。
 ///
 /// 这些字段只描述 Foundation-only 的输入形态，既供 `ui.topViewHierarchy` 和
-/// `ui.viewTargets` 暴露 schema，也供 typed input 解析时保持默认值和错误文案一致。
+/// `ui.inspect` 暴露 schema，也供 typed input 解析时保持默认值和错误文案一致。
 public enum UIKitFilterFields {
     /// 按 accessibilityIdentifier 精确筛选（完全相等匹配，不是子串/前缀）。
     ///
@@ -52,21 +52,21 @@ public enum UIKitLocatorFields {
         description: "按 accessibilityIdentifier 精确定位目标 view"
     )
 
-    /// 按 `ui.viewTargets` 或 `ui.topViewHierarchy` 返回的路径定位目标 view。
+    /// 按 `ui.inspect` 或 `ui.topViewHierarchy` 返回的路径定位目标 view。
     public static let path = CommandFields.optionalString(
         "path",
-        description: "按 ui.viewTargets 或 ui.topViewHierarchy 返回的 root/0/1 路径定位目标 view"
+        description: "按 ui.inspect 或 ui.topViewHierarchy 返回的 root/0/1 路径定位目标 view"
     )
 
-    /// `ui.viewTargets` 签发的结构化 target 指纹快照标识，用于交互命令的陈旧校验。
+    /// `ui.inspect` 签发的结构化 target 指纹快照标识，用于交互命令的陈旧校验。
     ///
     /// 它是 UIKit 结构指纹快照标识，**不是**截图 ID / 图像 hash / VLM 结果。只有
-    /// `ui.viewTargets` 会签发它（`ui.screenshot` 不再签发）。交互命令携带它时，executor
+    /// `ui.inspect` 会签发它（`ui.screenshot` 不再签发）。交互命令携带它时，executor
     /// 会重采当前 target 指纹并与签发表比对，任一不一致即拒绝（`stale_locator`），
     /// 防止页面变化后旧定位器指向错误目标。
     public static let viewSnapshotID = CommandFields.optionalString(
         "viewSnapshotID",
-        description: "ui.viewTargets 签发的结构化 target 指纹快照标识"
+        description: "ui.inspect 签发的结构化 target 指纹快照标识"
     )
 }
 

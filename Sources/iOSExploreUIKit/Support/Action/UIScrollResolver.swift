@@ -26,12 +26,12 @@ enum UIScrollResolver {
     /// `ui.scroll` 语义：locator 是触发滚动的目标 view，executor 找其最近 scrollView 祖先。
     ///
     /// locator 缺省时回退到 keyWindow 最前 scrollView。`path + viewSnapshotID` 组合做陈旧校验
-    /// （viewSnapshotID 由 `ui.viewTargets` 签发）。全程排除 `UITextView`（其内部滚动语义不同，
+    /// （viewSnapshotID 由 `ui.inspect` 签发）。全程排除 `UITextView`（其内部滚动语义不同，
     /// 按 spec 不作为滚动容器）。
     ///
     /// - Parameters:
     ///   - locator: 触发滚动的目标定位（identifier/path），nil 表示回退 foremost。
-    ///   - viewSnapshotID: path 定位携带的陈旧校验标识（来自 ui.viewTargets）。
+    ///   - viewSnapshotID: path 定位携带的陈旧校验标识（来自 ui.inspect）。
     ///   - context: 当前 MainActor 查询上下文。
     ///   - action: 触发 action 名（错误工厂日志关联）。
     /// - Returns: 解析到的 scrollView 容器及摘要。

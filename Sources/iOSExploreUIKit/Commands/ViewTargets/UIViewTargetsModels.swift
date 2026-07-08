@@ -3,7 +3,7 @@ import iOSExploreServer
 
 /// 轻量 UI 目标查询参数。
 ///
-/// 该类型保持 Foundation-only，负责解析 `ui.viewTargets` 的 data，并约束响应规模。
+/// 该类型保持 Foundation-only，负责解析 `ui.inspect` 的 data，并约束响应规模。
 public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let includeHidden = UIKitFilterFields.includeHidden
@@ -43,7 +43,7 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
         ]
     }
 
-    /// `ui.viewTargets` 暴露给 help 和工具客户端的输入 schema。
+    /// `ui.inspect` 暴露给 help 和工具客户端的输入 schema。
     public static let inputSchema = CommandInputSchema(fields: Fields.all)
 
     /// 是否包含隐藏 view。
@@ -97,7 +97,7 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
 
     /// 判定节点是 full（带识别信息或可操作）还是 minimal（仅结构）。
     ///
-    /// `ui.viewTargets` / `ui.inspect` 的目标筛选口径：full 节点签发 fingerprint、可被
+    /// `ui.inspect` 的目标筛选口径：full 节点签发 fingerprint、可被
     /// `ui.tap`/`ui.control.sendAction` 操作，并进入轻量 targets；minimal 节点只输出 path+type
     /// 维持层级，强制 `actions=[]`、不签发。六条规则任一命中即 full：
     /// - `isControl` / `isScrollView` / `hasGestureRecognizers`：可操作（control/scroll 走
@@ -154,7 +154,7 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     }
 }
 
-/// `ui.viewTargets` 输出策略使用的 Foundation-only 候选摘要。
+/// `ui.inspect` 输出策略使用的 Foundation-only 候选摘要。
 ///
 /// UIKit 采集器负责把真实 `UIView` 转成该摘要，模型层只根据这些布尔状态执行纯决策，
 /// 避免把 UIKit 类型带入可在 macOS `swift test` 覆盖的策略测试。

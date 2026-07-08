@@ -60,7 +60,7 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
         fields: Fields.all,
         constraints: [
             .exactlyOneOf(["accessibilityIdentifier", "path"]),
-            .extensionMessage("viewSnapshotID is required and must come from ui.viewTargets"),
+            .extensionMessage("viewSnapshotID is required and must come from ui.inspect"),
         ]
     )
 
@@ -70,7 +70,7 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     public let event: UIControlSendActionEvent
     /// 要在发送事件前写入控件的可选值；缺省表示只派发事件，不修改控件当前值。
     public let value: JSONValue?
-    /// `ui.viewTargets` 签发的结构化 target 指纹快照标识，必填；executor 用它做陈旧校验。
+    /// `ui.inspect` 签发的结构化 target 指纹快照标识，必填；executor 用它做陈旧校验。
     public let viewSnapshotID: String
 
     /// 创建 sendAction 查询。
@@ -78,7 +78,7 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     /// - Parameters:
     ///   - target: 目标控件定位方式。
     ///   - event: 要发送的 UIControl 事件。
-    ///   - viewSnapshotID: `ui.viewTargets` 签发的 viewSnapshotID。
+    ///   - viewSnapshotID: `ui.inspect` 签发的 viewSnapshotID。
     ///   - value: 要在发送事件前写入控件的可选值。
     public init(target: UIKitViewLookupTarget,
                 event: UIControlSendActionEvent,

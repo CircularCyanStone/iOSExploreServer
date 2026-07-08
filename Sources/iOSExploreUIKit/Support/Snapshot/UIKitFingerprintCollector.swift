@@ -269,11 +269,11 @@ enum UIKitFingerprintCollector {
     /// （`path → fingerprint`），供 `ui.wait(snapshotChanged)` 重采 whole-table 与签发表比对。
     ///
     /// 重构后的口径（spec §7）：
-    /// - `ui.viewTargets` 不再用本方法签发——它遍历时累积 `(summary, view)`，maxTargets 截断后
+    /// - `ui.inspect` 不再用本方法签发——它遍历时累积 `(summary, view)`，maxTargets 截断后
     ///   只为最终返回的 canonical target 逐个 `fingerprint(for:)` 签发（returned paths == signed paths）；
     /// - 本方法现在主要服务 `ui.wait(snapshotChanged)`：用签发时同一 query 重采当前表，再与
     ///   `UIKitSnapshotStore.matchesWholeTable` 整体比对；
-    /// - `ui.screenshot` 不再签发 viewSnapshotID（结构化 freshness / locator 由 ui.viewTargets 负责）。
+    /// - `ui.screenshot` 不再签发 viewSnapshotID（结构化 freshness / locator 由 ui.inspect 负责）。
     ///
     /// 筛选规则与 `UIViewTargetsCollector.isFull` 逐字对齐（canonical-only：UIControl 系 +
     /// UIScrollView 系），保证 wait 重采表与 viewTargets 签发表同口径：

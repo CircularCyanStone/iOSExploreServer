@@ -87,7 +87,7 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
     public let amount: Double?
     /// 目标定位方式，缺省表示滚动 keyWindow 最前的 scrollView。
     public let locator: UIKitViewLookupTarget?
-    /// `ui.viewTargets` 签发的结构化快照标识，可选，仅与 `.path` 定位搭配做陈旧校验。
+    /// `ui.inspect` 签发的结构化快照标识，可选，仅与 `.path` 定位搭配做陈旧校验。
     public let viewSnapshotID: String?
     /// 是否动画。默认 false（`setContentOffset` 同步更新，after/reachedExtent 为确定值）。
     public let animated: Bool
@@ -98,7 +98,7 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
     ///   - direction: 滚动方向。
     ///   - amount: 滚动距离；nil 表示按可见区一半。
     ///   - locator: 目标定位；nil 表示 keyWindow 最前 scrollView。
-    ///   - viewSnapshotID: 可选 viewSnapshotID（来自 ui.viewTargets），默认 nil。
+    ///   - viewSnapshotID: 可选 viewSnapshotID（来自 ui.inspect），默认 nil。
     ///   - animated: 是否动画，默认 false。
     public init(direction: ScrollDirection,
                 amount: Double? = nil,

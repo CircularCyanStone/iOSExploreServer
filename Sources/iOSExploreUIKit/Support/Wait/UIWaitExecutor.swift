@@ -226,7 +226,7 @@ enum UIWaitExecutor {
             guard let viewSnapshotID = probe.viewSnapshotID else { return false }
             // whole table 比较（spec §6）：用签发时同一 query 重采当前 path→fingerprint 表，
             // 再与 snapshot 存的表整体比对。query 从 store 取（签发方诚实记录，签发方只能是
-            // ui.viewTargets），避免签发 query（如 viewTargets 带 includeHidden）与重采 query
+            // ui.inspect），避免签发 query（如 viewTargets 带 includeHidden）与重采 query
             // 不一致导致首轮误判「已变化」。
             let query = snapshotStore.signingQuery(for: viewSnapshotID) ?? .default
             let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)

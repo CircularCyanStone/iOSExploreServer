@@ -268,7 +268,7 @@ func connectionLimitRejectsAdditionalConnection() async throws {
         #expect(envelopeCode(text) == "ok")
         // 四个旧命令 + screenshot/input/keyboard.dismiss/scroll/navigation.back/navigation.tapBarButton/waitAny。
         #expect(text.contains(#""action":"ui.topViewHierarchy""#))
-        #expect(text.contains(#""action":"ui.viewTargets""#))
+        #expect(text.contains(#""action":"ui.inspect""#))
         #expect(text.contains(#""action":"ui.control.sendAction""#))
         #expect(text.contains(#""action":"ui.tap""#))
         #expect(text.contains(#""action":"ui.screenshot""#))

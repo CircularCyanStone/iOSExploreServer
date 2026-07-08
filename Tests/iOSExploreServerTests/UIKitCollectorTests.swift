@@ -7,7 +7,7 @@ import iOSExploreServer
 /// `UIViewTargetsCollector` 与 `UIViewHierarchyCollector` 的端到端测试（Task 4/8 重构后）。
 ///
 /// 通过 `UIKitTestHost` 注入可控 view 树，验证采集器整条流水线（遍历 → canonical 筛选 →
-/// 生成摘要/树 → 只对返回 target 签发 viewSnapshotID）。重构后 `ui.viewTargets` 只输出
+/// 生成摘要/树 → 只对返回 target 签发 viewSnapshotID）。重构后 `ui.inspect` 只输出
 /// canonical interaction target（UIControl / UIScrollView 系），普通 identifier/label view
 /// 不再进入 targets（其观察职责在 `ui.topViewHierarchy`）。
 
@@ -203,7 +203,7 @@ func topViewHierarchyCollectsTreeInContext() throws {
     let query = try UIViewHierarchyInput.parse(from: [:])
 
     let data = UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
-    // topViewHierarchy 不签发 viewSnapshotID（spec §1.2：只有 ui.viewTargets 签发）。
+    // topViewHierarchy 不签发 viewSnapshotID（spec §1.2：只有 ui.inspect 签发）。
     #expect(data["viewSnapshotID"] == nil)
     #expect(data["snapshotID"] == nil)
 

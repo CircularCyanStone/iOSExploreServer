@@ -23,7 +23,7 @@ struct ScreenshotCommand: Command {
     /// `help` 命令展示的说明。
     ///
     /// 说明里刻意不提"签发 snapshot"：`ui.screenshot` 只是可选视觉证据，不再签发、不刷新、
-    /// 不返回 `viewSnapshotID`（viewSnapshotID 唯一签发来源是 `ui.viewTargets`），与
+    /// 不返回 `viewSnapshotID`（viewSnapshotID 唯一签发来源是 `ui.inspect`），与
     /// `UIScreenshotCollector` 的实际返回一致，避免 help schema 误导调用方。
     let description = "截屏 (PNG base64) + 降采样（可选视觉证据，不签发 viewSnapshotID）"
 

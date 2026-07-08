@@ -11,7 +11,7 @@ import UIKit
 /// 像素尺寸）。
 ///
 /// **`ui.screenshot` 只是可选的视觉证据**：它不签发、不刷新、不返回 `viewSnapshotID`，也不
-/// 参与结构化 freshness / 动作授权 / locator 签发。`viewSnapshotID` 只由 `ui.viewTargets`
+/// 参与结构化 freshness / 动作授权 / locator 签发。`viewSnapshotID` 只由 `ui.inspect`
 /// 签发。截图用于人工排障或支持多模态的 Agent 的可选增强输入。
 ///
 /// 失败统一 `throw UIKitCommandError`，由 `ScreenshotCommand` 顶层 catch 转 envelope。
@@ -102,7 +102,7 @@ enum UIScreenshotCollector {
         let base64 = pngData.base64EncodedString()
 
         // window.screen 非 Optional（UIWindow.screen 在 iOS 13+ 为非可选）。
-        // screenshot 不签发 viewSnapshotID（结构化 freshness / locator 由 ui.viewTargets 负责）。
+        // screenshot 不签发 viewSnapshotID（结构化 freshness / locator 由 ui.inspect 负责）。
         let screenScale = window.screen.scale
         let scaledPxW = scaledImage.cgImage?.width ?? 0
         let scaledPxH = scaledImage.cgImage?.height ?? 0

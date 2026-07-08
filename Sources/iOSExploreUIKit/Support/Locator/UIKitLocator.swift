@@ -10,7 +10,7 @@ import Foundation
 /// —— 既不必维护两份逐字相同的 `logSummary`，也避免 `UIKitLocator.parse` 退化成对
 /// `UIKitViewLookupTarget.parse` 的恒等映射。
 ///
-/// 重构后**不再支持 window 坐标定位**：`ui.tap` 已收敛为只作用于 `ui.viewTargets` 签发的
+/// 重构后**不再支持 window 坐标定位**：`ui.tap` 已收敛为只作用于 `ui.inspect` 签发的
 /// canonical target 的默认激活，不做 hit-test、不接受裸坐标。若未来需要纯观察的坐标诊断，
 /// 另开 `ui.hitTest` 命令，不在本类型表达执行性坐标定位。
 ///

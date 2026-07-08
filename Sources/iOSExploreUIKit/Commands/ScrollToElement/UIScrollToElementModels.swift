@@ -20,7 +20,7 @@ public enum ScrollToElementMatch: String, Sendable, Equatable, CaseIterable {
 /// 明确指向滚动容器（locator 缺省时回退到 keyWindow 最前 scrollView）。当容器是
 /// `UITableView` / `UICollectionView` 时，visibleCells 内的子 view 会被额外搜索。
 ///
-/// 命令不签发 viewSnapshotID：滚动后画面变化，agent 应重新 `ui.viewTargets` 取新
+/// 命令不签发 viewSnapshotID：滚动后画面变化，agent 应重新 `ui.inspect` 取新
 /// viewSnapshotID 再交互。
 public struct UIScrollToElementInput: CommandInput, Sendable, Equatable {
     private enum Fields {

@@ -56,7 +56,7 @@ final class AlertTestViewController: UIViewController {
 
     // MARK: 控件配置
 
-    /// 配置 5 个触发按钮：设 accessibilityIdentifier（ui.viewTargets 主定位方式）+ target-action。
+    /// 配置 5 个触发按钮：设 accessibilityIdentifier（ui.inspect 主定位方式）+ target-action。
     private func setupControls() {
         configureTrigger(simpleButton,
                          title: "弹出标准 alert（确认/取消）",
@@ -104,7 +104,7 @@ final class AlertTestViewController: UIViewController {
     /// ScrollView + 垂直主 stack：顶部说明、5 个触发区块、状态反馈、底部事件流。
     private func setupLayout() {
         let intro = UILabel()
-        intro.text = "依次点按钮弹出 alert，配合 Mac 侧 ui.alert.respond(dryRun=true) / ui.topViewHierarchy 分析视图层级。触发按钮均带 accessibilityIdentifier，可被 ui.viewTargets 发现并由 ui.tap 远程触发。"
+        intro.text = "依次点按钮弹出 alert，配合 Mac 侧 ui.alert.respond(dryRun=true) / ui.topViewHierarchy 分析视图层级。触发按钮均带 accessibilityIdentifier，可被 ui.inspect 发现并由 ui.tap 远程触发。"
         intro.font = .systemFont(ofSize: 13)
         intro.textColor = .secondaryLabel
         intro.numberOfLines = 0

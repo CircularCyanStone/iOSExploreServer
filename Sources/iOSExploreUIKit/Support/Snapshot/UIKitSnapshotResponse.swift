@@ -3,13 +3,13 @@ import iOSExploreServer
 
 /// snapshot 签发结果到响应字段的统一映射。
 ///
-/// `ui.viewTargets` 查询命令把 `UIKitSnapshotStore.insert` 的结果回写响应。本类型把
+/// `ui.inspect` 查询命令把 `UIKitSnapshotStore.insert` 的结果回写响应。本类型把
 /// "成功签发 / 超过指纹上限未签发"两种情况映射成统一的两段值，由 collector 赋给响应字段
 /// （`viewSnapshotID` / `viewSnapshotUnavailableReason`），避免漂移：超限未签发时显式给出
 /// `viewSnapshotUnavailableReason = "fingerprintLimit"`，让调用方明确该轮陈旧校验不可用，
 /// 而非悄悄返回空 viewSnapshotID 后静默降级。
 ///
-/// **只有 `ui.viewTargets` 使用本映射**：它是唯一签发 `viewSnapshotID` 的命令。`ui.screenshot`
+/// **只有 `ui.inspect` 使用本映射**：它是唯一签发 `viewSnapshotID` 的命令。`ui.screenshot`
 /// 不签发、不返回 viewSnapshotID。
 ///
 /// 该类型是 Foundation-only 值类型（仅依赖 core 的 `JSONValue`），可在 macOS `swift test`

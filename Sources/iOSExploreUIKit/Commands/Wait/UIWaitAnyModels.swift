@@ -7,7 +7,7 @@ import iOSExploreServer
 /// wait 模式。模式语义复用 `ui.wait`：
 /// - `targetExists` / `targetGone`：需 `accessibilityIdentifier` 或 `path`；
 /// - `textExists`：需 `text`；
-/// - `snapshotChanged`：需 `viewSnapshotID`（来源必须是 `ui.viewTargets`）；
+/// - `snapshotChanged`：需 `viewSnapshotID`（来源必须是 `ui.inspect`）；
 /// - `idle`：无额外字段，使用顶层共享的 `stableMs` 稳定窗口。
 public struct UIWaitAnyCondition: Sendable, Equatable {
     /// 调用方提供的稳定标识，命中后原样回传为 `matchedID`。

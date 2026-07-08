@@ -14,7 +14,7 @@ func viewLookupTargetParsesPath() throws {
 // MARK: - ui.tap 结构化默认激活契约
 
 /// `ui.tap` 已从“坐标 / hit-test / 祖先 fallback 的伪点击”收敛为：只接受
-/// `ui.viewTargets` 签发的 canonical target 定位（path 或 accessibilityIdentifier）
+/// `ui.inspect` 签发的 canonical target 定位（path 或 accessibilityIdentifier）
 /// 加必填的 `viewSnapshotID`。下面的测试锁定该公共输入契约。
 @Test("UITapInput 从 path + viewSnapshotID 解析默认激活目标")
 func tapInputParsesPathWithViewSnapshotID() throws {

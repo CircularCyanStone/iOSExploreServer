@@ -19,7 +19,7 @@ import iOSExploreServer
 /// executor 已 throw 化：成功路径返回纯 `JSON`，失败路径 `throw UIKitCommandError`，故成功
 /// 测试用 `try` 直取 JSON，失败测试用 do/catch 断言 `error.failure.code`。
 
-/// 取一次 `ui.viewTargets` 签发的 viewSnapshotID，供交互命令携带做 freshness 校验。
+/// 取一次 `ui.inspect` 签发的 viewSnapshotID，供交互命令携带做 freshness 校验。
 @MainActor
 private func testViewSnapshotID(context: UIKitContextProvider.Context) -> String {
     let data = UIViewTargetsCollector.collect(query: .default, context: context)

@@ -3,7 +3,7 @@ import Testing
 @testable import iOSExploreServer
 @testable import iOSExploreUIKit
 
-@Test("ui.viewTargets 命令 schema 声明 typed input 字段")
+@Test("ui.inspect 命令 schema 声明 typed input 字段")
 func viewTargetsCommandSchemaMatchesInputFields() {
     #expect(ViewTargetsCommand.Input.inputSchema.fields.map(\.name) == UIViewTargetsInput.inputSchema.fields.map(\.name))
 }
@@ -64,6 +64,6 @@ func inputCommandDescriptionExplainsViewSnapshotPathOnly() {
     #expect(description.contains("accessibilityIdentifier 或 path"))
     #expect(description.contains("viewSnapshotID 仅允许与 path 搭配"))
     #expect(description.contains("identifier 定位不能带 viewSnapshotID"))
-    #expect(description.contains("必须先调 ui.viewTargets") == false)
+    #expect(description.contains("必须先调 ui.inspect") == false)
 }
 #endif

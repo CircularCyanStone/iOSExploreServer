@@ -15,7 +15,7 @@ import Foundation
 /// - `tap` 与 `control.*`：面向 `UIControl`，由 `UIKitActionExecutor` 的 tap / sendAction 路径派发；
 /// - `input` / `scroll`：面向非 `UIControl` 的可输入/可滚动目标（如 `UITextView`、`UIScrollView`），
 ///   为 Task 8（ui.input）/ Task 9（ui.scroll）等扩展命令预留的声明位。resolver 通过协议
-///   conform 判定（`UITextInput`/`UIScrollView`）声明这两个动作，让 `ui.viewTargets` 提前告知
+///   conform 判定（`UITextInput`/`UIScrollView`）声明这两个动作，让 `ui.inspect` 提前告知
 ///   agent “这个字段可输入 / 这个 scroll view 可滚动”。
 public enum UIKitActionKind: String, Sendable, Equatable {
     /// 点击语义。executor 对 `UIControl` 派发 `touchUpInside`。

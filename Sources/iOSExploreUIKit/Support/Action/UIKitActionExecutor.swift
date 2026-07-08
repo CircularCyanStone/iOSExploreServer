@@ -12,7 +12,7 @@ import UIKit
 /// 生成语义 JSON。
 ///
 /// 重构后执行器不再做 hit-test、不接受坐标、不找 nearest ancestor `UIControl`：
-/// - `ui.tap` 只作用于 `ui.viewTargets` 签发的 canonical target，按默认激活路由
+/// - `ui.tap` 只作用于 `ui.inspect` 签发的 canonical target，按默认激活路由
 ///   （`UIKitDefaultActivationResolver`）执行：UIButton → `touchUpInside`；UISwitch → 翻转 +
 ///   `valueChanged`；文本输入 → `becomeFirstResponder`（聚焦）。无确定路由的目标抛
 ///   `unsupported_target`。
@@ -85,7 +85,7 @@ enum UIKitActionExecutor {
     ///
     /// 两阶段裁决，刻意区分两类失败语义，避免调用方对不可操作目标反复重新 inspect：
     /// 1. `isPathSigned` 前置——若 snapshotID 有效但 path 不在其指纹表（即 minimal 节点，
-    ///    `ui.viewTargets` 未为其签发指纹、availableActions 为空），直接抛 `not_actionable`，
+    ///    `ui.inspect` 未为其签发指纹、availableActions 为空），直接抛 `not_actionable`，
     ///    提示调用方该目标本就不可操作、应换目标。这与 stale_locator 的语义对立：stale_locator
     ///    表示"快照陈旧需重新 inspect 再观察"（id 未知/过期、context 变化、指纹漂移），调用方应
     ///    重新观察而非放弃目标。`isPathSigned` 对 unknown/expired snapshotID 返回 true（交第 2
@@ -98,7 +98,7 @@ enum UIKitActionExecutor {
     ///
     /// - Parameters:
     ///   - located: 调用方已 resolve 的定位视图（含 view 与 pathString）。
-    ///   - viewSnapshotID: `ui.viewTargets` 签发的结构化快照标识。
+    ///   - viewSnapshotID: `ui.inspect` 签发的结构化快照标识。
     ///   - context: 当前 UIKit 上下文（用于重采指纹）。
     ///   - action: 触发校验的 action 名（错误关联）。
     /// - Throws: `UIKitCommandError.notActionable`（minimal 节点未签发指纹）；或
@@ -108,7 +108,7 @@ enum UIKitActionExecutor {
                                              context: UIKitContextProvider.Context,
                                              action: String) throws {
         let path = located.pathString
-        // minimal 节点（未被 ui.viewTargets 签发指纹）优先裁决 not_actionable，置于 isStale 之前：
+        // minimal 节点（未被 ui.inspect 签发指纹）优先裁决 not_actionable，置于 isStale 之前：
         // isPathSigned 三态保证只有"id 有效 + path 确实未签发"才返回 false，unknown/expired id
         // 返回 true 继续走 isStale（→ stale_locator），不会把传错/过期 id 误判成 not_actionable。
         guard UIKitSnapshotStore.shared.isPathSigned(viewSnapshotID: viewSnapshotID, path: path) else {
@@ -138,7 +138,7 @@ enum UIKitActionExecutor {
     ///
     /// - Parameters:
     ///   - locator: canonical target 的统一定位器（identifier / path）。
-    ///   - viewSnapshotID: `ui.viewTargets` 签发的结构化快照标识。
+    ///   - viewSnapshotID: `ui.inspect` 签发的结构化快照标识。
     ///   - context: 当前 UIKit 查询上下文（由 `execute(_:)` 注入）。
     /// - Returns: tap 语义 JSON（activated / activationRoute / type 等）。
     /// - Throws: `UIKitCommandError`——定位失败 / 陈旧 / 不支持 / first responder 失败。
@@ -156,7 +156,7 @@ enum UIKitActionExecutor {
         guard let route = UIKitDefaultActivationResolver.route(for: located.view) else {
             // 无 default 公开路由：尝试手势 target-action adapter（依赖 `UIGestureRecognizer` 的
             // 自定义 view）。adapter 是 executeTap 内部补充分支，不改 default 三路行为，也不改
-            // `ui.tap` schema/协议——agent 据 `ui.viewTargets` 响应的 `hasGestureRecognizers` 字段
+            // `ui.tap` schema/协议——agent 据 `ui.inspect` 响应的 `hasGestureRecognizers` 字段
             // 推断可试 tap，用 path/identifier + viewSnapshotID 发 `ui.tap`，executor 在此触发。
             // `availableActions` 不声明 tap：gesture 触发是启发式补充（runtime 读私有 ivar 派发），
             // 非 UIButton/UISwitch/文本输入那样的确定公开激活路由。
@@ -265,7 +265,7 @@ enum UIKitActionExecutor {
     ///   - locator: 目标控件的统一定位器（identifier / path）。
     ///   - event: 要发送的 UIControl 事件。
     ///   - value: 要在发送事件前写入控件的可选值。
-    ///   - viewSnapshotID: `ui.viewTargets` 签发的结构化快照标识。
+    ///   - viewSnapshotID: `ui.inspect` 签发的结构化快照标识。
     ///   - context: 当前 UIKit 查询上下文（由 `execute(_:)` 注入）。
     /// - Returns: control.sendAction 语义 JSON（sent / event / type 等）。
     /// - Throws: `UIKitCommandError`——定位失败 / 非 control / 能力不支持 / 陈旧。

@@ -31,7 +31,7 @@ struct UIKitCommandRegistrationTests {
         server.registerUIKitCommands()
         let result = await server.routerSnapshotRoute(ExploreRequest(action: "help"))
         #expect(result.commandActions.contains("ui.topViewHierarchy"))
-        #expect(result.commandActions.contains("ui.viewTargets"))
+        #expect(result.commandActions.contains("ui.inspect"))
         #expect(result.commandActions.contains("ui.control.sendAction"))
         #expect(result.commandActions.contains("ui.tap"))
         #expect(result.commandActions.contains("ui.screenshot"))

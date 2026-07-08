@@ -20,7 +20,7 @@ import iOSExploreServer
 /// 测试需复刻该流程；纯 `cell.addSubview` + `tableView.addSubview(cell)` 的合成 cell
 /// `indexPath(for:)` 会返回 nil，正合「失败路径」测试需要。
 
-/// 取一次 `ui.viewTargets` 签发的 viewSnapshotID，供 `ui.tap` 携带做 freshness 校验。
+/// 取一次 `ui.inspect` 签发的 viewSnapshotID，供 `ui.tap` 携带做 freshness 校验。
 @MainActor
 private func testViewSnapshotID(context: UIKitContextProvider.Context) -> String {
     let data = UIViewTargetsCollector.collect(query: .default, context: context)

@@ -3,13 +3,13 @@ import iOSExploreServer
 
 /// `ui.tap` 的命令参数。
 ///
-/// `ui.tap` 是 Agent 层默认激活动作：对 `ui.viewTargets` 结构化观察签发的、且声明 `tap`
+/// `ui.tap` 是 Agent 层默认激活动作：对 `ui.inspect` 结构化观察签发的、且声明 `tap`
 /// capability 的 canonical target，执行其类型对应的默认激活路由（UIButton → touchUpInside、
 /// UISwitch → 翻转 + valueChanged、文本输入 → 聚焦）。它**不是**触摸注入、不接受裸坐标、
 /// 不做 hit-test、不找祖先 UIControl fallback。
 ///
 /// 输入只接受结构化 locator（`accessibilityIdentifier` 或 `path` 二选一）加必填的
-/// `viewSnapshotID`（由 `ui.viewTargets` 签发）。identifier 与 path 都走同一 freshness 校验，
+/// `viewSnapshotID`（由 `ui.inspect` 签发）。identifier 与 path 都走同一 freshness 校验，
 /// identifier 不再是绕过陈旧校验的后门。
 public struct UITapInput: CommandInput, Sendable, Equatable {
     private enum Fields {
@@ -29,20 +29,20 @@ public struct UITapInput: CommandInput, Sendable, Equatable {
         fields: Fields.all,
         constraints: [
             .exactlyOneOf(["accessibilityIdentifier", "path"]),
-            .extensionMessage("viewSnapshotID is required and must come from ui.viewTargets"),
+            .extensionMessage("viewSnapshotID is required and must come from ui.inspect"),
         ]
     )
 
     /// canonical target 定位方式（identifier 或 path）。
     public let target: UIKitViewLookupTarget
-    /// `ui.viewTargets` 签发的结构化 target 指纹快照标识，必填；executor 用它做陈旧校验。
+    /// `ui.inspect` 签发的结构化 target 指纹快照标识，必填；executor 用它做陈旧校验。
     public let viewSnapshotID: String
 
     /// 创建 tap 查询。
     ///
     /// - Parameters:
     ///   - target: canonical target 定位方式。
-    ///   - viewSnapshotID: `ui.viewTargets` 签发的 viewSnapshotID。
+    ///   - viewSnapshotID: `ui.inspect` 签发的 viewSnapshotID。
     public init(target: UIKitViewLookupTarget, viewSnapshotID: String) {
         self.target = target
         self.viewSnapshotID = viewSnapshotID

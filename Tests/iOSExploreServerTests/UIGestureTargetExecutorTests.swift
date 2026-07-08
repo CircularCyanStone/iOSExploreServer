@@ -27,7 +27,7 @@ private final class GestureTarget: NSObject {
     @objc func actionTwo(_ sender: AnyObject, forEvent event: UIEvent?) { firedCount &+= 1 }
 }
 
-/// 取一次 `ui.viewTargets` 签发的 viewSnapshotID，供 `ui.tap` 携带做 freshness 校验。
+/// 取一次 `ui.inspect` 签发的 viewSnapshotID，供 `ui.tap` 携带做 freshness 校验。
 @MainActor
 private func testViewSnapshotID(context: UIKitContextProvider.Context) -> String {
     let data = UIViewTargetsCollector.collect(query: .default, context: context)

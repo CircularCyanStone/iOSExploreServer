@@ -5,7 +5,7 @@ import UIKit
 /// UIKit 命令显式注册入口。
 ///
 /// 重构后 core 不再自动注册 UIKit 命令；宿主 App 在初始化 `ExploreServer` 后，
-/// 调用 `server.registerUIKitCommands()` 把 `ui.topViewHierarchy`、`ui.viewTargets`、
+/// 调用 `server.registerUIKitCommands()` 把 `ui.topViewHierarchy`、`ui.inspect`、
 /// `ui.control.sendAction`、`ui.tap`、`ui.screenshot`、`ui.input`、`ui.keyboard.dismiss`、
 /// `ui.scroll`、`ui.navigation.back`、`ui.navigation.tapBarButton`、`ui.wait`、`ui.waitAny`、`ui.scrollToElement`、`ui.alert.respond` 十四个命令显式挂到 router 上。
 ///

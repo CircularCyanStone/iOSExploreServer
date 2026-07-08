@@ -76,7 +76,7 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
     public let mode: InputMode
     /// 写完后是否 resignFirstResponder。
     public let submit: Bool
-    /// `ui.viewTargets` 签发的结构化快照标识，可选，仅允许与 `.path` 定位一起用于陈旧校验。
+    /// `ui.inspect` 签发的结构化快照标识，可选，仅允许与 `.path` 定位一起用于陈旧校验。
     public let viewSnapshotID: String?
 
     /// 创建一条 input 查询。
@@ -86,7 +86,7 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
     ///   - text: 要注入的文本。
     ///   - mode: 写入模式，默认 `.replace`。
     ///   - submit: 写完后是否 resignFirstResponder，默认 `true`。
-    ///   - viewSnapshotID: 可选 viewSnapshotID（来自 ui.viewTargets），默认 nil。
+    ///   - viewSnapshotID: 可选 viewSnapshotID（来自 ui.inspect），默认 nil。
     public init(target: UIKitViewLookupTarget,
                 text: String,
                 mode: InputMode = .replace,

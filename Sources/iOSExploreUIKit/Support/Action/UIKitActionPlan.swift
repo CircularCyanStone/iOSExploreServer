@@ -15,7 +15,7 @@ import iOSExploreServer
 /// 在 UIKit 隔离域执行，由 iOS framework 测试覆盖。
 ///
 /// 重构后 `viewSnapshotID` 对 tap 与 controlEvent 都是**必填**：两者都必须作用于
-/// `ui.viewTargets` 结构化观察签发的 canonical target，executor 统一用 `viewSnapshotID`
+/// `ui.inspect` 结构化观察签发的 canonical target，executor 统一用 `viewSnapshotID`
 /// 做 path/context/fingerprint/semanticDigest 陈旧校验（identifier 与 path 同一流程），
 /// 不再有坐标 tap、hit-test 或 nearest ancestor fallback。
 public enum UIKitActionPlan: Sendable, Equatable {
@@ -27,7 +27,7 @@ public enum UIKitActionPlan: Sendable, Equatable {
     ///
     /// - Parameters:
     ///   - locator: canonical target 的统一定位器（identifier / path）。
-    ///   - viewSnapshotID: `ui.viewTargets` 签发的结构化 target 指纹快照标识，必填。
+    ///   - viewSnapshotID: `ui.inspect` 签发的结构化 target 指纹快照标识，必填。
     case tap(locator: UIKitLocator, viewSnapshotID: String)
     /// 向 `UIControl` 发送 target-action 事件。executor 会 resolve locator、用
     /// `viewSnapshotID` 做陈旧校验、校验目标自身为 `UIControl` 且当前声明该精确事件，
@@ -38,7 +38,7 @@ public enum UIKitActionPlan: Sendable, Equatable {
     ///   - locator: 目标控件的统一定位器（identifier / path）。
     ///   - event: 要发送的 UIControl 事件。
     ///   - value: 要在发送事件前写入控件的可选值；缺省表示只发事件不改值。
-    ///   - viewSnapshotID: `ui.viewTargets` 签发的结构化 target 指纹快照标识，必填。
+    ///   - viewSnapshotID: `ui.inspect` 签发的结构化 target 指纹快照标识，必填。
     case controlEvent(locator: UIKitLocator,
                       event: UIControlSendActionEvent,
                       value: JSONValue? = nil,

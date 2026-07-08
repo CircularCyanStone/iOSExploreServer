@@ -7,7 +7,7 @@ import iOSExploreServer
 /// - `idle`：等待画面连续 `stableMs` 不变（动画/加载静止）。
 /// - `targetExists` / `targetGone`：等待目标 view 出现 / 消失。
 /// - `textExists`：等待可见文本出现（用 `UIKitVisibleTextCollector`）。
-/// - `snapshotChanged`：等待结构指纹表变化（用 `ui.viewTargets` 签发的 `viewSnapshotID`
+/// - `snapshotChanged`：等待结构指纹表变化（用 `ui.inspect` 签发的 `viewSnapshotID`
 ///   重采 whole-table 比对），典型用于检测跳转、弹窗或同页内容变化。
 ///
 /// case 顺序进入 schema 的 enum 列表，调整需同步测试与 help 文案。
@@ -23,7 +23,7 @@ public enum WaitMode: String, Sendable, Equatable, CaseIterable {
 ///
 /// 命令在业务 `timeoutMs` 内按 `intervalMs` 轮询，满足条件即返回；超时抛 `wait_timeout`。
 /// 各模式对字段的要求：`targetExists`/`targetGone` 需 `accessibilityIdentifier` 或 `path`，
-/// `textExists` 需 `text`，`snapshotChanged` 需 `viewSnapshotID`（来源必须是 `ui.viewTargets`），
+/// `textExists` 需 `text`，`snapshotChanged` 需 `viewSnapshotID`（来源必须是 `ui.inspect`），
 /// `idle` 无额外要求。
 public struct UIWaitInput: CommandInput, Sendable, Equatable {
     private enum Fields {
@@ -57,7 +57,7 @@ public struct UIWaitInput: CommandInput, Sendable, Equatable {
         )
         static let viewSnapshotID = CommandFields.optionalString(
             "viewSnapshotID",
-            description: "snapshotChanged 模式参照的 viewSnapshotID (由 ui.viewTargets 签发)"
+            description: "snapshotChanged 模式参照的 viewSnapshotID (由 ui.inspect 签发)"
         )
         static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
         static let path = UIKitLocatorFields.path
@@ -93,7 +93,7 @@ public struct UIWaitInput: CommandInput, Sendable, Equatable {
     public let stableMs: Int
     /// 要等待的文本（textExists）。
     public let text: String?
-    /// 参照的结构化快照标识（snapshotChanged），来源必须是 `ui.viewTargets`。
+    /// 参照的结构化快照标识（snapshotChanged），来源必须是 `ui.inspect`。
     public let viewSnapshotID: String?
     /// 目标定位（targetExists / targetGone）。
     public let target: UIKitViewLookupTarget?
