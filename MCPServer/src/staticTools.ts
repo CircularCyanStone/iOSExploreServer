@@ -3,12 +3,11 @@ import { errorResult, jsonResult } from "./result.js";
 import type { IOSExploreCaller } from "./toolRegistry.js";
 import type { JSONObject, MCPToolResult, StructuredError } from "./types.js";
 
-const topViewHierarchyOptionKeys = ["includeHidden", "detailLevel", "maxDepth", "accessibilityIdentifier", "accessibilityIdentifierPrefix"] as const;
-const viewTargetsOptionKeys = [
+// ui.inspect（原 ui.viewTargets）的合法可选字段。
+// Task 3 已从 Swift inputSchema 删除 includeDisabled/includeStaticText/includeContainers，
+// 此处同步移除，避免 pickAllowedFields 把 App 不认识的键透传过去。
+const inspectOptionKeys = [
   "includeHidden",
-  "includeDisabled",
-  "includeStaticText",
-  "includeContainers",
   "maxDepth",
   "accessibilityIdentifier",
   "accessibilityIdentifierPrefix",
@@ -79,31 +78,20 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
         }
       }
     },
-    observe: {
-      name: "observe",
-      description: "默认观察入口：调用 ui.viewTargets，返回 targets、navigationBar 与新的 viewSnapshotID；mode=topViewHierarchy 时返回完整层级树。",
-      inputSchema: observeSchema(),
+    wait_and_inspect: {
+      name: "wait_and_inspect",
+      description: "先调用 ui.waitAny，再调用 ui.inspect。wait_timeout 后仍尽量返回最新 observation。",
+      inputSchema: waitAndInspectSchema(),
       handler: async input => {
-        if (input.mode === "topViewHierarchy") {
-          return jsonResult(await client.call("ui.topViewHierarchy", pickAllowedFields(input, topViewHierarchyOptionKeys)));
-        }
-        return jsonResult(await client.call("ui.viewTargets", pickAllowedFields(withoutKey(input, "mode"), viewTargetsOptionKeys)));
-      }
-    },
-    wait_and_observe: {
-      name: "wait_and_observe",
-      description: "先调用 ui.waitAny，再调用 ui.viewTargets。wait_timeout 后仍尽量返回最新 observation。",
-      inputSchema: waitAndObserveSchema(),
-      handler: async input => {
-        const viewTargetsOptions = pickAllowedFields(objectValue(input.viewTargetsOptions), viewTargetsOptionKeys);
+        const inspectOptions = pickAllowedFields(objectValue(input.inspectOptions), inspectOptionKeys);
         try {
-          const wait = await client.call("ui.waitAny", withoutKey(input, "viewTargetsOptions"));
-          const observation = await client.call("ui.viewTargets", viewTargetsOptions);
+          const wait = await client.call("ui.waitAny", withoutKey(input, "inspectOptions"));
+          const observation = await client.call("ui.inspect", inspectOptions);
           return jsonResult({ wait, observation });
         } catch (error) {
           const normalized = normalizeError(error);
           if (normalized.source === "ios_envelope" && normalized.code === "wait_timeout") {
-            const observation = await client.call("ui.viewTargets", viewTargetsOptions);
+            const observation = await client.call("ui.inspect", inspectOptions);
             return jsonResult({ wait: normalized, observation }, false);
           }
           return errorResult(normalized as StructuredError);
@@ -113,19 +101,7 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
   };
 }
 
-function observeSchema(): JSONObject {
-  return {
-    type: "object",
-    properties: {
-      mode: { type: "string", enum: ["viewTargets", "topViewHierarchy"], default: "viewTargets" },
-      detailLevel: { type: "string", enum: ["basic", "appearance", "full"], description: "仅 mode=topViewHierarchy 时透传给 ui.topViewHierarchy。" },
-      includeHidden: { type: "boolean", description: "mode=topViewHierarchy 时透传给 ui.topViewHierarchy；默认 viewTargets 模式下按 ui.viewTargets 原字段透传。" },
-      maxDepth: { type: "integer", description: "mode=topViewHierarchy 时透传给 ui.topViewHierarchy；默认 viewTargets 模式下按 ui.viewTargets 原字段透传。" }
-    }
-  };
-}
-
-function waitAndObserveSchema(): JSONObject {
+function waitAndInspectSchema(): JSONObject {
   return {
     type: "object",
     properties: {
@@ -139,15 +115,12 @@ function waitAndObserveSchema(): JSONObject {
       intervalMs: { type: "number" },
       stableMs: { type: "number" },
       includeHidden: { type: "boolean" },
-      viewTargetsOptions: {
+      inspectOptions: {
         type: "object",
         description:
-          "传给 ui.viewTargets 的可选参数。只能传 ui.viewTargets 真实字段（includeHidden / includeDisabled / includeStaticText / includeContainers / maxDepth / accessibilityIdentifier / accessibilityIdentifierPrefix / textLimit / maxTargets），不接受 ui.topViewHierarchy 专用的 detailLevel 或 ui.waitAny 专用的 conditions 等字段。",
+          "传给 ui.inspect 的可选参数。只能传 ui.inspect 真实字段（includeHidden / maxDepth / accessibilityIdentifier / accessibilityIdentifierPrefix / textLimit / maxTargets），不接受 ui.topViewHierarchy 专用的 detailLevel 或 ui.waitAny 专用的 conditions 等字段。",
         properties: {
           includeHidden: { type: "boolean" },
-          includeDisabled: { type: "boolean" },
-          includeStaticText: { type: "boolean" },
-          includeContainers: { type: "boolean" },
           maxDepth: { type: "integer" },
           accessibilityIdentifier: { type: "string" },
           accessibilityIdentifierPrefix: { type: "string" },

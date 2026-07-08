@@ -23,69 +23,15 @@ describe("static tools", () => {
     expect(calls).toEqual(["ping", "help"]);
   });
 
-  test("observe calls ui.viewTargets with provided options", async () => {
-    const calls: Array<{ action: string; data: JSONObject }> = [];
+  test("observe 已废弃，不应出现在静态工具列表", () => {
     const tools = createStaticTools({
-      client: {
-        call: async (action, data = {}) => {
-          calls.push({ action, data });
-          return { viewSnapshotID: "snap-1", targets: [] };
-        }
-      },
+      client: { call: async () => ({}) },
       registry: fakeRegistry(0)
     });
-
-    const result = await (tools.observe!).handler({ maxTargets: 100 });
-    expect(calls).toEqual([{ action: "ui.viewTargets", data: { maxTargets: 100 } }]);
-    expect(JSON.parse(textContent(result)).viewSnapshotID).toBe("snap-1");
+    expect(tools.observe).toBeUndefined();
   });
 
-  test("observe strips hierarchy-only fields in default viewTargets mode", async () => {
-    const calls: Array<{ action: string; data: JSONObject }> = [];
-    const tools = createStaticTools({
-      client: {
-        call: async (action, data = {}) => {
-          calls.push({ action, data });
-          return { viewSnapshotID: "snap-1", targets: [] };
-        }
-      },
-      registry: fakeRegistry(0)
-    });
-
-    // detailLevel is topViewHierarchy-only; maxDepth is shared with ui.viewTargets and stays.
-    await (tools.observe!).handler({ detailLevel: "full", maxDepth: 2, maxTargets: 100 });
-    expect(calls).toEqual([{ action: "ui.viewTargets", data: { maxDepth: 2, maxTargets: 100 } }]);
-  });
-
-  test("observe can call ui.topViewHierarchy in hierarchy mode", async () => {
-    const calls: Array<{ action: string; data: JSONObject }> = [];
-    const tools = createStaticTools({
-      client: {
-        call: async (action, data = {}) => {
-          calls.push({ action, data });
-          return { root: { type: "UIView" } };
-        }
-      },
-      registry: fakeRegistry(0)
-    });
-
-    const result = await (tools.observe!).handler({
-      mode: "topViewHierarchy",
-      includeHidden: true,
-      detailLevel: "full",
-      maxDepth: 3,
-      maxTargets: 100
-    });
-    expect(calls).toEqual([
-      {
-        action: "ui.topViewHierarchy",
-        data: { includeHidden: true, detailLevel: "full", maxDepth: 3 }
-      }
-    ]);
-    expect(JSON.parse(textContent(result)).root.type).toBe("UIView");
-  });
-
-  test("wait_and_observe observes after wait timeout", async () => {
+  test("wait_and_inspect 调用 ui.inspect 而非 ui.viewTargets", async () => {
     const calls: string[] = [];
     const tools = createStaticTools({
       client: {
@@ -104,8 +50,9 @@ describe("static tools", () => {
       registry: fakeRegistry(0)
     });
 
-    const result = await (tools.wait_and_observe!).handler({ conditions: [{ id: "gone", mode: "textExists", text: "Done" }] });
-    expect(calls).toEqual(["ui.waitAny", "ui.viewTargets"]);
+    const result = await (tools.wait_and_inspect!).handler({ conditions: [{ id: "gone", mode: "textExists", text: "Done" }] });
+    expect(calls).toEqual(["ui.waitAny", "ui.inspect"]);
+    expect(calls).not.toContain("ui.viewTargets");
     expect(JSON.parse(textContent(result))).toMatchObject({
       wait: { code: "wait_timeout" },
       observation: { viewSnapshotID: "snap-after" }
@@ -113,7 +60,7 @@ describe("static tools", () => {
     expect(result.isError).toBeFalsy();
   });
 
-  test("wait_and_observe strips unknown viewTargetsOptions before observing", async () => {
+  test("wait_and_inspect strips unknown inspectOptions before inspecting", async () => {
     const calls: Array<{ action: string; data: JSONObject }> = [];
     const tools = createStaticTools({
       client: {
@@ -125,9 +72,9 @@ describe("static tools", () => {
       registry: fakeRegistry(0)
     });
 
-    await (tools.wait_and_observe!).handler({
+    await (tools.wait_and_inspect!).handler({
       conditions: [{ id: "idle", mode: "idle" }],
-      viewTargetsOptions: {
+      inspectOptions: {
         includeHidden: true,
         accessibilityIdentifier: "login.submit",
         detailLevel: "full",
@@ -142,28 +89,30 @@ describe("static tools", () => {
         data: { conditions: [{ id: "idle", mode: "idle" }] }
       },
       {
-        action: "ui.viewTargets",
+        action: "ui.inspect",
         data: { includeHidden: true, accessibilityIdentifier: "login.submit", maxDepth: 2 }
       }
     ]);
   });
 
-  test("wait_and_observe schema rejects detailLevel inside viewTargetsOptions", () => {
+  test("wait_and_inspect schema uses inspectOptions 且不含已删字段", () => {
     const schema = createStaticTools({
       client: { call: async () => ({}) },
       registry: fakeRegistry(0)
-    }).wait_and_observe!.inputSchema;
+    }).wait_and_inspect!.inputSchema;
 
-    const viewTargetsOptionsSchema = (schema as { properties: { viewTargetsOptions: { properties: Record<string, unknown>; additionalProperties: boolean } } }).properties.viewTargetsOptions;
+    const properties = (schema as { properties: Record<string, unknown> }).properties;
+    // 字段名从 viewTargetsOptions 改为 inspectOptions
+    expect(properties.inspectOptions).toBeDefined();
+    expect(properties.viewTargetsOptions).toBeUndefined();
+
+    const inspectOptionsSchema = (properties as { inspectOptions: { properties: Record<string, unknown>; additionalProperties: boolean } }).inspectOptions;
 
     // schema-level additionalProperties:false lists which fields are allowed
-    const allowedFields = Object.keys(viewTargetsOptionsSchema.properties);
+    const allowedFields = Object.keys(inspectOptionsSchema.properties);
     expect(allowedFields.sort()).toEqual(
       [
         "includeHidden",
-        "includeDisabled",
-        "includeStaticText",
-        "includeContainers",
         "maxDepth",
         "accessibilityIdentifier",
         "accessibilityIdentifierPrefix",
@@ -171,12 +120,16 @@ describe("static tools", () => {
         "maxTargets"
       ].sort()
     );
-    expect(viewTargetsOptionsSchema.additionalProperties).toBe(false);
-    // detailLevel is a topViewHierarchy-only field and must NOT be in viewTargetsOptions' allowed set
+    // Task 3 已从 Swift inputSchema 删除的三个字段不应再透传
+    expect(allowedFields).not.toContain("includeDisabled");
+    expect(allowedFields).not.toContain("includeStaticText");
+    expect(allowedFields).not.toContain("includeContainers");
+    expect(inspectOptionsSchema.additionalProperties).toBe(false);
+    // detailLevel is a topViewHierarchy-only field and must NOT be in inspectOptions' allowed set
     expect(allowedFields).not.toContain("detailLevel");
   });
 
-  test("wait_and_observe handler passes viewTargetsOptions.maxDepth through to ui.viewTargets", async () => {
+  test("wait_and_inspect handler passes inspectOptions.maxDepth through to ui.inspect", async () => {
     const calls: Array<{ action: string; data: JSONObject }> = [];
     const tools = createStaticTools({
       client: {
@@ -188,9 +141,9 @@ describe("static tools", () => {
       registry: fakeRegistry(0)
     });
 
-    await (tools.wait_and_observe!).handler({
+    await (tools.wait_and_inspect!).handler({
       conditions: [{ id: "idle", mode: "idle" }],
-      viewTargetsOptions: {
+      inspectOptions: {
         maxDepth: 3,
         maxTargets: 100
       }
@@ -202,7 +155,7 @@ describe("static tools", () => {
         data: { conditions: [{ id: "idle", mode: "idle" }] }
       },
       {
-        action: "ui.viewTargets",
+        action: "ui.inspect",
         data: { maxDepth: 3, maxTargets: 100 }
       }
     ]);

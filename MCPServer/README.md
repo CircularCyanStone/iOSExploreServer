@@ -4,7 +4,7 @@ Mac 本机运行的 MCP stdio server。它把 App 内 `ExploreServer` 的 `POST 
 
 ## 启动前提
 
-模拟器：App 启动并开启 `IOS_EXPLORE_AUTOSTART=1` 后，Mac 直接访问 `localhost:38321`。
+模拟器：App 启动并开启 `IOS_EXPLORE_AUTOSTART=1` 后,Mac 直接访问 `localhost:38321`。
 
 真机：App 启动并开启 `IOS_EXPLORE_AUTOSTART=1` 后，先启动 `iproxy 38321 38321`。真机验收前运行：
 
@@ -30,24 +30,9 @@ npm run build
 | `IOS_EXPLORE_BASE_URL` | `http://localhost:38321/` | iOSExplore HTTP 地址 |
 | `IOS_EXPLORE_REQUEST_TIMEOUT_MS` | `10000` | 普通 action 请求超时 |
 
-`ui.wait`、`ui.waitAny`、`wait_and_observe` 会按业务 `timeoutMs + 5000` 自动放宽 HTTP timeout。
+`ui.wait`、`ui.waitAny`、`wait_and_inspect` 会按业务 `timeoutMs + 5000` 自动放宽 HTTP timeout。
 
-## 端到端测试指南
+## 端到端测试
 
-完整的端到端测试流程（真机/模拟器 + curl/MCP JSON-RPC + MCPServer + UI 交互）见：
-
-→ [docs/investigations/mcp-e2e-test.md](../docs/investigations/mcp-e2e-test.md)
-
-覆盖：基础 API 验证、日志能力验证、MCPServer JSON-RPC 测试、UI 交互验证、故障排查表、快速验证清单。
-
-## 推荐调用顺序
-
-```text
-health_check
-→ observe
-→ 动态动作工具或 call_action
-→ wait_and_observe
-→ 根据最新 observation 判断结果
-```
-
-日常优先使用固定工具；排障或未知 action 时使用 `call_action`。
+- 完整端到端流程文档：[docs/investigations/mcp-e2e-test.md](../docs/investigations/mcp-e2e-test.md)
+- 本地临时调试（不安装 MCPServer 到任何 MCP 客户端）：[docs/local-mcp-test.md](docs/local-mcp-test.md)

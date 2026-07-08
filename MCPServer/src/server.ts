@@ -112,7 +112,7 @@ function toMCPTool(tool: StaticToolLike | ToolDefinition) {
 function isIOSExploreDynamicToolName(name: string): boolean {
   // T4 修复后动态工具名直接由 action 名派生（`toolNameForAction` 把 `ui.tap` 转成 `ui_tap`），
   // 不再带 `ios_` 前缀。识别动态工具用 `ui_` 前缀——所有 UIKit action 都是 `ui.*` 命名空间。
-  // 静态工具（health_check / refresh_tools / call_action / observe / wait_and_observe）
+  // 静态工具（health_check / refresh_tools / call_action / wait_and_inspect）
   // 不会以 `ui_` 开头，不会误触发 refresh。
   return name.startsWith("ui_");
 }
