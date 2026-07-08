@@ -6,18 +6,12 @@ import Testing
 func viewTargetsQueryParsesDefaultsAndFilters() throws {
     let query = try UIViewTargetsInput.parse(from: [
         "includeHidden": true,
-        "includeDisabled": false,
-        "includeStaticText": true,
-        "includeContainers": true,
         "maxDepth": 3,
         "accessibilityIdentifierPrefix": "home.",
         "textLimit": 120,
     ])
 
     #expect(query.includeHidden == true)
-    #expect(query.includeDisabled == false)
-    #expect(query.includeStaticText == true)
-    #expect(query.includeContainers == true)
     #expect(query.maxDepth == 3)
     #expect(query.accessibilityIdentifierPrefix == "home.")
     #expect(query.textLimit == 120)
@@ -27,9 +21,6 @@ func viewTargetsQueryParsesDefaultsAndFilters() throws {
 func viewTargetsInputSchemaUsesExpectedFieldOrder() {
     #expect(UIViewTargetsInput.inputSchema.fields.map(\.name) == [
         "includeHidden",
-        "includeDisabled",
-        "includeStaticText",
-        "includeContainers",
         "maxDepth",
         "accessibilityIdentifier",
         "accessibilityIdentifierPrefix",
@@ -76,29 +67,50 @@ func viewTargetsQueryRejectsOutOfRangeNumbers() {
 }
 #endif
 
-@Test("UIViewTargetsInput include 策略只输出 canonical interaction target")
-func viewTargetsQueryShouldIncludeCandidates() {
-    let defaultQuery = UIViewTargetsInput.default
+@Test("isFull: 任一识别/可操作条件为 true 即 full")
+func viewTargetsQueryIsFullRules() {
+    let input = UIViewTargetsInput()
 
-    // UIControl（含 disabled）始终是 canonical target：disabled 仍可观察，其 availableActions
-    // 由 capability resolver 决定为空。
-    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isControl: true)) == true)
-    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isControl: true, isEnabled: false)) == true)
-    // includeDisabled 不再排除 disabled canonical control（canonical-only 规则优先）。
-    #expect(UIViewTargetsInput(includeDisabled: false).shouldInclude(candidate: .testCandidate(isControl: true, isEnabled: false)) == true)
-    // hidden 排除。
-    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isHidden: true, isControl: true)) == false)
-    // UIScrollView 系是 canonical（scroll / input）。
-    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isScrollView: true)) == true)
-    // 非到此为止：静态文本 / container（仅 identifier 或 label 的 view）不再进入 targets
-    // （观察职责在 topViewHierarchy）。
-    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(hasStaticText: true)) == false)
-    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(hasSubviews: true)) == false)
-    #expect(UIViewTargetsInput(includeStaticText: true).shouldInclude(candidate: .testCandidate(hasStaticText: true)) == false)
-    #expect(UIViewTargetsInput(includeContainers: true).shouldInclude(candidate: .testCandidate(hasSubviews: true)) == false)
-    // 挂有 gesture 的非 control view 是 canonical：手势 adapter（executeTap gesture 分支）能为其
-    // 派发 target-action，故 ui.viewTargets 签发 viewSnapshotID 让 ui.tap 可达。
-    #expect(defaultQuery.shouldInclude(candidate: .testCandidate(isUserInteractionEnabled: true, hasGestureRecognizers: true)) == true)
+    // 六条规则：任一为 true 即 full（带识别信息或可操作的 canonical interaction target）。
+    // isControl / isScrollView / hasGestureRecognizers = 可操作；
+    // hasStaticText / hasAccessibilityLabel / hasAccessibilityIdentifier = 带识别信息。
+    #expect(input.isFull(candidate: .testCandidate(isControl: true)) == true)
+    #expect(input.isFull(candidate: .testCandidate(isScrollView: true)) == true)
+    #expect(input.isFull(candidate: .testCandidate(hasGestureRecognizers: true)) == true)
+    #expect(input.isFull(candidate: .testCandidate(hasStaticText: true)) == true)
+    #expect(input.isFull(candidate: .testCandidate(hasAccessibilityLabel: true)) == true)
+    #expect(input.isFull(candidate: .testCandidate(hasAccessibilityIdentifier: true)) == true)
+}
+
+@Test("isFull: 全部条件为 false 即 minimal")
+func viewTargetsQueryIsFullMinimal() {
+    let input = UIViewTargetsInput()
+    // 无识别信息且不可操作 → minimal，只输出 path+type 维持层级。
+    #expect(input.isFull(candidate: .testCandidate()) == false)
+}
+
+@Test("isFull: includeHidden=false 时 hidden 节点被剪枝")
+func viewTargetsQueryIsFullHiddenPruned() {
+    // includeHidden 默认 false：hidden 节点即便命中 canonical 条件也不输出。
+    let input = UIViewTargetsInput()
+    #expect(input.isFull(candidate: .testCandidate(isHidden: true, isControl: true)) == false)
+    // includeHidden=true 时 hidden canonical target 仍进入输出。
+    #expect(UIViewTargetsInput(includeHidden: true).isFull(candidate: .testCandidate(isHidden: true, isControl: true)) == true)
+}
+
+@Test("UIViewTargetsInput 不再声明 includeStaticText/includeContainers/includeDisabled")
+func viewTargetsQueryDeadFieldsRemoved() {
+    // schema additionalProperties=false：删除字段后，旧字段名应作为未知字段被拒绝，
+    // 避免调用方误以为传值仍生效。
+    #expect(throws: CommandInputParseError.self) {
+        try UIViewTargetsInput.parse(from: ["includeStaticText": true])
+    }
+    #expect(throws: CommandInputParseError.self) {
+        try UIViewTargetsInput.parse(from: ["includeDisabled": false])
+    }
+    #expect(throws: CommandInputParseError.self) {
+        try UIViewTargetsInput.parse(from: ["includeContainers": true])
+    }
 }
 
 @Test("UIViewTargetSummary 转 JSON 保留轻量字段")
@@ -180,23 +192,19 @@ func viewTargetTextTruncatesLongValues() {
 private extension UIViewTargetCandidate {
     static func testCandidate(isHidden: Bool = false,
                               isControl: Bool = false,
-                              isEnabled: Bool = true,
                               isUserInteractionEnabled: Bool = false,
                               hasGestureRecognizers: Bool = false,
                               hasAccessibilityIdentifier: Bool = false,
                               hasAccessibilityLabel: Bool = false,
                               hasStaticText: Bool = false,
-                              hasSubviews: Bool = false,
                               isScrollView: Bool = false) -> UIViewTargetCandidate {
         UIViewTargetCandidate(isHidden: isHidden,
                               isControl: isControl,
-                              isEnabled: isEnabled,
                               isUserInteractionEnabled: isUserInteractionEnabled,
                               hasGestureRecognizers: hasGestureRecognizers,
                               hasAccessibilityIdentifier: hasAccessibilityIdentifier,
                               hasAccessibilityLabel: hasAccessibilityLabel,
                               hasStaticText: hasStaticText,
-                              hasSubviews: hasSubviews,
                               isScrollView: isScrollView)
     }
 }

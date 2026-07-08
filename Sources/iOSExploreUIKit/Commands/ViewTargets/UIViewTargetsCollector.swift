@@ -21,7 +21,7 @@ enum UIViewTargetsCollector {
     /// - Returns: screen、targetCount、visitedNodeCount、targets、viewSnapshotID 的 JSON。
     /// - Throws: `UIKitCommandError.hierarchyUnavailable`——UIKit 上下文不可用时。
     static func collect(query: UIViewTargetsInput) throws -> JSON {
-        UIKitCommandLogging.info("command", "ui view targets collect mainactor start includeHidden=\(query.includeHidden) includeDisabled=\(query.includeDisabled) includeStaticText=\(query.includeStaticText) includeContainers=\(query.includeContainers) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit)")
+        UIKitCommandLogging.info("command", "ui view targets collect mainactor start includeHidden=\(query.includeHidden) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit)")
         let context = try UIKitContextProvider.currentContext(action: ViewTargetsCommand.actionName)
         return collect(query: query, context: context)
     }
@@ -114,7 +114,7 @@ enum UIViewTargetsCollector {
             return false
         }
 
-        if shouldInclude(view: view, query: query),
+        if isFull(view: view, query: query),
            matchesIdentifier(view: view, query: query) {
             let summary = summary(for: view, rootView: rootView, window: window, path: path, query: query)
             collected.append(CollectedTarget(summary: summary, view: view))
@@ -138,30 +138,27 @@ enum UIViewTargetsCollector {
         return false
     }
 
-    /// 判断 view 是否符合 canonical 输出策略。
+    /// 判断 view 是否为 full 节点（符合 `UIViewTargetsInput.isFull` 的 canonical 策略）。
     ///
     /// 对 `UIKitFingerprintCollector.collectMatching` 可见：指纹签发必须与目标输出共用同一套
     /// canonical 筛选，保证 `ui.wait(snapshotChanged)` 重采表与 viewTargets 签发表同口径。
-    static func shouldInclude(view: UIView, query: UIViewTargetsInput) -> Bool {
-        let control = view as? UIControl
+    static func isFull(view: UIView, query: UIViewTargetsInput) -> Bool {
         let candidate = UIViewTargetCandidate(
             isHidden: view.isHidden,
-            isControl: control != nil,
-            isEnabled: control?.isEnabled ?? true,
+            isControl: view is UIControl,
             isUserInteractionEnabled: view.isUserInteractionEnabled,
             hasGestureRecognizers: view.gestureRecognizers?.isEmpty == false,
             hasAccessibilityIdentifier: view.accessibilityIdentifier?.isEmpty == false,
             hasAccessibilityLabel: view.accessibilityLabel?.isEmpty == false,
             hasStaticText: textualValue(from: view)?.isEmpty == false,
-            hasSubviews: !view.subviews.isEmpty,
             isScrollView: view is UIScrollView
         )
-        return query.shouldInclude(candidate: candidate)
+        return query.isFull(candidate: candidate)
     }
 
     /// 判断当前 view 是否通过 identifier 输出筛选。
     ///
-    /// 对 `UIKitFingerprintCollector.collectMatching` 可见（与 `shouldInclude` 同理）。
+    /// 对 `UIKitFingerprintCollector.collectMatching` 可见（与 `isFull` 同理）。
     static func matchesIdentifier(view: UIView, query: UIViewTargetsInput) -> Bool {
         guard query.hasIdentifierFilter else { return true }
         let identifier = view.accessibilityIdentifier
@@ -258,23 +255,44 @@ enum UIViewTargetsCollector {
     }
 
     /// 提取 canonical target 的稳定语义文本（按钮内部 label/image 不再作为独立 target，
-    /// 其文本汇总到父 target）。优先级：a11y label → 按钮标题 → a11y value → identifier。
+    /// 其文本汇总到父 target）。优先级：accessibilityIdentifier（最稳定）→ a11y label → a11y value → 控件标题（button/segmented）→ label text → placeholder → textView text。
     /// 不记录明文到日志；返回文本按 `limit` 裁剪。
     private static func semanticText(for view: UIView, limit: Int) -> (text: String, source: String)? {
+        // 优先级 1：accessibilityIdentifier —— UI 自动化专用，最稳定
+        if let identifier = view.accessibilityIdentifier, !identifier.isEmpty {
+            return (UIViewTargetText.limited(identifier, limit: limit) ?? identifier, "accessibilityIdentifier")
+        }
+        // 优先级 2：accessibilityLabel —— 无障碍名称
         if let label = view.accessibilityLabel, !label.isEmpty {
             return (UIViewTargetText.limited(label, limit: limit) ?? label, "accessibilityLabel")
         }
+        // 优先级 3：accessibilityValue —— 无障碍值
+        if let value = view.accessibilityValue, !value.isEmpty {
+            return (UIViewTargetText.limited(value, limit: limit) ?? value, "accessibilityValue")
+        }
+        // 优先级 4：控件标题
         if let button = view as? UIButton {
             let title = button.title(for: .normal) ?? button.currentTitle
             if let title, !title.isEmpty {
                 return (UIViewTargetText.limited(title, limit: limit) ?? title, "buttonTitle")
             }
         }
-        if let value = view.accessibilityValue, !value.isEmpty {
-            return (UIViewTargetText.limited(value, limit: limit) ?? value, "accessibilityValue")
+        if let segmented = view as? UISegmentedControl, segmented.selectedSegmentIndex >= 0 {
+            if let title = segmented.titleForSegment(at: segmented.selectedSegmentIndex), !title.isEmpty {
+                return (UIViewTargetText.limited(title, limit: limit) ?? title, "segmentTitle")
+            }
         }
-        if let identifier = view.accessibilityIdentifier, !identifier.isEmpty {
-            return (UIViewTargetText.limited(identifier, limit: limit) ?? identifier, "accessibilityIdentifier")
+        // 优先级 5：UILabel text 兜底
+        if let labelView = view as? UILabel, let text = labelView.text, !text.isEmpty {
+            return (UIViewTargetText.limited(text, limit: limit) ?? text, "labelText")
+        }
+        // 优先级 6：UITextField.placeholder 兜底
+        if let textField = view as? UITextField, let placeholder = textField.placeholder, !placeholder.isEmpty {
+            return (UIViewTargetText.limited(placeholder, limit: limit) ?? placeholder, "placeholder")
+        }
+        // 优先级 7：UITextView text 兜底
+        if let textView = view as? UITextView, let text = textView.text, !text.isEmpty {
+            return (UIViewTargetText.limited(text, limit: limit) ?? text, "textViewText")
         }
         return nil
     }

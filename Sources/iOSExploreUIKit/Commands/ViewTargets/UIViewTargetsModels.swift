@@ -7,21 +7,6 @@ import iOSExploreServer
 public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let includeHidden = UIKitFilterFields.includeHidden
-        static let includeDisabled = CommandFields.bool(
-            "includeDisabled",
-            default: true,
-            description: "是否包含 disabled control, 默认 true"
-        )
-        static let includeStaticText = CommandFields.bool(
-            "includeStaticText",
-            default: false,
-            description: "是否包含仅展示文本的节点, 默认 false"
-        )
-        static let includeContainers = CommandFields.bool(
-            "includeContainers",
-            default: false,
-            description: "是否包含普通容器 view, 默认 false"
-        )
         static let maxDepth = UIKitFilterFields.maxDepth
         static let accessibilityIdentifier = UIKitFilterFields.accessibilityIdentifier
         static let accessibilityIdentifierPrefix = UIKitFilterFields.accessibilityIdentifierPrefix
@@ -40,9 +25,6 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
 
         static let all: [AnyCommandField] = [
             includeHidden.erased,
-            includeDisabled.erased,
-            includeStaticText.erased,
-            includeContainers.erased,
             maxDepth.erased,
             accessibilityIdentifier.erased,
             accessibilityIdentifierPrefix.erased,
@@ -56,12 +38,6 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
 
     /// 是否包含隐藏 view。
     public let includeHidden: Bool
-    /// 是否包含 disabled control。
-    public let includeDisabled: Bool
-    /// 是否包含仅展示静态文本的节点。
-    public let includeStaticText: Bool
-    /// 是否包含普通容器 view。
-    public let includeContainers: Bool
     /// 最大递归深度，`nil` 表示不限制。
     public let maxDepth: Int?
     /// accessibilityIdentifier 精确匹配条件。
@@ -80,26 +56,17 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     ///
     /// - Parameters:
     ///   - includeHidden: 是否包含隐藏 view。
-    ///   - includeDisabled: 是否包含 disabled control。
-    ///   - includeStaticText: 是否包含仅展示静态文本的节点。
-    ///   - includeContainers: 是否包含普通容器 view。
     ///   - maxDepth: 最大递归深度。
     ///   - accessibilityIdentifier: accessibilityIdentifier 精确匹配条件。
     ///   - accessibilityIdentifierPrefix: accessibilityIdentifier 前缀匹配条件。
     ///   - textLimit: 文本字段最大字符数。
     public init(includeHidden: Bool = false,
-                includeDisabled: Bool = true,
-                includeStaticText: Bool = false,
-                includeContainers: Bool = false,
                 maxDepth: Int? = nil,
                 accessibilityIdentifier: String? = nil,
                 accessibilityIdentifierPrefix: String? = nil,
                 textLimit: Int = 80,
                 maxTargets: Int = 200) {
         self.includeHidden = includeHidden
-        self.includeDisabled = includeDisabled
-        self.includeStaticText = includeStaticText
-        self.includeContainers = includeContainers
         self.maxDepth = maxDepth
         self.accessibilityIdentifier = accessibilityIdentifier
         self.accessibilityIdentifierPrefix = accessibilityIdentifierPrefix
@@ -112,36 +79,27 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
         accessibilityIdentifier != nil || accessibilityIdentifierPrefix != nil
     }
 
-    /// 判断轻量目标候选是否应该进入 `ui.viewTargets` 输出。
+    /// 判定节点是 full（带识别信息或可操作）还是 minimal（仅结构）。
     ///
-    /// 重构后 `ui.viewTargets` 只输出 **canonical interaction targets**——可由现有公开命令
-    /// 直接、确定操作的对象：
-    /// - 任何 `UIControl`（`UIButton`/`UISwitch`/`UISlider`/`UISegmentedControl`/
-    ///   `UITextField`/custom control，含 disabled——disabled 仍可观察，其 `availableActions`
-    ///   由 capability resolver 决定为空）；
-    /// - `UIScrollView` 系（含 `UITextView`：input；纯 scroll view：scroll）；
-    /// - 挂有 `UIGestureRecognizer` 的非 control view（手势 adapter 为其派发 target-action，
-    ///   见 `UIKitActionExecutor.executeTap` 的 gesture 分支）。
+    /// `ui.viewTargets` / `ui.inspect` 的目标筛选口径：full 节点签发 fingerprint、可被
+    /// `ui.tap`/`ui.control.sendAction` 操作，并进入轻量 targets；minimal 节点只输出 path+type
+    /// 维持层级，强制 `actions=[]`、不签发。六条规则任一命中即 full：
+    /// - `isControl` / `isScrollView` / `hasGestureRecognizers`：可操作（control/scroll 走
+    ///   executor 默认路由，gesture 走 adapter 派发 target-action）；
+    /// - `hasStaticText` / `hasAccessibilityLabel` / `hasAccessibilityIdentifier`：带识别信息，
+    ///   让 agent 能在 target 上读到稳定语义而非去猜某个子 view 的归属。
     ///
-    /// 普通 `UILabel`、container、仅 identifier 或 label 的 view 不再进入 targets（其观察职责在
-    /// `ui.topViewHierarchy`）。挂有 gesture 的非 control view 进入 targets——手势 adapter 能为它
-    /// 派发 target-action，故它是可执行目标；`availableActions` 不声明 tap（capability 只认 default
-    /// route），agent 据 `hasGestureRecognizers` 字段推断可试 tap。`includeStaticText`/
-    /// `includeContainers`/`includeDisabled` 字段保留 schema 兼容，但 canonical-only 规则下不再让
-    /// 静态/容器 view 进入 targets，也不再因 `includeDisabled=false` 排除 disabled canonical target。
+    /// `includeHidden=false` 时 hidden 节点整棵剪枝（即便命中 canonical 条件也不输出），与
+    /// collector 的递归剪枝一致。
     ///
     /// 该方法只依赖 Foundation-only 的候选摘要，便于在非 UIKit 测试中覆盖采集器的包含策略。
     ///
     /// - Parameter candidate: 从真实 view 或测试用例抽取出的候选摘要。
-    /// - Returns: 当前查询参数下是否应输出该候选。
-    public func shouldInclude(candidate: UIViewTargetCandidate) -> Bool {
+    /// - Returns: 当前查询参数下该候选是否为 full 节点。
+    public func isFull(candidate: UIViewTargetCandidate) -> Bool {
         if !includeHidden, candidate.isHidden { return false }
-        if candidate.isControl { return true }
-        if candidate.isScrollView { return true }
-        // 非 control/scroll 但挂有 gesture 的 view：手势 adapter（executeTap gesture 分支）能为它
-        // 派发 target-action，是可执行 target，签发 viewSnapshotID 让 ui.tap 可达。
-        if candidate.hasGestureRecognizers { return true }
-        return false
+        return candidate.isControl || candidate.isScrollView || candidate.hasGestureRecognizers
+            || candidate.hasStaticText || candidate.hasAccessibilityLabel || candidate.hasAccessibilityIdentifier
     }
 
     /// 按 `CommandInputDecoder` 读取声明字段并构造 typed input。
@@ -152,9 +110,6 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIViewTargetsInput {
         UIViewTargetsInput(
             includeHidden: try decoder.read(Fields.includeHidden),
-            includeDisabled: try decoder.read(Fields.includeDisabled),
-            includeStaticText: try decoder.read(Fields.includeStaticText),
-            includeContainers: try decoder.read(Fields.includeContainers),
             maxDepth: try decoder.read(Fields.maxDepth),
             accessibilityIdentifier: try decoder.read(Fields.accessibilityIdentifier),
             accessibilityIdentifierPrefix: try decoder.read(Fields.accessibilityIdentifierPrefix),
@@ -173,8 +128,6 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
     public let isHidden: Bool
     /// 是否为 UIControl 或等价控件候选。
     public let isControl: Bool
-    /// 控件是否可用；仅在 `isControl=true` 时参与 `includeDisabled` 策略。
-    public let isEnabled: Bool
     /// 是否允许用户交互。
     public let isUserInteractionEnabled: Bool
     /// 是否挂有 gesture recognizer。
@@ -185,8 +138,6 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
     public let hasAccessibilityLabel: Bool
     /// 是否存在非空静态文本。
     public let hasStaticText: Bool
-    /// 是否存在子 view。
-    public let hasSubviews: Bool
     /// 是否为 `UIScrollView` 系（含 `UITableView`/`UICollectionView`/`UITextView`）。
     public let isScrollView: Bool
 
@@ -195,33 +146,27 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
     /// - Parameters:
     ///   - isHidden: 是否隐藏。
     ///   - isControl: 是否为 UIControl 或等价控件候选。
-    ///   - isEnabled: 控件是否可用；仅在 `isControl=true` 时参与 `includeDisabled` 策略。
     ///   - isUserInteractionEnabled: 是否允许用户交互。
     ///   - hasGestureRecognizers: 是否挂有 gesture recognizer。
     ///   - hasAccessibilityIdentifier: 是否存在非空 accessibilityIdentifier。
     ///   - hasAccessibilityLabel: 是否存在非空 accessibilityLabel。
     ///   - hasStaticText: 是否存在非空静态文本。
-    ///   - hasSubviews: 是否存在子 view。
     ///   - isScrollView: 是否为 UIScrollView 系。
     public init(isHidden: Bool,
                 isControl: Bool,
-                isEnabled: Bool,
                 isUserInteractionEnabled: Bool,
                 hasGestureRecognizers: Bool,
                 hasAccessibilityIdentifier: Bool,
                 hasAccessibilityLabel: Bool,
                 hasStaticText: Bool,
-                hasSubviews: Bool,
                 isScrollView: Bool = false) {
         self.isHidden = isHidden
         self.isControl = isControl
-        self.isEnabled = isEnabled
         self.isUserInteractionEnabled = isUserInteractionEnabled
         self.hasGestureRecognizers = hasGestureRecognizers
         self.hasAccessibilityIdentifier = hasAccessibilityIdentifier
         self.hasAccessibilityLabel = hasAccessibilityLabel
         self.hasStaticText = hasStaticText
-        self.hasSubviews = hasSubviews
         self.isScrollView = isScrollView
     }
 }
