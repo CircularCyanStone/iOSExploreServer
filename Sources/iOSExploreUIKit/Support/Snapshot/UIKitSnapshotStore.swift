@@ -324,6 +324,34 @@ public final class UIKitSnapshotStore {
         isStale(viewSnapshotID: viewSnapshotID, path: path, context: .test, current: current)
     }
 
+    /// 查询 path 是否在指定快照的指纹表内（用于区分 `not_actionable` 与 `stale_locator`）。
+    ///
+    /// executor 收到交互命令时，若 path 无法操作，需要区分两种错误语义：
+    /// 该 path 是当前快照从未签发过的 minimal 结构节点（应返回 `not_actionable`，提示
+    /// agent 这个 path 本就不可点击），还是 snapshot 已失效/被淘汰导致查不到（应返回
+    /// `stale_locator`，提示 agent 重新 inspect）。本方法提供这一前置判据。
+    ///
+    /// **三态语义（关键）**：
+    /// - unknown/expired snapshotID（entries 无该 id 或已超 TTL）→ 返回 **true**：视为
+    ///   「可能签发过」，交 `isStale` 裁决 `stale_locator`，引导 agent 重新 inspect。这样
+    ///   避免 snapshot 失效时误判成 `not_actionable`，让 agent 走错恢复分支；
+    /// - snapshotID 有效但 path 不在指纹表 → 返回 **false**：该 path 是 minimal 结构节点
+    ///   （容器/装饰层），executor 据此返回 `not_actionable`。
+    ///
+    /// 纯读，不改 LRU/TTL（保活由 `isStale` 在真正校验时更新），不删除过期条目——仅判定
+    /// 是否过期。无日志（判定细节由调用方在确定错误码后记录）。
+    ///
+    /// - Parameters:
+    ///   - viewSnapshotID: 待校验的快照标识。
+    ///   - path: 要查询的目标 path。
+    /// - Returns: `true`=视为已签发（含 unknown/expired id）；`false`=id 有效但 path 未签发。
+    func isPathSigned(viewSnapshotID: String, path: String) -> Bool {
+        guard let entry = entries[viewSnapshotID], !isExpired(entry: entry) else {
+            return true // unknown/expired id → 交 isStale 裁决，不在此误报 not_actionable
+        }
+        return entry.fingerprints[path] != nil
+    }
+
     /// 比较指定 snapshot 的完整指纹表是否与当前一致（供 `ui.wait` 的 snapshotChanged）。
     ///
     /// 按 spec §6 比较「whole snapshot tables」：取出 snapshot 签发时存的 path→fingerprint 表，

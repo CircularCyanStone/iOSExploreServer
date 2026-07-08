@@ -139,6 +139,50 @@ func snapshotResponseFieldsForOverLimit() {
     #expect(fields.unavailableReason == .string(UIKitSnapshotResponse.fingerprintLimitReason))
 }
 
+// MARK: - isPathSigned 三态查询测试（Task 5）
+//
+// `isPathSigned` 用于区分 not_actionable 与 stale_locator：executor 收到交互命令携带的
+// viewSnapshotID 时，先用它判断 path 是否在快照指纹表内，再决定错误码语义。
+// 三态：unknown/expired id → true（交 isStale 裁决 stale_locator）；有效 id 但 path 缺失 →
+// false（minimal 结构节点，返回 not_actionable）。
+
+@Test("isPathSigned: id 有效且 path 在指纹表 → true") @MainActor
+func isPathSignedTrueForSignedPath() {
+    let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
+    guard let id = store.insert(context: .test, targets: ["root/1": .test], query: .default) else {
+        Issue.record("small snapshot should be stored"); return
+    }
+    #expect(store.isPathSigned(viewSnapshotID: id, path: "root/1") == true)
+}
+
+@Test("isPathSigned: id 有效但 path 不在指纹表 → false（not_actionable 判据）") @MainActor
+func isPathSignedFalseForUnsignedPath() {
+    let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
+    guard let id = store.insert(context: .test, targets: ["root/1": .test], query: .default) else {
+        Issue.record("small snapshot should be stored"); return
+    }
+    // root/9 是 minimal 结构节点，未签发指纹 → executor 应返回 not_actionable
+    #expect(store.isPathSigned(viewSnapshotID: id, path: "root/9") == false)
+}
+
+@Test("isPathSigned: unknown id → true（交 isStale 裁决，不误报 not_actionable）") @MainActor
+func isPathSignedTrueForUnknownSnapshotID() {
+    let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
+    // entries 无该 id → 视为「可能签发过」，交 isStale 裁决 stale_locator
+    #expect(store.isPathSigned(viewSnapshotID: "snap-nonexistent", path: "root/1") == true)
+}
+
+@Test("isPathSigned: 过期 id（超 TTL）→ true（交 isStale 裁决）") @MainActor
+func isPathSignedTrueForExpiredSnapshotID() {
+    let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
+    guard let id = store.insert(context: .test, targets: ["root/1": .test], query: .default) else {
+        Issue.record("small snapshot should be stored"); return
+    }
+    // 推进时间超过 30s TTL → id 失效，视为「可能签发过」
+    store.setNow(Date(timeIntervalSince1970: 131))
+    #expect(store.isPathSigned(viewSnapshotID: id, path: "root/1") == true)
+}
+
 #if canImport(UIKit)
 // MARK: - semanticDigest 语义变化测试（Task 5，需 UIKit）
 
