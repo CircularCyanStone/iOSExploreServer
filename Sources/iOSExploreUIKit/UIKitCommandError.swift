@@ -29,8 +29,8 @@ struct UIKitCommandError: Error, Sendable, Equatable {
 
     /// locator 陈旧（viewSnapshot 已过期、目标未被签发，或指纹 / 语义变化），需重新观察后重试。
     ///
-    /// 提示调用方重新调用 `ui.viewTargets` 拿到新 `viewSnapshotID` 再下发交互。viewSnapshotID
-    /// 只由 `ui.viewTargets` 签发（不再来自 `ui.screenshot`）。
+    /// 提示调用方重新调用 `ui.inspect` 拿到新 `viewSnapshotID` 再下发交互。viewSnapshotID
+    /// 只由 `ui.inspect` 签发（不再来自 `ui.screenshot`）。
     ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名，用于日志关联。
@@ -38,7 +38,7 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// - Returns: `stale_locator` 失败描述。
     static func staleLocator(action: String, viewSnapshotID: String) -> UIKitCommandError {
         UIKitCommandError(code: .staleLocator,
-                          message: "view snapshot expired or target changed; call ui.viewTargets first, then retry with the new viewSnapshotID",
+                          message: "view snapshot expired or target changed; call ui.inspect first, then retry with the new viewSnapshotID",
                           logMessage: "uikit locator stale action=\(action) viewSnapshot=\(viewSnapshotID)")
     }
 
@@ -124,6 +124,23 @@ struct UIKitCommandError: Error, Sendable, Equatable {
         UIKitCommandError(code: .invalidData,
                           message: "requested action is not supported for target",
                           logMessage: "ui action unsupported action=\(action) target=\(targetDescription) requestedAction=\(requestedAction)")
+    }
+
+    /// 节点 `availableActions` 为空，是 `ui.inspect` 标注的 minimal 结构节点，不支持任何动作。
+    ///
+    /// 区别于 `unsupportedTarget`（目标类型有默认 tap 路由但不在 UIButton/UISwitch/文本输入白名单内）
+    /// 与 `unsupportedAction`（控件存在、有能力表，但请求的事件不在表里）：这里是 inspect 阶段就
+    /// 判定该节点无任何可用动作（容器/装饰 view），message 引导调用方回到 `ui.inspect` 结果里挑
+    /// `availableActions` 非空的目标再操作。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名，用于日志关联。
+    ///   - path: 目标 path（如 `"root/5/0"`），进入 message 帮助调用方定位。
+    /// - Returns: `not_actionable` 失败描述。
+    static func notActionable(action: String, path: String) -> UIKitCommandError {
+        UIKitCommandError(code: .notActionable,
+                          message: "节点 \(path) 不可操作（availableActions 为空）。请在 ui.inspect 结果里找 availableActions 非空的目标再操作。",
+                          logMessage: "uikit not_actionable action=\(action) path=\(path)")
     }
 
     /// UIControl sendAction 目标没有找到。

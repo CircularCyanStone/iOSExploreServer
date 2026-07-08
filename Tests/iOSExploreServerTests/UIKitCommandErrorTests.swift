@@ -9,9 +9,19 @@ struct UIKitCommandErrorTests {
     func staleLocatorUsesDedicatedCode() {
         let error = UIKitCommandError.staleLocator(action: "ui.tap", viewSnapshotID: "snap-1")
         #expect(error.failure.code == .staleLocator)
-        #expect(error.failure.message.contains("ui.viewTargets"))
+        #expect(error.failure.message.contains("ui.inspect"))
         #expect(error.failure.logMessage.contains("action=ui.tap"))
         #expect(error.failure.logMessage.contains("viewSnapshot=snap-1"))
+    }
+
+    @Test("notActionable 工厂生成 not_actionable 业务码并引导 ui.inspect")
+    func notActionableMapsToCode() {
+        let error = UIKitCommandError.notActionable(action: "ui.tap", path: "root/5/0")
+        #expect(error.failure.code == .notActionable)
+        #expect(error.failure.message.contains("ui.inspect"))
+        #expect(error.failure.message.contains("root/5/0"))
+        #expect(error.failure.logMessage.contains("action=ui.tap"))
+        #expect(error.failure.logMessage.contains("path=root/5/0"))
     }
 
     @Test("agent common command error code raw values")

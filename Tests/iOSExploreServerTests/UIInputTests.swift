@@ -179,7 +179,7 @@ func executorStaleViewSnapshotThrows() {
         Issue.record("expected failure, got success")
     } catch let error as UIKitCommandError {
         #expect(error.failure.code == .staleLocator)
-        #expect(error.failure.message == "view snapshot expired or target changed; call ui.viewTargets first, then retry with the new viewSnapshotID")
+        #expect(error.failure.message == "view snapshot expired or target changed; call ui.inspect first, then retry with the new viewSnapshotID")
         #expect(error.failure.logMessage == "uikit locator stale action=ui.input viewSnapshot=snap-nonexistent")
     } catch {
         Issue.record("unexpected error: \(error)")
