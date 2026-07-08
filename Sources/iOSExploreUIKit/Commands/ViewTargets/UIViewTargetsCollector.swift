@@ -41,7 +41,7 @@ enum UIViewTargetsCollector {
         var fullCount = 0
         var collected: [CollectedTarget] = []
         let digest = UIKitFingerprintCollector.digest(topViewController: context.topViewController)
-        let truncated = collect(view: context.rootView,
+        let truncation = collect(view: context.rootView,
                 rootView: context.rootView,
                 window: context.window,
                 path: [],
@@ -50,6 +50,17 @@ enum UIViewTargetsCollector {
                 visitedNodeCount: &visitedNodeCount,
                 fullCount: &fullCount,
                 collected: &collected)
+        // 截断原因从递归结果传播上来，让响应的 truncationReason 区分 maxTargets / maxVisitedNodes：
+        // 否则 maxVisitedNodes 触顶时 fullCount < maxTargets，agent 看到 reason="maxTargets" 会去调
+        // 错参数（应调 maxVisitedNodes）。
+        let truncated = truncation != .none
+        let truncationReason: JSONValue = {
+            switch truncation {
+            case .none: return .null
+            case .maxTargets: return .string("maxTargets")
+            case .maxVisitedNodes: return .string("maxVisitedNodes")
+            }
+        }()
 
         // 只为最终返回的 full target 签发指纹：returned full paths == viewSnapshotID 签发
         // fingerprint paths == tap/sendAction 可执行集合。minimal 节点不签发（强制 actions=[]、
@@ -83,7 +94,7 @@ enum UIViewTargetsCollector {
             "maxTargets": .double(Double(query.maxTargets)),
             "maxVisitedNodes": .double(Double(query.maxVisitedNodes)),
             "truncated": .bool(truncated),
-            "truncationReason": truncated ? .string("maxTargets") : .null,
+            "truncationReason": truncationReason,
             "viewSnapshotID": snapshotFields.id,
             "viewSnapshotUnavailableReason": snapshotFields.unavailableReason,
         ]
@@ -105,6 +116,22 @@ enum UIViewTargetsCollector {
         let summary: UIViewTargetSummary
         let view: UIView
         let isFull: Bool
+    }
+
+    /// 截断原因枚举（替代原 `Bool` 返回值），让顶层响应能区分是 `maxTargets` 还是
+    /// `maxVisitedNodes` 触顶——前者提示调用方调大 `maxTargets`，后者调大 `maxVisitedNodes`。
+    ///
+    /// `.none` 表示本枝未触发截断（含 hidden 剪枝、control 子树剪枝、自然到叶、maxDepth 到顶），
+    /// 递归继续探索别的枝；`.maxTargets` / `.maxVisitedNodes` 立即向上传播，让顶层据此设置
+    /// 响应的 `truncationReason`，避免 agent 看到 `truncated=true, truncationReason="maxTargets"`
+    /// 却 `fullCount < maxTargets` 时被误导去调错参数。
+    private enum CollectionTruncation {
+        /// 未截断（本枝结束，继续别的枝）：hidden 剪枝、control 子树剪枝、自然到叶、maxDepth 到顶。
+        case none
+        /// full 输出达 `maxTargets` 上限。
+        case maxTargets
+        /// 访问节点数达 `maxVisitedNodes` 上限（深树保护）。
+        case maxVisitedNodes
     }
 
     /// 递归遍历 view 树，按 full/minimal 分档收集节点。
@@ -129,7 +156,8 @@ enum UIViewTargetsCollector {
     /// 渲染细节。整棵子树剪枝（cell 子树不受影响，cell 非 UIControl）。
     ///
     /// **深树保护**：`visitedNodeCount` 超过 `maxVisitedNodes` 时立即停止（含 minimal 与 full），
-    /// 防止异常深树让 collector 跑飞。返回 `true` 表示发生截断（`maxTargets` 或 `maxVisitedNodes`）。
+    /// 防止异常深树让 collector 跑飞。返回 `CollectionTruncation` 区分截断来源：`.none` 本枝无截断
+    /// （继续别的枝），`.maxTargets` / `.maxVisitedNodes` 立即向上传播，让顶层据此设 `truncationReason`。
     private static func collect(view: UIView,
                                 rootView: UIView,
                                 window: UIWindow,
@@ -138,11 +166,11 @@ enum UIViewTargetsCollector {
                                 query: UIViewTargetsInput,
                                 visitedNodeCount: inout Int,
                                 fullCount: inout Int,
-                                collected: inout [CollectedTarget]) -> Bool {
+                                collected: inout [CollectedTarget]) -> CollectionTruncation {
         visitedNodeCount += 1
-        if visitedNodeCount > query.maxVisitedNodes { return true }
+        if visitedNodeCount > query.maxVisitedNodes { return .maxVisitedNodes }
         if !query.includeHidden, view.isHidden {
-            return false
+            return .none
         }
 
         let candidate = makeCandidate(for: view)
@@ -152,25 +180,25 @@ enum UIViewTargetsCollector {
             let summary = summary(for: view, rootView: rootView, window: window, path: path, query: query)
             collected.append(CollectedTarget(summary: summary, view: view, isFull: true))
             fullCount += 1
-            if fullCount >= query.maxTargets { return true }
+            if fullCount >= query.maxTargets { return .maxTargets }
         } else if !isFull {
             // 控件子树内的非 full 节点（含 rolled-up 展示节点与内部结构节点）不作为 minimal 输出：
             // 其语义已由父 control 的 full target 表达（semanticText / availableActions），
             // 独立输出控件内部结构对 agent 无层级价值，只会泄露渲染细节并引诱误操作。
             // 由于 control 子树内所有后代都在同一 UIControl 内，整棵子树剪枝（不收集、不递归）。
             // cell 子树不受影响：cell 非 UIControl，cell 内 label 的 isInControlSubtree=false（spec §3.4）。
-            guard !candidate.isInControlSubtree else { return false }
+            guard !candidate.isInControlSubtree else { return .none }
             // minimal 结构节点：维持层级，不签发、强制 actions=[]、toJSON 只输出 path+type。
             let summary = minimalSummary(for: view, path: path, window: window)
             collected.append(CollectedTarget(summary: summary, view: view, isFull: false))
         }
 
         if let maxDepth = query.maxDepth, depth >= maxDepth {
-            return false
+            return .none
         }
 
         for (index, child) in view.subviews.enumerated() {
-            if collect(view: child,
+            let result = collect(view: child,
                     rootView: rootView,
                     window: window,
                     path: path + [index],
@@ -178,9 +206,10 @@ enum UIViewTargetsCollector {
                     query: query,
                     visitedNodeCount: &visitedNodeCount,
                     fullCount: &fullCount,
-                    collected: &collected) { return true }
+                    collected: &collected)
+            if result != .none { return result }
         }
-        return false
+        return .none
     }
 
     /// 从真实 `UIView` 构造 Foundation-only 候选摘要（full/minimal 判定的唯一构造点）。

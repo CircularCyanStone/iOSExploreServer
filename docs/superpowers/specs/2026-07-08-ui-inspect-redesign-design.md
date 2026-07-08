@@ -71,6 +71,8 @@ collect 递归**遍历全节点**（不再用 `shouldInclude` 决定收不收）
 
 **rollup 例外（控件内嵌展示节点不独立 full）**：`hasStaticText` 的节点若同时 `isInControlSubtree`（自身非 `UIControl`、祖先链含 `UIControl`，典型如按钮内部渲染 title 的 `UIButtonLabel`），**不作为独立 full target**——其文本已通过父 control 的 `semanticText`（buttonTitle 等）汇总给父 target，独立签发只会让 agent tap 到返回 `unsupported_target` 的死节点，破坏"签发=可操作"不变式。该节点 rollup 到父 control，不进 targets、不签发 fingerprint。
 
+**控件子树整棵剪枝（实现细节，Task 6）**：实际实现中，`UIControl` 子树内**所有非 full 节点**（含 rolled-up 展示节点 + 内部结构节点如 background）整棵剪枝（`guard !isInControlSubtree else { return .none }`），既不作为 full 也不作为 minimal 输出。理由：控件是原子操作单元，内部渲染细节（label/background）对 agent 理解页面结构无价值，输出只增加噪音；且 rollup 节点若作为 minimal 输出会破坏 §3.6"rollup 节点不进返回集合"不变式。这是 rollup 例外在 minimal 层的延伸。`collect(view:)` 返回 `CollectionTruncation` 枚举，`.none` 表示本枝未截断（含 hidden 剪枝、control 子树剪枝、自然到叶、maxDepth 到顶），`.maxTargets`/`.maxVisitedNodes` 向上传播供顶层设 `truncationReason`。cell 子树不受影响（见下）。
+
 cell 子树不受 rollup 影响：`UITableViewCell`/`UICollectionViewCell` **不是** `UIControl`，cell 内 label 的 `isInControlSubtree=false`，仍按 `hasStaticText` 进 full（spec §3.4 核心：cell 内 UILabel 可被 agent 直接 tap）。独立 label（不在 control/cell 子树，如页面标题）祖先无 `UIControl`，同样仍 full。
 
 **模型表达（评审硬伤 ③ 修正）**：`UIViewTargetSummary` 现有 `frame`/`state`/`role` 是非 Optional 值类型，结构上不能为 null。处理方式：

@@ -140,6 +140,8 @@ func truncationCountsOnlyFullNodes() {
     #expect(fullIds.contains("btn1"))
     #expect(data["fullCount"]?.doubleValue == 2)
     #expect(data["truncated"]?.boolValue == true)
+    // maxTargets 触顶时 reason 必须是 "maxTargets"（防 truncationReason 误报回归）。
+    #expect(data["truncationReason"]?.stringValue == "maxTargets")
     // minimal 节点（root + 已访问的 wrapper）也应出现在结果里（维持层级）。
     #expect(data["minimalCount"]?.doubleValue ?? 0 > 0)
 }
@@ -166,6 +168,8 @@ func maxVisitedNodesStopsDeepTree() {
     #expect(data["truncated"]?.boolValue == true)
     // 全是 minimal（纯 UIView 无内容），fullCount 必须为 0。
     #expect(data["fullCount"]?.doubleValue == 0)
+    // maxVisitedNodes 触顶时 reason 必须是 "maxVisitedNodes"——而非误导 agent 去调 maxTargets。
+    #expect(data["truncationReason"]?.stringValue == "maxVisitedNodes")
 }
 
 @Test("matchesIdentifier：full 受筛选过滤，minimal 维持层级") @MainActor
