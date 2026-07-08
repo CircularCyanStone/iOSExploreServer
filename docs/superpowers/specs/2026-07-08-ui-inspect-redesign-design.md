@@ -67,7 +67,11 @@ collect 递归**遍历全节点**（不再用 `shouldInclude` 决定收不收）
 | **full** | `isControl` / `isScrollView` / `hasGestureRecognizers` / `hasStaticText` / `hasAccessibilityLabel` / `hasAccessibilityIdentifier` | 完整：path + type + frame + text + a11y + actions + indexPath | 签发 | 是 |
 | **minimal** | 以上全 false | 仅 path + type | 不签发 | 否（强制 `actions=[]`） |
 
-判定用的字段 `UIViewTargetCandidate` 已全部具备。
+判定用的字段 `UIViewTargetCandidate` 已全部具备（含 rollup 用的 `isInControlSubtree`）。
+
+**rollup 例外（控件内嵌展示节点不独立 full）**：`hasStaticText` 的节点若同时 `isInControlSubtree`（自身非 `UIControl`、祖先链含 `UIControl`，典型如按钮内部渲染 title 的 `UIButtonLabel`），**不作为独立 full target**——其文本已通过父 control 的 `semanticText`（buttonTitle 等）汇总给父 target，独立签发只会让 agent tap 到返回 `unsupported_target` 的死节点，破坏"签发=可操作"不变式。该节点 rollup 到父 control，不进 targets、不签发 fingerprint。
+
+cell 子树不受 rollup 影响：`UITableViewCell`/`UICollectionViewCell` **不是** `UIControl`，cell 内 label 的 `isInControlSubtree=false`，仍按 `hasStaticText` 进 full（spec §3.4 核心：cell 内 UILabel 可被 agent 直接 tap）。独立 label（不在 control/cell 子树，如页面标题）祖先无 `UIControl`，同样仍 full。
 
 **模型表达（评审硬伤 ③ 修正）**：`UIViewTargetSummary` 现有 `frame`/`state`/`role` 是非 Optional 值类型，结构上不能为 null。处理方式：
 - **模型字段不改 Optional**（避免波及所有构造点和测试）
@@ -103,6 +107,8 @@ collector 当前只为最终返回的 target 签发 fingerprint（`UIViewTargets
 | 含义 | 只返回 canonical | 返回全节点（含 minimal 结构节点），minimal 仅供看结构 |
 
 minimal 节点出现在返回里（维持层级），但不可操作。
+
+**rollup 节点（按钮内 label）不签发**：控件内嵌展示节点（hasStaticText + isInControlSubtree）rollup 到父 control，既不进返回集合也不签发 fingerprint——它们不是独立 target。full 节点里"纯展示但有识别信息"的（独立 label、仅 `accessibilityIdentifier` 的 view）仍签发，这是为让 agent 识别/定位；但其 tap 可能返回 `unsupported_target`（如无默认激活路由的静态标题 label）。agent 心智模型：要操作始终找 `availableActions` 非空的目标（§3.3）。
 
 ### 3.7 minimal 节点 tap/control 的错误处理（评审硬伤 ② 修正）
 

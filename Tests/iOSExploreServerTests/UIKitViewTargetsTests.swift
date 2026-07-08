@@ -89,6 +89,24 @@ func viewTargetsQueryIsFullMinimal() {
     #expect(input.isFull(candidate: .testCandidate()) == false)
 }
 
+@Test("isFull: hasStaticText 在 UIControl 子树内 rollup，否则仍 full")
+func viewTargetsQueryIsFullRollsUpControlSubtreeLabel() {
+    let input = UIViewTargetsInput()
+    // 按钮内部 title label（UIButtonLabel）：hasStaticText + isInControlSubtree（祖先含 UIControl）。
+    // 文本已通过父 control 的 semanticText（buttonTitle）汇总，独立签发只会让 agent tap 到
+    // 返回 unsupported_target 的死节点，破坏"签发=可操作"——故 rollup，不独立 full。
+    #expect(input.isFull(candidate: .testCandidate(hasStaticText: true, isInControlSubtree: true)) == false)
+    // 即便同时带 accessibilityLabel，控件子树内仍 rollup（label 也属控件内嵌展示语义）。
+    #expect(input.isFull(candidate: .testCandidate(hasAccessibilityLabel: true,
+                                                    hasStaticText: true,
+                                                    isInControlSubtree: true)) == false)
+    // 独立 label（页面标题）/ cell 内 label：祖先无 UIControl（cell 非 UIControl）→ 仍 full。
+    // 这是 spec §3.4「cell 内 UILabel 可被 agent 直接 tap 选中行」的核心，rollup 不得误伤。
+    #expect(input.isFull(candidate: .testCandidate(hasStaticText: true, isInControlSubtree: false)) == true)
+    // control 自身不计为 control 子树（isInControlSubtree=false），走 isControl 规则独立 full。
+    #expect(input.isFull(candidate: .testCandidate(isControl: true, isInControlSubtree: false)) == true)
+}
+
 @Test("isFull: includeHidden=false 时 hidden 节点被剪枝")
 func viewTargetsQueryIsFullHiddenPruned() {
     // includeHidden 默认 false：hidden 节点即便命中 canonical 条件也不输出。
@@ -197,7 +215,8 @@ private extension UIViewTargetCandidate {
                               hasAccessibilityIdentifier: Bool = false,
                               hasAccessibilityLabel: Bool = false,
                               hasStaticText: Bool = false,
-                              isScrollView: Bool = false) -> UIViewTargetCandidate {
+                              isScrollView: Bool = false,
+                              isInControlSubtree: Bool = false) -> UIViewTargetCandidate {
         UIViewTargetCandidate(isHidden: isHidden,
                               isControl: isControl,
                               isUserInteractionEnabled: isUserInteractionEnabled,
@@ -205,7 +224,8 @@ private extension UIViewTargetCandidate {
                               hasAccessibilityIdentifier: hasAccessibilityIdentifier,
                               hasAccessibilityLabel: hasAccessibilityLabel,
                               hasStaticText: hasStaticText,
-                              isScrollView: isScrollView)
+                              isScrollView: isScrollView,
+                              isInControlSubtree: isInControlSubtree)
     }
 }
 

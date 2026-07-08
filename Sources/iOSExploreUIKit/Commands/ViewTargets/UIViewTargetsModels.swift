@@ -89,6 +89,17 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     /// - `hasStaticText` / `hasAccessibilityLabel` / `hasAccessibilityIdentifier`：带识别信息，
     ///   让 agent 能在 target 上读到稳定语义而非去猜某个子 view 的归属。
     ///
+    /// **rollup 例外（控件内嵌展示节点）**：`hasStaticText` 的节点若同时
+    /// `isInControlSubtree`（自身非 `UIControl`、祖先链含 `UIControl`，典型如按钮内部
+    /// 渲染 title 的 `UIButtonLabel`），不作为独立 full target——它的文本已通过父 control 的
+    /// `semanticText`（buttonTitle 等）汇总给父 target，独立签发只会让 agent tap 到一个
+    /// 返回 `unsupported_target` 的死节点，破坏"签发=可操作"不变式。
+    ///
+    /// cell 子树不受 rollup 影响：`UITableViewCell`/`UICollectionViewCell` 不是 `UIControl`，
+    /// cell 内 label 的 `isInControlSubtree=false`，仍按 `hasStaticText` 进 full（spec §3.4
+    /// 核心：cell 内 UILabel 可被 agent 直接 tap 选中行）。独立 label（不在 control/cell 子树，
+    /// 如页面标题）祖先无 `UIControl`，同样仍 full。
+    ///
     /// `includeHidden=false` 时 hidden 节点整棵剪枝（即便命中 canonical 条件也不输出），与
     /// collector 的递归剪枝一致。
     ///
@@ -98,6 +109,12 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     /// - Returns: 当前查询参数下该候选是否为 full 节点。
     public func isFull(candidate: UIViewTargetCandidate) -> Bool {
         if !includeHidden, candidate.isHidden { return false }
+        // rollup：控件内嵌展示节点（hasStaticText 且在 UIControl 子树内）rollup 到父 control，
+        // 不独立 full。父 control 的 semanticText 已含其文本，独立签发会破坏"签发=可操作"。
+        // cell 内 label 因 cell 非 UIControl 不命中此处，仍 full（详见上方文档）。
+        if candidate.hasStaticText, candidate.isInControlSubtree {
+            return false
+        }
         return candidate.isControl || candidate.isScrollView || candidate.hasGestureRecognizers
             || candidate.hasStaticText || candidate.hasAccessibilityLabel || candidate.hasAccessibilityIdentifier
     }
@@ -140,6 +157,13 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
     public let hasStaticText: Bool
     /// 是否为 `UIScrollView` 系（含 `UITableView`/`UICollectionView`/`UITextView`）。
     public let isScrollView: Bool
+    /// 是否位于 `UIControl` 子树内（自身非 `UIControl` 且祖先链含 `UIControl`）。
+    ///
+    /// 用于 rollup 判定：控件内嵌展示节点（如按钮内部 title label）的文本已通过父 control 的
+    /// `semanticText`（buttonTitle 等）汇总，无需作为独立 full target 签发；独立签发其 tap 会
+    /// 返回 `unsupported_target`，破坏"签发=可操作"不变式。cell 子树不受影响——
+    /// `UITableViewCell`/`UICollectionViewCell` 不是 `UIControl`，cell 内 label 仍 full。
+    public let isInControlSubtree: Bool
 
     /// 创建轻量目标候选摘要。
     ///
@@ -152,6 +176,7 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
     ///   - hasAccessibilityLabel: 是否存在非空 accessibilityLabel。
     ///   - hasStaticText: 是否存在非空静态文本。
     ///   - isScrollView: 是否为 UIScrollView 系。
+    ///   - isInControlSubtree: 是否位于 UIControl 子树内（rollup 用，默认 false）。
     public init(isHidden: Bool,
                 isControl: Bool,
                 isUserInteractionEnabled: Bool,
@@ -159,7 +184,8 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
                 hasAccessibilityIdentifier: Bool,
                 hasAccessibilityLabel: Bool,
                 hasStaticText: Bool,
-                isScrollView: Bool = false) {
+                isScrollView: Bool = false,
+                isInControlSubtree: Bool = false) {
         self.isHidden = isHidden
         self.isControl = isControl
         self.isUserInteractionEnabled = isUserInteractionEnabled
@@ -168,6 +194,7 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
         self.hasAccessibilityLabel = hasAccessibilityLabel
         self.hasStaticText = hasStaticText
         self.isScrollView = isScrollView
+        self.isInControlSubtree = isInControlSubtree
     }
 }
 

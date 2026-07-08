@@ -17,20 +17,22 @@ func viewTargetsCollectsCanonicalTargetsOnly() {
         let button = UIButton(type: .system)
         button.accessibilityIdentifier = "submit"
         button.frame = CGRect(x: 10, y: 10, width: 80, height: 40)
-        root.addSubview(button) // root/0 button（canonical）
+        root.addSubview(button) // root/0 button（canonical：UIControl）
 
         let tagged = UIView()
         tagged.accessibilityIdentifier = "banner"
         tagged.frame = CGRect(x: 10, y: 60, width: 80, height: 20)
-        root.addSubview(tagged) // root/1 普通 view（有 identifier，但非 canonical → 不采集）
+        root.addSubview(tagged) // root/1 tagged view（hasAccessibilityIdentifier → full）
 
         let plain = UIView(frame: CGRect(x: 0, y: 100, width: 100, height: 50))
         root.addSubview(plain) // root/2 plain（非 canonical → 不采集）
     }
 
     let data = UIViewTargetsCollector.collect(query: .default, context: context)
-    // canonical-only：只有 button（UIControl）被采集；tagged(仅 identifier)/plain 不再进入。
-    #expect(data["targetCount"]?.doubleValue == 1)
+    // button（UIControl）+ tagged（hasAccessibilityIdentifier）都是 full target，均采集；
+    // plain 无识别信息且不可操作，不采集。Task 3 的 isFull 六条规则让 hasAccessibilityIdentifier
+    // 的 view 进入 full（agent 按 id 定位有价值），故 targetCount=2。
+    #expect(data["targetCount"]?.doubleValue == 2)
     #expect(data["truncated"]?.boolValue == false)
     #expect(data["viewSnapshotID"]?.stringValue != nil)
     #expect(data["snapshotID"] == nil)
@@ -39,7 +41,7 @@ func viewTargetsCollectsCanonicalTargetsOnly() {
         Issue.record("targets not array")
         return
     }
-    #expect(targets.count == 1)
+    #expect(targets.count == 2)
 
     guard case .object(let buttonTarget) = targets[0] else {
         Issue.record("button target not object")
@@ -113,6 +115,63 @@ func viewTargetsAggregatesButtonSemanticText() throws {
     // identifier 与 title 共存时 identifier 胜出，由 semanticTextIdentifierBeatsButtonTitle 覆盖。
     #expect(buttonTarget["semanticText"]?.stringValue == "提交订单")
     #expect(buttonTarget["semanticTextSource"]?.stringValue == "buttonTitle")
+}
+
+@Test("viewTargets 按钮内部 title label rollup 到父 control，不独立签发") @MainActor
+func viewTargetsRollsUpButtonInternalLabel() throws {
+    let context = UIKitTestHost.context { root in
+        let button = UIButton(type: .system)
+        button.setTitle("提交订单", for: .normal)
+        button.frame = CGRect(x: 10, y: 10, width: 120, height: 40)
+        root.addSubview(button)
+    }
+    // UIButton(type:.system) 内部有渲染 title 的 UIButtonLabel（UILabel 子类，有 .text）。
+    // 不做 rollup 时它命中 hasStaticText → full → 被签发，agent tap 它会返回 unsupported_target
+    // （label 无默认激活路由），破坏"签发=可操作"。rollup 后它不进 targets、不签发 fingerprint。
+
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    // 只有 button 本身（root/0）是 target；内部 title label 被 rollup，不独立采集。
+    // 若 rollup 失效，UIButtonLabel 会命中 hasStaticText 进 full，targetCount ≥ 2。
+    #expect(data["targetCount"]?.doubleValue == 1)
+
+    guard case .array(let targets)? = data["targets"],
+          case .object(let buttonTarget)? = targets.first else {
+        Issue.record("button target missing")
+        return
+    }
+    #expect(buttonTarget["path"]?.stringValue == "root/0")
+    // 按钮标题已通过 semanticText（buttonTitle）汇总到父 target，agent 无需读内部 label。
+    #expect(buttonTarget["semanticText"]?.stringValue == "提交订单")
+    #expect(buttonTarget["semanticTextSource"]?.stringValue == "buttonTitle")
+}
+
+@Test("viewTargets cell 内 label 不受 control rollup 影响，仍 full 签发") @MainActor
+func viewTargetsKeepsCellInternalLabelFull() throws {
+    let context = UIKitTestHost.context { root in
+        // UITableViewCell 不是 UIControl；cell 子树内 label 的祖先链
+        // （label → contentView → cell → root）无 UIControl → isInControlSubtree=false → 仍 full。
+        // 这是 rollup 判定的硬约束：cell 非 UIControl，cell 内 label 不得被误 rollup（spec §3.4）。
+        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        let label = UILabel()
+        label.text = "滚动测试"
+        label.frame = CGRect(x: 16, y: 12, width: 200, height: 20)
+        cell.contentView.addSubview(label)
+        cell.frame = CGRect(x: 0, y: 0, width: 320, height: 44)
+        root.addSubview(cell)
+    }
+
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    guard case .array(let targets)? = data["targets"] else {
+        Issue.record("targets not array")
+        return
+    }
+    // cell 内 label 有 hasStaticText 且 isInControlSubtree=false → 仍 full，被采集。
+    // 若 rollup 误伤 cell 子树，此 target 会缺失。
+    let labelTarget = targets.first { target in
+        guard case .object(let obj) = target else { return false }
+        return obj["semanticText"]?.stringValue == "滚动测试"
+    }
+    #expect(labelTarget != nil, "cell 内 label 应作为 full target 被采集（spec §3.4）")
 }
 
 @Test("topViewHierarchy 采集注入 view 树的层级结构（不签发 viewSnapshotID）") @MainActor

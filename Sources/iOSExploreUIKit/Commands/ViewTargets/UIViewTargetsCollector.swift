@@ -142,7 +142,15 @@ enum UIViewTargetsCollector {
     ///
     /// 对 `UIKitFingerprintCollector.collectMatching` 可见：指纹签发必须与目标输出共用同一套
     /// canonical 筛选，保证 `ui.wait(snapshotChanged)` 重采表与 viewTargets 签发表同口径。
+    ///
+    /// `isInControlSubtree` 在此计算：自身非 `UIControl` 且祖先链含 `UIControl`
+    ///（`explore_controlAncestor`），让 `hasStaticText` 的控件内嵌展示节点（如按钮内部
+    /// title label）rollup 到父 control，不独立 full。cell 子树因 cell 非 `UIControl`
+    /// 不命中，cell 内 label 仍 full。
     static func isFull(view: UIView, query: UIViewTargetsInput) -> Bool {
+        // 自身是 UIControl 时不计入 control 子树——它走 isControl 规则独立 full，
+        // 不应被 rollup 排除。
+        let isInControlSubtree = !(view is UIControl) && view.explore_controlAncestor != nil
         let candidate = UIViewTargetCandidate(
             isHidden: view.isHidden,
             isControl: view is UIControl,
@@ -151,9 +159,16 @@ enum UIViewTargetsCollector {
             hasAccessibilityIdentifier: view.accessibilityIdentifier?.isEmpty == false,
             hasAccessibilityLabel: view.accessibilityLabel?.isEmpty == false,
             hasStaticText: textualValue(from: view)?.isEmpty == false,
-            isScrollView: view is UIScrollView
+            isScrollView: view is UIScrollView,
+            isInControlSubtree: isInControlSubtree
         )
-        return query.isFull(candidate: candidate)
+        let full = query.isFull(candidate: candidate)
+        // rollup 命中日志：控件内嵌展示节点被 rollup 到父 control，不独立 full。
+        // 仅在命中 rollup 排除时记录，帮助定位"按钮内 label 为何不在 targets"的疑问。
+        if !full, candidate.hasStaticText, isInControlSubtree {
+            UIKitCommandLogging.info("command", "ui view targets rollup: static-text node in UIControl subtree (\(String(describing: type(of: view)))) rolled up to parent control, not emitted as full target")
+        }
+        return full
     }
 
     /// 判断当前 view 是否通过 identifier 输出筛选。
