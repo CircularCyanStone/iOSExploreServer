@@ -126,8 +126,8 @@ func tapSegmentedControlReturnsUnsupportedTarget() {
     }
 }
 
-@Test("executor tap 普通 UIView(非 canonical) 抛 stale_locator") @MainActor
-func tapPlainViewReturnsStaleLocator() {
+@Test("executor tap 未签发 path(普通 UIView 非 canonical) 返回 not_actionable") @MainActor
+func tapUnsignedPathReturnsNotActionable() {
     let context = UIKitTestHost.context { root in
         let view = UIView()
         view.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
@@ -135,21 +135,24 @@ func tapPlainViewReturnsStaleLocator() {
         root.addSubview(view)
     }
     let viewSnapshotID = testViewSnapshotID(context: context)
-    // 普通 UIView 非 canonical，未被签发 → freshness 校验 path missing → stale_locator。
+    // 普通 UIView 非 canonical，collect 不为其签发指纹 → isPathSigned 返回 false → not_actionable。
+    // 区分语义：stale_locator 表示"快照陈旧需重新 inspect 再观察"（如 id 过期、context 变化、
+    // 指纹漂移）；not_actionable 表示"该 path 本就不是可操作目标（availableActions 为空）"，
+    // 调用方应换目标而非重新观察。这是 Task 7 在 freshness 校验前前置 isPathSigned 的目的。
 
     do {
         _ = try UIKitActionExecutor.execute(.tap(locator: .path([0]), viewSnapshotID: viewSnapshotID),
                                             context: context)
-        Issue.record("expected stale_locator, got success")
+        Issue.record("expected not_actionable, got success")
     } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .staleLocator)
+        #expect(error.failure.code == .notActionable)
     } catch {
         Issue.record("unexpected error: \(error)")
     }
 }
 
-@Test("executor tap 按钮 internal label path 不激活父 button") @MainActor
-func tapChildLabelPathDoesNotActivateParentButton() {
+@Test("executor tap 按钮 internal label(minimal) path 返回 not_actionable 且不激活父 button") @MainActor
+func tapChildLabelPathReturnsNotActionable() {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
@@ -157,11 +160,63 @@ func tapChildLabelPathDoesNotActivateParentButton() {
         root.addSubview(button)
     }
     let viewSnapshotID = testViewSnapshotID(context: context)
-    // collect 只签 canonical target（button root/0）；内部 label/image 在 root/0/0 等子节点
-    // 未被签发 → tap 子 path 应 stale_locator，绝不沿祖先 fallback 激活父 button。
+    // collect 只签 canonical target（button root/0）；内部 label/image 在 root/0/0 等子节点是
+    // minimal（未签发指纹）→ isPathSigned 返回 false → not_actionable。
+    // 关键：绝不沿祖先 fallback 激活父 button——返回 not_actionable 而非激活父节点，
+    // 因为 minimal 节点的 availableActions 为空，本就不是有效操作目标（语义比原 stale_locator
+    // 更准确：调用方应换目标而非重新 inspect）。
 
     do {
         _ = try UIKitActionExecutor.execute(.tap(locator: .path([0, 0]), viewSnapshotID: viewSnapshotID),
+                                            context: context)
+        Issue.record("expected not_actionable, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .notActionable)
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
+}
+
+@Test("executor control.sendAction minimal 节点(label 未签发) 返回 not_actionable") @MainActor
+func sendActionMinimalNodeReturnsNotActionable() {
+    let context = UIKitTestHost.context { root in
+        let button = UIButton(type: .system)
+        button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
+        button.setTitle("提交", for: .normal)
+        root.addSubview(button)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
+    // root/0/0 是 button 内部 label（minimal，未签发指纹）→ isPathSigned 返回 false → not_actionable。
+    // 验证 isPathSigned 前置在 validateViewSnapshot 共用入口，覆盖 tap 与 control.sendAction 两条路径，
+    // 而非只在 tap 分支生效。
+
+    do {
+        _ = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0, 0]),
+                                                           event: .touchUpInside,
+                                                           viewSnapshotID: viewSnapshotID),
+                                            context: context)
+        Issue.record("expected not_actionable, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .notActionable)
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
+}
+
+@Test("executor tap unknown viewSnapshotID 返回 stale_locator(非 not_actionable)") @MainActor
+func tapUnknownViewSnapshotReturnsStaleLocator() {
+    let context = UIKitTestHost.context { root in
+        let button = UIButton(type: .system)
+        button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
+        root.addSubview(button)
+    }
+    // isPathSigned 三态：unknown id（store 中无此 entry）→ 返回 true，交 isStale 裁决；
+    // isStale 对 unknown id 返回 true → stale_locator。
+    // 这保证 not_actionable 只在"id 有效但 path 确实未签发"时抛出，绝不把"传错 id / 过期 id"
+    // 误判成 not_actionable——后者应引导调用方重新 inspect，而非放弃目标。
+
+    do {
+        _ = try UIKitActionExecutor.execute(.tap(locator: .path([0]), viewSnapshotID: "nonexistent-snapshot-id"),
                                             context: context)
         Issue.record("expected stale_locator, got success")
     } catch let error as UIKitCommandError {

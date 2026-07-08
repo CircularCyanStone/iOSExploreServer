@@ -81,24 +81,39 @@ enum UIKitActionExecutor {
         }
     }
 
-    /// 统一的 viewSnapshot 陈旧校验（tap 与 control.sendAction 共用）。
+    /// 统一的 viewSnapshot 校验入口（tap 与 control.sendAction 共用），前置 not_actionable 裁决。
     ///
-    /// 无论 locator 是 path 还是 identifier，都用调用方已 locate 的 `LocatedView` 重采该 path
-    /// 的指纹（含 `semanticDigest`），与 store 中 viewSnapshotID 对应记录比对。陈旧（snapshot
-    /// 未知/过期、context 变化、path 未签发或指纹不匹配）时抛 `stale_locator`，提示调用方重新
-    /// `ui.viewTargets`。
+    /// 两阶段裁决，刻意区分两类失败语义，避免调用方对不可操作目标反复重新 inspect：
+    /// 1. `isPathSigned` 前置——若 snapshotID 有效但 path 不在其指纹表（即 minimal 节点，
+    ///    `ui.viewTargets` 未为其签发指纹、availableActions 为空），直接抛 `not_actionable`，
+    ///    提示调用方该目标本就不可操作、应换目标。这与 stale_locator 的语义对立：stale_locator
+    ///    表示"快照陈旧需重新 inspect 再观察"（id 未知/过期、context 变化、指纹漂移），调用方应
+    ///    重新观察而非放弃目标。`isPathSigned` 对 unknown/expired snapshotID 返回 true（交第 2
+    ///    阶段裁决），故"传错 id / 过期 id"不会被误判成 not_actionable——那类情况仍走 isStale。
+    /// 2. `isStale` freshness——重采该 path 指纹（含 `semanticDigest`）与 store 记录比对，陈旧
+    ///    （snapshot 未知/过期、context 变化、指纹不匹配）时抛 `stale_locator`。
+    ///
+    /// 无论 locator 是 path 还是 identifier，都按 located view 的 pathString 走同一校验，
+    /// identifier 不再是绕过 freshness 的后门。
     ///
     /// - Parameters:
     ///   - located: 调用方已 resolve 的定位视图（含 view 与 pathString）。
     ///   - viewSnapshotID: `ui.viewTargets` 签发的结构化快照标识。
     ///   - context: 当前 UIKit 上下文（用于重采指纹）。
     ///   - action: 触发校验的 action 名（错误关联）。
-    /// - Throws: `UIKitCommandError.staleLocator`——指纹陈旧时。
+    /// - Throws: `UIKitCommandError.notActionable`（minimal 节点未签发指纹）；或
+    ///   `UIKitCommandError.staleLocator`（快照陈旧）。
     private static func validateViewSnapshot(located: UIKitLocatorResolver.LocatedView,
                                              viewSnapshotID: String,
                                              context: UIKitContextProvider.Context,
                                              action: String) throws {
         let path = located.pathString
+        // minimal 节点（未被 ui.viewTargets 签发指纹）优先裁决 not_actionable，置于 isStale 之前：
+        // isPathSigned 三态保证只有"id 有效 + path 确实未签发"才返回 false，unknown/expired id
+        // 返回 true 继续走 isStale（→ stale_locator），不会把传错/过期 id 误判成 not_actionable。
+        guard UIKitSnapshotStore.shared.isPathSigned(viewSnapshotID: viewSnapshotID, path: path) else {
+            throw UIKitCommandError.notActionable(action: action, path: path)
+        }
         let current = UIKitFingerprintCollector.fingerprint(for: located.view,
                                                              path: path,
                                                              rootView: context.rootView,
