@@ -142,7 +142,7 @@ final class ClientSession: Sendable {
     /// 关闭会话。
     ///
     /// 用 `isClosed` 标记保证幂等：只有第一次调用真正执行取消连接与 `onClose` 通知，
-    /// 避免重复日志和重复移除。所有结束路径（超时、错误、正常响应）都应收敛到这里。
+    /// 避免重复日志和重复移除。所有结束路径（超时、错误、正常响应、对端断开）都应收敛到这里。
     ///
     /// - Parameter reason: 关闭原因，写入日志便于排障。
     func close(reason: String) {
@@ -178,10 +178,10 @@ final class ClientSession: Sendable {
         }
     }
 
-    /// 会话主流程：在读超时内读取完整请求并交给 `process`。
+    /// 会话主流程：在 `readTimeout` 内读完整 HTTP 请求，再交给 `process` 路由并回写响应。
     ///
-    /// 任何错误都收敛为日志 + 关闭：`server` 错误（读超时）先发 HTTP 错误响应再关闭，
-    /// 其余错误（连接关闭、接收失败）直接关闭。
+    /// 错误收敛为两类：`server` 错误（如读超时）先发对应 HTTP 错误响应再关闭；连接关闭、
+    /// 接收失败等不发送响应直接关闭。命令执行阶段在 `process` 内部用 `commandTimeout` 单独包裹。
     private func run() async {
         do {
             let request = try await withTimeout(nanoseconds: configuration.readTimeoutNanoseconds,
@@ -309,9 +309,10 @@ final class ClientSession: Sendable {
 
     /// 发送 HTTP 响应并随后关闭连接。
     ///
-    /// 响应 body 超过 `maxResponseBodyBytes` 时改发 `responseTooLarge` envelope（HTTP 200 +
-    /// `response_too_large`），并把原 body 丢弃——日志只记大小不记内容。发送错误只记录
-    /// （对端可能已断开），无论成功与否都按 `closeReason` 收敛到 `close`。
+    /// 响应 body 超过 `maxResponseBodyBytes` 时改发 `responseTooLarge` envelope
+    /// （HTTP 200 + `response_too_large`），此时 closeReason 会被改写为
+    /// `"response_too_large"`。发送错误只记录（对端可能已断开），无论成功与否都按
+    /// `closeReason` 收敛到 `close`。
     /// - Parameters:
     ///   - response: 待发送的 HTTP 响应。
     ///   - action: 触发该响应的命令名；早于命令解析的通信层失败传 `nil`，业务响应传

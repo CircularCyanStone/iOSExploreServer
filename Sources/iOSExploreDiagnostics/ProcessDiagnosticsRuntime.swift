@@ -121,8 +121,9 @@ public final class ProcessDiagnosticsRuntime: Sendable {
 
     /// 读取日志前请求刷新需要主动轮询的捕获来源。
     ///
-    /// stdout/stderr/NSLog 由 fd read source 推送；Apple Unified Logging 可能延迟落入
-    /// `OSLogStore`，因此在 `app.logs.read` 前发起一次后台拉取，降低 Agent 后续读到空结果的概率。
+    /// stdout/stderr 由 fd read source 推送；NSLog 既有 fd 行识别路径，也有 `OSLogStore`
+    /// 读取路径；Apple Unified Logging 可能延迟落入 `OSLogStore`，因此在 `app.logs.read`
+    /// 前发起一次后台拉取，降低 Agent 后续读到空结果的概率。
     /// 这里不能同步等待 `OSLogStore.getEntries`：真机日志量较大时该系统调用可能长时间不返回，
     /// 会阻塞 `app.logs.read` 响应并让 Agent 误判 MCP 服务不可用。
     func flushPendingCaptures() {

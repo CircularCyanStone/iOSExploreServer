@@ -33,7 +33,10 @@ public struct ExploreCommandFailure: Sendable, Equatable {
         self.logMessage = logMessage
     }
 
-    /// 转换为命令结果，供 handler 直接 `throw` 或返回。
+    /// 转换为命令失败结果，由扩展 handler `return failure.result` 收敛进响应 envelope。
+    ///
+    /// 该类型不实现 `Error`，handler 不能 `throw` 它；只能通过 `return` 把扩展失败转为
+    /// `ExploreResult.failure`，由 `AnyCommand` 走业务失败 envelope 路径输出。
     public var result: ExploreResult { .failure(code: code, message: message) }
 }
 

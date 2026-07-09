@@ -94,11 +94,14 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           logMessage: "ui tap target ambiguous action=\(action) target=\(targetDescription) count=\(count)")
     }
 
-    /// ui.tap 找到了 view，但目标类型没有默认激活路由。
+    /// ui.tap 找到了 view，但目标类型没有默认激活路由且 cell selection / 手势 adapter 均不可达。
     ///
     /// 默认激活仅覆盖 UIButton（touchUpInside）、UISwitch（toggle + valueChanged）、文本输入
-    ///（becomeFirstResponder）；UISlider / UISegmentedControl / 普通 UIView / 手势 view 命中本错误。
-    /// 区别于 `unsupportedAction`（控件存在但请求的事件不支持）：这里是目标类型本身无默认 tap 路由。
+    ///（becomeFirstResponder）；机械化层面还会先尝试 cell selection adapter（对 cell 子树内目标）
+    /// 与手势 target-action adapter（对挂 `UIGestureRecognizer` 的非 UIControl view，且仅 Debug 可用）。
+    /// 以上 fallback 均未命中时——典型如 UISlider / UISegmentedControl / 普通 UIView /
+    /// 无 gesture 的纯装饰 view / Release 构建下 ivar 不可读——才落本错误。区别于 `unsupportedAction`
+    ///（控件存在但请求的事件不支持）：这里是目标类型本身无任何可用 tap 路由。
     ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名。
@@ -350,8 +353,9 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// `ui.scroll` 在目标（或其祖先链）及 keyWindow 最前 view 中都找不到可滚动容器。
     ///
     /// 仅 `UIScrollView` 系（含 `UICollectionView`/`UITableView`/`UITextView`）可滚动，
-    /// 但 `UITextView` 是 `UIScrollView` 子类且其内部长文滚动语义不同——executor 显式排除
-    /// 它，命中本错误。当定位字段缺省且回退扫描 keyWindow 也无 scrollView 时同样命中。
+    /// 但 `UITextView` 是 `UIScrollView` 子类且其内部长文滚动语义不同——`UIScrollResolver`
+    /// 在解析可滚动容器时显式排除它，命中本错误。当定位字段缺省且回退扫描 keyWindow 也无
+    /// scrollView 时同样命中。
     ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名，用于日志关联。

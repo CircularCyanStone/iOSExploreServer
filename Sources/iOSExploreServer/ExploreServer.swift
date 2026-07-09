@@ -47,7 +47,7 @@ public final class ExploreServer: Sendable {
     /// `HTTPListener` 本身有可变状态；这里用 `Mutex` 保护引用替换，使 `start`/`stop`
     /// 的状态读写满足 `Sendable` 要求。
     private let listener = Mutex<HTTPListener?>(nil)
-    /// 已请求停止但尚未收到终态的 listener，必须强持有至 socket 释放。
+    /// 已 `stop()` 但尚未等待终态的 listener，供下次 `start()` 或 `stopAndWait()` 主动 await 终态释放。
     private let stoppingListener = Mutex<HTTPListener?>(nil)
 
     /// 事件流写入端，由 listener 回调持有。
@@ -209,7 +209,11 @@ public final class ExploreServer: Sendable {
         router.commandMetadata()
     }
 
-    /// 测试辅助：不经网络直接路由，验证命令注册状态。
+    /// 测试辅助：不经网络直接路由 `Router.route(_:)`，验证命令注册与执行链路。
+    ///
+    /// 注意该方法直接调 `router.route`，**不携带 `commandTimeout` 超时保护**，
+    /// 与 `ClientSession.process` 中真实网络路径下的 `withTimeout` 行为不一致，
+    /// 仅用于测试在不发 HTTP 时驱动命令解析与执行。
     func routerSnapshotRoute(_ request: ExploreRequest) async -> ExploreResult {
         ExploreLogger.debug(.server, "server snapshot route action=\(request.action)")
         return await router.route(request)

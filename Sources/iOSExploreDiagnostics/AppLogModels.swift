@@ -21,8 +21,9 @@ public enum AppLogSource: String, Sendable, Codable, Equatable, CaseIterable {
 
 /// 进程日志等级。
 ///
-/// `.unknown` 保留给无法可靠推断等级的后续纯文本来源；当前 stdout 固定为 `.info`，stderr
-/// 固定为 `.error`。
+/// `.unknown` 表示无法可靠推断等级的来源，用于 OSLog 未定义等级 entry（如
+/// `OSLogEntryLog.Type.undefined` 与 `@unknown default`），或后续未识别的纯文本来源。
+/// 当前 stdout 固定为 `.info`，stderr 固定为 `.error`。
 public enum AppLogLevel: String, Sendable, Codable, Equatable, Comparable, CaseIterable {
     case debug
     case info

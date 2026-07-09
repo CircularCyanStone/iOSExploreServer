@@ -3,12 +3,13 @@ import Foundation
 import iOSExploreServer
 import UIKit
 
-/// 当前顶部控制器轻量交互目标查询命令。
+/// 当前顶部控制器可操作交互目标查询命令。
 ///
-/// action 为 `ui.inspect`。命令面向**事件下发前的目标发现**：只返回可被现有公开命令
+/// action 为 `ui.inspect`。命令面向**事件下发前的目标发现**：返回可被现有公开命令
 /// （`ui.tap` / `ui.control.sendAction` / `ui.input`）直接操作的 canonical target——
-/// `UIControl`、`UIScrollView` 系、挂有 `UIGestureRecognizer` 的 view。普通 `UILabel`、
-/// container、纯展示 view 不进入列表（其观察职责在 `ui.topViewHierarchy`）。
+/// `UIControl`、`UIScrollView` 系、挂有 `UIGestureRecognizer` 的 view、**以及含静态文本、
+/// accessibility label 或 accessibility identifier 的展示节点**。容器、纯装饰 view、
+/// 无文本无 a11y 信息的非交互节点不进入列表。
 ///
 /// 与 `ui.topViewHierarchy` 的关键差异：
 /// - **签发 `viewSnapshotID`**——`ui.tap` / `ui.control.sendAction` / `ui.input` 调用前

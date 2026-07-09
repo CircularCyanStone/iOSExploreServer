@@ -245,6 +245,8 @@ public enum CommandFields {
     /// 常规数值命令优先使用 `optionalFiniteNumber` 或整数工厂；本工厂用于需要把可选原始 JSON
     /// 值穿过 typed input 边界的命令，例如 `ui.control.sendAction` 的 `value`。schema 对外声明
     /// 为 number；运行时额外接受 boolean，供 UISwitch 这类布尔值控件在同一个字段里表达开关状态。
+    /// 既非有限 number 也非 boolean 的值会以 `"\(name) must be a finite number"` 文案报错
+    /// （文案沿用 number 工厂历史口径，未单独提及 boolean 例外）。
     ///
     /// - Parameters:
     ///   - name: 字段名。
@@ -273,7 +275,7 @@ public enum CommandFields {
         }
     }
 
-    /// 可选非负整数字段：缺失或 null 返回 nil，存在但非有限整数或小于 0 抛出解析错误。
+    /// 可选非负整数字段：缺失或 null 返回 nil，存在但非 JSON safe integer 范围内的有限整数或小于 0 抛出解析错误。
     ///
     /// - Parameters:
     ///   - name: 字段名。

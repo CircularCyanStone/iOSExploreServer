@@ -131,10 +131,13 @@ enum UIKitActionExecutor {
     /// 执行 tap 默认激活动作。
     ///
     /// 先 locate、做统一 freshness 校验，再用 `UIKitDefaultActivationResolver` 决定默认激活路由
-    /// （UIButton→touchUpInside / UISwitch→翻转+valueChanged / 文本输入→聚焦）。无确定公开路由
-    /// 但目标挂有 `UIGestureRecognizer` 时，走手势 target-action adapter（`UIGestureTargetExecutor`
-    /// runtime 读私有 ivar 派发）作为补充；adapter 也不可达（无 gesture / ivar 漂移 / Release）
-    /// 的目标才抛 `unsupported_target`。
+    /// （UIButton→touchUpInside / UISwitch→翻转+valueChanged / 文本输入→聚焦）。无确定公开路由时
+    /// 按以下顺序尝试 fallback：先尝试 cell selection adapter（对 cell 子树内目标，调公有
+    /// `indexPath(for:)` + `didSelectRow/Item`）；再尝试手势 target-action adapter（仅对挂
+    /// `UIGestureRecognizer` 的非 `UIControl` view 起作用，`UIGestureTargetExecutor` 在 Debug
+    /// 下 runtime 读私有 ivar 派发，Release 下为不可用空壳）。所有 fallback 均未命中
+    /// （典型：UISlider/UISegmentedControl/普通 UIView/无 gesture 的纯装饰 view/Release 下 ivar 不可读）
+    /// 才抛 `unsupported_target`。
     ///
     /// - Parameters:
     ///   - locator: canonical target 的统一定位器（identifier / path）。
