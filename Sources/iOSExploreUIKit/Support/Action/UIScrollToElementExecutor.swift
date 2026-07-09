@@ -8,10 +8,14 @@ import UIKit
 /// 在 `MainActor` 上：经 `UIScrollResolver.resolveContainer` 解析滚动容器 → 在容器内查找
 /// 目标 view（文本/identifier）→ 用 `UIScrollView.scrollRectToVisible` 一次性滚到目标可见。
 ///
-/// 刻意采用 `scrollRectToVisible` 而非「循环小步 scroll + 每轮采集可见候选」：前者是 UIKit
-/// 原生方法，自动计算最短滚动让目标进入可见区；后者每轮用 `UIViewTargetsCollector.collect`
-/// 会签发新 viewSnapshotID 污染 store（评审 M3），且需要手写可见性/bounds 判断。代价是失去 `scrolls`
-/// 步数计数，但 agent 只关心「目标是否可见」，步数无业务意义。
+/// 目标不在 `visibleCells` 中时分两个阶段搜索：
+/// 1. **寻址阶段（progressive find）** — 从当前位置逐页滚动（page down/up 交替），每次滚动后重扫
+///    `visibleCells`，直到找到目标或遍历完整个 contentSize。找到目标后记下目标 **绝对坐标**。
+/// 2. **对齐阶段（scroll-to-visible）** — 用 `scrollRectToVisible` 把第二阶段找到的目标坐标滚到可见。
+///    两阶段分离：寻址阶段只确认坐标，对齐阶段做最终可见化。
+///
+/// 刻意不要求目标必须是 `UICollectionViewCell`/`UITableViewCell`（可以是 cell 内的 UILabel 等），
+/// 边界情况：当目标本身不满足 userInteractionEnabled 时坐标仍然有效，scrollRectToVisible 不会失败。
 ///
 /// 嵌套 scrollView（如外层 UITableView 内嵌 UICollectionView）：`scrollRectToVisible` 是否
 /// 联动外层取决于 UIKit 的祖先链转发；若外层未联动而目标仍被裁切，agent 可显式传 `container`
@@ -20,6 +24,9 @@ import UIKit
 /// 不签发 viewSnapshotID：滚动后画面变化，旧 viewSnapshotID 失效，agent 应重新 `ui.inspect`。
 @MainActor
 enum UIScrollToElementExecutor {
+    /// 最大寻址滚动次数，防止 contentSize 无限循环或估算偏差导致的死循环。
+    private static let maxProgressiveScrolls = 50
+
     /// 执行一次滚动到目标。
     ///
     /// - Parameters:
@@ -34,21 +41,16 @@ enum UIScrollToElementExecutor {
                                                               action: action)
         let scrollView = resolved.scrollView
 
-        guard let target = findTarget(match: input.match, value: input.value, in: scrollView) else {
-            throw UIKitCommandError.targetNotFound(
-                action: action,
-                message: "scroll target not found",
-                logMessage: "ui scroll to element target not found action=\(action) match=\(input.match.rawValue)"
-            )
-        }
-
-        // 容器禁用滚动或已脱离 window 时 scrollRectToVisible 是 no-op 却仍返回 found=true，
-        // agent 会被误导以为已滚到目标。先校验，不可滚时显式失败。
+        // 容器禁用滚动或已脱离 window 时 scrollRectToVisible 是 no-op
         guard scrollView.isScrollEnabled, scrollView.window != nil else {
             throw UIKitCommandError.scrollContainerUnavailable(action: action,
                                                                target: "container disabled or detached")
         }
-        // 把目标 bounds 转到 scrollView 坐标，让 UIKit 滚到它可见。
+
+        let target = try progressiveFindTarget(match: input.match, value: input.value, in: scrollView, action: action)
+
+        // 目标已找到，用 scrollRectToVisible 精细对齐
+        // （progressiveFindTarget 已经滚到目标可见，但可能只是部分可见，这里确保可见）
         let targetRect = target.convert(target.bounds, to: scrollView)
         scrollView.scrollRectToVisible(targetRect, animated: input.animated)
 
@@ -66,26 +68,113 @@ enum UIScrollToElementExecutor {
         ]
     }
 
-    /// 在 root 子树内按匹配方式找第一个目标 view。
+    /// 渐进式搜索目标：先搜当前 `visibleCells`，搜不到则逐页滚动交替方向直到遍历完 content。
     ///
-    /// `UITableView` 与 `UICollectionView` 的内容在 cell 内而非直接 subview，
-    /// 因此额外搜索 `visibleCells`（这是唯一能在不触发 cell 注册/dataSource reload
-    /// 情况下读到已有 cell 内容的路径）。非 scrollView 实体的 root 走标准 UIView
-    /// 深度优先。
+    /// 逐页策略：
+    /// - 记录开始时 contentOffset 作为方向原点
+    /// - 先尝试从原点向下 page 滚动，每次滚动后检查
+    /// - 向下滚到底且未找到时，回到原点尝试向上 page 滚动
+    /// - 向上滚到顶仍未找到 → 目标不存在
     ///
     /// - Parameters:
-    ///   - match: 匹配方式（text / accessibilityIdentifier）。
+    ///   - match: 匹配方式。
     ///   - value: 匹配值。
-    ///   - root: 搜索根（scrollView 或普通 view）。
-    /// - Returns: 找到的第一个视图，nil 表示未找到。
-    private static func findTarget(match: ScrollToElementMatch, value: String, in root: UIView) -> UIView? {
-        // UITableView / UICollectionView：优先搜索 visibleCells 内容。
-        if let tableView = root as? UITableView {
-            for cell in tableView.visibleCells {
-                if let found = findTargetDepthFirst(match: match, value: value, in: cell.contentView) {
+    ///   - scrollView: 滚动容器。
+    ///   - action: 命令 action 名，用于错误构造。
+    /// - Returns: 找到的目标 view。
+    /// - Throws: `UIKitCommandError` 目标不存在。
+    private static func progressiveFindTarget(
+        match: ScrollToElementMatch,
+        value: String,
+        in scrollView: UIScrollView,
+        action: String
+    ) throws -> UIView {
+        // 1. 先扫 visibleCells
+        if let found = findTargetInVisibleCells(match: match, value: value, in: scrollView) {
+            UIKitCommandLogging.info("command", "ui scroll to element found in visible cells")
+            return found
+        }
+
+        UIKitCommandLogging.info("command", "ui scroll to element not in visible cells, starting progressive scroll")
+
+        // 2. 渐进滚动
+        let startOffset = scrollView.contentOffset
+        let contentSize = scrollView.contentSize
+        let viewportHeight = scrollView.bounds.height
+        let maxOffsetY = max(0, contentSize.height - viewportHeight)
+
+        /// 尝试在一个方向上逐页滚动搜索。
+        /// - Parameters:
+        ///   - directionDown: true=向下滚动, false=向上滚动
+        ///   - startAt: 起始位置
+        /// - Returns: 找到的目标；nil 表示该方向搜完仍未找到。
+        func scrollInDirection(directionDown: Bool, startAt: CGPoint) -> UIView? {
+            var current = startAt
+            var step = 0
+
+            while step < maxProgressiveScrolls {
+                step += 1
+
+                // 计算下一个分页位置
+                let nextY: CGFloat
+                if directionDown {
+                    nextY = min(current.y + viewportHeight, maxOffsetY)
+                } else {
+                    nextY = max(current.y - viewportHeight, 0)
+                }
+
+                // 到达边界未移动，退出这个方向
+                if nextY == current.y {
+                    UIKitCommandLogging.info("command", "ui scroll to element progressive reached \(directionDown ? "bottom" : "top") step=\(step)")
+                    return nil
+                }
+
+                current.y = nextY
+                scrollView.setContentOffset(current, animated: false)
+                // 强制布局让 visibleCells 更新
+                scrollView.layoutIfNeeded()
+
+                if let found = findTargetInVisibleCells(match: match, value: value, in: scrollView) {
+                    UIKitCommandLogging.info("command", "ui scroll to element found via progressive scroll direction=\(directionDown ? "down" : "up") step=\(step)")
                     return found
                 }
-                // 部分 cell 把 label 直接挂在 cell 一级而非 contentView（iOS <16 兼容）。
+            }
+
+            UIKitCommandLogging.info("command", "ui scroll to element progressive exceeded maxStep=\(maxProgressiveScrolls) direction=\(directionDown ? "down" : "up")")
+            return nil
+        }
+
+        // 先向下搜
+        if let found = scrollInDirection(directionDown: true, startAt: startOffset) {
+            return found
+        }
+
+        // 向下搜不到，回到原点向上搜
+        scrollView.setContentOffset(startOffset, animated: false)
+        scrollView.layoutIfNeeded()
+
+        if let found = scrollInDirection(directionDown: false, startAt: startOffset) {
+            return found
+        }
+
+        // 双向都没找到，恢复到原位置
+        scrollView.setContentOffset(startOffset, animated: false)
+        scrollView.layoutIfNeeded()
+
+        throw UIKitCommandError.targetNotFound(
+            action: action,
+            message: "scroll target not found",
+            logMessage: "ui scroll to element target not found after progressive scroll action=\(action) match=\(match.rawValue)"
+        )
+    }
+
+    /// 在滚动容器的 `visibleCells` 内搜索目标。
+    ///
+    /// 对 `UITableView` / `UICollectionView` 搜索 `visibleCells` 及其子 view；
+    /// 对普通 `UIScrollView` 直接深度优先搜索 subviews。
+    private static func findTargetInVisibleCells(match: ScrollToElementMatch, value: String, in root: UIView) -> UIView? {
+        if let tableView = root as? UITableView {
+            for cell in tableView.visibleCells {
                 if let found = findTargetDepthFirst(match: match, value: value, in: cell) {
                     return found
                 }
@@ -94,7 +183,7 @@ enum UIScrollToElementExecutor {
         }
         if let collectionView = root as? UICollectionView {
             for cell in collectionView.visibleCells {
-                if let found = findTargetDepthFirst(match: match, value: value, in: cell.contentView) {
+                if let found = findTargetDepthFirst(match: match, value: value, in: cell) {
                     return found
                 }
             }
@@ -103,7 +192,7 @@ enum UIScrollToElementExecutor {
         return findTargetDepthFirst(match: match, value: value, in: root)
     }
 
-    /// 纯 UIView 深度优先搜索（不含 visibleCells 逻辑）。
+    /// 纯 UIView 深度优先搜索。
     private static func findTargetDepthFirst(match: ScrollToElementMatch, value: String, in root: UIView) -> UIView? {
         var found: UIView?
         func walk(_ view: UIView) {
