@@ -11,3 +11,4 @@ DerivedData/
 .codegraph
 MCPServer/node_modules/
 MCPServer/dist/
+.worktrees

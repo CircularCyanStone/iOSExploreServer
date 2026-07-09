@@ -70,6 +70,7 @@ final class ViewController: UIViewController {
         MenuItem(title: "弹窗测试", subtitle: "5 种 UIAlertController 案例，供 ui.alert.respond 验证", icon: "🔔", viewControllerType: AlertTestViewController.self),
         MenuItem(title: "控件测试", subtitle: "UIButton / UISwitch / UISlider 等 6 类控件，供 ui.control.sendAction 验证", icon: "🎮", viewControllerType: ControlTestViewController.self),
         MenuItem(title: "日志诊断测试", subtitle: "模拟网络请求、认证、业务事件等多种场景，验证所有日志来源", icon: "📋", viewControllerType: DiagnosticsTestViewController.self),
+        MenuItem(title: "滚动测试", subtitle: "UICollectionView + 30 个 cell，供 ui.scrollToElement 验证", icon: "📜", viewControllerType: ScrollTestViewController.self),
     ]
 
     override func viewDidLoad() {

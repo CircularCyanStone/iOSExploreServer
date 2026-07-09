@@ -27,4 +27,4 @@ sessionDefaultsProfiles:
     deviceId: 3AC0C7D6-22F6-572B-8368-4047A14BAB52
     platform: iOS
     bundleId: com.coo.SPMExample
-activeSessionDefaultsProfile: device-app
+activeSessionDefaultsProfile: sim-app

@@ -1,0 +1,283 @@
+import { describe, expect, test } from "vitest";
+import { createStaticTools } from "../src/staticTools.js";
+describe("static tools", () => {
+    test("health_check reports online status", async () => {
+        const calls = [];
+        const tools = createStaticTools({
+            client: {
+                call: async (action) => {
+                    calls.push(action);
+                    return action === "ping" ? { pong: true } : { commands: [] };
+                }
+            },
+            registry: fakeRegistry(3)
+        });
+        const result = await (tools.health_check).handler({});
+        expect(JSON.parse(textContent(result))).toMatchObject({
+            ok: true,
+            dynamicToolCount: 3
+        });
+        expect(calls).toEqual(["ping", "help"]);
+    });
+    test("observe calls ui.viewTargets with provided options", async () => {
+        const calls = [];
+        const tools = createStaticTools({
+            client: {
+                call: async (action, data = {}) => {
+                    calls.push({ action, data });
+                    return { viewSnapshotID: "snap-1", targets: [] };
+                }
+            },
+            registry: fakeRegistry(0)
+        });
+        const result = await (tools.observe).handler({ maxTargets: 100 });
+        expect(calls).toEqual([{ action: "ui.viewTargets", data: { maxTargets: 100 } }]);
+        expect(JSON.parse(textContent(result)).viewSnapshotID).toBe("snap-1");
+    });
+    test("observe strips hierarchy-only fields in default viewTargets mode", async () => {
+        const calls = [];
+        const tools = createStaticTools({
+            client: {
+                call: async (action, data = {}) => {
+                    calls.push({ action, data });
+                    return { viewSnapshotID: "snap-1", targets: [] };
+                }
+            },
+            registry: fakeRegistry(0)
+        });
+        // detailLevel is topViewHierarchy-only; maxDepth is shared with ui.viewTargets and stays.
+        await (tools.observe).handler({ detailLevel: "full", maxDepth: 2, maxTargets: 100 });
+        expect(calls).toEqual([{ action: "ui.viewTargets", data: { maxDepth: 2, maxTargets: 100 } }]);
+    });
+    test("observe can call ui.topViewHierarchy in hierarchy mode", async () => {
+        const calls = [];
+        const tools = createStaticTools({
+            client: {
+                call: async (action, data = {}) => {
+                    calls.push({ action, data });
+                    return { root: { type: "UIView" } };
+                }
+            },
+            registry: fakeRegistry(0)
+        });
+        const result = await (tools.observe).handler({
+            mode: "topViewHierarchy",
+            includeHidden: true,
+            detailLevel: "full",
+            maxDepth: 3,
+            maxTargets: 100
+        });
+        expect(calls).toEqual([
+            {
+                action: "ui.topViewHierarchy",
+                data: { includeHidden: true, detailLevel: "full", maxDepth: 3 }
+            }
+        ]);
+        expect(JSON.parse(textContent(result)).root.type).toBe("UIView");
+    });
+    test("wait_and_observe observes after wait timeout", async () => {
+        const calls = [];
+        const tools = createStaticTools({
+            client: {
+                call: async (action) => {
+                    calls.push(action);
+                    if (action === "ui.waitAny") {
+                        const error = new Error("timeout");
+                        error.source = "ios_envelope";
+                        error.code = "wait_timeout";
+                        error.action = "ui.waitAny";
+                        throw error;
+                    }
+                    return { viewSnapshotID: "snap-after", targets: [] };
+                }
+            },
+            registry: fakeRegistry(0)
+        });
+        const result = await (tools.wait_and_observe).handler({ conditions: [{ id: "gone", mode: "textExists", text: "Done" }] });
+        expect(calls).toEqual(["ui.waitAny", "ui.viewTargets"]);
+        expect(JSON.parse(textContent(result))).toMatchObject({
+            wait: { code: "wait_timeout" },
+            observation: { viewSnapshotID: "snap-after" }
+        });
+        expect(result.isError).toBeFalsy();
+    });
+    test("wait_and_observe strips unknown viewTargetsOptions before observing", async () => {
+        const calls = [];
+        const tools = createStaticTools({
+            client: {
+                call: async (action, data = {}) => {
+                    calls.push({ action, data });
+                    return action === "ui.waitAny" ? { satisfied: true } : { viewSnapshotID: "snap-after", targets: [] };
+                }
+            },
+            registry: fakeRegistry(0)
+        });
+        await (tools.wait_and_observe).handler({
+            conditions: [{ id: "idle", mode: "idle" }],
+            viewTargetsOptions: {
+                includeHidden: true,
+                accessibilityIdentifier: "login.submit",
+                detailLevel: "full",
+                maxDepth: 2,
+                unknown: true
+            }
+        });
+        expect(calls).toEqual([
+            {
+                action: "ui.waitAny",
+                data: { conditions: [{ id: "idle", mode: "idle" }] }
+            },
+            {
+                action: "ui.viewTargets",
+                data: { includeHidden: true, accessibilityIdentifier: "login.submit", maxDepth: 2 }
+            }
+        ]);
+    });
+    test("wait_and_observe schema rejects detailLevel inside viewTargetsOptions", () => {
+        const schema = createStaticTools({
+            client: { call: async () => ({}) },
+            registry: fakeRegistry(0)
+        }).wait_and_observe.inputSchema;
+        const viewTargetsOptionsSchema = schema.properties.viewTargetsOptions;
+        // schema-level additionalProperties:false lists which fields are allowed
+        const allowedFields = Object.keys(viewTargetsOptionsSchema.properties);
+        expect(allowedFields.sort()).toEqual([
+            "includeHidden",
+            "includeDisabled",
+            "includeStaticText",
+            "includeContainers",
+            "maxDepth",
+            "accessibilityIdentifier",
+            "accessibilityIdentifierPrefix",
+            "textLimit",
+            "maxTargets"
+        ].sort());
+        expect(viewTargetsOptionsSchema.additionalProperties).toBe(false);
+        // detailLevel is a topViewHierarchy-only field and must NOT be in viewTargetsOptions' allowed set
+        expect(allowedFields).not.toContain("detailLevel");
+    });
+    test("wait_and_observe handler passes viewTargetsOptions.maxDepth through to ui.viewTargets", async () => {
+        const calls = [];
+        const tools = createStaticTools({
+            client: {
+                call: async (action, data = {}) => {
+                    calls.push({ action, data });
+                    return action === "ui.waitAny" ? { satisfied: true } : { viewSnapshotID: "snap-after", targets: [] };
+                }
+            },
+            registry: fakeRegistry(0)
+        });
+        await (tools.wait_and_observe).handler({
+            conditions: [{ id: "idle", mode: "idle" }],
+            viewTargetsOptions: {
+                maxDepth: 3,
+                maxTargets: 100
+            }
+        });
+        expect(calls).toEqual([
+            {
+                action: "ui.waitAny",
+                data: { conditions: [{ id: "idle", mode: "idle" }] }
+            },
+            {
+                action: "ui.viewTargets",
+                data: { maxDepth: 3, maxTargets: 100 }
+            }
+        ]);
+    });
+    // ----- call_action 修复测试 -----
+    test("call_action forwards action and data to client.call", async () => {
+        const calls = [];
+        const tools = createStaticTools({
+            client: {
+                call: async (action, data = {}) => {
+                    calls.push({ action, data });
+                    return { pong: true };
+                }
+            },
+            registry: fakeRegistry(0)
+        });
+        const result = await (tools.call_action).handler({ action: "echo", data: { msg: "hello" } });
+        expect(calls).toEqual([{ action: "echo", data: { msg: "hello" } }]);
+        expect(JSON.parse(textContent(result))).toEqual({ pong: true });
+        expect(result.isError).toBeFalsy();
+    });
+    test("call_action returns error when action is empty string", async () => {
+        const tools = createStaticTools({
+            client: { call: async () => ({}) },
+            registry: fakeRegistry(0)
+        });
+        const result = await (tools.call_action).handler({ action: "", data: {} });
+        const body = JSON.parse(textContent(result));
+        expect(body).toMatchObject({ source: "mcp_server", code: "missing_action" });
+        expect(result.isError).toBe(true);
+    });
+    test("call_action returns error when action field is missing", async () => {
+        const tools = createStaticTools({
+            client: { call: async () => ({}) },
+            registry: fakeRegistry(0)
+        });
+        // input.action 会是 undefined → 被转为 ""
+        const result = await (tools.call_action).handler({ data: {} });
+        const body = JSON.parse(textContent(result));
+        expect(body).toMatchObject({ source: "mcp_server", code: "missing_action" });
+        expect(result.isError).toBe(true);
+    });
+    test("call_action returns ios_envelope failure as non-error result", async () => {
+        const tools = createStaticTools({
+            client: {
+                call: async () => {
+                    const error = new Error("no handler");
+                    error.source = "ios_envelope";
+                    error.code = "unknown_action";
+                    throw error;
+                }
+            },
+            registry: fakeRegistry(0)
+        });
+        const result = await (tools.call_action).handler({ action: "nonexistent", data: {} });
+        const body = JSON.parse(textContent(result));
+        expect(body).toMatchObject({ source: "ios_envelope", code: "unknown_action" });
+        // ios_envelope 业务失败标记为 isError=false，不中断 Agent 流程
+        expect(result.isError).toBe(false);
+    });
+    test("call_action returns transport error as error result", async () => {
+        const tools = createStaticTools({
+            client: {
+                call: async () => {
+                    const error = new Error("fetch failed");
+                    error.source = "transport";
+                    error.code = "connection_failed";
+                    error.action = "echo";
+                    throw error;
+                }
+            },
+            registry: fakeRegistry(0)
+        });
+        const result = await (tools.call_action).handler({ action: "echo", data: {} });
+        const body = JSON.parse(textContent(result));
+        expect(body).toMatchObject({ source: "transport", code: "connection_failed" });
+        // transport 错误仍是真实错误
+        expect(result.isError).toBe(true);
+    });
+});
+function textContent(result) {
+    const first = result.content[0];
+    if (first?.type !== "text" || typeof first.text !== "string") {
+        throw new Error("expected first content block to be text");
+    }
+    return first.text;
+}
+function fakeRegistry(toolCount) {
+    return {
+        async refresh() {
+            return { toolCount, conflicts: [], error: undefined };
+        },
+        tools() {
+            return new Array(toolCount).fill(null);
+        },
+        conflicts() {
+            return [];
+        }
+    };
+}
