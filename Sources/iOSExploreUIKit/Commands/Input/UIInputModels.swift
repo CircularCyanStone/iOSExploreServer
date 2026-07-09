@@ -64,7 +64,10 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
         fields: Fields.all,
         constraints: [
             .exactlyOneOf(["accessibilityIdentifier", "path"]),
-            .extensionMessage("viewSnapshotID is only valid with path (identifier 定位不支持 viewSnapshotID 陈旧校验)"),
+            // 与 ui.scroll 的同名约束及本类型 parse() 抛出的 CommandInputParseError 文案保持一致
+            // （"viewSnapshotID is valid only with path"），避免 schema 文档与运行时错误文案分叉。
+            // identifier 定位不支持陈旧校验的原因见本类型上方文档注释。
+            .extensionMessage("viewSnapshotID is valid only with path"),
         ]
     )
 
