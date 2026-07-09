@@ -17,7 +17,7 @@ enum UIViewHierarchyCollector {
     static func collectTopViewHierarchy(query: UIViewHierarchyInput) throws -> JSON {
         UIKitCommandLogging.info("command", "ui hierarchy collect mainactor start detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
         let context = try UIKitContextProvider.currentContext(action: TopViewHierarchyCommand.actionName)
-        return collectTopViewHierarchy(query: query, context: context)
+        return try collectTopViewHierarchy(query: query, context: context)
     }
 
     /// 采集顶部控制器 view 层级（注入入口：测试与内部复用）。
@@ -29,32 +29,88 @@ enum UIViewHierarchyCollector {
     ///   - query: 采集和筛选参数。
     ///   - context: 当前 UIKit 查询上下文。
     /// - Returns: 层级 JSON。
-    static func collectTopViewHierarchy(query: UIViewHierarchyInput, context: UIKitContextProvider.Context) -> JSON {
-        let element = UIKitViewElement(view: context.rootView)
-        let root = UIViewHierarchyBuilder.build(from: element, query: query)
-        // topViewHierarchy 不签发 viewSnapshotID：结构化 freshness / locator 签发是 ui.inspect
-        // 的专属职责（spec §1.2）。这里只输出页面结构供观察/排障，不参与 tap/sendAction 陈旧校验。
+    static func collectTopViewHierarchy(query: UIViewHierarchyInput, context: UIKitContextProvider.Context) throws -> JSON {
+        let targetController: UIViewController
+        let controllerLog: String
+        let isControllerOverride: Bool
+        if let controllerPath = query.controller {
+            guard let parsed = parseControllerPath(controllerPath) else {
+                UIKitCommandLogging.error("command", "ui hierarchy collect controller path parse failed path=\(controllerPath)")
+                throw UIKitCommandError.invalidData(
+                    action: TopViewHierarchyCommand.actionName,
+                    message: "invalid controller path: \(controllerPath)"
+                )
+            }
+            do {
+                targetController = try UIControllerResolver.resolve(from: context.rootViewController, path: parsed)
+                if !targetController.isViewLoaded {
+                    UIKitCommandLogging.info("command", "ui hierarchy collect controller view not loaded, calling loadViewIfNeeded() path=\(controllerPath)")
+                    targetController.loadViewIfNeeded()
+                }
+                controllerLog = controllerPath
+                isControllerOverride = true
+            } catch let resolveError as UIKitCommandError {
+                UIKitCommandLogging.error("command", resolveError.failure.logMessage)
+                throw resolveError
+            } catch {
+                UIKitCommandLogging.error("command", "ui hierarchy collect controller resolve failed path=\(controllerPath) error=\(error)")
+                throw UIKitCommandError.targetNotFound(
+                    action: TopViewHierarchyCommand.actionName,
+                    message: "controller path not found: \(controllerPath)",
+                    logMessage: "ui hierarchy collect controller resolve unexpected action=\(TopViewHierarchyCommand.actionName) path=\(controllerPath) error=\(error)"
+                )
+            }
+        } else {
+            targetController = context.topViewController
+            controllerLog = "default"
+            isControllerOverride = false
+        }
+        guard let rootView = targetController.view else {
+            UIKitCommandLogging.error("command", "ui hierarchy collect controller view is nil path=\(controllerLog)")
+            throw UIKitCommandError.hierarchyUnavailable(
+                action: TopViewHierarchyCommand.actionName,
+                reason: "controller view is nil (path=\(controllerLog))"
+            )
+        }
+        UIKitCommandLogging.info("command", "ui hierarchy collect start controller=\(controllerLog) detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
+
+        let element = UIKitViewElement(view: rootView)
+
         var data: JSON = [
             "screen": .object(screenJSON(window: context.window,
                                          rootViewController: context.rootViewController,
                                          topViewController: context.topViewController)),
-            "nodeCount": .double(Double(root.nodeCount)),
             "detailLevel": .string(query.detailLevel.rawValue),
         ]
-        // 与 ui.inspect 同口径暴露 navigationBar 摘要，避免出现「viewTargets 看得到、
-        // topViewHierarchy 看不到」的分叉；深度排查与普通观察用同一份导航栏语义。
-        data["navigationBar"] = .object(
-            UINavigationBarInspector.summarize(topViewController: context.topViewController).toJSON()
-        )
-
-        if query.hasIdentifierFilter {
-            let matches = UIViewHierarchyBuilder.matches(in: element, query: query)
-            data["matches"] = .array(matches.map { .object($0.toJSON()) })
-            data["matchCount"] = .double(Double(matches.count))
-            UIKitCommandLogging.info("command", "ui hierarchy collect completed mode=matches nodeCount=\(root.nodeCount) matchCount=\(matches.count)")
+        // 带 controller 参数时只输出元信息和 matches，不输出 root 树中的 path（路径文案已在描述、controllerNote
+        // 和 controller 参数名中说明），因为路径相对于目标 controller view，与 ui.inspect / ui.tap 以当前栈顶
+        // view 为根的语义不匹配。其余结构 / color / font / indexPath 等观察字段全部保留。
+        if isControllerOverride {
+            let root = UIViewHierarchyBuilder.build(from: element, query: query)
+            data["controller"] = .string(controllerLog)
+            data["controllerNote"] = .string("传入 controller 参数采集的视图层级来自非栈顶控制器，节点 path 相对于该控制器 view 而非当前栈顶 view，不可用于 ui.tap / ui.inspect / ui.control.sendAction 等操作的定位。要获取可操作 target 请用不带 controller 参数的 ui.inspect。")
+            data["root"] = .object(root.toJSON(includePath: false))
+            data["nodeCount"] = .double(Double(root.nodeCount))
+            UIKitCommandLogging.info("command", "ui hierarchy collect completed mode=controllerNote nodeCount=\(root.nodeCount) controllerPath=\(controllerLog)")
         } else {
-            data["root"] = .object(root.toJSON())
-            UIKitCommandLogging.info("command", "ui hierarchy collect completed mode=root nodeCount=\(root.nodeCount) rootType=\(root.type)")
+            let root = UIViewHierarchyBuilder.build(from: element, query: query)
+            // topViewHierarchy 不签发 viewSnapshotID：结构化 freshness / locator 签发是 ui.inspect
+            // 的专属职责（spec §1.2）。这里只输出页面结构供观察/排障，不参与 tap/sendAction 陈旧校验。
+            data["nodeCount"] = .double(Double(root.nodeCount))
+            // 与 ui.inspect 同口径暴露 navigationBar 摘要，避免出现「viewTargets 看得到、
+            // topViewHierarchy 看不到」的分叉；深度排查与普通观察用同一份导航栏语义。
+            data["navigationBar"] = .object(
+                UINavigationBarInspector.summarize(topViewController: context.topViewController).toJSON()
+            )
+            if query.hasIdentifierFilter {
+                let matches = UIViewHierarchyBuilder.matches(in: element, query: query)
+                data["matches"] = .array(matches.map { .object($0.toJSON()) })
+                data["matchCount"] = .double(Double(matches.count))
+                UIKitCommandLogging.info("command", "ui hierarchy collect completed mode=matches nodeCount=\(root.nodeCount) matchCount=\(matches.count)")
+            } else {
+                data["root"] = .object(root.toJSON())
+                UIKitCommandLogging.info("command", "ui hierarchy collect completed mode=root nodeCount=\(root.nodeCount) rootType=\(root.type)")
+            }
         }
         return data
     }

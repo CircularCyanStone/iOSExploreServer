@@ -360,6 +360,10 @@ public struct UIViewHierarchyInput: CommandInput, Sendable, Equatable {
         static let includeHidden = UIKitFilterFields.includeHidden
         static let accessibilityIdentifier = UIKitFilterFields.accessibilityIdentifier
         static let accessibilityIdentifierPrefix = UIKitFilterFields.accessibilityIdentifierPrefix
+        static let controller = CommandFields.optionalString(
+            "controller",
+            description: "按 ui.controllers 返回的 controller 定位 path（如 root.tab[0].nav[1]）指定采集起点 controller，缺省为当前顶部控制器"
+        )
 
         static let all: [AnyCommandField] = [
             detailLevel.erased,
@@ -367,6 +371,7 @@ public struct UIViewHierarchyInput: CommandInput, Sendable, Equatable {
             includeHidden.erased,
             accessibilityIdentifier.erased,
             accessibilityIdentifierPrefix.erased,
+            controller.erased,
         ]
     }
 
@@ -383,6 +388,11 @@ public struct UIViewHierarchyInput: CommandInput, Sendable, Equatable {
     public let accessibilityIdentifier: String?
     /// accessibilityIdentifier 前缀匹配条件。
     public let accessibilityIdentifierPrefix: String?
+    /// controller 定位 path（来自 `ui.controllers`），缺省为 `nil` 表示从顶部控制器 view 采集。
+    ///
+    /// 入参非空时由 `UIControllerResolver` 沿 path 实时定位到目标 controller，取其 `view`
+    /// 作为采集起点。`"root"` 表示 `window.rootViewController`，与缺省（`topViewController`）语义不同。
+    public let controller: String?
 
     /// 默认查询：返回非隐藏视图的 appearance 级完整树。
     public static let `default` = UIViewHierarchyInput()
@@ -395,16 +405,19 @@ public struct UIViewHierarchyInput: CommandInput, Sendable, Equatable {
     ///   - includeHidden: 是否包含隐藏视图。
     ///   - accessibilityIdentifier: identifier 精确匹配条件。
     ///   - accessibilityIdentifierPrefix: identifier 前缀匹配条件。
+    ///   - controller: controller 定位 path，缺省 `nil` 走顶部控制器。
     public init(detailLevel: UIViewHierarchyDetailLevel = .appearance,
                 maxDepth: Int? = nil,
                 includeHidden: Bool = false,
                 accessibilityIdentifier: String? = nil,
-                accessibilityIdentifierPrefix: String? = nil) {
+                accessibilityIdentifierPrefix: String? = nil,
+                controller: String? = nil) {
         self.detailLevel = detailLevel
         self.maxDepth = maxDepth
         self.includeHidden = includeHidden
         self.accessibilityIdentifier = accessibilityIdentifier
         self.accessibilityIdentifierPrefix = accessibilityIdentifierPrefix
+        self.controller = controller
     }
 
     /// 是否包含筛选条件。
@@ -423,7 +436,8 @@ public struct UIViewHierarchyInput: CommandInput, Sendable, Equatable {
             maxDepth: try decoder.read(Fields.maxDepth),
             includeHidden: try decoder.read(Fields.includeHidden),
             accessibilityIdentifier: try decoder.read(Fields.accessibilityIdentifier),
-            accessibilityIdentifierPrefix: try decoder.read(Fields.accessibilityIdentifierPrefix)
+            accessibilityIdentifierPrefix: try decoder.read(Fields.accessibilityIdentifierPrefix),
+            controller: try decoder.read(Fields.controller)
         )
     }
 }
@@ -548,9 +562,14 @@ public struct UIViewHierarchyNode: Sendable, Equatable {
     }
 
     /// 转为命令响应中的 JSON 对象。
-    public func toJSON() -> JSON {
+    ///
+    /// - Parameter includePath: 是否输出 `path` 字段。`ui.topViewHierarchy` 在传入 `controller`
+    ///   参数时（非栈顶观察模式）会把 `includePath` 设为 `false`：节点 path 相对于目标
+    ///   controller view，与 `ui.tap` / `ui.inspect` 以栈顶 view 为根的语义不匹配，输出会
+    ///   引诱 agent 误用，故直接省略；其余结构 / accessibility / 文本 / 颜色 / 控件状态 /
+    ///   indexPath 等观察字段全部保留。
+    public func toJSON(includePath: Bool = true) -> JSON {
         var json: JSON = [
-            "path": .string(path),
             "type": .string(type),
             "accessibilityIdentifier": accessibility.identifier.map(JSONValue.string) ?? .null,
             "accessibilityLabel": accessibility.label.map(JSONValue.string) ?? .null,
@@ -559,8 +578,11 @@ public struct UIViewHierarchyNode: Sendable, Equatable {
             "frame": .object(frame.toJSON()),
             "bounds": .object(bounds.toJSON()),
             "state": .object(state.toJSON()),
-            "subviews": .array(subviews.map { .object($0.toJSON()) }),
+            "subviews": .array(subviews.map { .object($0.toJSON(includePath: includePath)) }),
         ]
+        if includePath {
+            json["path"] = .string(path)
+        }
         if let text { json["text"] = .object(text.toJSON()) }
         if let appearance { json["appearance"] = .object(appearance.toJSON()) }
         if let control { json["control"] = .object(control.toJSON()) }
@@ -573,6 +595,11 @@ public struct UIViewHierarchyNode: Sendable, Equatable {
             ])
         }
         return json
+    }
+
+    /// 兼容旧调用方的无参入口，等价于 `toJSON(includePath: true)`。
+    public func toJSON() -> JSON {
+        toJSON(includePath: true)
     }
 
     /// 统计当前节点及其所有子节点数量。
