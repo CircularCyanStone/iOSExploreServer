@@ -89,21 +89,28 @@ func cellSelectionReturnsNilForCellWithoutTableViewAncestor() {
 @Test("executeCellSelection cell 子树 + UITableViewDelegate 命中 → activated=true route=cell.select.public") @MainActor
 func cellSelectionHitsPublicAPIPath() throws {
     let delegate = TestTableViewDelegate()
+    // `UITableView.dataSource`/`delegate` 是 weak：直接把临时对象 `TestTableViewDataSource()`
+    // 赋给它会立即被释放，`dataSource` 变 nil。必须像 delegate 一样在闭包外用 let 强引用持有，
+    // 否则下方 `dataSource.tableView(...)` 与 `indexPath(for:)` 都拿不到 data source。
+    let dataSource = TestTableViewDataSource()
     var tableViewHolder: UITableView?
     let context = UIKitTestHost.context { root in
         let tableView = UITableView(frame: CGRect(x: 0, y: 0, width: 320, height: 568), style: .plain)
         tableView.register(TestTableViewCell.self, forCellReuseIdentifier: "TestCell")
         tableView.delegate = delegate
-        tableView.dataSource = TestTableViewDataSource()
+        tableView.dataSource = dataSource
         tableView.reloadData()
         root.addSubview(tableView)
         tableViewHolder = tableView
     }
     let tableView = tableViewHolder!
-    // 触发布局 + 显式 dequeue 一行，让 cell 真实实例化并加入 tableView 子树（reloadData 在
-    // 测试无 run loop 的环境里不会立即实例化可见 cell）。
+    // 触发布局 + 让出一次 RunLoop，使 UITableView 在 key window 上真正完成 cell 的实例化与
+    // 插入子树（reloadData + layoutIfNeeded 在无 run loop 的 logic-test 里不会立即渲染可见 cell，
+    // 必须转一次 RunLoop 让 display cycle commit）。之后用 visibleCells 取已挂入子树的 cell，
+    // 而非直接调 dataSource.cellForRowAt（后者 dequeue 出的 cell 不在层级里、indexPath(for:) 也为 nil）。
     tableView.layoutIfNeeded()
-    let cell = tableView.dataSource!.tableView(tableView, cellForRowAt: IndexPath(row: 0, section: 0))
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+    let cell = tableView.visibleCells.first!
     let contentView = cell.contentView
     let attempt = UIGestureTargetExecutor.executeCellSelection(on: contentView)
 
@@ -133,7 +140,10 @@ func cellSelectionFailsWhenIndexPathReturnsNil() {
     let tableView = context.rootView.subviews.first as! UITableView
     let cell = tableView.subviews.first(where: { $0 is UITableViewCell }) as! UITableViewCell
 
-    let attempt = UIGestureTargetExecutor.executeCellSelection(on: cell)
+    // 传 cell.contentView（而非 cell 自身）：executeCellSelection 的 explore_cellAncestor 不含
+    // 自身，需从 cell 的子 view 入手才能命中 cell 祖先。此处 cell 经 addSubview 手动挂入
+    // tableView 子树但未 register，indexPath(for:) 返回 nil，正合 indexPath-nil 失败路径。
+    let attempt = UIGestureTargetExecutor.executeCellSelection(on: cell.contentView)
 
     #expect(attempt != nil)
     #expect(attempt?.activated == false)
@@ -146,6 +156,8 @@ func cellSelectionFailsWhenIndexPathReturnsNil() {
 @Test("executeCellSelection UICollectionView cell 子树命中 → activated=true route=cell.select.public") @MainActor
 func cellSelectionHitsPublicAPIPathForCollectionView() throws {
     let delegate = TestCollectionViewDelegate()
+    // `UICollectionView.dataSource` 同 UITableView 是 weak，临时对象需用 let 强引用持有。
+    let dataSource = TestCollectionViewDataSource()
     var collectionViewHolder: UICollectionView?
     let context = UIKitTestHost.context { root in
         let layout = UICollectionViewFlowLayout()
@@ -154,14 +166,16 @@ func cellSelectionHitsPublicAPIPathForCollectionView() throws {
         let collectionView = UICollectionView(frame: CGRect(x: 0, y: 0, width: 320, height: 568), collectionViewLayout: layout)
         collectionView.register(TestCollectionViewCell.self, forCellWithReuseIdentifier: "TestCell")
         collectionView.delegate = delegate
-        collectionView.dataSource = TestCollectionViewDataSource()
+        collectionView.dataSource = dataSource
         collectionView.reloadData()
         root.addSubview(collectionView)
         collectionViewHolder = collectionView
     }
     let collectionView = collectionViewHolder!
+    // 让出一次 RunLoop 使 UICollectionView 真正渲染可见 cell（同 UITableView，见 cellSelectionHitsPublicAPIPath 注释）。
     collectionView.layoutIfNeeded()
-    let cell = collectionView.dataSource!.collectionView(collectionView, cellForItemAt: IndexPath(item: 0, section: 0))
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+    let cell = collectionView.visibleCells.first!
     let attempt = UIGestureTargetExecutor.executeCellSelection(on: cell.contentView)
 
     #expect(attempt != nil)
@@ -178,22 +192,27 @@ func cellSelectionHitsPublicAPIPathForCollectionView() throws {
 @Test("executeTap cell 子树 view 命中 cellSelection → 返回 cell.select.public JSON") @MainActor
 func executeTapCellSubtreeReturnsCellSelectionJSON() throws {
     let delegate = TestTableViewDelegate()
+    // `UITableView.dataSource` 是 weak，临时对象需用 let 强引用持有（同 cellSelectionHitsPublicAPIPath）。
+    let dataSource = TestTableViewDataSource()
     var tableViewHolder: UITableView?
     let context = UIKitTestHost.context { root in
         let tableView = UITableView(frame: CGRect(x: 0, y: 0, width: 320, height: 568), style: .plain)
         tableView.register(TestTableViewCell.self, forCellReuseIdentifier: "TestCell")
         tableView.delegate = delegate
-        tableView.dataSource = TestTableViewDataSource()
+        tableView.dataSource = dataSource
         tableView.reloadData()
         root.addSubview(tableView)
         tableViewHolder = tableView
     }
     let tableView = tableViewHolder!
+    // 让出一次 RunLoop 使 UITableView 真正渲染可见 cell（见 cellSelectionHitsPublicAPIPath 注释）。
     tableView.layoutIfNeeded()
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+    let cell = tableView.visibleCells.first!
+    let contentView = cell.contentView
+    // 先让 cell 渲染入子树，再采集 viewSnapshotID，确保签发的指纹表包含目标 contentView。
     let viewSnapshotID = testViewSnapshotID(context: context)
 
-    let cell = tableView.dataSource!.tableView(tableView, cellForRowAt: IndexPath(row: 0, section: 0))
-    let contentView = cell.contentView
     let path = try locatePath(of: contentView, in: context.rootView)
     let data = try UIKitActionExecutor.execute(.tap(locator: .path(path), viewSnapshotID: viewSnapshotID),
                                                 context: context)
@@ -211,18 +230,22 @@ func executeTapCellSubtreeReturnsCellSelectionJSON() throws {
 
 @Test("capability resolver 对 cell 子树 view 声明 tap") @MainActor
 func capabilityResolverDeclaresTapForCellSubtreeView() {
+    // `UITableView.dataSource` 是 weak，临时对象需用 let 强引用持有（同 cellSelectionHitsPublicAPIPath）。
+    let dataSource = TestTableViewDataSource()
     var tableViewHolder: UITableView?
     let context = UIKitTestHost.context { root in
         let tableView = UITableView(frame: CGRect(x: 0, y: 0, width: 320, height: 568), style: .plain)
         tableView.register(TestTableViewCell.self, forCellReuseIdentifier: "TestCell")
-        tableView.dataSource = TestTableViewDataSource()
+        tableView.dataSource = dataSource
         tableView.reloadData()
         root.addSubview(tableView)
         tableViewHolder = tableView
     }
     let tableView = tableViewHolder!
+    // 让出一次 RunLoop 使 UITableView 真正渲染可见 cell（见 cellSelectionHitsPublicAPIPath 注释）。
     tableView.layoutIfNeeded()
-    let cell = tableView.dataSource!.tableView(tableView, cellForRowAt: IndexPath(row: 0, section: 0))
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+    let cell = tableView.visibleCells.first!
     let contentView = cell.contentView
 
     let availability = UIKitActionCapabilityResolver.resolve(view: contentView, rootView: context.rootView)
