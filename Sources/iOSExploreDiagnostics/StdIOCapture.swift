@@ -374,16 +374,24 @@ private final class StdIOReadBuffer: Sendable {
                      message: line)
     }
 
+    /// 判断一行 stderr 输出是否是 `NSLog` 产生的。
+    ///
+    /// NSLog 行的固定骨架为 `YYYY-MM-DD HH:MM:SS.<小数秒>`，其后跟时区/进程名/消息。骨架前 20
+    /// 个字符（到 `.` 为止，含）在所有 iOS 版本稳定；小数秒位数会变——旧版为 3 位毫秒 `mmm`，
+    /// iOS 26 改为 6 位微秒 `mmmmmm`。因此只校验到秒级骨架（含 `.`），并要求其后紧跟至少一位数字，
+    /// 不再硬编码 `prefix[23] == " "`（该写法在 6 位微秒下会把索引 23 指到微秒第 4 位数字，
+    /// 误判为非 NSLog 行，导致 captureNSLog 打开后 NSLog 输出被当作普通 stderr 丢弃）。
     private static func looksLikeNSLogLine(_ line: String) -> Bool {
-        guard line.count >= 24 else { return false }
-        let prefix = Array(line.prefix(24))
-        return prefix[4] == "-"
-            && prefix[7] == "-"
-            && prefix[10] == " "
-            && prefix[13] == ":"
-            && prefix[16] == ":"
-            && prefix[19] == "."
-            && prefix[23] == " "
+        // 骨架 "YYYY-MM-DD HH:MM:SS." 长度 20，小数秒至少 1 位，故整行至少 21 字符。
+        guard line.count >= 21 else { return false }
+        let chars = Array(line)
+        return chars[4] == "-"
+            && chars[7] == "-"
+            && chars[10] == " "
+            && chars[13] == ":"
+            && chars[16] == ":"
+            && chars[19] == "."
+            && chars[20].isNumber
     }
 
     private func writeAll(_ bytes: [UInt8]) {
