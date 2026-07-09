@@ -58,6 +58,11 @@ func waitAnyCommandSchemaMatchesInputFields() {
     #expect(WaitAnyCommand.Input.inputSchema.fields.map(\.name) == UIWaitAnyInput.inputSchema.fields.map(\.name))
 }
 
+@Test("ui.controllers 命令 schema 声明 typed input 字段")
+func controllersCommandSchemaMatchesInputFields() {
+    #expect(ControllersCommand.Input.inputSchema.fields.map(\.name) == UIControllersInput.inputSchema.fields.map(\.name))
+}
+
 @Test("ui.input 命令 description 写明 viewSnapshotID 只与 path 搭配")
 func inputCommandDescriptionExplainsViewSnapshotPathOnly() {
     let description = InputCommand().description

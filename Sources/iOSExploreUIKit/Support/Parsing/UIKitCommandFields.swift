@@ -27,7 +27,7 @@ public enum UIKitFilterFields {
     /// 最大递归深度，缺失时不限制。
     public static let maxDepth = CommandFields.optionalNonNegativeInt(
         "maxDepth",
-        description: "最大递归深度, 0 表示仅根 view"
+        description: "最大递归深度, 0 表示仅根节点"
     )
 
     /// 是否包含隐藏 view，默认不包含。
