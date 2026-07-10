@@ -38,7 +38,7 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// - Returns: `stale_locator` 失败描述。
     static func staleLocator(action: String, viewSnapshotID: String) -> UIKitCommandError {
         UIKitCommandError(code: .staleLocator,
-                          message: "view snapshot expired or target changed; call ui.inspect first, then retry with the new viewSnapshotID",
+                          message: "view snapshot expired (TTL \(Int(UIKitSnapshotStore.ttlSeconds))s) or target changed; call ui.inspect first, then retry with the new viewSnapshotID",
                           logMessage: "uikit locator stale action=\(action) viewSnapshot=\(viewSnapshotID)")
     }
 
