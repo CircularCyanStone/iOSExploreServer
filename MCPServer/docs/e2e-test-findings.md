@@ -129,3 +129,34 @@ L171-173 注释明确写「原 30s/8 在慢 LLM 推理链下会触发 stale_loca
 3. 当前 `invalid_data` 文案已足够 Agent 理解（如 `viewSnapshotID is valid only with path`）。
 
 若日后 Agent 频繁因「参数组合约束」踩坑（而非字段缺失），再启动 Fix A。届时建议直接让 App 在 `help`/`inspectSchema` 输出里带上可执行的条件约束描述，MCP 层复用，而不是在 TS 侧重写一套翻译。
+
+## 2026-07-11 真实端到端验证（SPMExample 模拟器闭环）
+
+用 XcodeBuildMCP `sim-app` profile + `IOS_EXPLORE_AUTOSTART=1` + `IOS_EXPLORE_OPEN_ALERT_TEST=1`，对 4 个「已修」修复做**首次真实 App + curl 闭环验证**（此前全部只有单元测试 / LLDB）。**4 个修复本身全部通过**，但验证过程暴露了 4 个此前未知的问题。
+
+### 验证结果（全通过）
+
+| 修复 | 验证方式 | 真实结果 |
+|---|---|---|
+| P0-4 `16fefb1` alert 区块 | tap 触发 alert → inspect → ui.alert.respond 关闭 | alert 区块注入 `buttons[].path/role` + `availableActions:["ui.alert.respond"]` ✅；`dryRun:false` → `performed/dismissed/button`，alert 关闭 ✅ |
+| P0-3 `71ce37a` text 字段 | ui.input 写 username → inspect 读回 | `username.text="AgentName42"`（修复前 null）✅；password secure `text=null` ✅ |
+| P0-2 `fe48071` input freshness | ui.input `accessibilityIdentifier+viewSnapshotID` | 不再返回 `invalid_data`，`finalText` 正确 ✅ |
+| P1-5 Fix B `8727eb8` isError | 经真实 MCP server（mcp-inspector） | `invalid_data`/`stale_locator` → `isError:true` ✅；`unknown_action`(call_action) → `isError:false` ✅ |
+
+### 验证中暴露的新问题
+
+#### N1（已修 `62f6690`）：main 上 iOS 构建阻断
+
+`UIInspectCollector.textualValue` 用 `view is UIListContentView` 未加 `if #available`，而 `Package.swift` 声明 iOS 13、`UIListContentView` 是 iOS 14+，SPMExample iOS 模拟器构建直接失败（`'UIListContentView' is only available in iOS 14.0 or newer`）。macOS `swift test` 因 UIKit 段 `#if canImport(UIKit)` 不编译而一直没暴露。**根因：4 个修复都没做真实 iOS 构建 / 端到端，只跑 macOS 单元测试。** 已加 `if #available(iOS 14, *)` 修复，iOS 模拟器构建 + macOS 273 测试全过。
+
+#### N2：P0-4 commit message 与实现不一致（alert button path 不可 ui.tap）
+
+`16fefb1` message 称「agent 可直接用 path 上 `ui.tap` 关 alert」，但实测用 button path 调 `ui.tap` 返回 `unsupported_target: target has no default activation route (UIButton / UISwitch / text input only)`——alert button 视图（`_UIAlertControllerActionView` 系）无 tap 激活路由。`availableActions` 只列 `["ui.alert.respond"]` 是**正确**的，agent 应按它走 `ui.alert.respond`。建议：修正 commit message / 文档措辞；若要支持 path tap，需 executor 识别 alert action view（单独工作项）。
+
+#### N3：alert block 的 textFields 不暴露 path / accessibilityIdentifier
+
+`ui.inspect` 的 `alert.textFields[]` 只有 `{isSecure, placeholder}`，没有 `path` 和 `accessibilityIdentifier`。agent 要给 alert 输入框做 `ui.input`，必须从 inspect targets 里深层定位 `_UIAlertControllerTextField`（实测 path 如 `root/0/0/1/0/0/4/0/0/0/0/0/0/0/0`）。建议：`alert.textFields[]` 补 `path` + `accessibilityIdentifier`，与 `alert.buttons[]` 对齐。
+
+#### N4：ui.alert.respond 的 dryRun 默认 true
+
+不传 `dryRun` 时默认 `true`（查询模式，返回 buttons 列表但不点）。agent 若不显式传 `dryRun:false` 会误以为点了按钮实则没点（实测 `{"buttonIndex":1}` 返回的仍是 `dryRun:true`）。建议：默认改为 `false`（执行），或在响应里强提示当前为查询模式。
