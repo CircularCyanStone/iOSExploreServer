@@ -153,10 +153,28 @@ L171-173 注释明确写「原 30s/8 在慢 LLM 推理链下会触发 stale_loca
 
 `16fefb1` message 称「agent 可直接用 path 上 `ui.tap` 关 alert」，但实测用 button path 调 `ui.tap` 返回 `unsupported_target: target has no default activation route (UIButton / UISwitch / text input only)`——alert button 视图（`_UIAlertControllerActionView` 系）无 tap 激活路由。`availableActions` 只列 `["ui.alert.respond"]` 是**正确**的，agent 应按它走 `ui.alert.respond`。建议：修正 commit message / 文档措辞；若要支持 path tap，需 executor 识别 alert action view（单独工作项）。
 
-#### N3：alert block 的 textFields 不暴露 path / accessibilityIdentifier
+#### N3（已修 `a75df74`）：alert block 的 textFields 不暴露 path / accessibilityIdentifier
 
-`ui.inspect` 的 `alert.textFields[]` 只有 `{isSecure, placeholder}`，没有 `path` 和 `accessibilityIdentifier`。agent 要给 alert 输入框做 `ui.input`，必须从 inspect targets 里深层定位 `_UIAlertControllerTextField`（实测 path 如 `root/0/0/1/0/0/4/0/0/0/0/0/0/0/0`）。建议：`alert.textFields[]` 补 `path` + `accessibilityIdentifier`，与 `alert.buttons[]` 对齐。
+原状：`ui.inspect` 的 `alert.textFields[]` 只有 `{isSecure, placeholder}`，无 `path` / `accessibilityIdentifier`，agent 要给 alert 输入框做 `ui.input` 只能深层挖 `_UIAlertControllerTextField`。
+
+**已修 `a75df74`**：`alert.textFields[]` 现在每个带 `path` + `accessibilityIdentifier` + `availableActions:["ui.input"]`，与 `alert.buttons[]` 对齐。新增 `UIAlertTextFieldPathResolver`（对象身份 `===` DFS 解析，用公开 `UITextField` 类型收集、抗版本漂移）。真实闭环验证：用 alert 区块的 path 直连 `ui.input` 写入读回成功（`username.text="N3Verify"`，password secure 仍 null）。
 
 #### N4：ui.alert.respond 的 dryRun 默认 true
 
 不传 `dryRun` 时默认 `true`（查询模式，返回 buttons 列表但不点）。agent 若不显式传 `dryRun:false` 会误以为点了按钮实则没点（实测 `{"buttonIndex":1}` 返回的仍是 `dryRun:true`）。建议：默认改为 `false`（执行），或在响应里强提示当前为查询模式。
+
+### N3 修复过程新挖出的 pre-existing 问题（`a75df74` / `c5a1c1f` 顺带修）
+
+修 N3 时又挖出几个此前被掩盖的问题（再次印证「只跑 macOS swift test、不跑 iOS framework 测试 / 真实闭环」会藏 bug）：
+
+- **topViewHierarchy alert 注入遗漏（已修 `a75df74`）**：`16fefb1` 声称给 inspect 和 topViewHierarchy 都注入 alert 区块，实际只注入了 inspect（topViewHierarchy 只有注释没代码）。补齐 else 分支注入。
+- **3 个测试文件编译错误（已修 `a75df74`）**：`0936b2e` 把 `UIViewTargetsCollector` 改名 `UIInspectCollector` 时漏改 `UIInspectCollectorTests` / `UIKitCollectorTests` / `UINavigationBarButtonTests` 的部分方法，外加 `collectTopViewHierarchy` 变 throws 后漏 `try`。这些测试在 `#if canImport(UIKit)` 内——macOS `swift test` 不编译而漏掉，iOS framework 测试里一直编译失败从未真正运行。
+- **Release 构建隐患（已修 `a75df74`）**：`UIAlertInspector.resolveButtonPaths` 返回类型是 `#if DEBUG` 保护的 `ResolvedButton`，Release 分支引用它会导致 framework Release 构建失败（Debug-only 测试一直没暴露）。改为返回 `[String?]`。
+- **5 个 ui.input / staleLocator 断言过时（已修 `c5a1c1f`）**：P0-2 改了 viewSnapshotID 语义、`10ca9a1` 给 staleLocator 消息加了 TTL 插值后，测试断言没跟上。更新断言匹配新语义，staleLocator 改用 `contains` 关键短语（消息从 `ttlSeconds` 插值，TTL 调整时精确匹配会断）。
+
+### 仍未处理的 pre-existing
+
+- **2 个 stderr/NSLog capture flaky 失败（Diagnostics 模块）**：iOS framework 测试里 `stderr capture` / `NSLog capture` 间歇性失败（同一次跑过、下一次失败），`71ce37a` 已标注「stderr capture 间歇性」属预存。与 UIKit 改动无关，属 Diagnostics capture 时序稳定性问题，建议单独排查。
+- **N2**：alert button path 不可 `ui.tap`（commit message 措辞误导）——待修文档措辞，或让 executor 识别 alert action view 支持 path tap。
+- **N4**：`ui.alert.respond` 不传 `dryRun` 默认 true——待定默认值或加强提示。
+- **P1-5 Fix A**：暂缓（见上）。
