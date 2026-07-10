@@ -12,7 +12,7 @@
 |---|---|---|
 | 根目录 | 3 | 注册入口、日志、错误工厂（被所有层依赖） |
 | `Commands/TopViewHierarchy/` | 3 | `ui.topViewHierarchy` 命令（adapter + models + collector） |
-| `Commands/ViewTargets/` | 3 | `ui.inspect` 命令（adapter + models + collector） |
+| `Commands/Inspect/` | 3 | `ui.inspect` 命令（adapter + models + collector） |
 | `Commands/Screenshot/` | 3 | `ui.screenshot` 命令（adapter + models + collector） |
 | `Commands/Tap/` | 2 | `ui.tap` 命令（adapter + models） |
 | `Commands/ControlAction/` | 2 | `ui.control.sendAction` 命令（adapter + models） |
@@ -68,7 +68,7 @@
 - **职责**：UIKit 命令复用的 `CommandField` 定义与 locator input helper。
 - **关键点**：`UIKitFilterFields` 只服务查询筛选字段，`UIKitLocatorFields` 只服务交互定位字段，避免同名 key 的 description 被硬套。`UIKitLocatorInput.parse` 通过 core `CommandInputDecoder.read` 读取字段，再复用底层 `UIKitViewLookupTarget.parse`，并把 `UIKitLocatorParseError` 转成 `CommandInputParseError`。
 - **依赖**：core `CommandFields`/`CommandInputDecoder`/`CommandInputParseError`、`UIKitViewLookupTarget`。
-- **被调用**：`UIViewTargetsInput`、`UIViewHierarchyInput`、`UITapInput`、`UIControlSendActionInput`。
+- **被调用**：`UIInspectInput`、`UIViewHierarchyInput`、`UITapInput`、`UIControlSendActionInput`。
 
 ---
 
@@ -116,9 +116,9 @@
 
 ### `UIKitActionCapabilityResolver.swift` 🍎
 - **职责**：`@MainActor`，解析"某个 UIControl 当前能执行哪些 control event 动作"。
-- **关键点**：被 `UIViewTargetsCollector` 用来声明 `availableActions`。disabled 控件一律返回空集合。规则：`UITextField` → 编辑三件套；值型控件 → `valueChanged`；其余 → touchDown/UpInside。**tap 的默认激活路由判定已拆到 `UIKitDefaultActivationResolver`**（本类型不再判 tap）；UISlider/UISegmentedControl 无默认激活路由，tap 会返回 `unsupported_target`。executor 不再调用本类型做祖先 fallback 校验。**cell 子树声明**：在 `isInteractable` 通过、disabled 排除四条累加分支后追加一条——`view.explore_cellAncestor != nil` 则 `collected.insert(.tap)`（cellSelection adapter 能为其派发 `didSelectRow/didSelectItem`），让 agent 直接看见 cell 子树 view（含 `UIListContentView`、cell.contentView、cell 内子 view）的 `availableActions=["tap"]`，不再靠 `hasGestureRecognizers` 蒙。cell 本身仍不进 targets（canonical-only 口径不变）。
+- **关键点**：被 `UIInspectCollector` 用来声明 `availableActions`。disabled 控件一律返回空集合。规则：`UITextField` → 编辑三件套；值型控件 → `valueChanged`；其余 → touchDown/UpInside。**tap 的默认激活路由判定已拆到 `UIKitDefaultActivationResolver`**（本类型不再判 tap）；UISlider/UISegmentedControl 无默认激活路由，tap 会返回 `unsupported_target`。executor 不再调用本类型做祖先 fallback 校验。**cell 子树声明**：在 `isInteractable` 通过、disabled 排除四条累加分支后追加一条——`view.explore_cellAncestor != nil` 则 `collected.insert(.tap)`（cellSelection adapter 能为其派发 `didSelectRow/didSelectItem`），让 agent 直接看见 cell 子树 view（含 `UIListContentView`、cell.contentView、cell 内子 view）的 `availableActions=["tap"]`，不再靠 `hasGestureRecognizers` 蒙。cell 本身仍不进 targets（canonical-only 口径不变）。
 - **依赖**：UIKit、`UIKitActionAvailability`、`UIControlSendActionEvent`、`UIKitInternalUtils`（`explore_cellAncestor`）。
-- **被调用**：`UIViewTargetsCollector.availableActions`。
+- **被调用**：`UIInspectCollector.availableActions`。
 
 ### `UIKitActionExecutor.swift` 🍎
 - **职责**：`@MainActor`，tap 与 control.sendAction 的实际 UIKit 执行入口。
@@ -140,7 +140,7 @@
 - **职责**：UIKit 视图树指纹快照存储，解决"path 陈旧"问题。
 - **关键点**：**仅 `ui.inspect` 签发 `viewSnapshotID` 返回给调用方**（`ui.screenshot` / `ui.topViewHierarchy` 不再签发）；交互命令携带它时，executor 执行前用 `isStale(viewSnapshotID:path:context:current:) -> Bool` 比对指纹（含 `semanticDigest`），true 时 `throw UIKitCommandError.staleLocator`（`invalid_data`，固定消息 "locator is stale; call ui.inspect first"）。容量 **8 条快照 × 每条最多 512 指纹**，TTL **30 秒**，淘汰策略"先过期后 LRU"。时间可注入（`setNow`），测试推进时间即可触发过期。
 - **依赖**：`UIKitCommandLogging`。
-- **被调用**：`UIViewTargetsCollector`（insert）、executor（isStale）。
+- **被调用**：`UIInspectCollector`（insert）、executor（isStale）。
 
 ### `UIKitSnapshotResponse.swift` ✅
 - **职责**：snapshot 签发结果 → 响应字段的统一映射。
@@ -151,7 +151,7 @@
 - **职责**：`@MainActor`，从真实 `UIView` 构造 `UIKitTargetFingerprint`。
 - **关键点**：**identifier 只存稳定哈希（FNV-1a），不存原文**，避免泄露用户输入。context identity 用 `ObjectIdentifier`（进程内实例身份，检测 window/控制器是否换了新实例）。指纹含 `UIKitTargetSemanticDigest`（按钮标题 / a11y label / a11y value / switch isOn / segment index / 默认激活路由 的稳定哈希），参与陈旧检测。
 - **依赖**：UIKit、`UIKitTargetFingerprint`、`UIKitTargetSemanticDigest`、`UIKitSnapshotContext`、`UIKitViewLookupTarget.pathString`。
-- **被调用**：`UIViewTargetsCollector`、executor（重采比对）。
+- **被调用**：`UIInspectCollector`、executor（重采比对）。
 
 ### `UIKitTargetSemanticDigest.swift` 🍎
 - **职责**：`@MainActor`，从 `UIView` 抽取语义摘要的稳定哈希（`semanticDigest`）。
@@ -208,22 +208,22 @@
 
 ---
 
-## `Commands/ViewTargets/`（`ui.inspect`）
+## `Commands/Inspect/`（`ui.inspect`）
 
-### `UIViewTargetsModels.swift` ✅
-- **职责**：轻量目标的全部模型——`UIViewTargetsInput` + `UIViewTargetCandidate` + `UIViewTargetSummary` + 角色/状态/文本裁剪。
-- **关键点**：`UIViewTargetsInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；**`UIViewTargetsInput.isFull` 是 full/minimal 分档决策核心**（纯 Foundation-only 逻辑），`shouldInclude` 保留为 schema 兼容字段、canonical-only 时代已不再参与决策。**full 判定**：UIControl 系（UIButton/UISwitch/UISlider/UISegmentedControl/UITextField/自定义 UIControl）+ UIScrollView 系（UIScrollView/UITableView/UICollectionView/UITextView）+ **挂有 gesture recognizer 的非 control view** + **`explore_cellAncestor != nil` 的 cell 子树 view**（含 `UIListContentView`、cell 内 `UILabel`、cell accessory）——后者让 agent 能直接按 cell 标题文本定位子 label。不满足 full 的节点（普通 UILabel/container/纯展示 view）作为 **minimal 结构节点**输出：`toJSON` 只给 `{path, type}`、强制 `availableActions=[]`、`isMinimal=true`、**不签发指纹**（仅维持层级可见性，让 agent 知道这些节点存在但不可操作）。按钮内部 label/image 不作为独立 full target，文本汇总到父 target 的 `semanticText`。disabled control 仍 include（`availableActions` 为空）。`maxTargets` 默认 200（上限 512，仅计 full 节点），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本；identifier 筛选只作用于 full 输出，不影响 minimal 节点可见性。
+### `UIInspectModels.swift` ✅
+- **职责**：轻量目标的全部模型——`UIInspectInput` + `UIInspectCandidate` + `UIInspectSummary` + 角色/状态/文本裁剪。
+- **关键点**：`UIInspectInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；**`UIInspectInput.isFull` 是 full/minimal 分档决策核心**（纯 Foundation-only 逻辑），`shouldInclude` 保留为 schema 兼容字段、canonical-only 时代已不再参与决策。**full 判定**：UIControl 系（UIButton/UISwitch/UISlider/UISegmentedControl/UITextField/自定义 UIControl）+ UIScrollView 系（UIScrollView/UITableView/UICollectionView/UITextView）+ **挂有 gesture recognizer 的非 control view** + **`explore_cellAncestor != nil` 的 cell 子树 view**（含 `UIListContentView`、cell 内 `UILabel`、cell accessory）——后者让 agent 能直接按 cell 标题文本定位子 label。不满足 full 的节点（普通 UILabel/container/纯展示 view）作为 **minimal 结构节点**输出：`toJSON` 只给 `{path, type}`、强制 `availableActions=[]`、`isMinimal=true`、**不签发指纹**（仅维持层级可见性，让 agent 知道这些节点存在但不可操作）。按钮内部 label/image 不作为独立 full target，文本汇总到父 target 的 `semanticText`。disabled control 仍 include（`availableActions` 为空）。`maxTargets` 默认 200（上限 512，仅计 full 节点），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本；identifier 筛选只作用于 full 输出，不影响 minimal 节点可见性。
 - **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitSnapshotLimits`、`UIKitActionAvailability`、`UIViewHierarchyRect`。
 
-### `UIViewTargetsCollector.swift` 🍎
+### `UIInspectCollector.swift` 🍎
 - **职责**：`@MainActor`，递归遍历 view 树，**对每个节点判 full/minimal 分档**采集摘要并为 full 节点签发 `viewSnapshotID`。
 - **关键点**：`collect(query:) throws -> JSON`（无 context 入口）；`collect(query:context:) -> JSON`（注入入口）。刻意不复用完整层级快照（不读颜色/字体/图片）。identifier 筛选不提前剪枝子树。**分档**：每个节点先用 `makeCandidate(for:)` + `query.isFull` 判定 full/minimal——full 节点走 `summary(for:)`（完整 `availableActions`/文本/状态）、minimal 节点走 `minimalSummary(for:)`（强制 `isMinimal=true`、`actions=[]`、`toJSON` 只输出 `{path, type}`）。**`availableActions` 只认目标自身的 control 身份**（不向上借祖先 control），唯一例外是 `explore_cellAncestor != nil` 的 cell 子树 view（capability resolver 累加 `.tap`，由 cellSelection adapter 派发 `didSelectRow/didSelectItem`）。**不变式**：full returned target paths == `viewSnapshotID` 签发的 fingerprint paths == tap/sendAction 可执行 paths（minimal 节点不签发、不可操作；对 minimal 节点调 `ui.tap`/`ui.control.sendAction` 返回 `not_actionable`）。响应字段是 `viewSnapshotID`（不是 `snapshotID`）。
-- **依赖**：UIKit、`UIKitContextProvider`、`UIKitFingerprintCollector`、`UIKitSnapshotStore`、`UIKitSnapshotResponse`、`UIKitActionCapabilityResolver`、`UIViewTargetsModels`、`UIKitCommandError`/`UIKitCommandLogging`。
+- **依赖**：UIKit、`UIKitContextProvider`、`UIKitFingerprintCollector`、`UIKitSnapshotStore`、`UIKitSnapshotResponse`、`UIKitActionCapabilityResolver`、`UIInspectModels`、`UIKitCommandError`/`UIKitCommandLogging`。
 
-### `ViewTargetsCommand.swift` 🍎
+### `InspectCommand.swift` 🍎
 - **职责**：`ui.inspect` 命令 adapter。
 - **关键点**：薄 adapter——typed input 已由 `AnyCommand` 解析完成；handler `try await collector`。响应含 `targetCount`/`visitedNodeCount`/`truncated`/`viewSnapshotID`。
-- **依赖**：`UIViewTargetsInput`、`UIViewTargetsCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
+- **依赖**：`UIInspectInput`、`UIInspectCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
 
 ---
 

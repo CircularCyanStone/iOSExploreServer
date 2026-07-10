@@ -182,7 +182,7 @@ public final class UIKitSnapshotStore {
     static let maxFingerprints = UIKitSnapshotLimits.maxFingerprints
     /// 快照存活秒数。
     ///
-    /// spec §3.6：30s 匹配 LLM 推理节奏（agent 在 viewTargets 与 tap 之间常需 3-30s
+    /// spec §3.6：30s 匹配 LLM 推理节奏（agent 在 ui.inspect 与 tap 之间常需 3-30s
     /// 思考），原 10s 易在推理期间过期导致 viewSnapshotID 失效。
     static let ttlSeconds: TimeInterval = 30
 
@@ -199,9 +199,9 @@ public final class UIKitSnapshotStore {
         /// 签发时使用的目标查询参数。
         ///
         /// `ui.wait(snapshotChanged)` 重采 whole-table 时必须用同一 query，否则签发 query
-        /// 与重采 query 不一致（如 viewTargets 带 includeHidden）会让 path 集合天然不同，
-        /// 首轮即误判「已变化」。`UIViewTargetsInput` 是 Foundation-only 值类型，可安全存此。
-        let query: UIViewTargetsInput
+        /// 与重采 query 不一致（如 ui.inspect 带 includeHidden）会让 path 集合天然不同，
+        /// 首轮即误判「已变化」。`UIInspectInput` 是 Foundation-only 值类型，可安全存此。
+        let query: UIInspectInput
     }
 
     /// viewSnapshotID → 快照记录。
@@ -245,7 +245,7 @@ public final class UIKitSnapshotStore {
     @discardableResult
     public func insert(context: UIKitSnapshotContext,
                        targets: [String: UIKitTargetFingerprint],
-                       query: UIViewTargetsInput) -> String? {
+                       query: UIInspectInput) -> String? {
         if targets.count > Self.maxFingerprints {
             UIKitCommandLogging.info("command", "ui snapshot skipped oversized fingerprints=\(targets.count) max=\(Self.maxFingerprints)")
             return nil
@@ -273,7 +273,7 @@ public final class UIKitSnapshotStore {
     ///
     /// - Parameter viewSnapshotID: 参照快照标识。
     /// - Returns: 签发时的查询参数；snapshot 不存在或已过期时返回 nil。
-    func signingQuery(for viewSnapshotID: String) -> UIViewTargetsInput? {
+    func signingQuery(for viewSnapshotID: String) -> UIInspectInput? {
         guard let entry = entries[viewSnapshotID], !isExpired(entry: entry) else { return nil }
         return entry.query
     }
@@ -367,7 +367,7 @@ public final class UIKitSnapshotStore {
     ///
     /// - Note: **已知限制（spec §5）**：本方法做全表相等比较
     ///   （`entry.fingerprints == currentTable`），但 `UIKitFingerprintCollector.collectMatching`
-    ///   重采时不遵循 `maxTargets` 截断——签发侧（`UIViewTargetsCollector.collect`）会在 full
+    ///   重采时不遵循 `maxTargets` 截断——签发侧（`UIInspectCollector.collect`）会在 full
     ///   节点数达 `maxTargets`（默认 200）时停止追加 full，而重采侧无此上限。当 full 节点数
     ///   超过 `maxTargets` 时，stored（截断后的 full 子集）≠ current（全量 full），首轮即误报
     ///   「已变化」。默认场景下 full 节点数（典型 ≈24）远低于 200，不触发；极端深树触发属已知

@@ -51,7 +51,7 @@ func collectEmitsMinimalAndFullNodes() {
         container.addSubview(label2)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let targets = allTargetSummaries(from: data)
 
     // 两个 label（full）+ container（minimal）。root 也是 minimal。
@@ -81,7 +81,7 @@ func minimalNodesOmitAvailableActions() {
         root.addSubview(container)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let minimal = allTargetSummaries(from: data).filter { !isFullTarget($0) }
     #expect(!minimal.isEmpty)
     // minimal toJSON 短路：只有 path/type，不可能出现 availableActions（避免引诱 agent 操作）。
@@ -103,7 +103,7 @@ func cellInternalLabelIsFullTarget() {
         root.addSubview(cell)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let full = allTargetSummaries(from: data).filter { isFullTarget($0) }
     // cell 内 label 必须作为 full target 出现，且带 text。
     let cellLabel = full.first { $0["type"]?.stringValue == "UILabel" }
@@ -129,8 +129,8 @@ func truncationCountsOnlyFullNodes() {
         }
     }
 
-    let query = UIViewTargetsInput(maxTargets: 2)
-    let data = UIViewTargetsCollector.collect(query: query, context: context)
+    let query = UIInspectInput(maxTargets: 2)
+    let data = UIInspectCollector.collect(query: query, context: context)
     let full = allTargetSummaries(from: data).filter { isFullTarget($0) }
     let fullIds = Set(full.compactMap { $0["accessibilityIdentifier"]?.stringValue })
 
@@ -159,8 +159,8 @@ func maxVisitedNodesStopsDeepTree() {
         }
     }
 
-    let query = UIViewTargetsInput(maxVisitedNodes: 5)
-    let data = UIViewTargetsCollector.collect(query: query, context: context)
+    let query = UIInspectInput(maxVisitedNodes: 5)
+    let data = UIInspectCollector.collect(query: query, context: context)
 
     // 第 6 次访问（visitedNodeCount=6 > 5）触发返回；不会继续深入到第 7 层。
     let visited = Int(data["visitedNodeCount"]?.doubleValue ?? -1)
@@ -191,8 +191,8 @@ func identifierFilterAffectsOnlyFull() {
         wrapper.addSubview(drop)
     }
 
-    let query = UIViewTargetsInput(accessibilityIdentifier: "keep")
-    let data = UIViewTargetsCollector.collect(query: query, context: context)
+    let query = UIInspectInput(accessibilityIdentifier: "keep")
+    let data = UIInspectCollector.collect(query: query, context: context)
     let targets = allTargetSummaries(from: data)
     let full = targets.filter { isFullTarget($0) }
     let minimal = targets.filter { !isFullTarget($0) }
@@ -206,12 +206,12 @@ func identifierFilterAffectsOnlyFull() {
     #expect(data["minimalCount"]?.doubleValue == 2)
 }
 
-@Test("UIViewTargetsInput 解析 maxVisitedNodes 默认值和边界")
-func viewTargetsQueryParsesMaxVisitedNodes() throws {
-    let defaultQuery = try UIViewTargetsInput.parse(from: [:])
+@Test("UIInspectInput 解析 maxVisitedNodes 默认值和边界")
+func inspectQueryParsesMaxVisitedNodes() throws {
+    let defaultQuery = try UIInspectInput.parse(from: [:])
     #expect(defaultQuery.maxVisitedNodes == 2000)
 
-    let custom = try UIViewTargetsInput.parse(from: ["maxVisitedNodes": 5000])
+    let custom = try UIInspectInput.parse(from: ["maxVisitedNodes": 5000])
     #expect(custom.maxVisitedNodes == 5000)
 
     for invalid: JSON in [
@@ -219,7 +219,7 @@ func viewTargetsQueryParsesMaxVisitedNodes() throws {
         ["maxVisitedNodes": 20001],
         ["maxVisitedNodes": 1.5],
     ] {
-        #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: invalid) }
+        #expect(throws: CommandInputParseError.self) { try UIInspectInput.parse(from: invalid) }
     }
 }
 #endif

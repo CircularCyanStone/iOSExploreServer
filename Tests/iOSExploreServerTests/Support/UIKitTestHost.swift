@@ -4,7 +4,7 @@ import UIKit
 
 /// UIKit 命令测试宿主：构造可控的 window + view 树，生成可注入的查询上下文。
 ///
-/// `UIViewTargetsCollector.collect(query:context:)` 与 `UIKitActionExecutor.execute(_:context:)`
+/// `UIInspectCollector.collect(query:context:)` 与 `UIKitActionExecutor.execute(_:context:)`
 /// 接受注入上下文。本类型在 iOS 测试里构造一个**不依赖真实 UIApplication scene** 的上下文
 /// （真实 `UIWindow` + `UIViewController` + 自定义 view 树），使 collector/executor 的派发
 /// 路径（遍历、hit-test、sendActions、陈旧校验）能在测试里被真实驱动——这是此前 executor
@@ -14,7 +14,7 @@ enum UIKitTestHost {
     /// 构造一个挂载自定义 view 树的查询上下文。
     ///
     /// 闭包接收根 view，由调用方填充子树并设置 frame；返回的上下文可直接喂给
-    /// `UIKitActionExecutor.execute(_:context:)` 或 `UIViewTargetsCollector.collect(query:context:)`。
+    /// `UIKitActionExecutor.execute(_:context:)` 或 `UIInspectCollector.collect(query:context:)`。
     ///
     /// - Parameter buildRoot: 接收根 view 的配置闭包。
     /// - Returns: 顶部控制器根 view 为已配置根 view 的查询上下文。

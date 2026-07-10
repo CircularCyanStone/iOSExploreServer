@@ -8,7 +8,7 @@ import iOSExploreServer
 /// `UIKitActionExecutor.executeTap` 的 cellSelection 分支）的运行时测试。
 ///
 /// 通过 `UIKitTestHost` 注入挂有 `UITableView`/`UICollectionView` + cell + delegate 的 view 树，
-/// 先用 `UIViewTargetsCollector.collect` 签发 `viewSnapshotID`（cell 子 view 经 canonical-only
+/// 先用 `UIInspectCollector.collect` 签发 `viewSnapshotID`（cell 子 view 经 canonical-only
 /// 口径采集），再驱动 executor 的 locate / freshness / cellSelection 派发。覆盖：
 /// - 非 cell 子树 view 返回 nil（executeTap 走原有 gesture adapter 分支不误触）。
 /// - cell 子树 + 公有 API 路径命中 → activated=true, route=cell.select.public, indexPath 填回。
@@ -23,7 +23,7 @@ import iOSExploreServer
 /// 取一次 `ui.inspect` 签发的 viewSnapshotID，供 `ui.tap` 携带做 freshness 校验。
 @MainActor
 private func testViewSnapshotID(context: UIKitContextProvider.Context) -> String {
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     guard let id = data["viewSnapshotID"]?.stringValue else {
         Issue.record("collect should produce viewSnapshotID")
         return ""

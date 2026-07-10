@@ -97,7 +97,7 @@ enum UIViewHierarchyCollector {
             // topViewHierarchy 不签发 viewSnapshotID：结构化 freshness / locator 签发是 ui.inspect
             // 的专属职责（spec §1.2）。这里只输出页面结构供观察/排障，不参与 tap/sendAction 陈旧校验。
             data["nodeCount"] = .double(Double(root.nodeCount))
-            // 与 ui.inspect 同口径暴露 navigationBar 摘要，避免出现「viewTargets 看得到、
+            // 与 ui.inspect 同口径暴露 navigationBar 摘要，避免出现「ui.inspect 看得到、
             // topViewHierarchy 看不到」的分叉；深度排查与普通观察用同一份导航栏语义。
             data["navigationBar"] = .object(
                 UINavigationBarInspector.summarize(topViewController: context.topViewController).toJSON()

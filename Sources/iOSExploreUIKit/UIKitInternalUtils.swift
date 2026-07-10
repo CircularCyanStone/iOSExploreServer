@@ -47,7 +47,7 @@ extension UIView {
 
     /// 从自身向上遍历 superview 链，返回第一个 `UIControl` 祖先（不含自身）。
     ///
-    /// 用于 viewTargets 的 rollup 判定：控件内嵌展示节点（典型是 `UIButton` 内部渲染
+    /// 用于 ui.inspect 的 rollup 判定：控件内嵌展示节点（典型是 `UIButton` 内部渲染
     /// title 的 `UIButtonLabel`）本身有静态文本，会命中 `hasStaticText` 而 full。但它的
     /// 文本已通过父 control 的 `semanticText`（buttonTitle 等）汇总给父 target，独立签发
     /// 反而破坏"签发=可操作"不变式（其 tap 会返回 `unsupported_target`）。

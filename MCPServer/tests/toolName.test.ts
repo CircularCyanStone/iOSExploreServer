@@ -3,7 +3,7 @@ import { toolNameForAction, buildActionToolMap } from "../src/toolName.js";
 
 describe("toolName", () => {
   test("maps action names to stable MCP names", () => {
-    expect(toolNameForAction("ui.viewTargets")).toBe("ui_viewTargets");
+    expect(toolNameForAction("ui.inspect")).toBe("ui_inspect");
     expect(toolNameForAction("ui.navigation.back")).toBe("ui_navigation_back");
     expect(toolNameForAction("app.logs.read")).toBe("app_logs_read");
   });

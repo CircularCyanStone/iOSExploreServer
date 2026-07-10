@@ -15,7 +15,7 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 | action | 作用 | adapter | 执行核心 |
 |---|---|---|---|
 | `ui.topViewHierarchy` | 完整 view 树结构快照（含文本/颜色/控件状态） | `TopViewHierarchyCommand` | `UIViewHierarchyCollector` |
-| `ui.inspect` | 扁平轻量可交互目标列表（事件下发前发现） | `ViewTargetsCommand` | `UIViewTargetsCollector` |
+| `ui.inspect` | 扁平轻量可交互目标列表（事件下发前发现） | `InspectCommand` | `UIInspectCollector` |
 | `ui.tap` | 默认激活动作（按 target 类型路由：button/switch/输入框聚焦） | `UITapCommand` | `UIKitActionExecutor` |
 | `ui.control.sendAction` | 向 UIControl 发显式 target-action 事件 | `UIControlSendActionCommand` | `UIKitActionExecutor` |
 | `ui.screenshot` | 截屏（可选视觉证据，不再签发 viewSnapshotID） | `ScreenshotCommand` | `UIScreenshotCollector` |

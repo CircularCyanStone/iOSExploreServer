@@ -30,7 +30,7 @@ public extension ExploreServer {
         }
         #endif
         register(TopViewHierarchyCommand(), logCategory: .extensionCommand(category: "command"))
-        register(ViewTargetsCommand(), logCategory: .extensionCommand(category: "command"))
+        register(InspectCommand(), logCategory: .extensionCommand(category: "command"))
         register(UIControlSendActionCommand(), logCategory: .extensionCommand(category: "command"))
         register(UITapCommand(), logCategory: .extensionCommand(category: "command"))
         register(ScreenshotCommand(maxResponseBodyBytes: maxResponseBodyBytes),

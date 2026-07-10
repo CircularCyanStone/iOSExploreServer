@@ -2,9 +2,9 @@ import Testing
 @testable import iOSExploreServer
 @testable import iOSExploreUIKit
 
-@Test("UIViewTargetsInput 解析默认值和筛选参数")
-func viewTargetsQueryParsesDefaultsAndFilters() throws {
-    let query = try UIViewTargetsInput.parse(from: [
+@Test("UIInspectInput 解析默认值和筛选参数")
+func inspectQueryParsesDefaultsAndFilters() throws {
+    let query = try UIInspectInput.parse(from: [
         "includeHidden": true,
         "maxDepth": 3,
         "accessibilityIdentifierPrefix": "home.",
@@ -17,9 +17,9 @@ func viewTargetsQueryParsesDefaultsAndFilters() throws {
     #expect(query.textLimit == 120)
 }
 
-@Test("UIViewTargetsInput schema 按工具展示顺序声明字段")
-func viewTargetsInputSchemaUsesExpectedFieldOrder() {
-    #expect(UIViewTargetsInput.inputSchema.fields.map(\.name) == [
+@Test("UIInspectInput schema 按工具展示顺序声明字段")
+func inspectInputSchemaUsesExpectedFieldOrder() {
+    #expect(UIInspectInput.inputSchema.fields.map(\.name) == [
         "includeHidden",
         "maxDepth",
         "accessibilityIdentifier",
@@ -30,20 +30,20 @@ func viewTargetsInputSchemaUsesExpectedFieldOrder() {
     ])
 }
 
-@Test("UIViewTargetsInput 拒绝非法 maxDepth 和 textLimit")
-func viewTargetsQueryRejectsInvalidNumbers() {
-    #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: ["maxDepth": -1]) }
-    #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: ["maxDepth": 1.5]) }
-    #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: ["textLimit": 201]) }
-    #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: ["textLimit": 0]) }
+@Test("UIInspectInput 拒绝非法 maxDepth 和 textLimit")
+func inspectQueryRejectsInvalidNumbers() {
+    #expect(throws: CommandInputParseError.self) { try UIInspectInput.parse(from: ["maxDepth": -1]) }
+    #expect(throws: CommandInputParseError.self) { try UIInspectInput.parse(from: ["maxDepth": 1.5]) }
+    #expect(throws: CommandInputParseError.self) { try UIInspectInput.parse(from: ["textLimit": 201]) }
+    #expect(throws: CommandInputParseError.self) { try UIInspectInput.parse(from: ["textLimit": 0]) }
 }
 
-@Test("UIViewTargetsInput 解析 maxTargets 默认值和边界")
-func viewTargetsQueryParsesMaxTargets() throws {
-    let defaultQuery = try UIViewTargetsInput.parse(from: [:])
+@Test("UIInspectInput 解析 maxTargets 默认值和边界")
+func inspectQueryParsesMaxTargets() throws {
+    let defaultQuery = try UIInspectInput.parse(from: [:])
     #expect(defaultQuery.maxTargets == 200)
 
-    let maximumQuery = try UIViewTargetsInput.parse(from: ["maxTargets": 512])
+    let maximumQuery = try UIInspectInput.parse(from: ["maxTargets": 512])
     #expect(maximumQuery.maxTargets == 512)
 
     for invalid: JSON in [
@@ -52,25 +52,25 @@ func viewTargetsQueryParsesMaxTargets() throws {
         ["maxTargets": 1.5],
         ["maxTargets": .double(Double.greatestFiniteMagnitude)],
     ] {
-        #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: invalid) }
+        #expect(throws: CommandInputParseError.self) { try UIInspectInput.parse(from: invalid) }
     }
 }
 
 #if !canImport(UIKit)
-@Test("UIViewTargetsInput 拒绝无法安全转换为 Int 的数值")
-func viewTargetsQueryRejectsOutOfRangeNumbers() {
+@Test("UIInspectInput 拒绝无法安全转换为 Int 的数值")
+func inspectQueryRejectsOutOfRangeNumbers() {
     for data: JSON in [
         ["maxDepth": .double(Double.greatestFiniteMagnitude)],
         ["textLimit": .double(Double.greatestFiniteMagnitude)],
     ] {
-        #expect(throws: CommandInputParseError.self) { try UIViewTargetsInput.parse(from: data) }
+        #expect(throws: CommandInputParseError.self) { try UIInspectInput.parse(from: data) }
     }
 }
 #endif
 
 @Test("isFull: 任一识别/可操作条件为 true 即 full")
-func viewTargetsQueryIsFullRules() {
-    let input = UIViewTargetsInput()
+func inspectQueryIsFullRules() {
+    let input = UIInspectInput()
 
     // 六条规则：任一为 true 即 full（带识别信息或可操作的 canonical interaction target）。
     // isControl / isScrollView / hasGestureRecognizers = 可操作；
@@ -84,15 +84,15 @@ func viewTargetsQueryIsFullRules() {
 }
 
 @Test("isFull: 全部条件为 false 即 minimal")
-func viewTargetsQueryIsFullMinimal() {
-    let input = UIViewTargetsInput()
+func inspectQueryIsFullMinimal() {
+    let input = UIInspectInput()
     // 无识别信息且不可操作 → minimal，只输出 path+type 维持层级。
     #expect(input.isFull(candidate: .testCandidate()) == false)
 }
 
 @Test("isFull: hasStaticText 在 UIControl 子树内 rollup，否则仍 full")
-func viewTargetsQueryIsFullRollsUpControlSubtreeLabel() {
-    let input = UIViewTargetsInput()
+func inspectQueryIsFullRollsUpControlSubtreeLabel() {
+    let input = UIInspectInput()
     // 按钮内部 title label（UIButtonLabel）：hasStaticText + isInControlSubtree（祖先含 UIControl）。
     // 文本已通过父 control 的 semanticText（buttonTitle）汇总，独立签发只会让 agent tap 到
     // 返回 unsupported_target 的死节点，破坏"签发=可操作"——故 rollup，不独立 full。
@@ -109,32 +109,32 @@ func viewTargetsQueryIsFullRollsUpControlSubtreeLabel() {
 }
 
 @Test("isFull: includeHidden=false 时 hidden 节点被剪枝")
-func viewTargetsQueryIsFullHiddenPruned() {
+func inspectQueryIsFullHiddenPruned() {
     // includeHidden 默认 false：hidden 节点即便命中 canonical 条件也不输出。
-    let input = UIViewTargetsInput()
+    let input = UIInspectInput()
     #expect(input.isFull(candidate: .testCandidate(isHidden: true, isControl: true)) == false)
     // includeHidden=true 时 hidden canonical target 仍进入输出。
-    #expect(UIViewTargetsInput(includeHidden: true).isFull(candidate: .testCandidate(isHidden: true, isControl: true)) == true)
+    #expect(UIInspectInput(includeHidden: true).isFull(candidate: .testCandidate(isHidden: true, isControl: true)) == true)
 }
 
-@Test("UIViewTargetsInput 不再声明 includeStaticText/includeContainers/includeDisabled")
-func viewTargetsQueryDeadFieldsRemoved() {
+@Test("UIInspectInput 不再声明 includeStaticText/includeContainers/includeDisabled")
+func inspectQueryDeadFieldsRemoved() {
     // schema additionalProperties=false：删除字段后，旧字段名应作为未知字段被拒绝，
     // 避免调用方误以为传值仍生效。
     #expect(throws: CommandInputParseError.self) {
-        try UIViewTargetsInput.parse(from: ["includeStaticText": true])
+        try UIInspectInput.parse(from: ["includeStaticText": true])
     }
     #expect(throws: CommandInputParseError.self) {
-        try UIViewTargetsInput.parse(from: ["includeDisabled": false])
+        try UIInspectInput.parse(from: ["includeDisabled": false])
     }
     #expect(throws: CommandInputParseError.self) {
-        try UIViewTargetsInput.parse(from: ["includeContainers": true])
+        try UIInspectInput.parse(from: ["includeContainers": true])
     }
 }
 
-@Test("UIViewTargetSummary 转 JSON 保留轻量字段")
+@Test("UIInspectSummary 转 JSON 保留轻量字段")
 func viewTargetSummaryJSONIncludesLightweightFields() {
-    let summary = UIViewTargetSummary(
+    let summary = UIInspectSummary(
         path: "root/0/2",
         type: "UIButton",
         role: .button,
@@ -145,7 +145,7 @@ func viewTargetSummaryJSONIncludesLightweightFields() {
         placeholder: nil,
         value: nil,
         frame: UIViewHierarchyRect(x: 24, y: 680, width: 327, height: 48),
-        state: UIViewTargetState(isHidden: false,
+        state: UIInspectState(isHidden: false,
                                  alpha: 1,
                                  isUserInteractionEnabled: true,
                                  isEnabled: true,
@@ -171,9 +171,9 @@ func viewTargetSummaryJSONIncludesLightweightFields() {
     #expect(available.isEmpty)
 }
 
-@Test("UIViewTargetSummary 携带 resolver 生成的 availableActions")
+@Test("UIInspectSummary 携带 resolver 生成的 availableActions")
 func viewTargetSummaryCarriesResolverAvailability() {
-    let summary = UIViewTargetSummary(
+    let summary = UIInspectSummary(
         path: "root/0/1",
         type: "UISwitch",
         role: .switch,
@@ -184,7 +184,7 @@ func viewTargetSummaryCarriesResolverAvailability() {
         placeholder: nil,
         value: nil,
         frame: UIViewHierarchyRect(x: 0, y: 0, width: 51, height: 31),
-        state: UIViewTargetState(isHidden: false,
+        state: UIInspectState(isHidden: false,
                                  alpha: 1,
                                  isUserInteractionEnabled: true,
                                  isEnabled: true,
@@ -201,14 +201,14 @@ func viewTargetSummaryCarriesResolverAvailability() {
     #expect(available.map(\.stringValue) == ["tap", "control.valueChanged"])
 }
 
-@Test("UIViewTargetText 截断长文本并保留短文本")
+@Test("UIInspectText 截断长文本并保留短文本")
 func viewTargetTextTruncatesLongValues() {
-    #expect(UIViewTargetText.limited("提交", limit: 80) == "提交")
-    #expect(UIViewTargetText.limited("1234567890", limit: 4) == "1234")
-    #expect(UIViewTargetText.limited(nil, limit: 4) == nil)
+    #expect(UIInspectText.limited("提交", limit: 80) == "提交")
+    #expect(UIInspectText.limited("1234567890", limit: 4) == "1234")
+    #expect(UIInspectText.limited(nil, limit: 4) == nil)
 }
 
-private extension UIViewTargetCandidate {
+private extension UIInspectCandidate {
     static func testCandidate(isHidden: Bool = false,
                               isControl: Bool = false,
                               isUserInteractionEnabled: Bool = false,
@@ -217,8 +217,8 @@ private extension UIViewTargetCandidate {
                               hasAccessibilityLabel: Bool = false,
                               hasStaticText: Bool = false,
                               isScrollView: Bool = false,
-                              isInControlSubtree: Bool = false) -> UIViewTargetCandidate {
-        UIViewTargetCandidate(isHidden: isHidden,
+                              isInControlSubtree: Bool = false) -> UIInspectCandidate {
+        UIInspectCandidate(isHidden: isHidden,
                               isControl: isControl,
                               isUserInteractionEnabled: isUserInteractionEnabled,
                               hasGestureRecognizers: hasGestureRecognizers,
@@ -233,7 +233,7 @@ private extension UIViewTargetCandidate {
 #if canImport(UIKit)
 import UIKit
 
-/// `UIViewTargetsCollector.semanticText(for:limit:)` 的行为测试（Task 3 重构后）。
+/// `UIInspectCollector.semanticText(for:limit:)` 的行为测试（Task 3 重构后）。
 ///
 /// `semanticText` 是 collector 的私有方法，只能通过 `collect(query:context:)` 返回的 target
 /// summary 间接观察。Task 3（e9922e4）把 `accessibilityIdentifier` 从最低优先提到最高，并新增
@@ -274,7 +274,7 @@ func semanticTextIdentifierBeatsButtonTitle() {
     }
 
     guard let target = firstTargetSummary(
-        from: UIViewTargetsCollector.collect(query: .default, context: context)) else { return }
+        from: UIInspectCollector.collect(query: .default, context: context)) else { return }
     #expect(target["semanticText"]?.stringValue == "checkout.submit")
     #expect(target["semanticTextSource"]?.stringValue == "accessibilityIdentifier")
 }
@@ -291,7 +291,7 @@ func semanticTextLabelTextFallbackForPlainLabel() {
     }
 
     guard let target = firstTargetSummary(
-        from: UIViewTargetsCollector.collect(query: .default, context: context)) else { return }
+        from: UIInspectCollector.collect(query: .default, context: context)) else { return }
     #expect(target["semanticText"]?.stringValue == "订单总额")
     #expect(target["semanticTextSource"]?.stringValue == "labelText")
 }
@@ -308,7 +308,7 @@ func semanticTextSegmentTitleForSelectedSegment() {
     }
 
     guard let target = firstTargetSummary(
-        from: UIViewTargetsCollector.collect(query: .default, context: context)) else { return }
+        from: UIInspectCollector.collect(query: .default, context: context)) else { return }
     // selectedSegmentIndex=1 → 选中「周」。源是 segmentTitle（优先级 5）。
     // 注：UISegmentedControl 默认可能用选中段标题填充 accessibilityValue；若发生遮蔽，
     // 这里会暴露为 accessibilityValue，作为优先级设计的可观察事实。
@@ -327,7 +327,7 @@ func semanticTextTextViewTextFallback() {
     }
 
     guard let target = firstTargetSummary(
-        from: UIViewTargetsCollector.collect(query: .default, context: context)) else { return }
+        from: UIInspectCollector.collect(query: .default, context: context)) else { return }
     #expect(target["semanticText"]?.stringValue == "备注内容")
     #expect(target["semanticTextSource"]?.stringValue == "textViewText")
 }
