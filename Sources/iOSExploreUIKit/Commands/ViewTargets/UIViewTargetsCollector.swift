@@ -103,6 +103,18 @@ enum UIViewTargetsCollector {
         data["navigationBar"] = .object(
             UINavigationBarInspector.summarize(topViewController: context.topViewController).toJSON()
         )
+        // alert 按钮也走单独的 inspector 摘要：它们不在 rootView 子树里被 canonical 收集，
+        // 单独由 `UIAlertInspector.summarizeForInspect` 暴露 index/title/role/path 与
+        // `availableActions: ["ui.alert.respond"]`。这样 agent 在同一份 inspect 结果里就能
+        // 看到按钮，不必再调一次 `ui.alert.respond dryRun=true` 才能列出按钮清单。
+        data["alert"] = .object(
+            UIAlertInspector.toJSONInspect(
+                UIAlertInspector.summarizeForInspect(
+                    topViewController: context.topViewController,
+                    rootView: context.rootView
+                )
+            )
+        )
         UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(collected.count) fullCount=\(fullCount) minimalCount=\(minimalCount) fingerprints=\(fingerprints.count) topViewController=\(String(describing: type(of: context.topViewController)))")
         return data
     }
