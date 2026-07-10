@@ -470,6 +470,8 @@ enum UIInspectCollector {
     /// 提取可见文本，调用方负责按 query 裁剪。
     ///
     /// 包括 UILabel.text、UITextField.text、UITextView.text。
+    /// `UIListContentView` / `UITableViewCell` 本身无 text 属性，取首个非空子 UILabel
+    /// 文本（如 cell 标题"🔔弹窗测试"），否则这些容器节点文本为空。
     /// `isSecureTextEntry == true` 的输入框（密码等）不返回内容，避免明文泄露；
     /// 其余编辑型控件（含 `_UIAlertControllerTextField`）的 text 字段正常返回，
     /// 让 agent 输入后可通过 ui.inspect 验证结果。
@@ -480,6 +482,15 @@ enum UIInspectCollector {
             return textField.text
         }
         if let textView = view as? UITextView { return textView.text }
+        // UIListContentView / UITableViewCell 容器不直接持有 text，遍历直接子 view
+        // 取首个非空 UILabel 文本（覆盖 cell 标题等显示文本）。
+        if view is UIListContentView || view is UITableViewCell {
+            for sub in view.subviews {
+                if let label = sub as? UILabel, let text = label.text, !text.isEmpty {
+                    return text
+                }
+            }
+        }
         return nil
     }
 

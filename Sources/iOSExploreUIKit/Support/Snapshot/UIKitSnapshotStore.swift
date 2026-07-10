@@ -193,6 +193,13 @@ public final class UIKitSnapshotStore {
     /// `UIKitCommandError.staleLocator` 等非 MainActor 上下文构造错误文案）。
     nonisolated static let ttlSeconds: TimeInterval = 120
 
+    /// 全表比对（`matchesWholeTable`）的存活秒数。
+    ///
+    /// `ui.wait(snapshotChanged)` 的轮询周期通常较长且全表比对成本高，设为 300s
+    /// 避免周期重采中 snapshot 频繁过期导致 `viewSnapshotUnavailableReason`。
+    /// 与 `ttlSeconds`（120s，单 path `isStale` 校验）区分，给长轮询更宽窗口。
+    nonisolated static let wholeTableTtlSeconds: TimeInterval = 300
+
     /// 单条快照记录。
     private struct Entry {
         /// 签发时间（用于 TTL 判断）。
@@ -383,7 +390,7 @@ public final class UIKitSnapshotStore {
                            context: UIKitSnapshotContext,
                            currentTable: [String: UIKitTargetFingerprint]) -> Bool? {
         guard var entry = entries[viewSnapshotID] else { return nil }
-        if isExpired(entry: entry) {
+        if isExpired(entry: entry, ttl: Self.wholeTableTtlSeconds) {
             entries.removeValue(forKey: viewSnapshotID)
             UIKitCommandLogging.info("command", "ui snapshot expired id=\(viewSnapshotID) wait=snapshotChanged")
             return nil
@@ -401,9 +408,18 @@ public final class UIKitSnapshotStore {
         return matches
     }
 
-    /// 判断快照是否超过 TTL。
+    /// 判断快照是否超过给定 TTL。
+    ///
+    /// `isStale` 单 path 校验用 `ttlSeconds`（120s，匹配普通同步交互节奏）；
+    /// `matchesWholeTable` 全表比对用 `wholeTableTtlSeconds`（300s，`ui.wait`
+    /// 轮询场景重采周期可长于单个 path 交互）。
+    private func isExpired(entry: Entry, ttl: TimeInterval) -> Bool {
+        now().timeIntervalSince(entry.createdAt) > ttl
+    }
+
+    /// 判断快照是否超过默认 TTL（`isStale` 场景，120s）。
     private func isExpired(entry: Entry) -> Bool {
-        now().timeIntervalSince(entry.createdAt) > Self.ttlSeconds
+        isExpired(entry: entry, ttl: Self.ttlSeconds)
     }
 
     /// 淘汰至容量上限：先清过期，再按 LRU（最久未访问）逐出。

@@ -57,6 +57,32 @@ describe("schemaMapper", () => {
     });
   });
 
+  test("does NOT move enum for non-array type fields", () => {
+    // 非 array 类型字段（如 ["string","null"]）的 enum 是字段自身取值范围，
+    // 不应迁移到 items（字段根本没有 items），必须保留在顶级。
+    const mapped = mapInputSchema({
+      type: "object",
+      properties: {
+        minimumLevel: {
+          type: ["string", "null"],
+          description: "最低日志等级",
+          enum: ["debug", "info", "error", "fault", "unknown"]
+        }
+      }
+    });
+
+    expect(mapped.inputSchema).toEqual({
+      type: "object",
+      properties: {
+        minimumLevel: {
+          type: ["string", "null"],
+          description: "最低日志等级",
+          enum: ["debug", "info", "error", "fault", "unknown"]
+        }
+      }
+    });
+  });
+
   test("extracts top-level field constraints into required when property exists", () => {
     // viewSnapshotID is required 且 viewSnapshotID 确实是顶层 property → 应提升为 required。
     const mapped = mapInputSchema({

@@ -79,6 +79,8 @@ function normalizeSchemaValue(value: unknown): unknown {
   const isArrayType = type === "array" || (Array.isArray(type) && type.includes("array"));
   const enumValues = normalized.enum;
   if (isArrayType && Array.isArray(enumValues) && normalized.items === undefined) {
+    // 当 type 包含 "array" 时，顶级 enum 通常是数组元素取值范围而非字段自身取值范围；
+    // 将其移入 items.enum 使 MCP 客户端能正确理解（如 sources: ["explore","bridge"]）。
     delete normalized.enum;
     normalized.items = {
       type: "string",
