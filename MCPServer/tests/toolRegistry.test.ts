@@ -3,24 +3,38 @@ import { ToolRegistry } from "../src/toolRegistry.js";
 import { IOSExploreStructuredError } from "../src/errors.js";
 import type { JSONObject } from "../src/types.js";
 
+// 帮助命令的最小返回结构，便于在多个 case 里复用构造 fake help。
+type HelpCommand = {
+  action: string;
+  description: string;
+  inputSchema: JSONObject;
+};
+
+type FakeClient = {
+  call(action: string, data?: JSONObject): Promise<JSONObject>;
+};
+
+// 构造一个 fake help client，列出指定 commands。
+function fakeHelpClient(commands: HelpCommand[]): FakeClient {
+  return {
+    call: async (action: string) => {
+      expect(action).toBe("help");
+      return { commands } as unknown as JSONObject;
+    }
+  };
+}
+
 describe("ToolRegistry", () => {
   test("refreshes tools from help", async () => {
     const registry = new ToolRegistry({
       fixedToolNames: new Set(["health_check"]),
-      client: {
-        call: async (action: string) => {
-          expect(action).toBe("help");
-          return {
-            commands: [
-              {
-                action: "ui.inspect",
-                description: "inspect targets",
-                inputSchema: { type: "object", properties: {} }
-              }
-            ]
-          };
+      client: fakeHelpClient([
+        {
+          action: "ui.inspect",
+          description: "inspect targets",
+          inputSchema: { type: "object", properties: {} }
         }
-      }
+      ])
     });
 
     const result = await registry.refresh();
@@ -52,8 +66,83 @@ describe("ToolRegistry", () => {
     expect(result.error).toMatchObject({ source: "transport", code: "connection_failed" });
     expect(registry.tools()).toEqual([]);
   });
-});
 
-type FakeClient = {
-  call(action: string, data?: JSONObject): Promise<JSONObject>;
-};
+  // Agent 凭直觉容易把 ui.input 的注入文本字段传成 "value"（invalid_data）。
+  // 工具 description 必须显式点名 "text" 字段名 + mode 取值，避免第一次调用就失败。
+  test('appends "text" field hint to ui.input description', async () => {
+    const registry = new ToolRegistry({
+      fixedToolNames: new Set(),
+      client: fakeHelpClient([
+        {
+          action: "ui.input",
+          description: "向 UITextField/UITextView 注入文本",
+          inputSchema: {
+            type: "object",
+            properties: {
+              text: { type: "string", description: "要输入的文本 (任意 Unicode, 含中文/emoji)" },
+              mode: { type: "string", enum: ["replace", "append"] }
+            },
+            required: ["text"]
+          }
+        }
+      ])
+    });
+
+    await registry.refresh();
+    const desc = registry.tools()[0].description ?? "";
+    expect(desc).toContain("向 UITextField/UITextView 注入文本");
+    expect(desc).toContain('"text"');
+    expect(desc).toContain('"replace"');
+    expect(desc).toContain('"append"');
+    // 同步防止 agent 误传 value：明确点名"不是 value 或 input"
+    expect(desc).toContain('"value"');
+  });
+
+  // scrollToElement 的 "value" 字段名同样反直觉，老提交 4de3775 已加 suffix；
+  // 这里固化这条契约，避免后续重构误删。
+  test('appends "value" field hint to ui.scrollToElement description', async () => {
+    const registry = new ToolRegistry({
+      fixedToolNames: new Set(),
+      client: fakeHelpClient([
+        {
+          action: "ui.scrollToElement",
+          description: "滚动到包含指定文本/identifier 的元素可见",
+          inputSchema: {
+            type: "object",
+            properties: {
+              value: { type: "string", description: "匹配值: text 片段或 accessibilityIdentifier" }
+            },
+            required: ["value"]
+          }
+        }
+      ])
+    });
+
+    await registry.refresh();
+    const desc = registry.tools()[0].description ?? "";
+    expect(desc).toContain("滚动到包含指定文本/identifier 的元素可见");
+    expect(desc).toContain('"value"');
+    expect(desc.toLowerCase()).toContain("accessibilityidentifier");
+  });
+
+  // 非 ui.input / ui.scrollToElement 的工具不应被额外注入 ⚠️ field-hint 噪声。
+  // 注意 mapInputSchema 会给所有工具追加 "Original iOSExplore action: ..." 后缀，
+  // 此处只断言 ⚠️ field-hint 不出现，不限制其他 descriptionSuffix 内容。
+  test("does not append field hint to unrelated tools", async () => {
+    const registry = new ToolRegistry({
+      fixedToolNames: new Set(),
+      client: fakeHelpClient([
+        {
+          action: "ui.inspect",
+          description: "返回 targets",
+          inputSchema: { type: "object", properties: {} }
+        }
+      ])
+    });
+
+    await registry.refresh();
+    const desc = registry.tools()[0].description ?? "";
+    expect(desc).toContain("返回 targets");
+    expect(desc).not.toContain("⚠️");
+  });
+});
