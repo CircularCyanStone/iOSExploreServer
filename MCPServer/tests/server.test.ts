@@ -179,6 +179,131 @@ describe("server handlers", () => {
       nextSteps: expect.arrayContaining([expect.stringContaining("IOS_EXPLORE_AUTOSTART=1")])
     });
   });
+
+  test("dynamic tool returns invalid_data ios_envelope as isError:true", async () => {
+    const handlers = createToolHandlers({
+      staticTools: {},
+      registry: {
+        tools: () => [],
+        findByName: () => ({ name: "ui_invalidInput", description: "bad input", inputSchema: {}, action: "ui.invalidInput" }),
+        refresh: async () => ({ toolCount: 1, conflicts: [] })
+      },
+      client: {
+        call: async () => {
+          throw new IOSExploreStructuredError({
+            source: "ios_envelope",
+            code: "invalid_data",
+            message: "invalid action parameters"
+          });
+        }
+      }
+    });
+
+    const result = await handlers.callTool("ui_invalidInput", {});
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "ios_envelope", code: "invalid_data" });
+    expect(result.isError).toBe(true);
+  });
+
+  test("dynamic tool returns stale_locator ios_envelope as isError:true", async () => {
+    const handlers = createToolHandlers({
+      staticTools: {},
+      registry: {
+        tools: () => [],
+        findByName: () => ({ name: "ui_staleTap", description: "stale tap", inputSchema: {}, action: "ui.tap" }),
+        refresh: async () => ({ toolCount: 1, conflicts: [] })
+      },
+      client: {
+        call: async () => {
+          throw new IOSExploreStructuredError({
+            source: "ios_envelope",
+            code: "stale_locator",
+            message: "snapshot expired"
+          });
+        }
+      }
+    });
+
+    const result = await handlers.callTool("ui_staleTap", {});
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "ios_envelope", code: "stale_locator" });
+    expect(result.isError).toBe(true);
+  });
+
+  test("dynamic tool returns unknown_action ios_envelope as isError:true", async () => {
+    const handlers = createToolHandlers({
+      staticTools: {},
+      registry: {
+        tools: () => [],
+        findByName: () => ({ name: "ui_badAction", description: "bad action", inputSchema: {}, action: "ui.badAction" }),
+        refresh: async () => ({ toolCount: 1, conflicts: [] })
+      },
+      client: {
+        call: async () => {
+          throw new IOSExploreStructuredError({
+            source: "ios_envelope",
+            code: "unknown_action",
+            message: "no handler for ui.badAction"
+          });
+        }
+      }
+    });
+
+    const result = await handlers.callTool("ui_badAction", {});
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "ios_envelope", code: "unknown_action" });
+    expect(result.isError).toBe(true);
+  });
+
+  test("dynamic tool returns wait_timeout ios_envelope as isError:false", async () => {
+    const handlers = createToolHandlers({
+      staticTools: {},
+      registry: {
+        tools: () => [],
+        findByName: () => ({ name: "ui_wait", description: "wait", inputSchema: {}, action: "ui.waitAny" }),
+        refresh: async () => ({ toolCount: 1, conflicts: [] })
+      },
+      client: {
+        call: async () => {
+          throw new IOSExploreStructuredError({
+            source: "ios_envelope",
+            code: "wait_timeout",
+            message: "condition not satisfied within timeout"
+          });
+        }
+      }
+    });
+
+    const result = await handlers.callTool("ui_wait", {});
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "ios_envelope", code: "wait_timeout" });
+    expect(result.isError).toBe(false);
+  });
+
+  test("dynamic tool returns alert_unavailable ios_envelope as isError:false", async () => {
+    const handlers = createToolHandlers({
+      staticTools: {},
+      registry: {
+        tools: () => [],
+        findByName: () => ({ name: "ui_alertRespond", description: "alert respond", inputSchema: {}, action: "ui.alert.respond" }),
+        refresh: async () => ({ toolCount: 1, conflicts: [] })
+      },
+      client: {
+        call: async () => {
+          throw new IOSExploreStructuredError({
+            source: "ios_envelope",
+            code: "alert_unavailable",
+            message: "no alert is currently presented"
+          });
+        }
+      }
+    });
+
+    const result = await handlers.callTool("ui_alertRespond", {});
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "ios_envelope", code: "alert_unavailable" });
+    expect(result.isError).toBe(false);
+  });
 });
 
 function textContent(result: { content: Array<{ type: string; text?: string }> }): string {

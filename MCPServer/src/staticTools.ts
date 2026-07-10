@@ -150,10 +150,14 @@ function pickAllowedFields(input: JSONObject, keys: readonly string[]): JSONObje
 }
 
 function resultForFailure(error: StructuredError): MCPToolResult {
-  // ios_envelope 来源的错误是 App 端的业务失败（如 unknown_action, alert_unavailable,
-  // wait_timeout 等），属于正常的业务响应而非通信/系统错误。
-  // 标记为 isError=false 避免 Agent 把"正常业务反馈"误判为"工具调用出错了"。
   if (error.source === "ios_envelope") {
+    // call_action 的 unknown_action 保持 isError=false（兜底工具本就让 agent 猜 action 名）；
+    // invalid_data / stale_locator 升格为 isError=true（参数错误、snapshot 过期）；
+    // 其它 ios_envelope code（wait_timeout / alert_unavailable 等）保持 isError=false。
+    const errorCodes = ["invalid_data", "stale_locator"];
+    if (error.code && errorCodes.includes(error.code)) {
+      return errorResult(error);
+    }
     return jsonResult(error as unknown as JSONObject, false);
   }
   return errorResult(error);
