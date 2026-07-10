@@ -5,42 +5,31 @@ import UIKit
 
 /// `ui.alert.respond` 的执行核心。
 ///
-/// 在 `MainActor` 上定位当前 `UIAlertController`。`dryRun=true` 只返回标题/消息/按钮/输入框
-/// 列表；`dryRun=false` 会按调用方提供的按钮选择条件触发对应 action 的 handler，并请求关闭
-/// alert。失败由 command adapter 顶层 catch 转 envelope。
+/// 在 `MainActor` 上定位当前 `UIAlertController`，按调用方提供的按钮选择条件触发对应 action
+/// 的 handler 并请求关闭 alert。查询 alert 结构（标题/按钮/输入框）请用 `ui.inspect`——其顶层
+/// `alert` 区块信息更全（含 path / availableActions），本命令只负责「触发」。失败由 command
+/// adapter 顶层 catch 转 envelope。
 @MainActor
 enum UIAlertRespondExecutor {
-    /// 执行一次 alert 查询/响应。
+    /// 执行一次 alert 按钮响应。
     ///
     /// - Parameters:
     ///   - input: 已通过 typed schema 校验的 alert respond 参数。
     ///   - context: 当前 MainActor 查询上下文。
-    /// - Returns: dryRun=true 时返回 alert 摘要；dryRun=false 时返回已触发的按钮与关闭请求结果。
+    /// - Returns: 已触发的按钮与关闭请求结果。
     /// - Throws: `UIKitCommandError.alertUnavailable`——无 alert；`.alertButtonRequired`——多按钮未指定；
-    ///   `.alertButtonNotFound`——指定按钮不存在；`.alertButtonTriggerFailed`——按钮 handler 无法执行。
+    ///   `.alertButtonNotFound`——指定按钮不存在；`.alertButtonTriggerFailed`——按钮 handler 无法执行；
+    ///   `.alertRespondDisabledInRelease`——Release 构建（私有 API 被 `#if DEBUG` 隔离）。
     static func execute(input: UIAlertRespondInput, context: UIKitContextProvider.Context) throws -> JSON {
         let action = AlertRespondCommand.actionName
         guard let alert = UIAlertInspector.findAlert(in: context) else {
             throw UIKitCommandError.alertUnavailable(action: action)
         }
-
-        if !input.dryRun {
-            #if DEBUG
-            return try perform(input: input, alert: alert)
-            #else
-            throw UIKitCommandError.alertRespondDisabledInRelease(action: action)
-            #endif
-        }
-
-        let summary = UIAlertInspector.summarize(alert)
-        UIKitCommandLogging.info("command", "ui alert respond complete dryRun=true buttons=\(summary.buttons.count) textFields=\(summary.textFields.count)")
-        return [
-            "dryRun": .bool(true),
-            "title": summary.title.map(JSONValue.string) ?? .null,
-            "message": summary.message.map(JSONValue.string) ?? .null,
-            "buttons": .array(summary.buttons.map { buttonJSON($0) }),
-            "textFields": .array(summary.textFields.map { textFieldJSON($0) }),
-        ]
+        #if DEBUG
+        return try perform(input: input, alert: alert)
+        #else
+        throw UIKitCommandError.alertRespondDisabledInRelease(action: action)
+        #endif
     }
 
     #if DEBUG
@@ -170,14 +159,6 @@ enum UIAlertRespondExecutor {
             "index": .double(Double(button.index)),
             "title": button.title.map(JSONValue.string) ?? .null,
             "role": .string(button.role.rawValue),
-        ]))
-    }
-
-    /// 构造单个输入框的 JSON 值，只回 placeholder 与 secure 标记，不回原文（防泄露密码）。
-    private static func textFieldJSON(_ textField: UIAlertInspector.TextFieldSummary) -> JSONValue {
-        .object(JSON([
-            "placeholder": textField.placeholder.map(JSONValue.string) ?? .null,
-            "isSecure": .bool(textField.isSecure),
         ]))
     }
 }

@@ -159,9 +159,11 @@ L171-173 注释明确写「原 30s/8 在慢 LLM 推理链下会触发 stale_loca
 
 **已修 `a75df74`**：`alert.textFields[]` 现在每个带 `path` + `accessibilityIdentifier` + `availableActions:["ui.input"]`，与 `alert.buttons[]` 对齐。新增 `UIAlertTextFieldPathResolver`（对象身份 `===` DFS 解析，用公开 `UITextField` 类型收集、抗版本漂移）。真实闭环验证：用 alert 区块的 path 直连 `ui.input` 写入读回成功（`username.text="N3Verify"`，password secure 仍 null）。
 
-#### N4：ui.alert.respond 的 dryRun 默认 true
+#### N4（已修）：ui.alert.respond 的 dryRun 已移除
 
-不传 `dryRun` 时默认 `true`（查询模式，返回 buttons 列表但不点）。agent 若不显式传 `dryRun:false` 会误以为点了按钮实则没点（实测 `{"buttonIndex":1}` 返回的仍是 `dryRun:true`）。建议：默认改为 `false`（执行），或在响应里强提示当前为查询模式。
+原状：不传 `dryRun` 时默认 `true`（查询模式），agent 若不显式传 `dryRun:false` 会误以为点了按钮实则没点。
+
+**已修**：dryRun=true 的查询功能已被 `ui.inspect` 的 alert 区块完全替代（inspect 含 path/availableActions/identifier，更全），故直接**移除 dryRun**——ui.alert.respond 职责单一为「触发按钮」，查询走 ui.inspect。selector 逻辑已保证安全（单按钮 alert 默认点、多按钮强制指定）。顺带清理移除 dryRun 后的 dead code（`TextFieldSummary` / `Summary.textFields`）。
 
 ### N3 修复过程新挖出的 pre-existing 问题（`a75df74` / `c5a1c1f` 顺带修）
 
@@ -176,5 +178,5 @@ L171-173 注释明确写「原 30s/8 在慢 LLM 推理链下会触发 stale_loca
 
 - **2 个 stderr/NSLog capture flaky 失败（Diagnostics 模块）**：iOS framework 测试里 `stderr capture` / `NSLog capture` 间歇性失败（同一次跑过、下一次失败），`71ce37a` 已标注「stderr capture 间歇性」属预存。与 UIKit 改动无关，属 Diagnostics capture 时序稳定性问题，建议单独排查。
 - **N2**：alert button path 不可 `ui.tap`（commit message 措辞误导）——待修文档措辞，或让 executor 识别 alert action view 支持 path tap。
-- **N4**：`ui.alert.respond` 不传 `dryRun` 默认 true——待定默认值或加强提示。
+- **N4（已修）**：`ui.alert.respond` 的 dryRun 已移除（查询走 ui.inspect）。
 - **P1-5 Fix A**：暂缓（见上）。

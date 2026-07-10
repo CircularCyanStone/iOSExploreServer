@@ -16,7 +16,7 @@ import UIKit
 /// 两类路径均在 iOS 26 已实测可行。
 @MainActor
 enum UIAlertInspector {
-    /// 一个 alert 按钮的摘要（供 `ui.alert.respond dryRun=true` 使用）。
+    /// 一个 alert 按钮的摘要（供 `ui.alert.respond` 的按钮选择与触发使用）。
     struct Button: Sendable, Equatable {
         /// 在 alert.actions 中的下标。
         let index: Int
@@ -26,18 +26,9 @@ enum UIAlertInspector {
         let role: AlertButtonRole
     }
 
-    /// alert 输入框的摘要。
-    ///
-    /// 只暴露 placeholder 与 secure 标记——**绝不**回 `text` 原文，密码/验证码等敏感输入
-    /// 不应进入响应或日志。供 agent 识别输入型 alert（登录/改密码等需先填输入框再点按钮）。
-    struct TextFieldSummary: Sendable, Equatable {
-        /// 输入框占位文本。
-        let placeholder: String?
-        /// 是否为安全（密码）输入。
-        let isSecure: Bool
-    }
-
-    /// alert 整体摘要。
+    /// alert 整体摘要（标题/消息/按钮），供 executor 选按钮与测试用。输入框摘要只在 inspect
+    /// 扩展摘要（`InspectTextFieldSummary`）里暴露——`ui.alert.respond` 移除 dryRun 后不再
+    /// 返回 alert 结构查询结果，查询统一走 `ui.inspect`。
     struct Summary: Sendable, Equatable {
         /// alert 标题。
         let title: String?
@@ -45,8 +36,6 @@ enum UIAlertInspector {
         let message: String?
         /// 按钮列表。
         let buttons: [Button]
-        /// 输入框列表（仅 `addTextField` 过的 alert 非空）。
-        let textFields: [TextFieldSummary]
     }
 
     // MARK: - ui.inspect 扩展摘要（供 ui.inspect / ui.topViewHierarchy 使用）
@@ -68,11 +57,10 @@ enum UIAlertInspector {
 
     /// `ui.inspect` / `ui.topViewHierarchy` 输出里给 agent 暴露的 alert 输入框摘要。
     ///
-    /// 与 `TextFieldSummary`（供 `ui.alert.respond dryRun` 用）的区别：额外携带 `path` 与
-    /// `accessibilityIdentifier`，让 agent 在 inspect 结果里直接拿到输入框定位并调 `ui.input`，
-    /// 不必在深层 targets 里翻找 `_UIAlertControllerTextField`（其 path 极深且脆弱，如
-    /// `root/0/0/1/0/0/4/0/0/0/0/0/0/0/0`）。与 `TextFieldSummary` 一致，仍**绝不**回 `text`
-    /// 原文——密码/验证码等敏感输入不应进入响应或日志。
+    /// 携带 `path` 与 `accessibilityIdentifier`，让 agent 在 inspect 结果里直接拿到输入框定位
+    /// 并调 `ui.input`，不必在深层 targets 里翻找 `_UIAlertControllerTextField`（其 path 极深
+    /// 且脆弱，如 `root/0/0/1/0/0/4/0/0/0/0/0/0/0/0`）。仍**绝不**回 `text` 原文——密码/验证码
+    /// 等敏感输入不应进入响应或日志。
     struct InspectTextFieldSummary: Sendable, Equatable {
         /// 输入框占位文本。
         let placeholder: String?
@@ -109,15 +97,13 @@ enum UIAlertInspector {
         context.topViewController as? UIAlertController
     }
 
-    /// 列出 alert 的标题/消息/按钮/输入框（输入框只取 placeholder 与 secure 标记，不取原文）。
+    /// 列出 alert 的标题/消息/按钮（供 executor 选按钮与测试用）。输入框信息不在此摘要——
+    /// 查询 alert 结构（含输入框 path/identifier）走 `ui.inspect` 的 alert 区块。
     static func summarize(_ alert: UIAlertController) -> Summary {
         let buttons = alert.actions.enumerated().map { index, action in
             Button(index: index, title: action.title, role: AlertButtonRole(style: action.style))
         }
-        let textFields = (alert.textFields ?? []).map { textField in
-            TextFieldSummary(placeholder: textField.placeholder, isSecure: textField.isSecureTextEntry)
-        }
-        return Summary(title: alert.title, message: alert.message, buttons: buttons, textFields: textFields)
+        return Summary(title: alert.title, message: alert.message, buttons: buttons)
     }
 
     /// 给 `ui.inspect` / `ui.topViewHierarchy` 调用的入口。

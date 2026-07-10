@@ -2,10 +2,9 @@ import Testing
 import iOSExploreServer
 @testable import iOSExploreUIKit
 
-@Test("alert respond 默认 dryRun true 且无 selector")
+@Test("alert respond 默认无 selector")
 func alertRespondDefaults() throws {
     let input = try UIAlertRespondInput.parse(from: [:])
-    #expect(input.dryRun == true)
     #expect(input.buttonTitle == nil)
     #expect(input.buttonIndex == nil)
     #expect(input.role == nil)

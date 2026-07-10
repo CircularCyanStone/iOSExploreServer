@@ -27,7 +27,7 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 | `ui.wait` | 等待 UI 稳定或目标/文本/快照变化 | `WaitCommand` | `UIWaitExecutor` |
 | `ui.waitAny` | 一次轮询等待多个条件，第一个命中返回 matchedID/matchedIndex | `WaitAnyCommand` | `UIWaitAnyExecutor` |
 | `ui.scrollToElement` | 滚动到指定文本/identifier 元素可见 | `ScrollToElementCommand` | `UIScrollToElementExecutor` |
-| `ui.alert.respond` | 查询/响应 UIAlertController（dryRun） | `AlertRespondCommand` | `UIAlertRespondExecutor` |
+| `ui.alert.respond` | 按按钮触发并关闭 UIAlertController（查询走 `ui.inspect`） | `AlertRespondCommand` | `UIAlertRespondExecutor` |
 
 ## 贯穿全模块的两条铁律
 
