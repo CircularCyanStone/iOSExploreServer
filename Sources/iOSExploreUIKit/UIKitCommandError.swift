@@ -367,6 +367,25 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           logMessage: "ui scroll container unavailable action=\(action) target=\(target)")
     }
 
+    /// 滚动容器存在但不可滚动（`isScrollEnabled=false` 或 `window=nil`）。
+    ///
+    /// 区别于 `scrollContainerUnavailable`（`UIScrollResolver` 没找到 UIScrollView，
+    /// message 为 "no UIScrollView ancestor"，调用方应重新 `ui.inspect` 找正确 path）：
+    /// 这里容器已经定位成功，但因禁用滚动或脱离 window 而无法执行 `scrollRectToVisible`。
+    /// 调用方看到本错误应区分两种处置——若 `isScrollEnabled=false` 是 UI 设计（如 SPMExample
+    /// 的 `menuTableView`），不应反复重试 `ui.scrollToElement`，应改 `ui.scroll` 或换路径；
+    /// 若 `window=nil` 是临时脱离，可重 `ui.inspect` 后再试。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名，用于日志关联。
+    ///   - target: 目标定位摘要（identifier/path），不含大块 payload。
+    /// - Returns: `container_not_scrollable` 失败描述。
+    static func scrollContainerNotScrollable(action: String, target: String) -> UIKitCommandError {
+        UIKitCommandError(code: .containerNotScrollable,
+                          message: "scroll container exists but is not scrollable (isScrollEnabled=false or window=nil)",
+                          logMessage: "ui scroll container not scrollable action=\(action) target=\(target)")
+    }
+
     /// 截图渲染失败（`drawHierarchy` 返回 false、cgImage 丢失、PNG 编码失败等）。
     ///
     /// - Parameters:

@@ -43,8 +43,8 @@ enum UIScrollToElementExecutor {
 
         // 容器禁用滚动或已脱离 window 时 scrollRectToVisible 是 no-op
         guard scrollView.isScrollEnabled, scrollView.window != nil else {
-            throw UIKitCommandError.scrollContainerUnavailable(action: action,
-                                                               target: "container disabled or detached")
+            throw UIKitCommandError.scrollContainerNotScrollable(action: action,
+                                                                 target: "container disabled or detached")
         }
 
         let target = try progressiveFindTarget(match: input.match, value: input.value, in: scrollView, action: action)

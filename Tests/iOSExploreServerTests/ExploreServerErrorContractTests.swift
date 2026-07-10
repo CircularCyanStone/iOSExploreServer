@@ -150,6 +150,7 @@ func newErrorCodesRawValues() {
     #expect(ExploreError.becomeFirstResponderFailed.rawValue == "become_first_responder_failed")
     #expect(ExploreError.renderingFailed.rawValue == "rendering_failed")
     #expect(ExploreError.scrollContainerUnavailable.rawValue == "scroll_container_unavailable")
+    #expect(ExploreError.containerNotScrollable.rawValue == "container_not_scrollable")
 }
 
 @Test("handlerThrown 透传底层错误文案便于排障；unexpectedInputParseError 收敛为通用文案不泄露实现")
