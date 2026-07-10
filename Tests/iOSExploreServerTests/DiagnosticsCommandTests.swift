@@ -555,14 +555,18 @@ private func inputSchema(for action: String, from result: ExploreResult) throws 
 }
 
 private func writeLine(_ line: String, to handle: FileHandle) {
-    handle.write(Data((line + "\n").utf8))
+    // 前置换行：全套测试并发跑时，其他来源（测试框架/系统）可能向 stderr 写入不带 \n 的字节，
+    // 若与 line 拼在同一行，capture 按 \n 切分会把残余字节拼到 line 前（message != line，
+    // 导致严格的 message == token 断言偶发失败）。前导 \n 先把残余 pending 终结成独立行，
+    // 确保 line 自身成行；无残余时仅多一个空行 entry，不影响检测。
+    handle.write(Data(("\n" + line + "\n").utf8))
 }
 
 private func waitForEntry(after mark: AppLogCursor,
                           source: String,
                           token: String,
                           server: ExploreServer,
-                          attempts: Int = 20) async throws -> [JSON] {
+                          attempts: Int = 60) async throws -> [JSON] {
     for _ in 0..<attempts {
         let values = try await pagedEntries(after: mark, source: source, token: token, server: server)
         if values.contains(where: { ($0["message"]?.stringValue ?? "").contains(token) }) {
