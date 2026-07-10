@@ -111,24 +111,21 @@ L171-173 注释明确写「原 30s/8 在慢 LLM 推理链下会触发 stale_loca
 | P0-3 | 已修 71ce37a | alert text field 读取 |
 | P0-4 | 已修 16fefb1 | inspect 注入 `alert` 区块 |
 | P1-5 Fix B | 已修 8727eb8 | code 白名单升格 isError |
-| P1-5 Fix A | **真实待办** | MCP 层 JSON Schema 校验（见下） |
+| P1-5 Fix A | 已评估·不做 | MCP 层 schema 校验与客户端+App 三重重复（见下） |
 | P1-6 | 已修 | `UIKitSnapshotStore.swift` 120s/32 槽 |
 | P1-7 | 撤销 | `client.call` throw on failure envelope |
 | P1-8 | 撤销 | JSON-RPC id 精确匹配 |
 | P1-9 | 撤销 | handler 已分离 action / data |
 
-### 唯一真实待办：P1-5 Fix A（MCP 层 JSON Schema 前置校验）
+### P1-5 Fix A（已评估·不做：MCP 层 JSON Schema 前置校验）
 
-**现状**：MCP server 不校验入参，直接转发给 App，由 App 的 typed factory（`CommandInputSchema`）返回 `invalid_data`。Fix B 已把 `invalid_data` / `stale_locator` / `unknown_action` 升格为 `isError:true`，Agent 已能区分「业务失败」与「正常状态反馈」。
+**结论：不做**。读完 `MCPServer/src/schemaMapper.ts` 后确认参数校验已分三层且都到位，Fix A 与现有机制三重重复、无独特价值：
 
-**Fix A 要做什么**：在 MCP 层用 App 同款的 inputSchema 做前置校验，需——Swift `CommandInputSchema.toJSON()` 把条件约束（identifier/path 二选一等）翻译成 JSON Schema `allOf.if/then`；`schemaMapper.ts` 把条件约束透传进 `inputSchema`；引入 `ajv` 或手写 validator；补测试矩阵。
+1. **客户端层**：`schemaMapper.ts` 已把 Swift schema 翻译进 MCP 工具的 inputSchema——从 `x-iosExplore-constraints` 提取 `"<field> is required"` 转成标准 JSON Schema `required`（L13-54），`oneOf`（identifier/path 二选一）直接由 `inputSchema.oneOf` 表达（L43 注释），类型/enum 透传。Claude 调工具**前**就按 inputSchema 校验必填/互斥/类型，这些错误根本到不了 MCP server。
+2. **App 层**：Swift `CommandInputSchema`（typed factory）是校验单一来源，强制所有约束（含 `最多提供一个` 这类 inputSchema 没法用 oneOf 表达的），违规返回 `invalid_data`。
+3. **Fix B（已修 `8727eb8`）**：`invalid_data`/`stale_locator`/`unknown_action` 升格 `isError:true`，agent 能正确区分参数错与运行时状态。
 
-**建议：暂缓**。理由：
-1. App 端 typed factory 已是参数校验的**单一来源**，MCP 层再做一遍是重复校验，Swift schema 演进时翻译层要同步维护，脆弱；
-2. Fix B 已解决对 Agent 最关键的 `isError` 语义问题，Fix A 的边际收益主要是「省一次 round-trip、错误更早返回」，与维护成本不成正比；
-3. 当前 `invalid_data` 文案已足够 Agent 理解（如 `viewSnapshotID is valid only with path`）。
-
-若日后 Agent 频繁因「参数组合约束」踩坑（而非字段缺失），再启动 Fix A。届时建议直接让 App 在 `help`/`inspectSchema` 输出里带上可执行的条件约束描述，MCP 层复用，而不是在 TS 侧重写一套翻译。
+Fix A（MCP server 收到请求后、转发 App 前用 ajv 跑校验）夹在客户端与 App 之间——必填/互斥/类型客户端已校验、剩余约束 App 已强制，**三重重复**。唯一独特好处是「App 没运行时也返回参数错」（离线校验），但 agent 操作时 App 必然在跑，场景不存在；省的 ms 级 round-trip 对秒级 agent 无感。成本是 `最多提供`→`if/then` 翻译层（Swift schema 演进要同步维护，脆弱）+ ajv + 双重测试矩阵。**不值，关闭**。
 
 ## 2026-07-11 真实端到端验证（SPMExample 模拟器闭环）
 
@@ -181,4 +178,4 @@ L171-173 注释明确写「原 30s/8 在慢 LLM 推理链下会触发 stale_loca
 - **stderr/NSLog capture flaky（已修 `e3f03e5`）**：根因是全套并发跑时其他来源的 stderr 输出（不带 `\n`）与 token 拼接成同一行——capture 按 `\n` 切行后 `message != token`，`waitForEntry` 的 `contains(token)` 找到了但 `#expect` 的 `== token` 失败（0.055 秒）；NSLog 测试用 `contains` 不怕拼接，它的 flaky 是纯异步延迟。修复：测试 `writeLine` 前置换行防拼接 + `waitForEntry` 窗口 1s→3s 覆盖延迟。连续 5 次全套 449 tests 全过（此前约 30% 失败率）。根因基于时长/模式推断（flaky 罕见未抓到 issue 原文 100% 确认）。
 - **N2（已修）**：alert button path 无消费者，已移除（agent 用 ui.alert.respond 按 index/title/role 点按钮）。
 - **N4（已修）**：`ui.alert.respond` 的 dryRun 已移除（查询走 ui.inspect）。
-- **P1-5 Fix A**：暂缓（见上）。
+- **P1-5 Fix A（已评估·不做）**：MCP 层 schema 校验与客户端+App 三重重复，无独特价值（见上）。
