@@ -17,7 +17,8 @@ describe("server handlers", () => {
       registry: {
         tools: () => [{ name: "ping", description: "ping", inputSchema: {}, action: "ping" }],
         findByName: () => undefined,
-        refresh: async () => ({ toolCount: 1, conflicts: [] })
+        refresh: async () => ({ toolCount: 1, conflicts: [] }),
+        refreshError: () => undefined
       },
       client: { call: async () => ({}) }
     });
@@ -33,7 +34,8 @@ describe("server handlers", () => {
       registry: {
         tools: () => [],
         findByName: () => ({ name: "ping", description: "ping", inputSchema: {}, action: "ping" }),
-        refresh: async () => ({ toolCount: 1, conflicts: [] })
+        refresh: async () => ({ toolCount: 1, conflicts: [] }),
+        refreshError: () => undefined
       },
       client: {
         call: async (action, data = {}) => {
@@ -54,7 +56,8 @@ describe("server handlers", () => {
       registry: {
         tools: () => [],
         findByName: () => ({ name: "ui_screenshot", description: "screenshot", inputSchema: {}, action: "ui.screenshot" }),
-        refresh: async () => ({ toolCount: 1, conflicts: [] })
+        refresh: async () => ({ toolCount: 1, conflicts: [] }),
+        refreshError: () => undefined
       },
       client: {
         call: async () => ({
@@ -68,6 +71,7 @@ describe("server handlers", () => {
     });
 
     const result = await handlers.callTool("ui_screenshot", {});
+    expect(result.isError).toBe(false);
     expect(result.content).toEqual([
       { type: "image", data: "base64png", mimeType: "image/png" },
       {
@@ -91,7 +95,8 @@ describe("server handlers", () => {
         refresh: async () => {
           refreshed = true;
           return { toolCount: 1, conflicts: [] };
-        }
+        },
+        refreshError: () => undefined
       },
       client: {
         call: async (action, data = {}) => {
@@ -115,7 +120,8 @@ describe("server handlers", () => {
       registry: {
         tools: () => [],
         findByName: () => ({ name: "ping", description: "ping", inputSchema: {}, action: "ping" }),
-        refresh: async () => ({ toolCount: 1, conflicts: [] })
+        refresh: async () => ({ toolCount: 1, conflicts: [] }),
+        refreshError: () => undefined
       },
       client: {
         call: async (action, data = {}) => {
@@ -150,7 +156,8 @@ describe("server handlers", () => {
       registry: {
         tools: () => [],
         findByName: () => ({ name: "ping", description: "ping", inputSchema: {}, action: "ping" }),
-        refresh: async () => ({ toolCount: 1, conflicts: [] })
+        refresh: async () => ({ toolCount: 1, conflicts: [] }),
+        refreshError: () => undefined
       },
       client: {
         call: async action => {
@@ -178,6 +185,38 @@ describe("server handlers", () => {
       healthCheck: { ok: false },
       nextSteps: expect.arrayContaining([expect.stringContaining("IOS_EXPLORE_AUTOSTART=1")])
     });
+  });
+
+  test("lazy refresh failure surfaces transport error instead of unknown_tool", async () => {
+    // App 不可达时，dynamic 调用应透传 refresh 的结构化错误，不再误报 unknown_tool。
+    const refreshError: StructuredError = {
+      source: "transport",
+      code: "connection_failed",
+      message: "fetch failed",
+      action: "help"
+    };
+    const handlers = createToolHandlers({
+      staticTools: {},
+      registry: {
+        tools: () => [],
+        findByName: () => undefined,
+        refresh: async () => ({ toolCount: 0, conflicts: [], error: refreshError }),
+        refreshError: () => refreshError
+      },
+      client: {
+        call: async () => {
+          throw new IOSExploreStructuredError(refreshError);
+        }
+      }
+    });
+
+    const result = await handlers.callTool("ui_tap", { path: "root/2" });
+    expect(result.isError).toBe(true);
+    const body = JSON.parse(textContent(result));
+    expect(body.source).toBe("transport");
+    expect(body.code).toBe("connection_failed");
+    // 不再是 unknown_tool
+    expect(body.code).not.toBe("unknown_tool");
   });
 });
 

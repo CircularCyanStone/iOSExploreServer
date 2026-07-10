@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createStaticTools } from "../src/staticTools.js";
 import type { JSONObject } from "../src/types.js";
+import { IOSExploreStructuredError } from "../src/errors.js";
 
 describe("static tools", () => {
   test("health_check reports online status", async () => {
@@ -93,6 +94,33 @@ describe("static tools", () => {
         data: { includeHidden: true, accessibilityIdentifier: "login.submit", maxDepth: 2 }
       }
     ]);
+  });
+
+  test("wait_and_inspect strips unknown top-level keys from ui.waitAny input", async () => {
+    const calls: Array<{ action: string; data: JSONObject }> = [];
+    const tools = createStaticTools({
+      client: {
+        call: async (action, data = {}) => {
+          calls.push({ action, data });
+          return action === "ui.waitAny" ? { satisfied: true } : { viewSnapshotID: "snap-after", targets: [] };
+        }
+      },
+      registry: fakeRegistry(0)
+    });
+
+    await (tools.wait_and_inspect!).handler({
+      conditions: [{ id: "gone", mode: "textExists", text: "Done" }],
+      foo: "bar",
+      extra: 42
+    });
+
+    const waitCall = calls.find(c => c.action === "ui.waitAny")!;
+    // foo and extra must not leak through to ui.waitAny
+    expect(waitCall.data).toEqual({
+      conditions: [{ id: "gone", mode: "textExists", text: "Done" }]
+    });
+    expect(waitCall.data).not.toHaveProperty("foo");
+    expect(waitCall.data).not.toHaveProperty("extra");
   });
 
   test("wait_and_inspect schema uses inspectOptions 且不含已删字段", () => {
@@ -226,15 +254,21 @@ describe("static tools", () => {
     expect(result.isError).toBe(false);
   });
 
-  test("call_action returns transport error as error result", async () => {
+  test("call_action returns transport error as enriched error result", async () => {
+    // transport 失败现在与动态工具路径一致：1 次重试 + healthCheck + nextSteps（issue 8）
+    let calls = 0;
     const tools = createStaticTools({
       client: {
-        call: async () => {
-          const error = new Error("fetch failed") as Error & { source: string; code: string; action: string };
-          error.source = "transport";
-          error.code = "connection_failed";
-          error.action = "echo";
-          throw error;
+        call: async (action) => {
+          calls++;
+          // ping 在 enrichTransportError 里被调用，回个 ok 别让它自己也 throw
+          if (action === "ping") return { pong: true };
+          throw new IOSExploreStructuredError({
+            source: "transport",
+            code: "connection_failed",
+            message: "fetch failed",
+            action
+          });
         }
       },
       registry: fakeRegistry(0)
@@ -243,8 +277,29 @@ describe("static tools", () => {
     const result = await (tools.call_action!).handler({ action: "echo", data: {} });
     const body = JSON.parse(textContent(result));
     expect(body).toMatchObject({ source: "transport", code: "connection_failed" });
+    // 与动态工具路径一致的丰富字段
+    expect(body.retry).toEqual({ attempted: true, delayMs: 200, succeeded: false });
+    expect(body.healthCheck).toEqual({ ok: true, ping: { pong: true } });
+    expect(Array.isArray(body.nextSteps)).toBe(true);
+    // 重试过 2 次（首次 + 1 次重试），加 1 次 ping
+    expect(calls).toBe(3);
     // transport 错误仍是真实错误
     expect(result.isError).toBe(true);
+  });
+
+  test("refresh_tools returns dynamicToolCount field consistent with health_check", async () => {
+    const tools = createStaticTools({
+      client: { call: async () => ({}) },
+      registry: fakeRegistry(5)
+    });
+
+    const result = await (tools.refresh_tools!).handler({});
+    const body = JSON.parse(textContent(result));
+    // refresh_tools 不再返回 toolCount，统一使用 dynamicToolCount
+    expect(body.toolCount).toBeUndefined();
+    expect(body).toMatchObject({ dynamicToolCount: 5 });
+    expect(Array.isArray(body.conflicts)).toBe(true);
+    expect(result.isError).toBeFalsy();
   });
 });
 
@@ -266,6 +321,9 @@ function fakeRegistry(toolCount: number) {
     },
     conflicts() {
       return [] as unknown[];
+    },
+    refreshError() {
+      return undefined;
     }
   };
 }
