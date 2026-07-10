@@ -51,8 +51,6 @@ enum UIAlertInspector {
         let title: String?
         /// 按钮角色。
         let role: AlertButtonRole
-        /// 该按钮 `_UIAlertControllerActionView` 的定位路径；未解析到时为 nil。
-        let path: String?
     }
 
     /// `ui.inspect` / `ui.topViewHierarchy` 输出里给 agent 暴露的 alert 输入框摘要。
@@ -110,7 +108,7 @@ enum UIAlertInspector {
     ///
     /// 当 `topViewController` 不是 `UIAlertController` 时返回 `available=false`，
     /// `buttons` / `textFields` 为空数组。
-    /// 按钮与输入框的路径解析仅在 DEBUG 构建生效；Release 下 `path` 字段全部 nil
+    /// 输入框的路径解析仅在 DEBUG 构建生效；Release 下 `path` 字段全部 nil
     /// （私有 API 不进 Release，符合项目硬规则）。`accessibilityIdentifier` 是公开 API，
     /// 无论 Debug/Release 都从 `alert.textFields[i]` 直接读取。
     ///
@@ -123,13 +121,11 @@ enum UIAlertInspector {
             return InspectAlertSummary(available: false, title: nil, message: nil, buttons: [], textFields: [])
         }
         let base = summarize(alert)
-        let resolvedButtonPaths = resolveButtonPaths(alert: alert, rootView: rootView)
-        let buttons = base.buttons.enumerated().map { (i, button) in
+        let buttons = base.buttons.map { button in
             InspectButtonSummary(
                 index: button.index,
                 title: button.title,
-                role: button.role,
-                path: i < resolvedButtonPaths.count ? resolvedButtonPaths[i] : nil
+                role: button.role
             )
         }
         let resolvedTextFieldPaths = resolveTextFieldPaths(alert: alert, rootView: rootView)
@@ -154,10 +150,10 @@ enum UIAlertInspector {
 
     /// 将 `InspectAlertSummary` 转为命令响应 JSON。
     ///
-    /// `buttons` 区块与 `ui.alert.respond dryRun=true` 对齐，额外追加 `path` 与
-    /// `availableActions:["ui.alert.respond"]`。`textFields` 区块同样追加 `path`、
-    /// `accessibilityIdentifier` 与 `availableActions:["ui.input"]`，让 agent 直接从 alert
-    /// 区块拿到输入框定位去调 `ui.input`，不必翻深层 targets。仍不回 `text` 原文。
+    /// `buttons` 区块与 `ui.alert.respond` 对齐，追加 `availableActions:["ui.alert.respond"]`
+    ///（button 用 `buttonIndex`/`title`/`role` 调 respond，不带 path——alert button 视图无 tap
+    /// 激活路由，path 不可操作也无消费者）。`textFields` 区块追加 `path`、`accessibilityIdentifier`
+    /// 与 `availableActions:["ui.input"]`，让 agent 直接从 alert 区块拿到输入框定位去调 `ui.input`。
     static func toJSONInspect(_ summary: InspectAlertSummary) -> JSON {
         [
             "available": .bool(summary.available),
@@ -168,7 +164,6 @@ enum UIAlertInspector {
                     "index": .double(Double(button.index)),
                     "title": button.title.map(JSONValue.string) ?? .null,
                     "role": .string(button.role.rawValue),
-                    "path": button.path.map(JSONValue.string) ?? .null,
                     "availableActions": .array([.string("ui.alert.respond")]),
                 ]))
             }),
@@ -186,27 +181,10 @@ enum UIAlertInspector {
 
     // MARK: - Private
 
-    /// 解析 alert 按钮的路径（DEBUG-only），返回与 `alert.actions` 同序的 path 数组。
-    ///
-    /// 返回 `[String?]` 而非 resolver 私有类型，使 Release 分支不引用 `#if DEBUG` 保护的
-    /// `ResolvedButton`——后者在 Release 构建下不存在，旧实现直接引用会在 framework Release
-    /// 构建时编译失败。Release 下全返回 nil（私有 API 不进 Release，符合项目硬规则）。
-    @MainActor
-    private static func resolveButtonPaths(alert: UIAlertController, rootView: UIView?) -> [String?] {
-        #if DEBUG
-        guard let rootView else {
-            return alert.actions.map { _ in nil }
-        }
-        return UIAlertButtonPathResolver.resolveButtons(in: alert, rootView: rootView).map { $0.path }
-        #else
-        return alert.actions.map { _ in nil }
-        #endif
-    }
-
     /// 解析 alert 输入框的路径（DEBUG-only），返回与 `alert.textFields` 同序的 path 数组。
     ///
-    /// 与 `resolveButtonPaths` 同构：返回 `[String?]` 保证 Release-safe，DEBUG 分支才调用
-    /// `#if DEBUG` 保护的 `UIAlertTextFieldPathResolver`。Release 下全返回 nil。
+    /// 返回 `[String?]` 保证 Release-safe，DEBUG 分支才调用 `#if DEBUG` 保护的
+    /// `UIAlertTextFieldPathResolver`。Release 下全返回 nil。
     @MainActor
     private static func resolveTextFieldPaths(alert: UIAlertController, rootView: UIView?) -> [String?] {
         let textFields = alert.textFields ?? []

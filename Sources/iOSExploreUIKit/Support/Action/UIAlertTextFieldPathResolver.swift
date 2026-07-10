@@ -10,8 +10,7 @@ import UIKit
 /// 先用**对象身份**（`===`）匹配（最精确）；身份未命中时（某些 iOS 版本或测试环境下对象可能被
 /// 系统包装、或 textField 尚未完成布局入树）退回按 DFS 先序的 `UITextField` 顺序对应
 /// `alert.textFields` 下标——系统按 `addTextField` 顺序把输入框 addSubview，DFS 先序与数组
-/// 下标一致。这样比 `UIAlertButtonPathResolver` 的 `UILabel.text` 匹配更稳健，且不依赖
-/// 私有类名（只按公开的 `UITextField` 类型收集），抗 iOS 版本漂移。
+/// 下标一致。不依赖私有类名（只按公开的 `UITextField` 类型收集），抗 iOS 版本漂移。
 ///
 /// 返回的 path 指向 `UITextField` 本身（实现 `UITextInput`，可被 `ui.input` 直接定位写入）。
 /// 该文件受 `#if DEBUG` 保护，不进 Release 二进制——符合项目硬规则：私有 API 路径解析只用于

@@ -51,8 +51,8 @@ func inspectWithoutAlertReturnsUnavailable() {
     #expect(alert?["available"]?.boolValue == false)
 }
 
-@Test("inspectWithAlert 包含按钮列表与路径") @MainActor
-func inspectWithAlertIncludesButtonsAndPaths() {
+@Test("inspectWithAlert 包含按钮列表") @MainActor
+func inspectWithAlertIncludesButtons() {
     let alert = UIAlertController(title: "确认", message: "是否继续", preferredStyle: .alert)
     alert.addAction(UIAlertAction(title: "确认", style: .default))
     alert.addAction(UIAlertAction(title: "取消", style: .cancel))
@@ -71,8 +71,7 @@ func inspectWithAlertIncludesButtonsAndPaths() {
     #expect(first?["index"]?.doubleValue == 0)
     #expect(first?["title"]?.stringValue == "确认")
     #expect(first?["role"]?.stringValue == "default")
-    #expect(first?["path"]?.stringValue != nil)
-    // availableActions 包含 ui.alert.respond
+    // availableActions 含 ui.alert.respond（button 不带 path——用 index/title/role 调 respond）
     let actions = try? #require(first?["availableActions"]?.arrayValue)
     #expect(actions?.count == 1)
     #expect(actions?[0].stringValue == "ui.alert.respond")
@@ -81,26 +80,6 @@ func inspectWithAlertIncludesButtonsAndPaths() {
     #expect(second?["index"]?.doubleValue == 1)
     #expect(second?["title"]?.stringValue == "取消")
     #expect(second?["role"]?.stringValue == "cancel")
-    #expect(second?["path"]?.stringValue != nil)
-}
-
-@Test("alertButtonPath 在多次 inspect 间稳定") @MainActor
-func alertButtonPathIsStableAcrossInspects() {
-    let alert = UIAlertController(title: "确认", message: nil, preferredStyle: .alert)
-    alert.addAction(UIAlertAction(title: "确认", style: .default))
-    alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-    let context = alertContext(alert)
-
-    let firstData = UIInspectCollector.collect(query: .default, context: context)
-    let secondData = UIInspectCollector.collect(query: .default, context: context)
-
-    let firstButtons = firstData["alert"]?.objectValue?["buttons"]?.arrayValue ?? []
-    let secondButtons = secondData["alert"]?.objectValue?["buttons"]?.arrayValue ?? []
-
-    let firstConfirmPath = firstButtons[0].objectValue?["path"]?.stringValue
-    let secondConfirmPath = secondButtons[0].objectValue?["path"]?.stringValue
-    #expect(firstConfirmPath != nil)
-    #expect(firstConfirmPath == secondConfirmPath)
 }
 
 @Test("alertBlock 出现在 topViewHierarchy") @MainActor
@@ -117,24 +96,6 @@ func alertBlockAppearsInTopViewHierarchy() throws {
     #expect(alertData?["available"]?.boolValue == true)
     let buttons = alertData?["buttons"]?.arrayValue
     #expect(buttons?.count == 1)
-}
-
-@Test("duplicateButtonTitles 按 firstUnmatched 规则解析") @MainActor
-func duplicateButtonTitlesResolveToFirstMatch() {
-    let alert = UIAlertController(title: "选项", message: nil, preferredStyle: .alert)
-    alert.addAction(UIAlertAction(title: "选项", style: .default))
-    alert.addAction(UIAlertAction(title: "选项", style: .cancel))
-    let context = alertContext(alert)
-
-    let data = UIInspectCollector.collect(query: .default, context: context)
-    let buttons = data["alert"]?.objectValue?["buttons"]?.arrayValue ?? []
-    #expect(buttons.count == 2)
-
-    let firstPath = buttons[0].objectValue?["path"]?.stringValue
-    let secondPath = buttons[1].objectValue?["path"]?.stringValue
-    #expect(firstPath != nil)
-    #expect(secondPath != nil)
-    #expect(firstPath != secondPath, "同标题按钮应解析到各自 _UIAlertControllerActionView，路径不同")
 }
 
 @Test("messageOnlyAlert 有 buttons 空数组") @MainActor

@@ -149,9 +149,11 @@ L171-173 注释明确写「原 30s/8 在慢 LLM 推理链下会触发 stale_loca
 
 `UIInspectCollector.textualValue` 用 `view is UIListContentView` 未加 `if #available`，而 `Package.swift` 声明 iOS 13、`UIListContentView` 是 iOS 14+，SPMExample iOS 模拟器构建直接失败（`'UIListContentView' is only available in iOS 14.0 or newer`）。macOS `swift test` 因 UIKit 段 `#if canImport(UIKit)` 不编译而一直没暴露。**根因：4 个修复都没做真实 iOS 构建 / 端到端，只跑 macOS 单元测试。** 已加 `if #available(iOS 14, *)` 修复，iOS 模拟器构建 + macOS 273 测试全过。
 
-#### N2：P0-4 commit message 与实现不一致（alert button path 不可 ui.tap）
+#### N2（已修）：alert button path 是无消费者的 dead feature，已移除
 
-`16fefb1` message 称「agent 可直接用 path 上 `ui.tap` 关 alert」，但实测用 button path 调 `ui.tap` 返回 `unsupported_target: target has no default activation route (UIButton / UISwitch / text input only)`——alert button 视图（`_UIAlertControllerActionView` 系）无 tap 激活路由。`availableActions` 只列 `["ui.alert.respond"]` 是**正确**的，agent 应按它走 `ui.alert.respond`。建议：修正 commit message / 文档措辞；若要支持 path tap，需 executor 识别 alert action view（单独工作项）。
+原状：P0-4（`16fefb1`）给 inspect 的 alert buttons 注入了 `path`，commit message 称「agent 可直接用 path 上 `ui.tap` 关 alert」，但实测 button path 调 `ui.tap` 返回 `unsupported_target`（alert button 视图无 tap 路由），且 `ui.alert.respond` 用 buttonIndex/title/role（不读 path）——path 完全无消费者，是没兑现承诺的 dead feature。
+
+**已修**：移除 `alert.buttons[].path` + 整个 `UIAlertButtonPathResolver`。agent 点 alert 按钮照旧用 `ui.alert.respond`（按 buttonIndex/title/role），不受影响。N3 给 textFields 加的 path 保留（`ui.input` 真在用）。真实闭环：simple / loginInput alert 的 buttons 均无 path（keys 仅 `index`/`title`/`role`/`availableActions`），textField path 仍在。
 
 #### N3（已修 `a75df74`）：alert block 的 textFields 不暴露 path / accessibilityIdentifier
 
@@ -177,6 +179,6 @@ L171-173 注释明确写「原 30s/8 在慢 LLM 推理链下会触发 stale_loca
 ### 仍未处理的 pre-existing
 
 - **2 个 stderr/NSLog capture flaky 失败（Diagnostics 模块）**：iOS framework 测试里 `stderr capture` / `NSLog capture` 间歇性失败（同一次跑过、下一次失败），`71ce37a` 已标注「stderr capture 间歇性」属预存。与 UIKit 改动无关，属 Diagnostics capture 时序稳定性问题，建议单独排查。
-- **N2**：alert button path 不可 `ui.tap`（commit message 措辞误导）——待修文档措辞，或让 executor 识别 alert action view 支持 path tap。
+- **N2（已修）**：alert button path 无消费者，已移除（agent 用 ui.alert.respond 按 index/title/role 点按钮）。
 - **N4（已修）**：`ui.alert.respond` 的 dryRun 已移除（查询走 ui.inspect）。
 - **P1-5 Fix A**：暂缓（见上）。
