@@ -118,6 +118,10 @@ server.register(action: "greet", description: "按 name 打招呼", input: Greet
 
 **下一步**：Agent 使用协议已写入 `docs/superpowers/agent-mcp-exploration/agent-usage-protocol.md`，可运行的 curl/JSON 闭环写入 `docs/superpowers/agent-mcp-exploration/curl-json-loop-protocol.md`。navigationBar / UIBarButtonItem 可达性、`ui.tap` 结构化默认激活、`ui.alert.respond dryRun=false`、`ui.waitAny` 均已完成。当前剩余主任务是实现 Mac 本机 MCP server，把现有 HTTP action 包装成 MCP tools，并在工具层固化 `observe → act → wait_and_observe → verify` 调用顺序；设计见 `docs/superpowers/specs/2026-07-06-mac-mcp-server-design.md`。
 
+## 待观察问题
+
+- **P1-6 Snapshot TTL（时间维度）的收益与代价**：当前 `UIKitSnapshotStore` 用 `ttlSeconds` 做 freshness 判定（工作树已从 30s/8 调整为 120s/32，分支 `fix/freshness-consistency`，未合并）。初步分析认为：时间维度在 LLM‑Agent 长思考场景下会因思考时间超过阈值而产生误报（`stale_locator`），而真正能彻底消除误报的做法是去掉时间维度的 freshness 判定、只靠 `UIKitTargetFingerprint` 指纹对比 + context 匹配来判断陈旧，并把 TTL 退化为只在 `evictIfNeeded` 里做内存清理的辅助上限。但时间维度原本确有收益（内存上限兜底 + 指纹盲区兜底 + 实现简单），方案是否推进需要先观察当前 120s/32 在真实 agent 流程里的 `stale_locator` 触发频率再决定。完整辩证分析、收益代价对照、彻底改造方案的逐文件位置与单元测试改动清单见 `docs/investigations/p1-6-stale-locator-analysis.md`，**当前仅记录不实施**。
+
 ## 调试日志
 
 组件默认不输出内部日志到 Unified Logging。调试时在 App 启动阶段开启：

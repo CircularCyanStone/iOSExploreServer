@@ -25,13 +25,14 @@ enum UIScrollResolver {
 
     /// `ui.scroll` 语义：locator 是触发滚动的目标 view，executor 找其最近 scrollView 祖先。
     ///
-    /// locator 缺省时回退到 keyWindow 最前 scrollView。`path + viewSnapshotID` 组合做陈旧校验
-    /// （viewSnapshotID 由 `ui.inspect` 签发）。全程排除 `UITextView`（其内部滚动语义不同，
-    /// 按 spec 不作为滚动容器）。
+    /// locator 缺省时回退到 keyWindow 最前 scrollView。`viewSnapshotID` 由调用方
+    /// 可选传入（`ui.inspect` 签发），配合 locator（identifier / path 均可）走
+    /// `UIKitActionExecutor.validateViewSnapshot` 同一陈旧校验入口，与 ui.tap 行为一致；
+    /// 缺省时跳过陈旧校验。全程排除 `UITextView`（其内部滚动语义不同，按 spec 不作为滚动容器）。
     ///
     /// - Parameters:
     ///   - locator: 触发滚动的目标定位（identifier/path），nil 表示回退 foremost。
-    ///   - viewSnapshotID: path 定位携带的陈旧校验标识（来自 ui.inspect）。
+    ///   - viewSnapshotID: path 或 identifier 定位携带的陈旧校验标识（来自 ui.inspect）。
     ///   - context: 当前 MainActor 查询上下文。
     ///   - action: 触发 action 名（错误工厂日志关联）。
     /// - Returns: 解析到的 scrollView 容器及摘要。
@@ -51,25 +52,13 @@ enum UIScrollResolver {
                     UIKitCommandError.invalidData(action: action, message: "scroll target is ambiguous count=\(count)")
                 }
             )
-            if let viewSnapshotID = viewSnapshotID, case .path = locator {
-                let current = UIKitFingerprintCollector.fingerprint(
-                    for: located.view,
-                    path: located.pathString,
-                    rootView: context.rootView,
-                    digest: UIKitFingerprintCollector.digest(topViewController: context.topViewController)
-                )
-                let snapshotContext = UIKitFingerprintCollector.context(
-                    window: context.window,
-                    topViewController: context.topViewController
-                )
-                if UIKitSnapshotStore.shared.isStale(
+            if let viewSnapshotID = viewSnapshotID {
+                try UIKitActionExecutor.validateViewSnapshot(
+                    located: located,
                     viewSnapshotID: viewSnapshotID,
-                    path: located.pathString,
-                    context: snapshotContext,
-                    current: current
-                ) {
-                    throw UIKitCommandError.staleLocator(action: action, viewSnapshotID: viewSnapshotID)
-                }
+                    context: context,
+                    action: action
+                )
             }
             guard let candidate = nearestScrollView(from: located.view) else {
                 throw UIKitCommandError.scrollContainerUnavailable(action: action, target: locator.description)

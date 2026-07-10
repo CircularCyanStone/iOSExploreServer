@@ -24,9 +24,12 @@ extension UIAlertController {
     /// 直接调用 handler block。
     ///
     /// 备选方案及放弃原因：私有 `_performAction:invokeActionBlock:dismissAndPerformActionIfNotAlreadyPerformed:`
-    /// 用 IMP 直接调用会 crash（多 BOOL 参数 ABI/内部断言）；`sendActions(for:.touchUpInside)` 模拟点击
-    /// 则因 iOS 26 把 alert 按钮放在私有 `_UIInterfaceAction*` representation 容器里、普通视图遍历定位
-    /// 不到按钮 view 而作罢。`_dismissWithAction:` 是三者里唯一在真实 App 验证可行的入口。selector 名随
+    /// 用 IMP 直接调用会 crash（多 BOOL 参数 ABI/内部断言）；`sendActions(for:.touchUpInside)`
+    /// 对 `_UIAlertControllerActionView` 也无效——该类型是 `UIView` 子类、非 `UIControl`，
+    /// `sendActions(for:)` 只对 UIControl 生效，对 UIView 调用无任何反应。
+    /// 虽然 iOS 26 上从 `alertVC.view` 走公开 `subviews` DFS 可正常抵达按钮 view（深度约 9-11），
+    /// 但抵达后的触发仍需私有 API，故仍用 `_dismissWithAction:` 统一处理。
+    /// 这是三者里唯一在真实 App 验证可行的入口。selector 名随
     /// iOS 版本漂移属正常维护成本，失效时需重新枚举 `UIAlertController` 方法表并降级。
     ///
     /// - Parameter action: 要触发并关闭的 action，必须是 `self.actions` 中的某个。

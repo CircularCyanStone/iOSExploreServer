@@ -103,7 +103,7 @@ enum UIKitActionExecutor {
     ///   - action: 触发校验的 action 名（错误关联）。
     /// - Throws: `UIKitCommandError.notActionable`（minimal 节点未签发指纹）；或
     ///   `UIKitCommandError.staleLocator`（快照陈旧）。
-    private static func validateViewSnapshot(located: UIKitLocatorResolver.LocatedView,
+    static func validateViewSnapshot(located: UIKitLocatorResolver.LocatedView,
                                              viewSnapshotID: String,
                                              context: UIKitContextProvider.Context,
                                              action: String) throws {

@@ -41,24 +41,17 @@ enum UITextInputExecutor {
             ambiguous: { n in UIKitCommandError.invalidData(action: action, message: "input target ambiguous count=\(n)") }
         )
 
-        // 2. 陈旧校验：仅 path 定位 + 带 viewSnapshotID 时执行。
-        if let viewSnapshotID = input.viewSnapshotID, case .path = input.target {
-            let cur = UIKitFingerprintCollector.fingerprint(
-                for: located.view,
-                path: located.pathString,
-                rootView: context.rootView,
-                digest: UIKitFingerprintCollector.digest(topViewController: context.topViewController)
+        // 2. 陈旧校验：与 ui.tap / ui.control.sendAction 走同一校验入口
+        //    （UIKitActionExecutor.validateViewSnapshot），identifier / path 定位都按
+        //    located view 的 pathString 比对指纹；identifier 不再是绕过 freshness 的后门，
+        //    与 ui.tap 行为一致。
+        if let viewSnapshotID = input.viewSnapshotID {
+            try UIKitActionExecutor.validateViewSnapshot(
+                located: located,
+                viewSnapshotID: viewSnapshotID,
+                context: context,
+                action: action
             )
-            let snapCtx = UIKitFingerprintCollector.context(
-                window: context.window,
-                topViewController: context.topViewController
-            )
-            if UIKitSnapshotStore.shared.isStale(viewSnapshotID: viewSnapshotID,
-                                                 path: located.pathString,
-                                                 context: snapCtx,
-                                                 current: cur) {
-                throw UIKitCommandError.staleLocator(action: action, viewSnapshotID: viewSnapshotID)
-            }
         }
 
         // 3. 白名单：只接受 UITextField / UITextView / UISearchTextField。

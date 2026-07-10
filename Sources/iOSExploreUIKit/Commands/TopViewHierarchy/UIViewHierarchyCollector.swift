@@ -46,6 +46,16 @@ enum UIViewHierarchyCollector {
         data["navigationBar"] = .object(
             UINavigationBarInspector.summarize(topViewController: context.topViewController).toJSON()
         )
+        // 与 ui.inspect 同口径暴露 alert 摘要，让 agent 在层级观察里也能直接看到 alert
+        // 按钮的 index/title/role/path，无需另外调用 `ui.alert.respond dryRun=true`。
+        data["alert"] = .object(
+            UIAlertInspector.toJSONInspect(
+                UIAlertInspector.summarizeForInspect(
+                    topViewController: context.topViewController,
+                    rootView: context.rootView
+                )
+            )
+        )
 
         if query.hasIdentifierFilter {
             let matches = UIViewHierarchyBuilder.matches(in: element, query: query)

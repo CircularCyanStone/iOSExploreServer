@@ -161,12 +161,21 @@ function normalizeUnknownError(error: unknown): StructuredError {
 
 /**
  * 将动态工具执行中 catch 到的错误，按来源区分处理：
- * - ios_envelope（App 端业务失败）→ 正常响应 isError=false
+ * - ios_envelope（App 端业务失败）
+ *   - invalid_data / stale_locator / unknown_action → 升格为 isError=true
+ *     （参数错误、snapshot 过期、工具名不同步——Agent 应改参数或重新 inspect，
+ *     不该把错误 body 当数据解析）
+ *   - 其它 ios_envelope code（wait_timeout / alert_unavailable / not_actionable 等）
+ *     保持 isError=false（运行时状态反馈，Agent 需要解析 body 做分支决策）
  * - transport/http/mcp_server → 真实错误 isError=true
  */
 function normalizedResult(error: unknown): MCPToolResult {
   const normalized = normalizeUnknownError(error);
   if (normalized.source === "ios_envelope") {
+    const errorCodes = ["invalid_data", "stale_locator", "unknown_action"];
+    if (normalized.code && errorCodes.includes(normalized.code)) {
+      return errorResult(normalized);
+    }
     return jsonResult(normalized as unknown as JSONObject, false);
   }
   return errorResult(normalized);

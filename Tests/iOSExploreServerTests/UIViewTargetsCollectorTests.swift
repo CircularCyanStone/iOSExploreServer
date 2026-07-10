@@ -206,6 +206,164 @@ func identifierFilterAffectsOnlyFull() {
     #expect(data["minimalCount"]?.doubleValue == 2)
 }
 
+@Test("non-secure UITextField exposes text in collect output") @MainActor
+func nonSecureTextFieldExposesText() {
+    let context = UIKitTestHost.context { root in
+        let textField = UITextField()
+        textField.text = "AgentName42"
+        textField.placeholder = "用户名"
+        textField.isSecureTextEntry = false
+        textField.frame = CGRect(x: 10, y: 10, width: 200, height: 30)
+        root.addSubview(textField)
+    }
+
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let targets = allTargetSummaries(from: data)
+
+    let tfTarget = targets.first { $0["type"]?.stringValue == "UITextField" }
+    #expect(tfTarget != nil, "UITextField should appear as a target")
+    #expect(tfTarget?["text"]?.stringValue == "AgentName42")
+    #expect(tfTarget?["placeholder"]?.stringValue == "用户名")
+}
+
+@Test("secure UITextField suppresses text in collect output") @MainActor
+func secureTextFieldSuppressesText() {
+    let context = UIKitTestHost.context { root in
+        let secureField = UITextField()
+        secureField.text = "secret123"
+        secureField.isSecureTextEntry = true
+        secureField.frame = CGRect(x: 10, y: 10, width: 200, height: 30)
+        root.addSubview(secureField)
+    }
+
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let targets = allTargetSummaries(from: data)
+
+    // collector 不输出 `isSecure` 字段，按 type 找到目标后断言 text 字段不可读。
+    // 注意 full 节点的 toJSON 把 nil text 序列化为 "text": .null，故需排除 .string("secret123")
+    // 同时允许 .null（缺省值）——不可等同于明文。
+    let secureTarget = targets.first { $0["type"]?.stringValue == "UITextField" }
+    #expect(secureTarget != nil, "secure UITextField should appear as a target")
+    let textValue = secureTarget?["text"]
+    #expect(textValue?.stringValue != "secret123",
+            "secure field must NOT expose plaintext secret123")
+    // 进一步收紧：textValue 必须不是任何 .string(...)
+    if case .string(let s)? = textValue {
+        Issue.record("secure field leaked text via .string: \"\(s)\"")
+    }
+}
+
+@Test("non-secure UITextView exposes text in collect output") @MainActor
+func nonSecureTextViewExposesText() {
+    let context = UIKitTestHost.context { root in
+        let textView = UITextView()
+        textView.text = "Hello World"
+        textView.frame = CGRect(x: 10, y: 10, width: 200, height: 100)
+        root.addSubview(textView)
+    }
+
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let targets = allTargetSummaries(from: data)
+
+    #expect(targets.contains { $0["type"]?.stringValue == "UITextView" && $0["text"]?.stringValue == "Hello World" })
+}
+
+@Test("UITextField 与 UITextView 混合场景：secure 不暴露，non-secure 正常") @MainActor
+func mixedTextFieldsSecureVsNonSecure() {
+    let context = UIKitTestHost.context { root in
+        let nameField = UITextField()
+        nameField.text = "Alice"
+        nameField.isSecureTextEntry = false
+        nameField.frame = CGRect(x: 10, y: 10, width: 200, height: 30)
+        root.addSubview(nameField)
+
+        let pwField = UITextField()
+        pwField.text = "secret"
+        pwField.isSecureTextEntry = true
+        pwField.frame = CGRect(x: 10, y: 50, width: 200, height: 30)
+        root.addSubview(pwField)
+
+        let bioView = UITextView()
+        bioView.text = "Hello!"
+        bioView.frame = CGRect(x: 10, y: 90, width: 200, height: 100)
+        root.addSubview(bioView)
+    }
+
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let targets = allTargetSummaries(from: data)
+
+    let nameTarget = targets.first { $0["type"]?.stringValue == "UITextField" && $0["text"]?.stringValue == "Alice" }
+    #expect(nameTarget != nil, "non-secure UITextField must expose text")
+
+    let pwTarget = targets.first { $0["type"]?.stringValue == "UITextField" && $0["text"]?.stringValue == "secret" }
+    #expect(pwTarget == nil, "secure UITextField must NOT expose text")
+
+    let bioTarget = targets.first { $0["type"]?.stringValue == "UITextView" && $0["text"]?.stringValue == "Hello!" }
+    #expect(bioTarget != nil, "UITextView must expose text")
+}
+
+@Test("UITextView.isSecureTextEntry 默认 false，仍暴露 text") @MainActor
+func textViewDefaultNotSecureExposesText() {
+    let context = UIKitTestHost.context { root in
+        let tv = UITextView()
+        tv.text = "visible"
+        tv.isSecureTextEntry = false // 默认值，显式写以确保
+        tv.frame = CGRect(x: 10, y: 10, width: 200, height: 100)
+        root.addSubview(tv)
+    }
+
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let targets = allTargetSummaries(from: data)
+
+    #expect(targets.contains { $0["type"]?.stringValue == "UITextView" && $0["text"]?.stringValue == "visible" })
+}
+
+@Test("UITextField placeholder 仍然从 collector 正常返回") @MainActor
+func textFieldPlaceholderStillReturned() {
+    let context = UIKitTestHost.context { root in
+        let tf = UITextField()
+        tf.placeholder = "Password"
+        tf.isSecureTextEntry = true
+        tf.frame = CGRect(x: 10, y: 10, width: 200, height: 30)
+        root.addSubview(tf)
+    }
+
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let targets = allTargetSummaries(from: data)
+
+    let tfTarget = targets.first { $0["type"]?.stringValue == "UITextField" }
+    #expect(tfTarget != nil, "secure UITextField should appear as a target")
+    let textValue = tfTarget?["text"]
+    if case .string(let s)? = textValue {
+        Issue.record("secure field leaked text via .string: \"\(s)\"")
+    }
+    #expect(textValue?.stringValue != "secret", "secure field must NOT expose plaintext secret")
+    #expect(tfTarget?["placeholder"]?.stringValue == "Password",
+            "placeholder 仍应正常返回，不受 secure 影响")
+}
+
+@Test("UISwitch/UISlider/UISegmentedControl 的 value 不受 change 影响") @MainActor
+func valueFromForNonTextFieldStillWorks() {
+    // 验证修改 textualValue 不会误伤 value(from:) 对其他控件的处理。
+    let context = UIKitTestHost.context { root in
+        let sw = UISwitch()
+        sw.isOn = true
+        sw.frame = CGRect(x: 10, y: 10, width: 50, height: 30)
+        root.addSubview(sw)
+
+        let seg = UISegmentedControl(items: ["A", "B"])
+        seg.selectedSegmentIndex = 1
+        seg.frame = CGRect(x: 10, y: 50, width: 200, height: 30)
+        root.addSubview(seg)
+    }
+
+    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let targets = allTargetSummaries(from: data)
+
+    #expect(targets.contains { $0["type"]?.stringValue == "UISwitch" && $0["value"]?.stringValue == "on" })
+    #expect(targets.contains { $0["type"]?.stringValue == "UISegmentedControl" && $0["value"]?.stringValue == "1" })
+}
+
 @Test("UIViewTargetsInput 解析 maxVisitedNodes 默认值和边界")
 func viewTargetsQueryParsesMaxVisitedNodes() throws {
     let defaultQuery = try UIViewTargetsInput.parse(from: [:])

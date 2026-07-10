@@ -206,7 +206,47 @@ describe("static tools", () => {
     expect(result.isError).toBe(true);
   });
 
-  test("call_action returns ios_envelope failure as non-error result", async () => {
+  test("call_action returns stale_locator ios_envelope failure as error result", async () => {
+    const tools = createStaticTools({
+      client: {
+        call: async () => {
+          const error = new Error("stale snapshot") as Error & { source: string; code: string };
+          error.source = "ios_envelope";
+          error.code = "stale_locator";
+          throw error;
+        }
+      },
+      registry: fakeRegistry(0)
+    });
+
+    const result = await (tools.call_action!).handler({ action: "ui.tap", data: {} });
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "ios_envelope", code: "stale_locator" });
+    // stale_locator 升格为 isError=true，Agent 应重新 inspect 后再操作
+    expect(result.isError).toBe(true);
+  });
+
+  test("call_action returns invalid_data ios_envelope failure as error result", async () => {
+    const tools = createStaticTools({
+      client: {
+        call: async () => {
+          const error = new Error("bad input") as Error & { source: string; code: string };
+          error.source = "ios_envelope";
+          error.code = "invalid_data";
+          throw error;
+        }
+      },
+      registry: fakeRegistry(0)
+    });
+
+    const result = await (tools.call_action!).handler({ action: "ui.tap", data: {} });
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "ios_envelope", code: "invalid_data" });
+    // invalid_data 升格为 isError=true，Agent 应修正参数
+    expect(result.isError).toBe(true);
+  });
+
+  test("call_action returns unknown_action ios_envelope failure as non-error result", async () => {
     const tools = createStaticTools({
       client: {
         call: async () => {
@@ -222,7 +262,7 @@ describe("static tools", () => {
     const result = await (tools.call_action!).handler({ action: "nonexistent", data: {} });
     const body = JSON.parse(textContent(result));
     expect(body).toMatchObject({ source: "ios_envelope", code: "unknown_action" });
-    // ios_envelope 业务失败标记为 isError=false，不中断 Agent 流程
+    // call_action 的 unknown_action 保持 isError=false（兜底工具本就让 agent 猜 action 名）
     expect(result.isError).toBe(false);
   });
 

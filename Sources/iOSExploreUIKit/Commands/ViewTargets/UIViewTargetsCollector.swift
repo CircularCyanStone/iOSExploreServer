@@ -103,6 +103,18 @@ enum UIViewTargetsCollector {
         data["navigationBar"] = .object(
             UINavigationBarInspector.summarize(topViewController: context.topViewController).toJSON()
         )
+        // alert 按钮也走单独的 inspector 摘要：它们不在 rootView 子树里被 canonical 收集，
+        // 单独由 `UIAlertInspector.summarizeForInspect` 暴露 index/title/role/path 与
+        // `availableActions: ["ui.alert.respond"]`。这样 agent 在同一份 inspect 结果里就能
+        // 看到按钮，不必再调一次 `ui.alert.respond dryRun=true` 才能列出按钮清单。
+        data["alert"] = .object(
+            UIAlertInspector.toJSONInspect(
+                UIAlertInspector.summarizeForInspect(
+                    topViewController: context.topViewController,
+                    rootView: context.rootView
+                )
+            )
+        )
         UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(collected.count) fullCount=\(fullCount) minimalCount=\(minimalCount) fingerprints=\(fingerprints.count) topViewController=\(String(describing: type(of: context.topViewController)))")
         return data
     }
@@ -455,11 +467,19 @@ enum UIViewTargetsCollector {
         return nil
     }
 
-    /// 提取非编辑型可见文本，调用方负责按 query 裁剪。
+    /// 提取可见文本，调用方负责按 query 裁剪。
     ///
-    /// `UITextField` 与 `UITextView` 可能承载密码或用户输入，默认目标发现不返回其内容。
+    /// 包括 UILabel.text、UITextField.text、UITextView.text。
+    /// `isSecureTextEntry == true` 的输入框（密码等）不返回内容，避免明文泄露；
+    /// 其余编辑型控件（含 `_UIAlertControllerTextField`）的 text 字段正常返回，
+    /// 让 agent 输入后可通过 ui.inspect 验证结果。
     private static func textualValue(from view: UIView) -> String? {
         if let label = view as? UILabel { return label.text }
+        if let textField = view as? UITextField {
+            guard !textField.isSecureTextEntry else { return nil }
+            return textField.text
+        }
+        if let textView = view as? UITextView { return textView.text }
         return nil
     }
 
