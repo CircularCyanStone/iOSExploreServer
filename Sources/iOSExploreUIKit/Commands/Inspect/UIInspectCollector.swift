@@ -484,7 +484,17 @@ enum UIInspectCollector {
         if let textView = view as? UITextView { return textView.text }
         // UIListContentView / UITableViewCell 容器不直接持有 text，遍历直接子 view
         // 取首个非空 UILabel 文本（覆盖 cell 标题等显示文本）。
-        if view is UIListContentView || view is UITableViewCell {
+        // UIListContentView 是 iOS 14+，而 Package.swift 声明 iOS 13 部署目标，必须用
+        // `if #available` 隔离类型判断；否则 iOS 模拟器构建失败（macOS SPM 测试因 UIKit
+        // 段整体 `#if canImport(UIKit)` 不编译而漏掉此问题）。iOS 13 下降级为只判
+        // UITableViewCell——cell 标题仍可从该分支提取，功能不丢。
+        let isListContentView: Bool
+        if #available(iOS 14.0, *) {
+            isListContentView = view is UIListContentView
+        } else {
+            isListContentView = false
+        }
+        if isListContentView || view is UITableViewCell {
             for sub in view.subviews {
                 if let label = sub as? UILabel, let text = label.text, !text.isEmpty {
                     return text
