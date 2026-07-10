@@ -455,11 +455,19 @@ enum UIViewTargetsCollector {
         return nil
     }
 
-    /// 提取非编辑型可见文本，调用方负责按 query 裁剪。
+    /// 提取可见文本，调用方负责按 query 裁剪。
     ///
-    /// `UITextField` 与 `UITextView` 可能承载密码或用户输入，默认目标发现不返回其内容。
+    /// 包括 UILabel.text、UITextField.text、UITextView.text。
+    /// `isSecureTextEntry == true` 的输入框（密码等）不返回内容，避免明文泄露；
+    /// 其余编辑型控件（含 `_UIAlertControllerTextField`）的 text 字段正常返回，
+    /// 让 agent 输入后可通过 ui.inspect 验证结果。
     private static func textualValue(from view: UIView) -> String? {
         if let label = view as? UILabel { return label.text }
+        if let textField = view as? UITextField {
+            guard !textField.isSecureTextEntry else { return nil }
+            return textField.text
+        }
+        if let textView = view as? UITextView { return textView.text }
         return nil
     }
 
