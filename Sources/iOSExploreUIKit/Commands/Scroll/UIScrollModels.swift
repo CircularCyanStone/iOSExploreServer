@@ -41,7 +41,8 @@ public enum ScrollExtent: String, Sendable, Equatable {
 ///
 /// 命令要求调用方明确给出 `direction`；`amount` 缺省时按可见区一半滚动；定位条件
 /// （`accessibilityIdentifier` / `path`）可同时缺省——此时 executor 回退到 keyWindow
-/// 最前的 scrollView。`viewSnapshotID` 可选，仅允许与 `path` 搭配用于陈旧校验。
+/// 最前的 scrollView。`viewSnapshotID` 可选，identifier / path 两种定位方式都支持陈旧校验
+/// （与 ui.tap 一致）；缺省时不做陈旧校验。
 public struct UIScrollInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let direction = CommandFields.requiredEnum(
@@ -77,7 +78,6 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
         fields: Fields.all,
         constraints: [
             .extensionMessage("accessibilityIdentifier/path 都缺时滚动 keyWindow 最前 scrollView"),
-            .extensionMessage("viewSnapshotID is valid only with path"),
         ]
     )
 
@@ -87,7 +87,8 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
     public let amount: Double?
     /// 目标定位方式，缺省表示滚动 keyWindow 最前的 scrollView。
     public let locator: UIKitViewLookupTarget?
-    /// `ui.inspect` 签发的结构化快照标识，可选，仅与 `.path` 定位搭配做陈旧校验。
+    /// `ui.inspect` 签发的结构化快照标识，可选，identifier / path 两种定位方式都支持陈旧校验
+    ///（与 ui.tap 一致）；缺省时不校验。
     public let viewSnapshotID: String?
     /// 是否动画。默认 false（`setContentOffset` 同步更新，after/reachedExtent 为确定值）。
     public let animated: Bool
@@ -112,12 +113,14 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
         self.animated = animated
     }
 
-    /// 按 `CommandInputDecoder` 读取字段并执行 amount/viewSnapshotID 组合校验。
+    /// 按 `CommandInputDecoder` 读取字段并执行 amount 组合校验。
     ///
     /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
     /// - Returns: 已解析的 scroll 输入。
-    /// - Throws: 字段类型、方向枚举、amount<=0 或 viewSnapshotID 搭配非法时抛出
-    ///   `CommandInputParseError`。
+    /// - Throws: 字段类型、方向枚举、amount<=0 时抛出
+    ///   `CommandInputParseError`。viewSnapshotID 与 identifier / path 的陈旧校验
+    ///   统一在 executor 内经 `UIKitActionExecutor.validateViewSnapshot` 完成，parse
+    ///   阶段不再以"viewSnapshotID 仅与 path 搭配"为由 reject。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIScrollInput {
         let direction = try decoder.read(Fields.direction)
         let amountRaw = try decoder.read(Fields.amount)
@@ -126,9 +129,6 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
         let locator = try UIKitLocatorInput.parseOptional(decoder: &decoder)
         if let amount = amountRaw, amount <= 0 {
             throw CommandInputParseError("amount must be > 0")
-        }
-        if viewSnapshotID != nil, let locator, case .accessibilityIdentifier = locator {
-            throw CommandInputParseError("viewSnapshotID is valid only with path")
         }
         return UIScrollInput(direction: direction,
                              amount: amountRaw,

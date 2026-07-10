@@ -18,13 +18,8 @@ public enum InputMode: String, Sendable, Equatable, CaseIterable {
 ///
 /// 命令要求调用方明确提供一个定位条件（`accessibilityIdentifier` 或 `path` 二选一）和
 /// 必填的 `text`。`mode` 默认 `replace`（先清空），`submit` 默认 `true`（写完
-/// `resignFirstResponder`）。`viewSnapshotID` 可选，仅允许与 `path` 搭配用于陈旧校验。
-///
-/// **注意**：`viewSnapshotID` 仅支持与 `path` 搭配使用。当用 `accessibilityIdentifier`
-/// 定位时传 `viewSnapshotID` 会返回 `invalid_data`（因为 identifier 定位不带结构性路径，
-/// 无法做指纹陈旧校验）。与 `ui.tap` 不同——ui.tap 要求必填 `viewSnapshotID` 且
-/// identifier/path 都支持（tap 有 LRU/locate 层面的 `viewSnapshotID` 缓存），
-/// 而 `ui.input` 的 viewSnapshotID 是可选陈旧校验，只对 path 路径有意义。
+/// `resignFirstResponder`）。`viewSnapshotID` 可选，用于陈旧校验（通过 located view 的
+/// 当前 path 指纹与快照记录比对），identifier / path 两种定位方式均支持。
 ///
 /// 该类型整体 Foundation-only：字段声明与解析不依赖 UIKit，便于在 macOS 上做 schema
 /// 单测；UIKit 类型只在 executor 内部出现，不穿过 public 边界。
@@ -64,10 +59,6 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
         fields: Fields.all,
         constraints: [
             .exactlyOneOf(["accessibilityIdentifier", "path"]),
-            // 与 ui.scroll 的同名约束及本类型 parse() 抛出的 CommandInputParseError 文案保持一致
-            // （"viewSnapshotID is valid only with path"），避免 schema 文档与运行时错误文案分叉。
-            // identifier 定位不支持陈旧校验的原因见本类型上方文档注释。
-            .extensionMessage("viewSnapshotID is valid only with path"),
         ]
     )
 
@@ -79,7 +70,7 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
     public let mode: InputMode
     /// 写完后是否 resignFirstResponder。
     public let submit: Bool
-    /// `ui.inspect` 签发的结构化快照标识，可选，仅允许与 `.path` 定位一起用于陈旧校验。
+    /// `ui.inspect` 签发的结构化快照标识，可选，identifier / path 两种定位方式都接受陈旧校验。
     public let viewSnapshotID: String?
 
     /// 创建一条 input 查询。
@@ -115,10 +106,6 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
         let target = try UIKitLocatorInput.parse(decoder: &decoder,
                                                   identifierField: Fields.accessibilityIdentifier,
                                                   pathField: Fields.path)
-        // viewSnapshotID 仅允许与 path 搭配：identifier 定位不带结构路径，无法做指纹陈旧校验。
-        if viewSnapshotID != nil, case .accessibilityIdentifier = target {
-            throw CommandInputParseError("viewSnapshotID is valid only with path")
-        }
         return UIInputInput(target: target, text: text, mode: mode, submit: submit, viewSnapshotID: viewSnapshotID)
     }
 }

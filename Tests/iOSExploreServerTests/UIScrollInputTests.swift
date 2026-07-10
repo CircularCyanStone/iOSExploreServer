@@ -34,15 +34,15 @@ func scrollInputRejectsMissingDirection() {
     }
 }
 
-@Test("UIScrollInput: viewSnapshotID 仅允许与 path 搭配，与 identifier 搭配抛错")
-func scrollInputRejectsViewSnapshotIDWithIdentifier() {
-    #expect(throws: CommandInputParseError.self) {
-        _ = try UIScrollInput.parse(from: [
-            "accessibilityIdentifier": "list.scroll",
-            "direction": "down",
-            "viewSnapshotID": "view_snapshot_test",
-        ])
-    }
+@Test("UIScrollInput: viewSnapshotID 搭配 identifier 合法（与 ui.tap 一致）")
+func scrollInputAcceptsViewSnapshotIDWithIdentifier() throws {
+    let input = try UIScrollInput.parse(from: [
+        "accessibilityIdentifier": "field.test",
+        "direction": "down",
+        "viewSnapshotID": "test_snapshot",
+    ])
+    #expect(input.viewSnapshotID == "test_snapshot")
+    #expect(input.locator == .accessibilityIdentifier("field.test"))
 }
 
 @Test("UIScrollInput: path 定位 + viewSnapshotID 合法解析")
