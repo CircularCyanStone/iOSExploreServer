@@ -33,10 +33,12 @@ struct UIGestureTriggeredPair: Sendable {
 /// `gestures` 列表自行判断结果。该决策写进手势 adapter 报告并由 `UIKitActionExecutorTests` 覆盖。
 ///
 /// 隔离：本 executor 跟随 `UIKitActionExecutor` 的 `#if canImport(UIKit)`（不额外 `#if DEBUG`）——
-/// 它在 Release 也要编译（macOS 空壳）。但底层 runtime 入口 `explore_targetActionPairs()` 是
-/// `#if DEBUG #if canImport(UIKit)` 双隔离（私有 ivar 读取绝不进 Release）；因此调用它的逻辑用
-/// `#if DEBUG ... #else 兜底 #endif` 包裹（参照 `UIAlertRespondExecutor.perform` 的隔离边界），
-/// Release 下 `execute(on:)` 直接返回 `nil`，让 `executeTap` fallthrough 到 `unsupported_target`。
+/// 它在 Release 也要编译（macOS 空壳）。底层 runtime 入口 `explore_targetActionPairs()` 是
+/// `#if DEBUG #if canImport(UIKit)` 双隔离（私有 ivar 读取绝不进 Release）；只有 `execute(on:)`
+/// 的调用路径用 `#if DEBUG ... #else 兜底 #endif` 包裹（参照 `UIAlertRespondExecutor.perform`
+/// 的隔离边界），Release 下 `execute(on:)` 直接返回 `nil`，让 `executeTap` fallthrough 到
+/// `unsupported_target`。`executeCellSelection(on:)` 走公有 API 兜底路径，不受 DEBUG guard
+/// 整体包裹，在 Release 下也可工作（仅其内部 DEBUG 日志受 `#if DEBUG` 控制）。
 ///
 /// ## cellSelection 独立路径
 ///

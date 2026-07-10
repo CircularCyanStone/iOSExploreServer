@@ -9,7 +9,7 @@ import UIKit
 /// 这个类型只运行在 `MainActor`：
 /// - 可以安全读取 UIView / UIViewController 的属性；
 /// - 产出的 fingerprint 是值类型，不会把 UIView 泄漏到非主线程；
-/// - ViewHierarchy、ViewTargets collector 与 UIKitActionExecutor 都应复用这里的逻辑，
+/// - ViewHierarchy、Inspect collector 与 UIKitActionExecutor 都应复用这里的逻辑，
 ///   避免三处各自拼字段，最终出现 fingerprint 字段漂移。
 @MainActor
 enum UIKitFingerprintCollector {
@@ -265,7 +265,7 @@ enum UIKitFingerprintCollector {
 
     // MARK: - Query-driven Fingerprint Collection
 
-    /// 按 `UIViewTargetsInput` 筛选条件遍历 rootView，生成 canonical 目标的指纹表
+    /// 按 `UIInspectInput` 筛选条件遍历 rootView，生成 canonical 目标的指纹表
     /// （`path → fingerprint`），供 `ui.wait(snapshotChanged)` 重采 whole-table 与签发表比对。
     ///
     /// 重构后的口径（spec §7）：
@@ -275,8 +275,8 @@ enum UIKitFingerprintCollector {
     ///   `UIKitSnapshotStore.matchesWholeTable` 整体比对；
     /// - `ui.screenshot` 不再签发 viewSnapshotID（结构化 freshness / locator 由 ui.inspect 负责）。
     ///
-    /// 筛选规则与 `UIViewTargetsCollector.isFull` 逐字对齐（canonical-only：UIControl 系 +
-    /// UIScrollView 系），保证 wait 重采表与 viewTargets 签发表同口径：
+    /// 筛选规则与 `UIInspectCollector.isFull` 逐字对齐（canonical-only：UIControl 系 +
+    /// UIScrollView 系），保证 wait 重采表与 ui.inspect 签发表同口径：
     /// - `includeHidden=false` 时 hidden 节点整棵子树剪枝；
     /// - 通过 `query.isFull` + `matchesIdentifier` 的节点才签发指纹；
     /// - `maxDepth` 限制递归深度（`nil` 不限）；
@@ -289,7 +289,7 @@ enum UIKitFingerprintCollector {
     /// - Returns: 命中 canonical 筛选的节点的 `path → fingerprint` 表。
     static func collectFingerprints(
         rootView: UIView,
-        query: UIViewTargetsInput,
+        query: UIInspectInput,
         digest: String
     ) -> [String: UIKitTargetFingerprint] {
         var result: [String: UIKitTargetFingerprint] = [:]
@@ -307,7 +307,7 @@ enum UIKitFingerprintCollector {
 
     /// 递归遍历并按 query 筛选签发指纹。
     ///
-    /// 与 `UIViewTargetsCollector.collect` 共用同一套 `isFull` / `matchesIdentifier` /
+    /// 与 `UIInspectCollector.collect` 共用同一套 `isFull` / `matchesIdentifier` /
     /// `includeHidden` / `maxDepth` 决策，确保指纹表与目标输出**逐字同筛选**。`maxTargets` 在此
     /// 不参与（指纹签发独立于响应规模限制）。
     private static func collectMatching(
@@ -315,7 +315,7 @@ enum UIKitFingerprintCollector {
         rootView: UIView,
         path: [Int],
         depth: Int,
-        query: UIViewTargetsInput,
+        query: UIInspectInput,
         digest: String,
         result: inout [String: UIKitTargetFingerprint]
     ) {
@@ -324,9 +324,9 @@ enum UIKitFingerprintCollector {
             return
         }
 
-        // 只为命中筛选的节点签发指纹；筛选逻辑与 UIViewTargetsCollector 完全相同。
-        if UIViewTargetsCollector.isFull(view: view, query: query),
-           UIViewTargetsCollector.matchesIdentifier(view: view, query: query) {
+        // 只为命中筛选的节点签发指纹；筛选逻辑与 UIInspectCollector 完全相同。
+        if UIInspectCollector.isFull(view: view, query: query),
+           UIInspectCollector.matchesIdentifier(view: view, query: query) {
             let pathString = UIKitViewLookupTarget.pathString(from: path)
             result[pathString] = fingerprint(
                 for: view,

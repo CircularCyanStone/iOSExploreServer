@@ -4,7 +4,7 @@ import iOSExploreServer
 /// 轻量 UI 目标查询参数。
 ///
 /// 该类型保持 Foundation-only，负责解析 `ui.inspect` 的 data，并约束响应规模。
-public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
+public struct UIInspectInput: CommandInput, Sendable, Equatable {
     private enum Fields {
         static let includeHidden = UIKitFilterFields.includeHidden
         static let maxDepth = UIKitFilterFields.maxDepth
@@ -62,7 +62,7 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     public let maxVisitedNodes: Int
 
     /// 默认查询：面向事件下发前的低成本目标发现。
-    public static let `default` = UIViewTargetsInput()
+    public static let `default` = UIInspectInput()
 
     /// 创建查询参数。
     ///
@@ -122,9 +122,9 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     /// 该方法只依赖 Foundation-only 的候选摘要，便于在非 UIKit 测试中覆盖采集器的包含策略。
     ///
     /// - Parameter candidate: 从真实 view 或测试用例抽取出的候选摘要（collector 由
-    ///   `UIViewTargetsCollector.makeCandidate(for:)` 统一构造，保证 full 判定与指纹签发同口径）。
+    ///   `UIInspectCollector.makeCandidate(for:)` 统一构造，保证 full 判定与指纹签发同口径）。
     /// - Returns: 当前查询参数下该候选是否为 full 节点。
-    public func isFull(candidate: UIViewTargetCandidate) -> Bool {
+    public func isFull(candidate: UIInspectCandidate) -> Bool {
         if !includeHidden, candidate.isHidden { return false }
         // rollup：控件内嵌展示节点（hasStaticText 且在 UIControl 子树内）rollup 到父 control，
         // 不独立 full。父 control 的 semanticText 已含其文本，独立签发会破坏"签发=可操作"。
@@ -141,8 +141,8 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
     /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
     /// - Returns: 已完成默认值填充和范围校验的查询参数。
     /// - Throws: 字段类型或范围非法时抛出 `CommandInputParseError`。
-    public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIViewTargetsInput {
-        UIViewTargetsInput(
+    public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIInspectInput {
+        UIInspectInput(
             includeHidden: try decoder.read(Fields.includeHidden),
             maxDepth: try decoder.read(Fields.maxDepth),
             accessibilityIdentifier: try decoder.read(Fields.accessibilityIdentifier),
@@ -158,7 +158,7 @@ public struct UIViewTargetsInput: CommandInput, Sendable, Equatable {
 ///
 /// UIKit 采集器负责把真实 `UIView` 转成该摘要，模型层只根据这些布尔状态执行纯决策，
 /// 避免把 UIKit 类型带入可在 macOS `swift test` 覆盖的策略测试。
-public struct UIViewTargetCandidate: Sendable, Equatable {
+public struct UIInspectCandidate: Sendable, Equatable {
     /// 是否隐藏。
     public let isHidden: Bool
     /// 是否为 UIControl 或等价控件候选。
@@ -217,7 +217,7 @@ public struct UIViewTargetCandidate: Sendable, Equatable {
 }
 
 /// 轻量 UI 目标角色。
-public enum UIViewTargetRole: String, Sendable, Equatable {
+public enum UIInspectRole: String, Sendable, Equatable {
     /// 按钮。
     case button
     /// 开关。
@@ -242,7 +242,7 @@ public enum UIViewTargetRole: String, Sendable, Equatable {
 }
 
 /// 轻量目标的可见性和交互状态。
-public struct UIViewTargetState: Sendable, Equatable {
+public struct UIInspectState: Sendable, Equatable {
     /// 是否隐藏。
     public let isHidden: Bool
     /// 透明度。
@@ -286,7 +286,7 @@ public struct UIViewTargetState: Sendable, Equatable {
 }
 
 /// 文本裁剪工具，避免目标查询返回大块文本。
-public enum UIViewTargetText {
+public enum UIInspectText {
     /// 按字符数限制文本长度。
     ///
     /// - Parameters:
@@ -301,13 +301,13 @@ public enum UIViewTargetText {
 }
 
 /// 单个轻量 UI 目标摘要。
-public struct UIViewTargetSummary: Sendable, Equatable {
+public struct UIInspectSummary: Sendable, Equatable {
     /// 当前快照内路径。
     public let path: String
     /// 运行时类型名。
     public let type: String
     /// 目标角色。
-    public let role: UIViewTargetRole
+    public let role: UIInspectRole
     /// 业务层设置的稳定标识符。
     ///
     /// 完整保留，不按 `textLimit` 裁剪——identifier 是事件下发的稳定定位键，截断会导致
@@ -333,7 +333,7 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     /// window 坐标系 frame。
     public let frame: UIViewHierarchyRect
     /// 目标状态。
-    public let state: UIViewTargetState
+    public let state: UIInspectState
     /// executor 实际可派发的动作（来自 `UIKitActionCapabilityResolver`）。
     ///
     /// 与 `role` 无关，按真实 view 类型和 enabled 状态生成。非 canonical 目标或 disabled 控件
@@ -376,7 +376,7 @@ public struct UIViewTargetSummary: Sendable, Equatable {
     ///     保持 full 输出与改造前逐字节一致；仅 collector 对结构节点显式置 `true`。
     public init(path: String,
                 type: String,
-                role: UIViewTargetRole,
+                role: UIInspectRole,
                 accessibilityIdentifier: String?,
                 accessibilityLabel: String?,
                 title: String?,
@@ -386,7 +386,7 @@ public struct UIViewTargetSummary: Sendable, Equatable {
                 semanticText: String? = nil,
                 semanticTextSource: String? = nil,
                 frame: UIViewHierarchyRect,
-                state: UIViewTargetState,
+                state: UIInspectState,
                 availableActions: UIKitActionAvailability = UIKitActionAvailability(actions: []),
                 indexPath: IndexPathSummary? = nil,
                 isMinimal: Bool = false) {

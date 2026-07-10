@@ -94,13 +94,13 @@ func navigationBarButtonExecutorRejectsTitleMismatch() {
     }
 }
 
-@Test("viewTargets 和 topViewHierarchy 返回 navigationBar 摘要") @MainActor
+@Test("ui.inspect 和 topViewHierarchy 返回 navigationBar 摘要") @MainActor
 func collectorsIncludeNavigationBarSummary() throws {
     let item = UIBarButtonItem(title: "控件测试", style: .plain, target: nil, action: nil)
     item.accessibilityIdentifier = "example.controlTest"
     let (context, _) = navigationContext(item: item)
 
-    let targetsData = UIViewTargetsCollector.collect(query: .default, context: context)
+    let targetsData = UIInspectCollector.collect(query: .default, context: context)
     let hierarchyData = UIViewHierarchyCollector.collectTopViewHierarchy(query: try UIViewHierarchyInput.parse(from: [:]),
                                                                          context: context)
 

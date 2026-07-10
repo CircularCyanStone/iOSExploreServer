@@ -6,7 +6,7 @@ import iOSExploreServer
 
 /// `UIKitActionExecutor` 全派发路径的运行时测试（Task 7 重构后）。
 ///
-/// 通过 `UIKitTestHost` 注入可控 view 树，先 `UIViewTargetsCollector.collect` 签发
+/// 通过 `UIKitTestHost` 注入可控 view 树，先 `UIInspectCollector.collect` 签发
 /// `viewSnapshotID`，再驱动 executor 的 locate / freshness / 默认激活路由 / sendActions，
 /// 覆盖重构后的语义：tap 按 `UIKitDefaultActivationResolver` 路由派发（button/switch/input），
 /// 无路由目标（slider/segmented）抛 unsupported_target，child label path 不激活父 button，
@@ -22,7 +22,7 @@ import iOSExploreServer
 /// 取一次 `ui.inspect` 签发的 viewSnapshotID，供交互命令携带做 freshness 校验。
 @MainActor
 private func testViewSnapshotID(context: UIKitContextProvider.Context) -> String {
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     guard let id = data["viewSnapshotID"]?.stringValue else {
         Issue.record("collect should produce viewSnapshotID")
         return ""

@@ -118,11 +118,7 @@ public enum ExploreLogging {
         state.withLock { $0.observers.removeValue(forKey: observation.id) }
     }
 
-    /// 派发一条日志到 sink。
-    ///
-    /// 在锁内只做等级过滤并取出 sink，真正写日志（`os_log`）放到锁外，避免临界区阻塞。
-    /// 该方法是库内唯一落盘入口：`ExploreLogger` 与扩展入口 `emitExtension` 都汇聚于此，
-    /// 保证开关、最小等级过滤和 sink 替换对所有日志来源统一生效。
+    /// 派发一条日志 record 到 `dispatch` 入口。
     ///
     /// - Parameter record: 待派发的日志记录。
     static func emit(_ record: ExploreLogRecord) {
@@ -131,8 +127,8 @@ public enum ExploreLogging {
 
     /// 按需构造并派发日志。
     ///
-    /// 没有 observer，且输出未开启或被等级过滤时，该方法不会构造 `message`，避免高频调试
-    /// 日志在关闭状态下仍产生字符串拼接成本。
+    /// 当存在 observer，或输出开启且等级通过最低门槛时，才会真正构造 `message`，
+    /// 避免高频调试日志在所有出口都关闭时仍产生字符串拼接成本。
     static func emit(level: ExploreLogLevel, category: String, message: @autoclosure () -> String) {
         let shouldBuild = state.withLock { state in
             if state.observers.isEmpty == false { return true }
@@ -142,6 +138,11 @@ public enum ExploreLogging {
         dispatch(ExploreLogRecord(level: level, category: category, message: message()))
     }
 
+    /// 真正的落盘入口：在锁内做等级过滤并取出 observer/sink，再在锁外执行回调。
+    ///
+    /// 所有日志来源——`emit(_:)`（ExploreLogRecord 重载）、`emit(level:category:message:)`
+    /// （autoclosure 重载）、`ExploreLogger` 各便捷方法、扩展模块 `emitExtension`——
+    /// 最终都汇聚于此，保证开关、最小等级过滤和 sink 替换对全部来源统一生效。
     private static func dispatch(_ record: ExploreLogRecord) {
         let delivery: (observers: [@Sendable (ExploreLogRecord) -> Void], sink: (@Sendable (ExploreLogRecord) -> Void)?) = state.withLock { state in
             let observers = Array(state.observers.values)
@@ -220,7 +221,7 @@ enum ExploreLogger {
         log(.fault, category, message())
     }
 
-    /// 统一的落盘入口：组装 record 并交给 `ExploreLogging.emit`。
+    /// 组装 record 并委托 `ExploreLogging.emit(level:category:message:)` 派发。
     private static func log(_ level: ExploreLogLevel,
                             _ category: ExploreLogCategory,
                             _ message: @autoclosure () -> String) {

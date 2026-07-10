@@ -12,3 +12,4 @@ DerivedData/
 MCPServer/node_modules/
 MCPServer/dist/
 .worktrees
+Examples/SPMExample/build/

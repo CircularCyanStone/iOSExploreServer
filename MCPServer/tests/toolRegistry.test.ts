@@ -13,8 +13,8 @@ describe("ToolRegistry", () => {
           return {
             commands: [
               {
-                action: "ui.viewTargets",
-                description: "targets",
+                action: "ui.inspect",
+                description: "inspect targets",
                 inputSchema: { type: "object", properties: {} }
               }
             ]
@@ -27,8 +27,8 @@ describe("ToolRegistry", () => {
     expect(result.toolCount).toBe(1);
     expect(result.conflicts).toEqual([]);
     expect(registry.tools()[0]).toMatchObject({
-      name: "ui_viewTargets",
-      action: "ui.viewTargets"
+      name: "ui_inspect",
+      action: "ui.inspect"
     });
   });
 

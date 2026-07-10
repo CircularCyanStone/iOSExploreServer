@@ -77,9 +77,9 @@
 
 ### 第 1 步：两个查询命令（最容易上手，~750 行）
 查询命令是纯读、无副作用，最适合先读：
-- `Commands/ViewTargets/UIViewTargetsModels.swift`（381 行）——**重点读 `UIViewTargetsInput.shouldInclude`**，这是 canonical 目标发现决策核心（含 UIControl 系 + UIScrollView 系 + 挂手势的非 control view；普通 label/container 不进 targets，观察职责在 `ui.topViewHierarchy`），而且全是 Foundation-only 逻辑。
-- `Commands/ViewTargets/UIViewTargetsCollector.swift`（270 行）——看 `collect(view:...)` 递归遍历 + 仅按最终 returned targets 签发 `viewSnapshotID` 的主流程。
-- `Commands/ViewTargets/ViewTargetsCommand.swift`（81 行）——最薄的 adapter，看"typed input → 调 collector → 打日志"模板。
+- `Commands/Inspect/UIInspectModels.swift`（381 行）——**重点读 `UIInspectInput.shouldInclude`**，这是 canonical 目标发现决策核心（含 UIControl 系 + UIScrollView 系 + 挂手势的非 control view；普通 label/container 不进 targets，观察职责在 `ui.topViewHierarchy`），而且全是 Foundation-only 逻辑。
+- `Commands/Inspect/UIInspectCollector.swift`（270 行）——看 `collect(view:...)` 递归遍历 + 仅按最终 returned targets 签发 `viewSnapshotID` 的主流程。
+- `Commands/Inspect/InspectCommand.swift`（81 行）——最薄的 adapter，看"typed input → 调 collector → 打日志"模板。
 - （可选）`Commands/TopViewHierarchy/` 三件套——结构类似，但多了完整树和 `UIViewHierarchyElement` 协议抽象，可略读。
 
 > 目标：吃透"AnyCommand 解析 typed input → adapter 调 MainActor collector → 返回 JSON + viewSnapshotID"这套模板。后两个命令照搬。

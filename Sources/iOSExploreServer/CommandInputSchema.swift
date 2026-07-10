@@ -131,7 +131,9 @@ public struct CommandInputSchema: Sendable, Equatable {
     /// 输出 JSON Schema object。
     ///
     /// - Returns: 包含 `type`、`properties`、`required`、`additionalProperties`、
-    ///   `x-iosExplore-propertyOrder` 以及扩展约束的 JSON object。
+    ///   `x-iosExplore-propertyOrder` 的 JSON object；并视跨字段约束输出 `oneOf`
+    ///   （单约束单元）或 `allOf` 嵌套 `oneOf`（多约束单元），以及
+    ///   `x-iosExplore-constraints` 扩展说明。
     public func toJSON() -> JSON {
         var properties: [String: JSONValue] = [:]
         var required: [JSONValue] = []

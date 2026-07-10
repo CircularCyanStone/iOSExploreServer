@@ -127,8 +127,8 @@ public struct ExploreRequest: Sendable, Equatable {
 /// 命令 handler 的业务执行结果。
 ///
 /// 注意它表达的是业务层成功或失败。通信层错误，例如非 `POST /`、HTTP body 不完整、
-/// JSON 无法解析，不会通过 `ExploreResult` 返回，而是由 HTTP 层直接生成 400/500
-/// envelope。
+/// JSON 无法解析，以及资源层错误（连接数超限、命令超时等），不会通过 `ExploreResult`
+/// 返回，而是由 HTTP/资源层直接生成 4xx/5xx（400/500/503 等）envelope。
 public enum ExploreResult: Sendable, Equatable {
     /// 业务成功，`JSON` 会被序列化进响应 envelope 的 `data` 字段，顶层 `code` 为 `ok`。
     case success(JSON)
@@ -139,9 +139,10 @@ public enum ExploreResult: Sendable, Equatable {
 
 /// 统一 envelope 中失败 `code` 的取值。
 ///
-/// 通信失败用 HTTP 状态码表达，业务失败统一 HTTP 200 + 顶层 `code`。新增能力（如 UIKit
-/// 扩展命令）的业务错误码必须先在此枚举落点，再由对应错误工厂（`ExploreServerError` /
-/// `UIKitCommandError`）引用，避免在调用点散写字符串。
+/// 通信失败用 HTTP 状态码表达，业务失败统一 HTTP 200 + 顶层 `code`。新增能力（如 UIKit、
+/// Diagnostics 扩展命令）的业务错误码必须先在此枚举落点，再由各模块错误类型
+/// （`ExploreServerError` 的相关 `static func`、`UIKitCommandError`、
+/// `DiagnosticsCommandError`）引用，避免在调用点散写字符串。
 public enum ExploreError: String, Sendable {
     /// `Router` 没有找到请求 action 对应的命令。
     case unknownAction = "unknown_action"
@@ -238,6 +239,12 @@ public enum ExploreError: String, Sendable {
 
     /// 找不到可滚动的容器视图，无法执行滚动命令。
     case scrollContainerUnavailable = "scroll_container_unavailable"
+
+    /// 滚动容器存在但不可滚动（isScrollEnabled=false 或 window=nil）。
+    ///
+    /// 区别于 `scrollContainerUnavailable`（容器本身不存在）：这里容器已定位，
+    /// 但因 `isScrollEnabled=false` 或已脱离 window 而无法执行滚动。
+    case containerNotScrollable = "container_not_scrollable"
 
     /// 日志 cursor 属于旧的捕获 session，调用方需要重新建立检查点。
     case staleCursor = "stale_cursor"

@@ -2,13 +2,13 @@ import Testing
 @testable import iOSExploreServer
 @testable import iOSExploreUIKit
 
-/// `UIViewTargetSummary.isMinimal` + `toJSON` 分档测试。
+/// `UIInspectSummary.isMinimal` + `toJSON` 分档测试。
 ///
 /// minimal 档仅输出 `{path, type}`，用于 collector 把无识别信息的结构节点（如
 /// `UITableViewCell` 内层 `UIView`）暴露给 agent 做结构遍历，但不签 fingerprint、
 /// 不引诱 agent 对其执行 tap 等操作；full 档输出全部字段，行为与改造前完全一致。
-@Suite("UIViewTargetSummary isMinimal 分档")
-struct UIViewTargetSummaryTests {
+@Suite("UIInspectSummary isMinimal 分档")
+struct UIInspectSummaryTests {
     @Test("minimal 档 toJSON 只含 path + type")
     func minimalToJSONOnlyPathAndType() throws {
         let summary = Self.makeSummary(path: "root/5/0", type: "UITableViewCell", isMinimal: true)
@@ -59,7 +59,7 @@ struct UIViewTargetSummaryTests {
     @Test("isMinimal 默认 false（现有构造点不传仍 full）")
     func isMinimalDefaultsFalse() {
         // 不传 isMinimal —— 模拟 collector 现有所有构造点
-        let summary = UIViewTargetSummary(
+        let summary = UIInspectSummary(
             path: "root/2",
             type: "UIView",
             role: .container,
@@ -70,7 +70,7 @@ struct UIViewTargetSummaryTests {
             placeholder: nil,
             value: nil,
             frame: UIViewHierarchyRect(x: 0, y: 0, width: 100, height: 50),
-            state: UIViewTargetState(isHidden: false,
+            state: UIInspectState(isHidden: false,
                                      alpha: 1,
                                      isUserInteractionEnabled: true,
                                      isEnabled: true,
@@ -90,8 +90,8 @@ struct UIViewTargetSummaryTests {
                             type: String,
                             text: String? = "hello",
                             accessibilityIdentifier: String? = "label.title",
-                            isMinimal: Bool = false) -> UIViewTargetSummary {
-        UIViewTargetSummary(
+                            isMinimal: Bool = false) -> UIInspectSummary {
+        UIInspectSummary(
             path: path,
             type: type,
             role: .container,
@@ -102,7 +102,7 @@ struct UIViewTargetSummaryTests {
             placeholder: nil,
             value: nil,
             frame: UIViewHierarchyRect(x: 0, y: 0, width: 100, height: 50),
-            state: UIViewTargetState(isHidden: false,
+            state: UIInspectState(isHidden: false,
                                      alpha: 1,
                                      isUserInteractionEnabled: true,
                                      isEnabled: true,

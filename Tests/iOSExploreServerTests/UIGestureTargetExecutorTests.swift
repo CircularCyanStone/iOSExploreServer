@@ -6,7 +6,7 @@ import iOSExploreServer
 
 /// `ui.tap` 手势 target-action adapter（`UIGestureTargetExecutor` + `executeTap` 手势分支）的运行时测试。
 ///
-/// 通过 `UIKitTestHost` 注入挂有 `UIGestureRecognizer` 的 view 树，先 `UIViewTargetsCollector.collect`
+/// 通过 `UIKitTestHost` 注入挂有 `UIGestureRecognizer` 的 view 树，先 `UIInspectCollector.collect`
 /// 签发 `viewSnapshotID`（带 gesture 的 view 是 canonical target，会被签发），再驱动 executor 的
 /// locate / freshness / 手势 adapter 派发。覆盖：基础 1 参 action 触发、0/1/2 参签名适配、多 gesture
 /// 全触发、单 gesture 多 target 全触发、target 已 dealloc 时安全降级到 `unsupported_target`。
@@ -30,7 +30,7 @@ private final class GestureTarget: NSObject {
 /// 取一次 `ui.inspect` 签发的 viewSnapshotID，供 `ui.tap` 携带做 freshness 校验。
 @MainActor
 private func testViewSnapshotID(context: UIKitContextProvider.Context) -> String {
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     guard let id = data["viewSnapshotID"]?.stringValue else {
         Issue.record("collect should produce viewSnapshotID")
         return ""

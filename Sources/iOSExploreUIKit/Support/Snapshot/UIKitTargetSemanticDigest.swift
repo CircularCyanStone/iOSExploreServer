@@ -41,7 +41,7 @@ enum UIKitTargetSemanticDigest {
         }
 
         mix("type=\(String(describing: Swift.type(of: view)))")
-        mix("role=\(UIViewTargetsCollector.role(for: view).rawValue)")
+        mix("role=\(UIInspectCollector.role(for: view).rawValue)")
         mix("id=\(UIKitTargetFingerprint.stableHash(view.accessibilityIdentifier ?? ""))")
         mix("label=\(UIKitTargetFingerprint.stableHash(view.accessibilityLabel ?? ""))")
         mix("value=\(UIKitTargetFingerprint.stableHash(view.accessibilityValue ?? ""))")

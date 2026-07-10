@@ -37,7 +37,8 @@ public struct LogRedactor: Sendable, Equatable {
     /// 脱敏 metadata。
     ///
     /// - Parameter metadata: 宿主传入的轻量结构化上下文。
-    /// - Returns: key 命中敏感规则时 value 替换为 `[REDACTED]`。
+    /// - Returns: 经脱敏处理后的 metadata：key 命中敏感规则时 value 整体替换为 `[REDACTED]`；
+    ///   否则 value 经 `redactMessage(_:)` 中的 regex 规则替换敏感片段。
     public func redactMetadata(_ metadata: [String: String]?) -> [String: String]? {
         guard let metadata else { return nil }
         var redacted: [String: String] = [:]

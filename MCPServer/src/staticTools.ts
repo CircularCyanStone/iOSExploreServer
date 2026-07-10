@@ -3,7 +3,7 @@ import { errorResult, jsonResult } from "./result.js";
 import type { IOSExploreCaller } from "./toolRegistry.js";
 import type { JSONObject, MCPToolResult, StructuredError } from "./types.js";
 
-// ui.inspect（原 ui.viewTargets）的合法可选字段。
+// ui.inspect 合法可选字段（used for inspectOptions whitelist）。
 // Task 3 已从 Swift inputSchema 删除 includeDisabled/includeStaticText/includeContainers，
 // 此处同步移除，避免 pickAllowedFields 把 App 不认识的键透传过去。
 const inspectOptionKeys = [
@@ -15,10 +15,22 @@ const inspectOptionKeys = [
   "maxTargets"
 ] as const;
 
+// ui.waitAny 合法字段（used for waitAny input whitelist）。
+// 等同于 waitAndInspectSchema().properties 的顶层键名，
+// 与 App 端 ui.waitAny inputSchema additionalProperties:false 保持一致。
+const waitAnyKeys = [
+  "conditions",
+  "timeoutMs",
+  "intervalMs",
+  "stableMs",
+  "includeHidden"
+] as const;
+
 type RegistryLike = {
   refresh(): Promise<{ toolCount: number; conflicts: unknown[]; error?: unknown }>;
   tools(): unknown[];
   conflicts(): unknown[];
+  refreshError(): StructuredError | undefined;
 };
 
 type StaticTool = {
@@ -51,7 +63,14 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
       inputSchema: { type: "object", properties: {} },
       handler: async () => {
         const result = await registry.refresh();
-        return jsonResult(result as JSONObject);
+        // 与 health_check 对齐：统一用 dynamicToolCount 表达"动态工具数量"，
+        // 不再混用 toolCount/dynamicToolCount 两套字段名（之前 health_check 用
+        // dynamicToolCount 而 refresh_tools 返回 toolCount，调用方难以一致消费）。
+        return jsonResult({
+          dynamicToolCount: result.toolCount,
+          conflicts: result.conflicts,
+          ...(result.error ? { error: result.error } : {})
+        });
       }
     },
     call_action: {
@@ -70,11 +89,25 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
         if (!action) {
           return errorResult({ source: "mcp_server" as const, code: "missing_action", message: "call_action requires an 'action' field" });
         }
+        const data = objectValue(input.data);
         try {
-          return jsonResult(await client.call(action, objectValue(input.data)));
+          return jsonResult(await client.call(action, data));
         } catch (error) {
-          const normalized = normalizeError(error);
-          return resultForFailure(normalized);
+          // transport 失败做一次重试，仍失败就附上 healthCheck + nextSteps，
+          // 与动态工具（server.ts:callTool）的 transport 错误模式对齐，
+          // 让 Agent 在兜底工具上也能拿到相同的排障上下文（不再是裸的 connection_failed）。
+          if (isTransportError(error)) {
+            await sleep(200);
+            try {
+              return jsonResult(await client.call(action, data));
+            } catch (retryError) {
+              if (isTransportError(retryError)) {
+                return errorResult(await enrichTransportError(retryError, client));
+              }
+              return resultForFailure(normalizeError(retryError));
+            }
+          }
+          return resultForFailure(normalizeError(error));
         }
       }
     },
@@ -85,7 +118,7 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
       handler: async input => {
         const inspectOptions = pickAllowedFields(objectValue(input.inspectOptions), inspectOptionKeys);
         try {
-          const wait = await client.call("ui.waitAny", withoutKey(input, "inspectOptions"));
+          const wait = await client.call("ui.waitAny", pickAllowedFields(input, waitAnyKeys));
           const observation = await client.call("ui.inspect", inspectOptions);
           return jsonResult({ wait, observation });
         } catch (error) {
@@ -181,4 +214,35 @@ function normalizeError(error: unknown): StructuredError {
     code: "unexpected_error",
     message: error instanceof Error ? error.message : String(error)
   };
+}
+
+// transport 错误判定与 server.ts 中动态工具路径一致，避免兜底工具走另一套判定。
+function isTransportError(error: unknown): error is IOSExploreStructuredError {
+  return error instanceof IOSExploreStructuredError && error.source === "transport";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// 与 server.ts 中 enrichTransportError 对齐：兜底工具的 transport 失败也带
+// retry/healthCheck/nextSteps 三段排障上下文，调用方拿到的错误结构在不同入口上一致。
+async function enrichTransportError(error: IOSExploreStructuredError, caller: IOSExploreCaller): Promise<StructuredError & JSONObject> {
+  const normalized = error.toJSON();
+  return {
+    ...normalized,
+    retry: { attempted: true, delayMs: 200, succeeded: false },
+    healthCheck: await pingHealthCheck(caller),
+    nextSteps: [
+      "iOSExplore App 当前不可达；如果是真机调试，请确认 App 仍在运行、iproxy 仍在监听 38321，并用 XcodeBuildMCP launch_app_device 以 IOS_EXPLORE_AUTOSTART=1 重启后再试。"
+    ]
+  };
+}
+
+async function pingHealthCheck(caller: IOSExploreCaller): Promise<JSONObject> {
+  try {
+    return { ok: true, ping: await caller.call("ping") };
+  } catch (error) {
+    return { ok: false, error: normalizeError(error) };
+  }
 }

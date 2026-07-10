@@ -4,8 +4,8 @@ import Testing
 @testable import iOSExploreUIKit
 
 @Test("ui.inspect 命令 schema 声明 typed input 字段")
-func viewTargetsCommandSchemaMatchesInputFields() {
-    #expect(ViewTargetsCommand.Input.inputSchema.fields.map(\.name) == UIViewTargetsInput.inputSchema.fields.map(\.name))
+func inspectCommandSchemaMatchesInputFields() {
+    #expect(InspectCommand.Input.inputSchema.fields.map(\.name) == UIInspectInput.inputSchema.fields.map(\.name))
 }
 
 @Test("ui.topViewHierarchy 命令 schema 声明 typed input 字段")

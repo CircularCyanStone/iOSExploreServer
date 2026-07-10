@@ -4,7 +4,7 @@ import iOSExploreServer
 /// `ui.screenshot` 的命令参数（Foundation-only，macOS SPM 可测 schema/parse）。
 ///
 /// 该类型刻意不 `import UIKit`，使 schema 与解析逻辑在 macOS 单元测试下可独立驱动，
-/// 与既有 `UIViewTargetsInput` / `UIKitLocatorInput` 的拆分模式一致。UIKit 渲染逻辑由
+/// 与既有 `UIInspectInput` / `UIKitLocatorInput` 的拆分模式一致。UIKit 渲染逻辑由
 /// `UIScreenshotCollector` 在 `#if canImport(UIKit)` 内完成，UIKit 类型不穿过本边界。
 ///
 /// `maxDimension` 语义为像素（pixel）长边上限，不是 point：渲染后按 `cgImage.width/height`

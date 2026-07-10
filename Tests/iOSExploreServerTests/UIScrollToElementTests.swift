@@ -72,13 +72,15 @@ func scrollToElementContainerNotScrollViewThrows() {
     }
 }
 
-@Test("scrollToElement 容器禁用滚动抛 scrollContainerUnavailable") @MainActor
+@Test("scrollToElement 容器禁用滚动抛 containerNotScrollable") @MainActor
 func scrollToElementDisabledContainerThrows() {
     let context = UIKitTestHost.context { root in
         let scrollView = UIScrollView()
         scrollView.frame = CGRect(x: 0, y: 0, width: 320, height: 568)
         scrollView.contentSize = CGSize(width: 320, height: 2000)
         // 禁用滚动：scrollRectToVisible 会变 no-op，executor 必须显式失败而非 found=true。
+        // 容器已存在但不可滚动——区别于容器不存在（scrollContainerUnavailable），命中
+        // containerNotScrollable，避免 agent 误以为容器不存在而反复 inspect 重试。
         scrollView.isScrollEnabled = false
         let label = UILabel()
         label.text = "目标"
@@ -91,7 +93,8 @@ func scrollToElementDisabledContainerThrows() {
         _ = try UIScrollToElementExecutor.execute(input: input, context: context)
         Issue.record("expected failure, got success")
     } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .scrollContainerUnavailable)
+        #expect(error.failure.code == .containerNotScrollable)
+        #expect(error.failure.message == "scroll container exists but is not scrollable (isScrollEnabled=false or window=nil)")
     } catch {
         Issue.record("unexpected error: \(error)")
     }

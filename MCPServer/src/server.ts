@@ -17,6 +17,9 @@ type RegistryLike = {
   tools(): ToolDefinition[];
   findByName(name: string): ToolDefinition | undefined;
   refresh(): Promise<unknown>;
+  // 上一次 refresh 失败的结构化错误；refresh 成功后为 undefined。
+  // lazy-refresh 路径用它判断 "工具不存在" 是真不存在，还是 refresh 失败导致没工具。
+  refreshError(): StructuredError | undefined;
 };
 
 export function createToolHandlers(options: {
@@ -42,6 +45,14 @@ export function createToolHandlers(options: {
       if (!dynamic && isIOSExploreDynamicToolName(name)) {
         await options.registry.refresh();
         dynamic = options.registry.findByName(name);
+        // 如果 refresh 失败且工具仍未注册，透传 refresh 的结构化错误，
+        // 避免把 "App 不可达/transport 故障" 误报成 "unknown_tool"。
+        if (!dynamic) {
+          const refreshErr = options.registry.refreshError();
+          if (refreshErr) {
+            return errorResult({ ...refreshErr, message: `Connection failed: ${refreshErr.message}` });
+          }
+        }
       }
       if (dynamic?.action) {
         try {
@@ -49,6 +60,7 @@ export function createToolHandlers(options: {
           if (dynamic.action === "ui.screenshot" && typeof data.image === "string" && data.format === "png") {
             const { image, ...rest } = data;
             return {
+              isError: false,
               content: [
                 { type: "image", data: image, mimeType: "image/png" },
                 { type: "text", text: JSON.stringify(rest) }

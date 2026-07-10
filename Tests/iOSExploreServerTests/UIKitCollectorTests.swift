@@ -4,15 +4,15 @@ import Testing
 import iOSExploreServer
 @testable import iOSExploreUIKit
 
-/// `UIViewTargetsCollector` 与 `UIViewHierarchyCollector` 的端到端测试（Task 4/8 重构后）。
+/// `UIInspectCollector` 与 `UIViewHierarchyCollector` 的端到端测试（Task 4/8 重构后）。
 ///
 /// 通过 `UIKitTestHost` 注入可控 view 树，验证采集器整条流水线（遍历 → canonical 筛选 →
 /// 生成摘要/树 → 只对返回 target 签发 viewSnapshotID）。重构后 `ui.inspect` 只输出
 /// canonical interaction target（UIControl / UIScrollView 系），普通 identifier/label view
 /// 不再进入 targets（其观察职责在 `ui.topViewHierarchy`）。
 
-@Test("viewTargets 只采集 canonical target 并签发 viewSnapshotID") @MainActor
-func viewTargetsCollectsCanonicalTargetsOnly() {
+@Test("ui.inspect 只采集 canonical target 并签发 viewSnapshotID") @MainActor
+func inspectCollectsCanonicalTargetsOnly() {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.accessibilityIdentifier = "submit"
@@ -28,7 +28,7 @@ func viewTargetsCollectsCanonicalTargetsOnly() {
         root.addSubview(plain) // root/2 plain（非 canonical → 不采集）
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     // button（UIControl）+ tagged（hasAccessibilityIdentifier）都是 full target；
     // root 容器 + plain 空容器是 minimal 结构节点（维持层级）。Task 6 后全节点输出：
     // fullCount=2（button+tagged），minimalCount=2（root+plain），targetCount=4。
@@ -61,8 +61,8 @@ func viewTargetsCollectsCanonicalTargetsOnly() {
     #expect(buttonActions.isEmpty == false)
 }
 
-@Test("viewTargets 签发的指纹集合等于返回的 target path 集合") @MainActor
-func viewTargetsSignsFingerprintsForReturnedPathsOnly() throws {
+@Test("ui.inspect 签发的指纹集合等于返回的 target path 集合") @MainActor
+func inspectSignsFingerprintsForReturnedPathsOnly() throws {
     // 不变式：returned target paths == viewSnapshotID 签发 fingerprint paths == tap/sendAction 可执行集合。
     // 用 maxTargets 截断验证：两个 button 但 maxTargets=1，只返回/签发 1 个，第 2 个 path 视为 stale。
     let context = UIKitTestHost.context { root in
@@ -75,8 +75,8 @@ func viewTargetsSignsFingerprintsForReturnedPathsOnly() throws {
         root.addSubview(button2)
     }
 
-    let query = UIViewTargetsInput(maxTargets: 1)
-    let data = UIViewTargetsCollector.collect(query: query, context: context)
+    let query = UIInspectInput(maxTargets: 1)
+    let data = UIInspectCollector.collect(query: query, context: context)
     // root（minimal）+ button1（full，fullCount=1 触发截断）。minimal 不占配额，button2 不签发。
     #expect(data["targetCount"]?.doubleValue == 2)
     #expect(data["fullCount"]?.doubleValue == 1)
@@ -102,8 +102,8 @@ func viewTargetsSignsFingerprintsForReturnedPathsOnly() throws {
     #expect(UIKitSnapshotStore.shared.isStale(viewSnapshotID: viewSnapshotID, path: "root/1", context: snapContext, current: secondFp))
 }
 
-@Test("viewTargets 把按钮语义文本汇总到 canonical target") @MainActor
-func viewTargetsAggregatesButtonSemanticText() throws {
+@Test("ui.inspect 把按钮语义文本汇总到 canonical target") @MainActor
+func inspectAggregatesButtonSemanticText() throws {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.setTitle("提交订单", for: .normal)
@@ -111,7 +111,7 @@ func viewTargetsAggregatesButtonSemanticText() throws {
         root.addSubview(button)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     // minimal 节点（root 容器） toJSON 无 role；按 role 找 button full target。
     guard case .array(let targets)? = data["targets"],
           case .object(let buttonTarget)? = targets.first(where: {
@@ -129,8 +129,8 @@ func viewTargetsAggregatesButtonSemanticText() throws {
     #expect(buttonTarget["semanticTextSource"]?.stringValue == "buttonTitle")
 }
 
-@Test("viewTargets 按钮内部 title label rollup 到父 control，不独立签发") @MainActor
-func viewTargetsRollsUpButtonInternalLabel() throws {
+@Test("ui.inspect 按钮内部 title label rollup 到父 control，不独立签发") @MainActor
+func inspectRollsUpButtonInternalLabel() throws {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.setTitle("提交订单", for: .normal)
@@ -142,7 +142,7 @@ func viewTargetsRollsUpButtonInternalLabel() throws {
     // （label 无默认激活路由），破坏"签发=可操作"。rollup 后控件子树整棵剪枝：内部 label 既不
     // 进 full 也不进 minimal，更不签发 fingerprint（Task 6 的 isInControlSubtree 剪枝）。
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     // root（minimal）+ button（full）。内部 title label 被剪枝，不出现在 targets。
     // 若剪枝失效，UIButtonLabel 会命中 hasStaticText 进 full 或沦为 minimal，targetCount > 2。
     #expect(data["targetCount"]?.doubleValue == 2)
@@ -162,8 +162,8 @@ func viewTargetsRollsUpButtonInternalLabel() throws {
     #expect(buttonTarget["semanticTextSource"]?.stringValue == "buttonTitle")
 }
 
-@Test("viewTargets cell 内 label 不受 control rollup 影响，仍 full 签发") @MainActor
-func viewTargetsKeepsCellInternalLabelFull() throws {
+@Test("ui.inspect cell 内 label 不受 control rollup 影响，仍 full 签发") @MainActor
+func inspectKeepsCellInternalLabelFull() throws {
     let context = UIKitTestHost.context { root in
         // UITableViewCell 不是 UIControl；cell 子树内 label 的祖先链
         // （label → contentView → cell → root）无 UIControl → isInControlSubtree=false → 仍 full。
@@ -177,7 +177,7 @@ func viewTargetsKeepsCellInternalLabelFull() throws {
         root.addSubview(cell)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     guard case .array(let targets)? = data["targets"] else {
         Issue.record("targets not array")
         return

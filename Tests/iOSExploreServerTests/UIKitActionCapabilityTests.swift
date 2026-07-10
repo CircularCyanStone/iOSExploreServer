@@ -169,7 +169,7 @@ func nonControlTargetDoesNotInheritAncestorControlActions() {
     button.addSubview(container)
     container.addSubview(leaf)
 
-    let availability = UIViewTargetsCollector.availableActions(for: leaf, rootView: root)
+    let availability = UIInspectCollector.availableActions(for: leaf, rootView: root)
     #expect(availability.actions.isEmpty)
 }
 #endif

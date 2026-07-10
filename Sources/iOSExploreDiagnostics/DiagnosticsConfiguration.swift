@@ -17,8 +17,11 @@ public struct DiagnosticsConfiguration: Sendable, Equatable {
     public let captureNSLog: Bool
     /// 是否尝试通过 `OSLogStore` 读取当前进程的 Apple Unified Logging entry。
     ///
-    /// 该来源覆盖系统允许读取到的 `os_log` 与 Swift `Logger` 输出；如果当前 OS 或沙箱不允许
-    /// 读取，状态会返回 `unavailable`，不会静默伪装为已捕获。
+    /// 该来源覆盖系统允许读取到的 `os_log` 与 Swift `Logger` 输出。注意该来源会过滤
+    /// `subsystem` 以 `com.apple.` 开头的系统框架 entry（如 Foundation、UIKit、CFNetwork
+    /// 等），避免宿主调试视图被系统日志淹没。仅宿主自行写入的 `os_log` / Logger entry
+    /// （subsystem 不以 `com.apple.` 开头）会被捕获。如果当前 OS 或沙箱不允许读取
+    /// `OSLogStore`，状态会返回 `unavailable`，不会静默伪装为已捕获。
     public let captureOSLog: Bool
     /// 是否把捕获到的 stdout/stderr 字节同步写回原始 fd，便于保留宿主原有控制台输出。
     public let teeToOriginalStreams: Bool

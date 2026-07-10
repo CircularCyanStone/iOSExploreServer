@@ -3,12 +3,13 @@ import Foundation
 import iOSExploreServer
 import UIKit
 
-/// 当前顶部控制器轻量交互目标查询命令。
+/// 当前顶部控制器可操作交互目标查询命令。
 ///
-/// action 为 `ui.inspect`。命令面向**事件下发前的目标发现**：只返回可被现有公开命令
+/// action 为 `ui.inspect`。命令面向**事件下发前的目标发现**：返回可被现有公开命令
 /// （`ui.tap` / `ui.control.sendAction` / `ui.input`）直接操作的 canonical target——
-/// `UIControl`、`UIScrollView` 系、挂有 `UIGestureRecognizer` 的 view。普通 `UILabel`、
-/// container、纯展示 view 不进入列表（其观察职责在 `ui.topViewHierarchy`）。
+/// `UIControl`、`UIScrollView` 系、挂有 `UIGestureRecognizer` 的 view、**以及含静态文本、
+/// accessibility label 或 accessibility identifier 的展示节点**。容器、纯装饰 view、
+/// 无文本无 a11y 信息的非交互节点不进入列表。
 ///
 /// 与 `ui.topViewHierarchy` 的关键差异：
 /// - **签发 `viewSnapshotID`**——`ui.tap` / `ui.control.sendAction` / `ui.input` 调用前
@@ -21,7 +22,7 @@ import UIKit
 ///   调用方按 section/item 选行不再依赖 subviews 物理顺序或 frame.y 猜——subviews 顺序由
 ///   z-order 决定，与行号无关。`UITableViewCell` / `UICollectionViewCell` 节点本身因不是
 ///   canonical target 不进入列表，要看 cell 节点本身用 `ui.topViewHierarchy`。
-/// - **indexPath 字段在两者都已存在**，按命令用途择优：要后续 tap/sendAction 选 `viewTargets`；
+/// - **indexPath 字段在两者都已存在**，按命令用途择优：要后续 tap/sendAction 选 `ui.inspect`；
 ///   只看 cell 与 indexPath 的映射（无 tap 意图）选 `topViewHierarchy`，结构更接近视图树。
 ///
 /// 适用场景：
@@ -29,15 +30,15 @@ import UIKit
 ///   `path` + `viewSnapshotID` 直接 tap，单命令完成。
 /// - 已知 `accessibilityIdentifier` 想确认 view 是否可达 → 本命令比 `topViewHierarchy` 轻。
 /// - 看完整视图结构 / 颜色 / 字体 / 验收字段 → 用 `ui.topViewHierarchy`。
-struct ViewTargetsCommand: Command {
+struct InspectCommand: Command {
     /// typed 输入模型，负责 schema 暴露和 data 解析。
-    typealias Input = UIViewTargetsInput
+    typealias Input = UIInspectInput
 
     /// 固定 action 名，供注册、日志和错误工厂复用。
     static let actionName = "ui.inspect"
 
     /// 命令名。
-    let action = ViewTargetsCommand.actionName
+    let action = InspectCommand.actionName
 
     /// `help` 命令展示的说明。
     let description = "返回可被 ui.tap / ui.control.sendAction / ui.input 直接操作的 canonical target 列表，签发 viewSnapshotID；调用方按 indexPath 字段选 cell，不依赖 subviews 顺序或 y 坐标"
@@ -46,10 +47,10 @@ struct ViewTargetsCommand: Command {
     ///
     /// - Parameter input: 已通过 typed schema 校验的查询参数。
     /// - Returns: 成功时返回 targets 列表；参数非法或 UIKit 上下文不可用时返回业务失败 envelope。
-    func handle(_ input: UIViewTargetsInput) async throws -> ExploreResult {
+    func handle(_ input: UIInspectInput) async throws -> ExploreResult {
         UIKitCommandLogging.info("command", "command \(action) start input=typed")
         do {
-            let data = try await UIViewTargetsCollector.collect(query: input)
+            let data = try await UIInspectCollector.collect(query: input)
             let targetCount = data["targetCount"]?.doubleValue ?? 0
             let visitedCount = data["visitedNodeCount"]?.doubleValue ?? 0
             UIKitCommandLogging.info("command", "command \(action) completed targetCount=\(targetCount) visitedNodeCount=\(visitedCount)")

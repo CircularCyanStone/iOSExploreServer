@@ -14,15 +14,15 @@ import UIKit
 /// 截断，再只为最终返回的 target 逐个采集指纹并签发，禁止签发未返回的 path（否则 Agent 仍
 /// 可猜 path 执行）。
 @MainActor
-enum UIViewTargetsCollector {
+enum UIInspectCollector {
     /// 采集当前顶部控制器 view 下的轻量目标列表。
     ///
     /// - Parameter query: 查询参数，控制包含策略、递归深度、identifier 筛选和文本长度。
     /// - Returns: screen、targetCount、visitedNodeCount、targets、viewSnapshotID 的 JSON。
     /// - Throws: `UIKitCommandError.hierarchyUnavailable`——UIKit 上下文不可用时。
-    static func collect(query: UIViewTargetsInput) throws -> JSON {
-        UIKitCommandLogging.info("command", "ui view targets collect mainactor start includeHidden=\(query.includeHidden) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit) maxTargets=\(query.maxTargets) maxVisitedNodes=\(query.maxVisitedNodes)")
-        let context = try UIKitContextProvider.currentContext(action: ViewTargetsCommand.actionName)
+    static func collect(query: UIInspectInput) throws -> JSON {
+        UIKitCommandLogging.info("command", "ui.inspect collect mainactor start includeHidden=\(query.includeHidden) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit) maxTargets=\(query.maxTargets) maxVisitedNodes=\(query.maxVisitedNodes)")
+        let context = try UIKitContextProvider.currentContext(action: InspectCommand.actionName)
         return collect(query: query, context: context)
     }
 
@@ -36,7 +36,7 @@ enum UIViewTargetsCollector {
     ///   - query: 查询参数。
     ///   - context: 当前 UIKit 查询上下文。
     /// - Returns: targets 列表 JSON（含 viewSnapshotID）。
-    static func collect(query: UIViewTargetsInput, context: UIKitContextProvider.Context) -> JSON {
+    static func collect(query: UIInspectInput, context: UIKitContextProvider.Context) -> JSON {
         var visitedNodeCount = 0
         var fullCount = 0
         var collected: [CollectedTarget] = []
@@ -115,7 +115,7 @@ enum UIViewTargetsCollector {
                 )
             )
         )
-        UIKitCommandLogging.info("command", "ui view targets collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(collected.count) fullCount=\(fullCount) minimalCount=\(minimalCount) fingerprints=\(fingerprints.count) topViewController=\(String(describing: type(of: context.topViewController)))")
+        UIKitCommandLogging.info("command", "ui.inspect collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(collected.count) fullCount=\(fullCount) minimalCount=\(minimalCount) fingerprints=\(fingerprints.count) topViewController=\(String(describing: type(of: context.topViewController)))")
         return data
     }
 
@@ -125,7 +125,7 @@ enum UIViewTargetsCollector {
     /// `isFull` 决定该节点是否参与指纹签发：只有 full 节点签发 fingerprint 并进入
     /// `viewSnapshotID`，minimal 节点只输出 path+type 维持层级，不签发、不占 `maxTargets` 配额。
     private struct CollectedTarget {
-        let summary: UIViewTargetSummary
+        let summary: UIInspectSummary
         let view: UIView
         let isFull: Bool
     }
@@ -175,7 +175,7 @@ enum UIViewTargetsCollector {
                                 window: UIWindow,
                                 path: [Int],
                                 depth: Int,
-                                query: UIViewTargetsInput,
+                                query: UIInspectInput,
                                 visitedNodeCount: inout Int,
                                 fullCount: inout Int,
                                 collected: inout [CollectedTarget]) -> CollectionTruncation {
@@ -230,11 +230,11 @@ enum UIViewTargetsCollector {
     /// candidate（Task 8 的 fingerprint collector 亦复用，不重复提取）。`isInControlSubtree`
     /// 在此计算：自身非 `UIControl` 且祖先链含 `UIControl`（`explore_controlAncestor`），
     /// 让 `hasStaticText` 的控件内嵌展示节点 rollup 到父 control。
-    static func makeCandidate(for view: UIView) -> UIViewTargetCandidate {
+    static func makeCandidate(for view: UIView) -> UIInspectCandidate {
         // 自身是 UIControl 时不计入 control 子树——它走 isControl 规则独立 full，
         // 不应被 rollup 排除。
         let isInControlSubtree = !(view is UIControl) && view.explore_controlAncestor != nil
-        return UIViewTargetCandidate(
+        return UIInspectCandidate(
             isHidden: view.isHidden,
             isControl: view is UIControl,
             isUserInteractionEnabled: view.isUserInteractionEnabled,
@@ -252,8 +252,8 @@ enum UIViewTargetsCollector {
     /// 即便 `toJSON` 因 `isMinimal=true` 只输出 `{path, type}`，模型仍需完整构造（`frame`/`state`
     /// 是非可选字段）。`indexPath` 对 minimal cell 容器有定位价值，保留；`actions` 强制空避免
     /// 引诱 agent 对不可操作节点发起 `ui.tap`/`ui.control.sendAction`。
-    private static func minimalSummary(for view: UIView, path: [Int], window: UIWindow) -> UIViewTargetSummary {
-        UIViewTargetSummary(
+    private static func minimalSummary(for view: UIView, path: [Int], window: UIWindow) -> UIInspectSummary {
+        UIInspectSummary(
             path: UIKitViewLookupTarget.pathString(from: path),
             type: String(describing: Swift.type(of: view)),
             role: role(for: view),
@@ -266,7 +266,7 @@ enum UIViewTargetsCollector {
             semanticText: nil,
             semanticTextSource: nil,
             frame: UIViewHierarchyRect(rect: view.convert(view.bounds, to: window)),
-            state: UIViewTargetState(isHidden: view.isHidden,
+            state: UIInspectState(isHidden: view.isHidden,
                                      alpha: Double(view.alpha),
                                      isUserInteractionEnabled: view.isUserInteractionEnabled,
                                      isEnabled: nil,
@@ -279,22 +279,22 @@ enum UIViewTargetsCollector {
         )
     }
 
-    /// 判断 view 是否为 full 节点（符合 `UIViewTargetsInput.isFull` 的 canonical 策略）。
+    /// 判断 view 是否为 full 节点（符合 `UIInspectInput.isFull` 的 canonical 策略）。
     ///
     /// 对 `UIKitFingerprintCollector.collectMatching` 可见：指纹签发必须与目标输出共用同一套
-    /// canonical 筛选，保证 `ui.wait(snapshotChanged)` 重采表与 viewTargets 签发表同口径。
+    /// canonical 筛选，保证 `ui.wait(snapshotChanged)` 重采表与 ui.inspect 签发表同口径。
     ///
     /// `isInControlSubtree` 在此计算：自身非 `UIControl` 且祖先链含 `UIControl`
     ///（`explore_controlAncestor`），让 `hasStaticText` 的控件内嵌展示节点（如按钮内部
     /// title label）rollup 到父 control，不独立 full。cell 子树因 cell 非 `UIControl`
     /// 不命中，cell 内 label 仍 full。
-    static func isFull(view: UIView, query: UIViewTargetsInput) -> Bool {
+    static func isFull(view: UIView, query: UIInspectInput) -> Bool {
         let candidate = makeCandidate(for: view)
         let full = query.isFull(candidate: candidate)
         // rollup 命中日志：控件内嵌展示节点被 rollup 到父 control，不独立 full。
         // 仅在命中 rollup 排除时记录，帮助定位"按钮内 label 为何不在 targets"的疑问。
         if !full, candidate.hasStaticText, candidate.isInControlSubtree {
-            UIKitCommandLogging.info("command", "ui view targets rollup: static-text node in UIControl subtree (\(String(describing: type(of: view)))) rolled up to parent control, not emitted as full target")
+            UIKitCommandLogging.info("command", "ui.inspect rollup: static-text node in UIControl subtree (\(String(describing: type(of: view)))) rolled up to parent control, not emitted as full target")
         }
         return full
     }
@@ -302,7 +302,7 @@ enum UIViewTargetsCollector {
     /// 判断当前 view 是否通过 identifier 输出筛选。
     ///
     /// 对 `UIKitFingerprintCollector.collectMatching` 可见（与 `isFull` 同理）。
-    static func matchesIdentifier(view: UIView, query: UIViewTargetsInput) -> Bool {
+    static func matchesIdentifier(view: UIView, query: UIInspectInput) -> Bool {
         guard query.hasIdentifierFilter else { return true }
         let identifier = view.accessibilityIdentifier
         if let expected = query.accessibilityIdentifier, identifier == expected {
@@ -319,26 +319,26 @@ enum UIViewTargetsCollector {
                                 rootView: UIView,
                                 window: UIWindow,
                                 path: [Int],
-                                query: UIViewTargetsInput) -> UIViewTargetSummary {
+                                query: UIInspectInput) -> UIInspectSummary {
         let control = view as? UIControl
         let frame = view.convert(view.bounds, to: window)
         let semantic = semanticText(for: view, limit: query.textLimit)
         // identifier 完整保留：它是事件下发的稳定定位键，裁断会让后续 tap/sendAction 失配。
         // 仅 title/label/text/placeholder/value/semanticText 这些展示型文本按 textLimit 裁剪。
-        return UIViewTargetSummary(
+        return UIInspectSummary(
             path: UIKitViewLookupTarget.pathString(from: path),
             type: String(describing: Swift.type(of: view)),
             role: role(for: view),
             accessibilityIdentifier: view.accessibilityIdentifier,
-            accessibilityLabel: UIViewTargetText.limited(view.accessibilityLabel, limit: query.textLimit),
-            title: UIViewTargetText.limited(title(from: view), limit: query.textLimit),
-            text: UIViewTargetText.limited(textualValue(from: view), limit: query.textLimit),
-            placeholder: UIViewTargetText.limited(placeholder(from: view), limit: query.textLimit),
-            value: UIViewTargetText.limited(value(from: view), limit: query.textLimit),
+            accessibilityLabel: UIInspectText.limited(view.accessibilityLabel, limit: query.textLimit),
+            title: UIInspectText.limited(title(from: view), limit: query.textLimit),
+            text: UIInspectText.limited(textualValue(from: view), limit: query.textLimit),
+            placeholder: UIInspectText.limited(placeholder(from: view), limit: query.textLimit),
+            value: UIInspectText.limited(value(from: view), limit: query.textLimit),
             semanticText: semantic?.text,
             semanticTextSource: semantic?.source,
             frame: UIViewHierarchyRect(rect: frame),
-            state: UIViewTargetState(isHidden: view.isHidden,
+            state: UIInspectState(isHidden: view.isHidden,
                                      alpha: Double(view.alpha),
                                      isUserInteractionEnabled: view.isUserInteractionEnabled,
                                      isEnabled: control?.isEnabled,
@@ -403,39 +403,39 @@ enum UIViewTargetsCollector {
     private static func semanticText(for view: UIView, limit: Int) -> (text: String, source: String)? {
         // 优先级 1：accessibilityIdentifier —— UI 自动化专用，最稳定
         if let identifier = view.accessibilityIdentifier, !identifier.isEmpty {
-            return (UIViewTargetText.limited(identifier, limit: limit) ?? identifier, "accessibilityIdentifier")
+            return (UIInspectText.limited(identifier, limit: limit) ?? identifier, "accessibilityIdentifier")
         }
         // 优先级 2：accessibilityLabel —— 无障碍名称
         if let label = view.accessibilityLabel, !label.isEmpty {
-            return (UIViewTargetText.limited(label, limit: limit) ?? label, "accessibilityLabel")
+            return (UIInspectText.limited(label, limit: limit) ?? label, "accessibilityLabel")
         }
         // 优先级 3：accessibilityValue —— 无障碍值
         if let value = view.accessibilityValue, !value.isEmpty {
-            return (UIViewTargetText.limited(value, limit: limit) ?? value, "accessibilityValue")
+            return (UIInspectText.limited(value, limit: limit) ?? value, "accessibilityValue")
         }
         // 优先级 4：控件标题
         if let button = view as? UIButton {
             let title = button.title(for: .normal) ?? button.currentTitle
             if let title, !title.isEmpty {
-                return (UIViewTargetText.limited(title, limit: limit) ?? title, "buttonTitle")
+                return (UIInspectText.limited(title, limit: limit) ?? title, "buttonTitle")
             }
         }
         if let segmented = view as? UISegmentedControl, segmented.selectedSegmentIndex >= 0 {
             if let title = segmented.titleForSegment(at: segmented.selectedSegmentIndex), !title.isEmpty {
-                return (UIViewTargetText.limited(title, limit: limit) ?? title, "segmentTitle")
+                return (UIInspectText.limited(title, limit: limit) ?? title, "segmentTitle")
             }
         }
         // 优先级 5：UILabel text 兜底
         if let labelView = view as? UILabel, let text = labelView.text, !text.isEmpty {
-            return (UIViewTargetText.limited(text, limit: limit) ?? text, "labelText")
+            return (UIInspectText.limited(text, limit: limit) ?? text, "labelText")
         }
         // 优先级 6：UITextField.placeholder 兜底
         if let textField = view as? UITextField, let placeholder = textField.placeholder, !placeholder.isEmpty {
-            return (UIViewTargetText.limited(placeholder, limit: limit) ?? placeholder, "placeholder")
+            return (UIInspectText.limited(placeholder, limit: limit) ?? placeholder, "placeholder")
         }
         // 优先级 7：UITextView text 兜底
         if let textView = view as? UITextView, let text = textView.text, !text.isEmpty {
-            return (UIViewTargetText.limited(text, limit: limit) ?? text, "textViewText")
+            return (UIInspectText.limited(text, limit: limit) ?? text, "textViewText")
         }
         return nil
     }
@@ -443,7 +443,7 @@ enum UIViewTargetsCollector {
     /// 识别轻量目标角色，用于给 agent 返回建议动作。
     ///
     /// 对 executor 上的陈旧指纹重采也可见（fingerprint 需要 role 字段），故为模块内可见。
-    static func role(for view: UIView) -> UIViewTargetRole {
+    static func role(for view: UIView) -> UIInspectRole {
         if view is UIButton { return .button }
         if view is UISwitch { return .switch }
         if view is UISlider { return .slider }

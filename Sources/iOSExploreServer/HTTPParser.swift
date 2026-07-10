@@ -144,10 +144,10 @@ enum HTTPParser {
         }
     }
 
-    /// 构造通信层错误响应。
+    /// 按 status/reason/code/message 构造 HTTP 错误响应。
     ///
-    /// 非 `POST /`、非法 JSON、缺少 action 等问题无法进入业务路由，因此用非 200 HTTP
-    /// 状态码配合同样的顶层 `code/message` envelope 结构返回。
+    /// 调用方决定 HTTP 状态码：通信层错误（非 `POST /`、非法 JSON、缺少 action、body 超
+    /// 上限等）传非 200 状态码；命令超时、响应过大等业务终态传 200 + envelope。
     private static func errorResponse(status: Int, reason: String,
                                       code: ExploreError, message: String) -> HTTPResponse {
         let body: JSON = ["code": .string(code.rawValue), "message": .string(message)]
@@ -155,6 +155,9 @@ enum HTTPParser {
     }
 
     /// 用统一错误对象构造通信层错误响应。
+    ///
+    /// HTTP 状态码取 `error.httpStatus`，不强制 200：通信/资源层错误抛 400/500/503，
+    /// 命令超时、响应过大等业务终态可抛 200 + envelope。
     static func errorResponse(for error: ExploreServerError) -> HTTPResponse {
         errorResponse(status: error.httpStatus,
                       reason: error.httpReason,

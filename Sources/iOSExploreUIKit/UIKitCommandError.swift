@@ -94,11 +94,14 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           logMessage: "ui tap target ambiguous action=\(action) target=\(targetDescription) count=\(count)")
     }
 
-    /// ui.tap 找到了 view，但目标类型没有默认激活路由。
+    /// ui.tap 找到了 view，但目标类型没有默认激活路由且 cell selection / 手势 adapter 均不可达。
     ///
     /// 默认激活仅覆盖 UIButton（touchUpInside）、UISwitch（toggle + valueChanged）、文本输入
-    ///（becomeFirstResponder）；UISlider / UISegmentedControl / 普通 UIView / 手势 view 命中本错误。
-    /// 区别于 `unsupportedAction`（控件存在但请求的事件不支持）：这里是目标类型本身无默认 tap 路由。
+    ///（becomeFirstResponder）；机械化层面还会先尝试 cell selection adapter（对 cell 子树内目标）
+    /// 与手势 target-action adapter（对挂 `UIGestureRecognizer` 的非 UIControl view，且仅 Debug 可用）。
+    /// 以上 fallback 均未命中时——典型如 UISlider / UISegmentedControl / 普通 UIView /
+    /// 无 gesture 的纯装饰 view / Release 构建下 ivar 不可读——才落本错误。区别于 `unsupportedAction`
+    ///（控件存在但请求的事件不支持）：这里是目标类型本身无任何可用 tap 路由。
     ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名。
@@ -350,8 +353,9 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// `ui.scroll` 在目标（或其祖先链）及 keyWindow 最前 view 中都找不到可滚动容器。
     ///
     /// 仅 `UIScrollView` 系（含 `UICollectionView`/`UITableView`/`UITextView`）可滚动，
-    /// 但 `UITextView` 是 `UIScrollView` 子类且其内部长文滚动语义不同——executor 显式排除
-    /// 它，命中本错误。当定位字段缺省且回退扫描 keyWindow 也无 scrollView 时同样命中。
+    /// 但 `UITextView` 是 `UIScrollView` 子类且其内部长文滚动语义不同——`UIScrollResolver`
+    /// 在解析可滚动容器时显式排除它，命中本错误。当定位字段缺省且回退扫描 keyWindow 也无
+    /// scrollView 时同样命中。
     ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名，用于日志关联。
@@ -361,6 +365,25 @@ struct UIKitCommandError: Error, Sendable, Equatable {
         UIKitCommandError(code: .scrollContainerUnavailable,
                           message: "no UIScrollView ancestor (UITextView excluded)",
                           logMessage: "ui scroll container unavailable action=\(action) target=\(target)")
+    }
+
+    /// 滚动容器存在但不可滚动（`isScrollEnabled=false` 或 `window=nil`）。
+    ///
+    /// 区别于 `scrollContainerUnavailable`（`UIScrollResolver` 没找到 UIScrollView，
+    /// message 为 "no UIScrollView ancestor"，调用方应重新 `ui.inspect` 找正确 path）：
+    /// 这里容器已经定位成功，但因禁用滚动或脱离 window 而无法执行 `scrollRectToVisible`。
+    /// 调用方看到本错误应区分两种处置——若 `isScrollEnabled=false` 是 UI 设计（如 SPMExample
+    /// 的 `menuTableView`），不应反复重试 `ui.scrollToElement`，应改 `ui.scroll` 或换路径；
+    /// 若 `window=nil` 是临时脱离，可重 `ui.inspect` 后再试。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名，用于日志关联。
+    ///   - target: 目标定位摘要（identifier/path），不含大块 payload。
+    /// - Returns: `container_not_scrollable` 失败描述。
+    static func scrollContainerNotScrollable(action: String, target: String) -> UIKitCommandError {
+        UIKitCommandError(code: .containerNotScrollable,
+                          message: "scroll container exists but is not scrollable (isScrollEnabled=false or window=nil)",
+                          logMessage: "ui scroll container not scrollable action=\(action) target=\(target)")
     }
 
     /// 截图渲染失败（`drawHierarchy` 返回 false、cgImage 丢失、PNG 编码失败等）。

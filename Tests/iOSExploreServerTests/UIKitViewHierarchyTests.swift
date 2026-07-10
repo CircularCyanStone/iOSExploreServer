@@ -194,10 +194,25 @@ func viewHierarchyQueryParsesCommandData() throws {
     #expect(query.maxDepth == 3)
     #expect(query.includeHidden == true)
     #expect(query.accessibilityIdentifierPrefix == "mine.")
+    #expect(query.controller == nil)
 
     #expect(throws: CommandInputParseError.self) {
         try UIViewHierarchyInput.parse(from: ["detailLevel": "unknown"])
     }
+}
+
+@Test("UIViewHierarchyInput 解析 controller 参数")
+func viewHierarchyQueryParsesController() throws {
+    let query = try UIViewHierarchyInput.parse(from: [
+        "controller": "root.nav[0]",
+    ])
+    #expect(query.controller == "root.nav[0]")
+}
+
+@Test("UIViewHierarchyInput controller 缺省为 nil")
+func viewHierarchyQueryControllerDefaultsToNil() throws {
+    let query = try UIViewHierarchyInput.parse(from: [:])
+    #expect(query.controller == nil)
 }
 
 @Test("UIViewHierarchyInput schema 按工具展示顺序声明字段")
@@ -208,6 +223,7 @@ func viewHierarchyInputSchemaUsesExpectedFieldOrder() {
         "includeHidden",
         "accessibilityIdentifier",
         "accessibilityIdentifierPrefix",
+        "controller",
     ])
 }
 

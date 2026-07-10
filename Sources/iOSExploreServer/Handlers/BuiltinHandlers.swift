@@ -99,10 +99,11 @@ struct HelpCommand: Command {
     /// - Parameter router: 用于读取命令元数据快照的路由器。
     init(router: Router) { self.router = router }
 
-    /// 读取当前命令元数据并转换为 JSON 数组。
+    /// 读取当前命令元数据并构造成 `{"commands": [...]}` JSON object。
     ///
     /// - Parameter input: 空输入，help 不读取请求 data。
-    /// - Returns: 包含所有已注册命令 metadata 的 JSON object。
+    /// - Returns: 包含所有已注册命令 metadata 的 JSON object，结构为
+    ///   `{"commands": [{ action, description, inputSchema }, ...]}`。
     func handle(_ input: EmptyCommandInput) async throws -> ExploreResult {
         ExploreLogger.debug(.command, "command help handled")
         let entries: [JSONValue] = router.commandMetadata().map { entry in
