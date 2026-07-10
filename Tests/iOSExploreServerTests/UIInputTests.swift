@@ -74,11 +74,10 @@ func inputInputSchemaFieldsAndConstraints() {
     // exactlyOneOf(["accessibilityIdentifier", "path"]) 展开为每个字段一个 oneOf 条目。
     #expect(oneOf.count == 2)
 
-    guard case .array(let constraints)? = json["x-iosExplore-constraints"] else {
-        Issue.record("x-iosExplore-constraints not found")
-        return
-    }
-    // 当 schema 不再声明 viewSnapshotID-related 约束（已迁移到 executor 内统一校验）。
+    // P0-2 后 viewSnapshotID 校验迁移到 executor 内（identifier/path 都走 validateViewSnapshot），
+    // schema 不再声明 viewSnapshotID-only-path 约束；x-iosExplore-constraints key 可能整体不存在，
+    // 此时应视为符合（无旧约束），不应 Issue.record。
+    let constraints = json["x-iosExplore-constraints"]?.arrayValue ?? []
     #expect(constraints.map(\.stringValue).contains("viewSnapshotID is valid only with path") == false)
 }
 
@@ -180,7 +179,12 @@ func executorStaleViewSnapshotThrows() {
         Issue.record("expected failure, got success")
     } catch let error as UIKitCommandError {
         #expect(error.failure.code == .staleLocator)
-        #expect(error.failure.message == "view snapshot expired or target changed; call ui.inspect first, then retry with the new viewSnapshotID")
+        // 消息含 TTL 插值（UIKitSnapshotStore.ttlSeconds，当前 120s），用 contains 验证关键短语，
+        // 避免 TTL 值调整时（如 10ca9a1 加 TTL、P1-6 调秒数）绑死全文。
+        let staleMessage = error.failure.message
+        #expect(staleMessage.contains("view snapshot expired"))
+        #expect(staleMessage.contains("or target changed"))
+        #expect(staleMessage.contains("call ui.inspect first"))
         #expect(error.failure.logMessage == "uikit locator stale action=ui.input viewSnapshot=snap-nonexistent")
     } catch {
         Issue.record("unexpected error: \(error)")
@@ -204,7 +208,12 @@ func executorIdentifierWithStaleViewSnapshotThrows() {
         Issue.record("expected failure, got success")
     } catch let error as UIKitCommandError {
         #expect(error.failure.code == .staleLocator)
-        #expect(error.failure.message == "view snapshot expired or target changed; call ui.inspect first, then retry with the new viewSnapshotID")
+        // 消息含 TTL 插值（UIKitSnapshotStore.ttlSeconds，当前 120s），用 contains 验证关键短语，
+        // 避免 TTL 值调整时（如 10ca9a1 加 TTL、P1-6 调秒数）绑死全文。
+        let staleMessage = error.failure.message
+        #expect(staleMessage.contains("view snapshot expired"))
+        #expect(staleMessage.contains("or target changed"))
+        #expect(staleMessage.contains("call ui.inspect first"))
         #expect(error.failure.logMessage == "uikit locator stale action=ui.input viewSnapshot=snap-nonexistent")
     } catch {
         Issue.record("unexpected error: \(error)")
