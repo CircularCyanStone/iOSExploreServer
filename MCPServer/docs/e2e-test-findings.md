@@ -178,7 +178,7 @@ L171-173 注释明确写「原 30s/8 在慢 LLM 推理链下会触发 stale_loca
 
 ### 仍未处理的 pre-existing
 
-- **2 个 stderr/NSLog capture flaky 失败（Diagnostics 模块）**：iOS framework 测试里 `stderr capture` / `NSLog capture` 间歇性失败（同一次跑过、下一次失败），`71ce37a` 已标注「stderr capture 间歇性」属预存。与 UIKit 改动无关，属 Diagnostics capture 时序稳定性问题，建议单独排查。
+- **stderr/NSLog capture flaky（已修 `e3f03e5`）**：根因是全套并发跑时其他来源的 stderr 输出（不带 `\n`）与 token 拼接成同一行——capture 按 `\n` 切行后 `message != token`，`waitForEntry` 的 `contains(token)` 找到了但 `#expect` 的 `== token` 失败（0.055 秒）；NSLog 测试用 `contains` 不怕拼接，它的 flaky 是纯异步延迟。修复：测试 `writeLine` 前置换行防拼接 + `waitForEntry` 窗口 1s→3s 覆盖延迟。连续 5 次全套 449 tests 全过（此前约 30% 失败率）。根因基于时长/模式推断（flaky 罕见未抓到 issue 原文 100% 确认）。
 - **N2（已修）**：alert button path 无消费者，已移除（agent 用 ui.alert.respond 按 index/title/role 点按钮）。
 - **N4（已修）**：`ui.alert.respond` 的 dryRun 已移除（查询走 ui.inspect）。
 - **P1-5 Fix A**：暂缓（见上）。
