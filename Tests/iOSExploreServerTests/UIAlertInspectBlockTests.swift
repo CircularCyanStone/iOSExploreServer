@@ -26,11 +26,27 @@ private func alertContext(
     )
 }
 
+/// 把 `alert.textFields` 的 UITextField 手工加入 alert.view 子树。
+///
+/// UIAlertController 在非 present 的测试环境（rootViewController=alert）只创建 textField
+/// 对象并存入 `alert.textFields` 数组，但**不**把它们 addSubview 到视图树——textField 容器
+/// 需要完整 present 流程才入树（实测 alert.view 子树 28 个 view 但 0 个 UITextField）。
+/// button 的 `_UIAlertControllerActionView` 在 viewDidLoad 就入树，故 button 测试无需此处理。
+/// 这里手工建立 textField 的视图位置驱动 resolver 解析；真实 present 场景由 SPMExample
+/// 闭环覆盖（见 N3 任务）。
+@MainActor
+private func embedAlertTextFields(_ alert: UIAlertController) {
+    guard let textFields = alert.textFields, !textFields.isEmpty else { return }
+    let container = UIView()
+    for textField in textFields { container.addSubview(textField) }
+    alert.view.addSubview(container)
+}
+
 @Test("inspectWithoutAlert 返回 available=false") @MainActor
 func inspectWithoutAlertReturnsUnavailable() {
     let context = UIKitTestHost.context { _ in }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let alert = data["alert"]?.objectValue
     #expect(alert?["available"]?.boolValue == false)
 }
@@ -42,7 +58,7 @@ func inspectWithAlertIncludesButtonsAndPaths() {
     alert.addAction(UIAlertAction(title: "取消", style: .cancel))
     let context = alertContext(alert)
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let alertData = data["alert"]?.objectValue
     #expect(alertData?["available"]?.boolValue == true)
     #expect(alertData?["title"]?.stringValue == "确认")
@@ -75,8 +91,8 @@ func alertButtonPathIsStableAcrossInspects() {
     alert.addAction(UIAlertAction(title: "取消", style: .cancel))
     let context = alertContext(alert)
 
-    let firstData = UIViewTargetsCollector.collect(query: .default, context: context)
-    let secondData = UIViewTargetsCollector.collect(query: .default, context: context)
+    let firstData = UIInspectCollector.collect(query: .default, context: context)
+    let secondData = UIInspectCollector.collect(query: .default, context: context)
 
     let firstButtons = firstData["alert"]?.objectValue?["buttons"]?.arrayValue ?? []
     let secondButtons = secondData["alert"]?.objectValue?["buttons"]?.arrayValue ?? []
@@ -93,7 +109,7 @@ func alertBlockAppearsInTopViewHierarchy() throws {
     alert.addAction(UIAlertAction(title: "确认", style: .default))
     let context = alertContext(alert)
 
-    let data = UIViewHierarchyCollector.collectTopViewHierarchy(
+    let data = try UIViewHierarchyCollector.collectTopViewHierarchy(
         query: try UIViewHierarchyInput.parse(from: [:]),
         context: context
     )
@@ -110,7 +126,7 @@ func duplicateButtonTitlesResolveToFirstMatch() {
     alert.addAction(UIAlertAction(title: "选项", style: .cancel))
     let context = alertContext(alert)
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let buttons = data["alert"]?.objectValue?["buttons"]?.arrayValue ?? []
     #expect(buttons.count == 2)
 
@@ -126,10 +142,103 @@ func messageOnlyAlertHasEmptyButtonsArray() {
     let alert = UIAlertController(title: "提示", message: "无按钮", preferredStyle: .alert)
     let context = alertContext(alert)
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let alertData = data["alert"]?.objectValue
     #expect(alertData?["available"]?.boolValue == true)
     let buttons = alertData?["buttons"]?.arrayValue
     #expect(buttons?.isEmpty == true)
+    // 无 addTextField 的 alert，textFields 也应为空数组。
+    let textFields = alertData?["textFields"]?.arrayValue
+    #expect(textFields?.isEmpty == true)
+}
+
+@Test("inspectWithAlert 包含输入框 path 与 accessibilityIdentifier") @MainActor
+func inspectWithAlertIncludesTextFieldPaths() {
+    let alert = UIAlertController(title: "登录", message: "请输入账号密码", preferredStyle: .alert)
+    alert.addTextField { tf in
+        tf.placeholder = "用户名"
+        tf.accessibilityIdentifier = "alert.input.username"
+    }
+    alert.addTextField { tf in
+        tf.placeholder = "密码"
+        tf.isSecureTextEntry = true
+        tf.accessibilityIdentifier = "alert.input.password"
+    }
+    alert.addAction(UIAlertAction(title: "登录", style: .default))
+    let context = alertContext(alert)
+    embedAlertTextFields(alert)
+
+    let data = UIInspectCollector.collect(query: .default, context: context)
+    let alertData = data["alert"]?.objectValue
+    let textFields = try? #require(alertData?["textFields"]?.arrayValue)
+    #expect(textFields?.count == 2)
+
+    let username = try? #require(textFields?[0].objectValue)
+    #expect(username?["placeholder"]?.stringValue == "用户名")
+    #expect(username?["isSecure"]?.boolValue == false)
+    #expect(username?["accessibilityIdentifier"]?.stringValue == "alert.input.username")
+    let usernamePath = username?["path"]?.stringValue
+    #expect(usernamePath != nil, "用户名输入框应解析出 path")
+    #expect(usernamePath?.hasPrefix("root/") == true, "path 应为 root/<indexes> 格式")
+    let usernameActions = try? #require(username?["availableActions"]?.arrayValue)
+    #expect(usernameActions?.count == 1)
+    #expect(usernameActions?[0].stringValue == "ui.input")
+
+    let password = try? #require(textFields?[1].objectValue)
+    #expect(password?["placeholder"]?.stringValue == "密码")
+    #expect(password?["isSecure"]?.boolValue == true)
+    #expect(password?["accessibilityIdentifier"]?.stringValue == "alert.input.password")
+    let passwordPath = password?["path"]?.stringValue
+    #expect(passwordPath != nil, "密码输入框应解析出 path")
+    // 两个输入框是不同对象，path 必须不同（对象身份 DFS 不会撞同一目标）。
+    #expect(usernamePath != passwordPath, "两个输入框 path 应不同")
+}
+
+@Test("alertTextFieldPath 在多次 inspect 间稳定") @MainActor
+func alertTextFieldPathIsStableAcrossInspects() {
+    let alert = UIAlertController(title: "登录", message: nil, preferredStyle: .alert)
+    alert.addTextField { tf in
+        tf.placeholder = "用户名"
+        tf.accessibilityIdentifier = "alert.input.username"
+    }
+    let context = alertContext(alert)
+    embedAlertTextFields(alert)
+
+    let firstData = UIInspectCollector.collect(query: .default, context: context)
+    let secondData = UIInspectCollector.collect(query: .default, context: context)
+
+    let firstTextFields = firstData["alert"]?.objectValue?["textFields"]?.arrayValue ?? []
+    let secondTextFields = secondData["alert"]?.objectValue?["textFields"]?.arrayValue ?? []
+
+    let firstPath = firstTextFields[0].objectValue?["path"]?.stringValue
+    let secondPath = secondTextFields[0].objectValue?["path"]?.stringValue
+    #expect(firstPath != nil)
+    #expect(firstPath == secondPath, "同一输入框多次 inspect 的 path 应稳定")
+}
+
+@Test("alertBlock 输入框出现在 topViewHierarchy") @MainActor
+func alertTextFieldsAppearInTopViewHierarchy() throws {
+    let alert = UIAlertController(title: "登录", message: nil, preferredStyle: .alert)
+    alert.addTextField { tf in
+        tf.placeholder = "密码"
+        tf.isSecureTextEntry = true
+        tf.accessibilityIdentifier = "alert.input.password"
+    }
+    let context = alertContext(alert)
+    embedAlertTextFields(alert)
+
+    let data = try UIViewHierarchyCollector.collectTopViewHierarchy(
+        query: try UIViewHierarchyInput.parse(from: [:]),
+        context: context
+    )
+    let alertData = data["alert"]?.objectValue
+    #expect(alertData?["available"]?.boolValue == true)
+    let textFields = alertData?["textFields"]?.arrayValue
+    #expect(textFields?.count == 1)
+    let textField = try? #require(textFields?[0].objectValue)
+    #expect(textField?["accessibilityIdentifier"]?.stringValue == "alert.input.password")
+    #expect(textField?["isSecure"]?.boolValue == true)
+    #expect(textField?["path"]?.stringValue != nil)
+    #expect(textField?["availableActions"]?.arrayValue?.first?.stringValue == "ui.input")
 }
 #endif

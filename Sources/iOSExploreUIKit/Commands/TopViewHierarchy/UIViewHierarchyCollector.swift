@@ -104,6 +104,19 @@ enum UIViewHierarchyCollector {
             data["navigationBar"] = .object(
                 UINavigationBarInspector.summarize(topViewController: context.topViewController).toJSON()
             )
+            // 与 ui.inspect 同口径暴露 alert 摘要（含按钮/输入框 path 与 availableActions），
+            // 让 agent 用 topViewHierarchy 时也能直接拿到 alert 内可操作元素定位，避免
+            // 「inspect 看得到 alert、topViewHierarchy 看不到」的分叉。带 controller 参数时
+            // （上面的 isControllerOverride 分支）不注入：alert 以当前栈顶控制器为基准，与目标
+            // controller view 不匹配。
+            data["alert"] = .object(
+                UIAlertInspector.toJSONInspect(
+                    UIAlertInspector.summarizeForInspect(
+                        topViewController: context.topViewController,
+                        rootView: context.rootView
+                    )
+                )
+            )
             if query.hasIdentifierFilter {
                 let matches = UIViewHierarchyBuilder.matches(in: element, query: query)
                 data["matches"] = .array(matches.map { .object($0.toJSON()) })

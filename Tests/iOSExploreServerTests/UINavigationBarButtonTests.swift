@@ -101,7 +101,7 @@ func collectorsIncludeNavigationBarSummary() throws {
     let (context, _) = navigationContext(item: item)
 
     let targetsData = UIInspectCollector.collect(query: .default, context: context)
-    let hierarchyData = UIViewHierarchyCollector.collectTopViewHierarchy(query: try UIViewHierarchyInput.parse(from: [:]),
+    let hierarchyData = try UIViewHierarchyCollector.collectTopViewHierarchy(query: try UIViewHierarchyInput.parse(from: [:]),
                                                                          context: context)
 
     let targetsNavigationBar = targetsData["navigationBar"]?.objectValue

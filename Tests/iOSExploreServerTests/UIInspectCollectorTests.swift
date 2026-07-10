@@ -217,7 +217,7 @@ func nonSecureTextFieldExposesText() {
         root.addSubview(textField)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let targets = allTargetSummaries(from: data)
 
     let tfTarget = targets.first { $0["type"]?.stringValue == "UITextField" }
@@ -236,7 +236,7 @@ func secureTextFieldSuppressesText() {
         root.addSubview(secureField)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let targets = allTargetSummaries(from: data)
 
     // collector 不输出 `isSecure` 字段，按 type 找到目标后断言 text 字段不可读。
@@ -262,7 +262,7 @@ func nonSecureTextViewExposesText() {
         root.addSubview(textView)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let targets = allTargetSummaries(from: data)
 
     #expect(targets.contains { $0["type"]?.stringValue == "UITextView" && $0["text"]?.stringValue == "Hello World" })
@@ -289,7 +289,7 @@ func mixedTextFieldsSecureVsNonSecure() {
         root.addSubview(bioView)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let targets = allTargetSummaries(from: data)
 
     let nameTarget = targets.first { $0["type"]?.stringValue == "UITextField" && $0["text"]?.stringValue == "Alice" }
@@ -312,7 +312,7 @@ func textViewDefaultNotSecureExposesText() {
         root.addSubview(tv)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let targets = allTargetSummaries(from: data)
 
     #expect(targets.contains { $0["type"]?.stringValue == "UITextView" && $0["text"]?.stringValue == "visible" })
@@ -328,7 +328,7 @@ func textFieldPlaceholderStillReturned() {
         root.addSubview(tf)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let targets = allTargetSummaries(from: data)
 
     let tfTarget = targets.first { $0["type"]?.stringValue == "UITextField" }
@@ -357,7 +357,7 @@ func valueFromForNonTextFieldStillWorks() {
         root.addSubview(seg)
     }
 
-    let data = UIViewTargetsCollector.collect(query: .default, context: context)
+    let data = UIInspectCollector.collect(query: .default, context: context)
     let targets = allTargetSummaries(from: data)
 
     #expect(targets.contains { $0["type"]?.stringValue == "UISwitch" && $0["value"]?.stringValue == "on" })

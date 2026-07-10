@@ -10,8 +10,10 @@ import UIKit
 /// 因此在 logic test 里用 `summarize(_:)` 传入构造好的 alert 即可稳定验证。
 ///
 /// `summarizeForInspect(topViewController:rootView:)` 为 `ui.inspect` /
-/// `ui.topViewHierarchy` 提供含按钮路径的扩展摘要，路径通过 `_UIAlertControllerActionView`
-/// 视图树公开 subviews DFS 解析（iOS 26 已实测可行）。
+/// `ui.topViewHierarchy` 提供含按钮与输入框路径的扩展摘要：按钮路径通过 `_UIAlertControllerActionView`
+/// 视图树 DFS + UILabel 文本匹配解析，输入框路径用对象身份（`===`）DFS 解析（输入框模型对象
+/// 同时在 `alert.textFields` 数组与视图树中，是同一对象，故无需文本/类型名匹配，更抗版本漂移）。
+/// 两类路径均在 iOS 26 已实测可行。
 @MainActor
 enum UIAlertInspector {
     /// 一个 alert 按钮的摘要（供 `ui.alert.respond dryRun=true` 使用）。
@@ -64,6 +66,24 @@ enum UIAlertInspector {
         let path: String?
     }
 
+    /// `ui.inspect` / `ui.topViewHierarchy` 输出里给 agent 暴露的 alert 输入框摘要。
+    ///
+    /// 与 `TextFieldSummary`（供 `ui.alert.respond dryRun` 用）的区别：额外携带 `path` 与
+    /// `accessibilityIdentifier`，让 agent 在 inspect 结果里直接拿到输入框定位并调 `ui.input`，
+    /// 不必在深层 targets 里翻找 `_UIAlertControllerTextField`（其 path 极深且脆弱，如
+    /// `root/0/0/1/0/0/4/0/0/0/0/0/0/0/0`）。与 `TextFieldSummary` 一致，仍**绝不**回 `text`
+    /// 原文——密码/验证码等敏感输入不应进入响应或日志。
+    struct InspectTextFieldSummary: Sendable, Equatable {
+        /// 输入框占位文本。
+        let placeholder: String?
+        /// 是否为安全（密码）输入。
+        let isSecure: Bool
+        /// 该输入框的定位路径（通过对象身份 DFS 解析）；未解析到或 Release 构建时为 nil。
+        let path: String?
+        /// 输入框的 accessibilityIdentifier（业务在 `addTextField` 时设置），未设置时为 nil。
+        let accessibilityIdentifier: String?
+    }
+
     /// alert 检查结果（供 `ui.inspect` / `ui.topViewHierarchy` 输出使用）。
     struct InspectAlertSummary: Sendable, Equatable {
         /// 当前顶部控制器是否为 `UIAlertController`。
@@ -75,7 +95,7 @@ enum UIAlertInspector {
         /// 按钮列表（无 alert 时为空数组）。
         let buttons: [InspectButtonSummary]
         /// 输入框列表（无 alert 时为空数组）。
-        let textFields: [TextFieldSummary]
+        let textFields: [InspectTextFieldSummary]
     }
 
     /// 从查询上下文找当前 presented 的 UIAlertController。
@@ -104,41 +124,54 @@ enum UIAlertInspector {
     ///
     /// 当 `topViewController` 不是 `UIAlertController` 时返回 `available=false`，
     /// `buttons` / `textFields` 为空数组。
-    /// 路径解析仅在 DEBUG 构建生效；Release 下 `path` 字段全部 nil
-    /// （私有 API 不进 Release，符合项目硬规则）。
+    /// 按钮与输入框的路径解析仅在 DEBUG 构建生效；Release 下 `path` 字段全部 nil
+    /// （私有 API 不进 Release，符合项目硬规则）。`accessibilityIdentifier` 是公开 API，
+    /// 无论 Debug/Release 都从 `alert.textFields[i]` 直接读取。
     ///
     /// - Parameters:
     ///   - topViewController: 当前顶部控制器。
-    ///   - rootView: 当前顶部控制器的根 view（用于按钮路径 DFS）。
+    ///   - rootView: 当前顶部控制器的根 view（用于按钮/输入框路径 DFS）。
     /// - Returns: `InspectAlertSummary`，非 alert 场景下 `available=false`。
     static func summarizeForInspect(topViewController: UIViewController?, rootView: UIView?) -> InspectAlertSummary {
         guard let alert = topViewController as? UIAlertController else {
             return InspectAlertSummary(available: false, title: nil, message: nil, buttons: [], textFields: [])
         }
         let base = summarize(alert)
-        let resolved = resolveButtonPaths(alert: alert, rootView: rootView)
+        let resolvedButtonPaths = resolveButtonPaths(alert: alert, rootView: rootView)
         let buttons = base.buttons.enumerated().map { (i, button) in
             InspectButtonSummary(
                 index: button.index,
                 title: button.title,
                 role: button.role,
-                path: i < resolved.count ? resolved[i].path : nil
+                path: i < resolvedButtonPaths.count ? resolvedButtonPaths[i] : nil
             )
         }
-        UIKitCommandLogging.info("command", "ui alert inspect available=true buttonCount=\(buttons.count)")
+        let resolvedTextFieldPaths = resolveTextFieldPaths(alert: alert, rootView: rootView)
+        let alertTextFields = alert.textFields ?? []
+        let textFields = alertTextFields.enumerated().map { (i, textField) in
+            InspectTextFieldSummary(
+                placeholder: textField.placeholder,
+                isSecure: textField.isSecureTextEntry,
+                path: i < resolvedTextFieldPaths.count ? resolvedTextFieldPaths[i] : nil,
+                accessibilityIdentifier: textField.accessibilityIdentifier
+            )
+        }
+        UIKitCommandLogging.info("command", "ui alert inspect available=true buttonCount=\(buttons.count) textFieldCount=\(textFields.count)")
         return InspectAlertSummary(
             available: true,
             title: base.title,
             message: base.message,
             buttons: buttons,
-            textFields: base.textFields
+            textFields: textFields
         )
     }
 
     /// 将 `InspectAlertSummary` 转为命令响应 JSON。
     ///
-    /// 格式与 `ui.alert.respond dryRun=true` 的 `buttons` 区块对齐，额外追加 `path`
-    /// 字段供 agent 直接用 `ui.inspect` 返回的 path 定位按钮。
+    /// `buttons` 区块与 `ui.alert.respond dryRun=true` 对齐，额外追加 `path` 与
+    /// `availableActions:["ui.alert.respond"]`。`textFields` 区块同样追加 `path`、
+    /// `accessibilityIdentifier` 与 `availableActions:["ui.input"]`，让 agent 直接从 alert
+    /// 区块拿到输入框定位去调 `ui.input`，不必翻深层 targets。仍不回 `text` 原文。
     static func toJSONInspect(_ summary: InspectAlertSummary) -> JSON {
         [
             "available": .bool(summary.available),
@@ -157,6 +190,9 @@ enum UIAlertInspector {
                 .object(JSON([
                     "placeholder": textField.placeholder.map(JSONValue.string) ?? .null,
                     "isSecure": .bool(textField.isSecure),
+                    "path": textField.path.map(JSONValue.string) ?? .null,
+                    "accessibilityIdentifier": textField.accessibilityIdentifier.map(JSONValue.string) ?? .null,
+                    "availableActions": .array([.string("ui.input")]),
                 ]))
             }),
         ]
@@ -164,20 +200,38 @@ enum UIAlertInspector {
 
     // MARK: - Private
 
-    /// 解析 alert 按钮的路径（DEBUG-only），Release 下全返回 nil。
+    /// 解析 alert 按钮的路径（DEBUG-only），返回与 `alert.actions` 同序的 path 数组。
+    ///
+    /// 返回 `[String?]` 而非 resolver 私有类型，使 Release 分支不引用 `#if DEBUG` 保护的
+    /// `ResolvedButton`——后者在 Release 构建下不存在，旧实现直接引用会在 framework Release
+    /// 构建时编译失败。Release 下全返回 nil（私有 API 不进 Release，符合项目硬规则）。
     @MainActor
-    private static func resolveButtonPaths(alert: UIAlertController, rootView: UIView?) -> [UIAlertButtonPathResolver.ResolvedButton] {
-        guard let rootView else {
-            return alert.actions.enumerated().map { (i, action) in
-                UIAlertButtonPathResolver.ResolvedButton(index: i, title: action.title, role: AlertButtonRole(style: action.style), path: nil)
-            }
-        }
+    private static func resolveButtonPaths(alert: UIAlertController, rootView: UIView?) -> [String?] {
         #if DEBUG
-        return UIAlertButtonPathResolver.resolveButtons(in: alert, rootView: rootView)
-        #else
-        return alert.actions.enumerated().map { (i, action) in
-            UIAlertButtonPathResolver.ResolvedButton(index: i, title: action.title, role: AlertButtonRole(style: action.style), path: nil)
+        guard let rootView else {
+            return alert.actions.map { _ in nil }
         }
+        return UIAlertButtonPathResolver.resolveButtons(in: alert, rootView: rootView).map { $0.path }
+        #else
+        return alert.actions.map { _ in nil }
+        #endif
+    }
+
+    /// 解析 alert 输入框的路径（DEBUG-only），返回与 `alert.textFields` 同序的 path 数组。
+    ///
+    /// 与 `resolveButtonPaths` 同构：返回 `[String?]` 保证 Release-safe，DEBUG 分支才调用
+    /// `#if DEBUG` 保护的 `UIAlertTextFieldPathResolver`。Release 下全返回 nil。
+    @MainActor
+    private static func resolveTextFieldPaths(alert: UIAlertController, rootView: UIView?) -> [String?] {
+        let textFields = alert.textFields ?? []
+        guard !textFields.isEmpty else { return [] }
+        #if DEBUG
+        guard let rootView else {
+            return textFields.map { _ in nil }
+        }
+        return UIAlertTextFieldPathResolver.resolveTextFields(in: alert, rootView: rootView).map { $0.path }
+        #else
+        return textFields.map { _ in nil }
         #endif
     }
 }

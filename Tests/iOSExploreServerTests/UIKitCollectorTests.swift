@@ -202,7 +202,7 @@ func topViewHierarchyCollectsTreeInContext() throws {
 
     let query = try UIViewHierarchyInput.parse(from: [:])
 
-    let data = UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
+    let data = try UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
     // topViewHierarchy 不签发 viewSnapshotID（spec §1.2：只有 ui.inspect 签发）。
     #expect(data["viewSnapshotID"] == nil)
     #expect(data["snapshotID"] == nil)
@@ -245,7 +245,7 @@ func viewHierarchyCollectorHandlesNilTintColorGracefully() throws {
     // 不崩溃即通过：当年 P2 复现路径第 117 行 `view.tintColor.hierarchyHexString` 在 nil 时
     // 触发 `Fatal error: Unexpectedly found nil while implicitly unwrapping`。修复后 nil 路径
     // 应优雅 fallback 为 null（或继承非 nil 值），不应使采集 fatal exit。
-    let data = UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
+    let data = try UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
     guard case .object(let root)? = data["root"] else {
         Issue.record("root not object")
         return
@@ -285,7 +285,7 @@ func viewHierarchyCollectorHandlesNilLabelTextColorGracefully() throws {
     let query = try UIViewHierarchyInput.parse(from: [:])
     // 不崩溃即通过。当年 P2 复现路径第 153 行 `label.textColor.hierarchyHexString` 在 nil
     // 时崩溃。修复后应 fallback 为 textColor=null（或继承非 nil 值）。
-    let data = UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
+    let data = try UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: context)
     guard case .object(let root)? = data["root"] else {
         Issue.record("root not object")
         return
