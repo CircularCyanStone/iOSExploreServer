@@ -150,7 +150,7 @@ enum UIAlertInspector {
                     "title": button.title.map(JSONValue.string) ?? .null,
                     "role": .string(button.role.rawValue),
                     "path": button.path.map(JSONValue.string) ?? .null,
-                    "availableActions": .array([.string(UIAlertRespondCommand.actionName)]),
+                    "availableActions": .array([.string("ui.alert.respond")]),
                 ]))
             }),
             "textFields": .array(summary.textFields.map { textField in
