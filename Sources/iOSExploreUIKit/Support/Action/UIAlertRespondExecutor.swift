@@ -16,7 +16,9 @@ enum UIAlertRespondExecutor {
     /// - Parameters:
     ///   - input: 已通过 typed schema 校验的 alert respond 参数。
     ///   - context: 当前 MainActor 查询上下文。
-    /// - Returns: 已触发的按钮与关闭请求结果。
+    /// - Returns: 已触发的按钮与关闭请求结果。dismissWaitMs 和 presentedAfterDismiss 仅为
+    ///   启动时标记（dismissWaitMs=0），真正的耗时等待由 `UIAlertRespondCommand.handle` 中的
+    ///   async 等待完成。
     /// - Throws: `UIKitCommandError.alertUnavailable`——无 alert；`.alertButtonRequired`——多按钮未指定；
     ///   `.alertButtonNotFound`——指定按钮不存在；`.alertButtonTriggerFailed`——按钮 handler 无法执行；
     ///   `.alertRespondDisabledInRelease`——Release 构建（私有 API 被 `#if DEBUG` 隔离）。
@@ -33,13 +35,12 @@ enum UIAlertRespondExecutor {
     }
 
     #if DEBUG
-    /// 执行一次 alert 按钮响应。
+    /// 执行一次 alert 按钮响应（同步部分：选择按钮、触发 dismiss）。
     ///
-    /// executor 只负责业务流程：选择按钮、交给 Debug runtime 扩展触发、返回统一结果。真实展示中的
-    /// alert 由 `UIAlertController` 扩展接管，让 UIKit 按自己的按钮点击流程关闭弹窗并执行 handler；
-    /// 未 present 的 alert（典型是 logic test 构造的对象）没有展示层级可关闭，改由 `UIAlertAction`
-    /// 扩展直接执行 handler，并明确返回 `dismissed=false`。runtime 细节集中在扩展文件内，命令层不
-    /// 散写私有结构处理逻辑，后续 iOS 版本适配也只需要改扩展。
+    /// dismissWaitMs 为启动时的标记（0），真正的转场等待由调用方的 async 路径补齐。
+    /// 拆分原因为：Task.sleep 只能在 async 上下文中让出主线程给 UIKit 推进 dismiss 动画，
+    /// 而 executor 本身被 `MainActor.run(unsafeSync:)` 约束为同步。调用方 handle 在拿到
+    /// 这个返回值后做 async wait，用 write-through 更新 dismissWaitMs。
     private static func perform(input: UIAlertRespondInput, alert: UIAlertController) throws -> JSON {
         let actionName = AlertRespondCommand.actionName
         let selected = try selectAction(input: input, alert: alert)
@@ -56,52 +57,16 @@ enum UIAlertRespondExecutor {
         } catch {
             throw UIKitCommandError.alertButtonTriggerFailed(action: actionName, reason: "\(error)")
         }
-        // dismiss 是 UIKit 动画转场；为防止 alert.respond 返回后 agent 立即 observe 仍看到
-        // UIAlertController 残留在 presentedViewController 链上，这里在主线程上 RunLoop
-        // 轮询直到顶层 presented chain 真正清空（或最多 ~1500ms）再返回。
-        //
-        // maxAttempts=95 × 16ms ≈ 1520ms：嵌套 alert（第 1 层 dismiss → 第 2 层 present）
-        // 在较复杂 view 层级下可能耗时 800-1200ms 完成转场。此前 T2-AlertDismiss 用 800ms
-        // 仍偶现 stale read（见 docs/investigations/mcp-spim-example-e2e-issues.md P6），
-        // 提至 ~1500ms 覆盖更多嵌套场景。
-        let waitedMs: Int
-        if isPresented {
-            waitedMs = waitForPresentedViewControllerToClear(on: alert, maxAttempts: 95, intervalMs: 16)
-        } else {
-            waitedMs = 0
-        }
-        UIKitCommandLogging.info("command", "ui alert respond complete dryRun=false performed=true dismissed=\(dismissed) viaSystemDismiss=\(isPresented) selector=\(selectorDescription(input)) dismissWaitMs=\(waitedMs)")
+        // dismissWaitMs 和 presentedAfterDismiss 由调用方 async 等待后通过
+        // UIAlertRespondCommand.handle 的回填逻辑更新。这里只标记启动值。
+        UIKitCommandLogging.info("command", "ui alert respond part1 sync performed=true dismissed=\(dismissed) viaSystemDismiss=\(isPresented) selector=\(selectorDescription(input))")
         return [
             "performed": .bool(true),
             "dismissed": .bool(dismissed),
-            "dismissWaitMs": .double(Double(waitedMs)),
-            "presentedAfterDismiss": .bool(alert.presentingViewController?.presentedViewController != nil),
+            "dismissWaitMs": .double(0),
+            "presentedAfterDismiss": .bool(false),
             "button": buttonJSON(selected.button),
         ]
-    }
-
-    /// dismiss 后在主线程 RunLoop 上轮询，等待 presented chain 清空。
-    ///
-    /// - Parameters:
-    ///   - alert: 刚执行过 dismiss 的 alert controller。
-    ///   - maxAttempts: 最多轮询次数。
-    ///   - intervalMs: 每轮让出 runloop 的时长（毫秒）。
-    /// - Returns: 实际等待毫秒数（向上取到整轮），供日志和返回。
-    private static func waitForPresentedViewControllerToClear(on alert: UIAlertController,
-                                                              maxAttempts: Int,
-                                                              intervalMs: Int) -> Int {
-        let rootView = alert.presentingViewController
-        let intervalSec = CFTimeInterval(intervalMs) / 1000.0
-        for attempt in 0..<maxAttempts {
-            if rootView?.presentedViewController == nil {
-                return attempt * intervalMs
-            }
-            // 用 `CFRunLoopRunInMode` 而非 `RunLoop.run(until:)`：后者每次只跑一次 pass，
-            // 不让 UIKit 把 dismiss 转场真正交付到 runloop 上；前者在 default mode 持续
-            // service 整个 interval，与真机主 RunLoop 行为一致，dismiss 才能真正落地。
-            CFRunLoopRunInMode(.defaultMode, intervalSec, false)
-        }
-        return maxAttempts * intervalMs
     }
 
     /// 按请求选择一个 `UIAlertAction` 与对应摘要。

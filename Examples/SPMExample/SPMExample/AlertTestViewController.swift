@@ -17,9 +17,8 @@ import UIKit
 /// - actionSheet（preferredStyle.actionSheet，视图层级与 alert 不同）
 /// - 嵌套 alert（点「继续」后在 handler 内 present 第二个 alert）
 ///
-/// 目的：让 Mac 侧依次 `ui.tap` 触发按钮 → alert present → `ui.alert.respond`（dryRun=true）
-/// 查询 action / textFields，或 `ui.topViewHierarchy` 看 alert 内部视图层级，从而分析
-/// 「系统标准弹窗为什么 dryRun=false 点不了」的真实结构。
+/// 目的：让 Mac 侧依次 `ui.tap` 触发按钮 → alert present → `ui.alert.respond`
+/// 查询 action / textFields，或 `ui.topViewHierarchy` 看 alert 内部视图层级。
 final class AlertTestViewController: UIViewController {
 
     // MARK: 触发按钮
@@ -104,7 +103,7 @@ final class AlertTestViewController: UIViewController {
     /// ScrollView + 垂直主 stack：顶部说明、5 个触发区块、状态反馈、底部事件流。
     private func setupLayout() {
         let intro = UILabel()
-        intro.text = "依次点按钮弹出 alert，配合 Mac 侧 ui.alert.respond(dryRun=true) / ui.topViewHierarchy 分析视图层级。触发按钮均带 accessibilityIdentifier，可被 ui.inspect 发现并由 ui.tap 远程触发。"
+        intro.text = "依次点按钮弹出 alert，配合 Mac 侧 ui.alert.respond / ui.topViewHierarchy 分析视图层级。触发按钮均带 accessibilityIdentifier，可被 ui.inspect 发现并由 ui.tap 远程触发。"
         intro.font = .systemFont(ofSize: 13)
         intro.textColor = .secondaryLabel
         intro.numberOfLines = 0
