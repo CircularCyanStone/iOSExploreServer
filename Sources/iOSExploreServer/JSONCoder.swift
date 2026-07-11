@@ -31,10 +31,19 @@ enum JSONCoder {
     }
 
     /// 把单个 `JSONValue` 转为 Foundation JSON 值。
+    ///
+    /// `.double` 在 bridging 到 `NSNumber` 时，非有限值（NaN / ±Infinity）会让
+    /// `JSONSerialization` 在底层 `_writeJSONNumber` 抛 Objective-C **NSException**。
+    /// Swift 的 `try?`/`do-catch` 只能捕获 `Error`，**无法 catch NSException**，
+    /// 一旦发生就会让整个进程 abort（实测：UITabBarController root 的过渡 view
+    /// `layer.cornerRadius` 即为 NaN，调用方传 `controller="root"` 时 100% 崩溃）。
+    /// 这里在边界层把非有限数消毒为 `0`，从根上杜绝 NaN 进入 `JSONSerialization`。
+    /// 上游采集层（`UIViewHierarchyAppearance` 等）若希望保留语义，应在采集时主动返回 `nil`，
+    /// 这里仅作最后一道硬兜底。
     static func toAny(_ value: JSONValue) -> Any {
         switch value {
         case .string(let s): return s
-        case .double(let d): return d
+        case .double(let d): return d.isFinite ? d : 0
         case .bool(let b): return b
         case .object(let o): return toAny(o)
         case .array(let a): return a.map { toAny($0) }

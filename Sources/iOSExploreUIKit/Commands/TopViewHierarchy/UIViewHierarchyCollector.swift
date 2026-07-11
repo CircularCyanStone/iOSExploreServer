@@ -192,8 +192,13 @@ private struct UIKitViewElement: UIViewHierarchyElement {
             // optional unwrap → nil 即写 `tintColor: null`，避免崩溃。
             // 见 docs/investigations/mcp-spim-example-e2e-issues.md P2。
             tintColor: view.tintColor?.hierarchyHexString,
-            cornerRadius: Double(view.layer.cornerRadius),
-            borderWidth: Double(view.layer.borderWidth),
+            // `CALayer.cornerRadius` / `borderWidth` 在过渡/动画/脱离 window 等状态下可能
+            // 返回 NaN（实测 UITabBarController root 的内部过渡 view 即如此）。直接
+            // `Double(...)` 会把 NaN 透传到 `JSON`，`JSONSerialization` 遇 NaN 抛 NSException
+            // 让进程 abort（`try?` 无法 catch NSException）。这里拒绝非有限值，输出 `nil`，
+            // 让 JSON 写 `null`，语义更合理（圆角值无意义）也避免崩溃。
+            cornerRadius: Self.finiteDouble(view.layer.cornerRadius),
+            borderWidth: Self.finiteDouble(view.layer.borderWidth),
             borderColor: view.layer.borderColor.flatMap { UIColor(cgColor: $0).hierarchyHexString }
         )
         self.control = Self.controlInfo(from: view)
@@ -213,6 +218,19 @@ private struct UIKitViewElement: UIViewHierarchyElement {
         }
         self.subviews = subviews.map { UIKitViewElement(view: $0) }
         self._indexPath = Self.cellIndexPath(from: view)
+    }
+
+    /// 把 `CGFloat` 安全转换为有限 `Double`，非有限值（NaN / ±Infinity）返回 `nil`。
+    ///
+    /// `JSONSerialization.serialize` 在写入数字时遇到非有限值会让 `_writeJSONNumber`
+    /// 抛 Objective-C **NSException**；Swift 错误处理 (`do-catch` / `try?`) 无法 catch
+    /// `NSException`，进程会整个 abort。这里在采集层就把非有限值过滤为 `nil`，让 JSON
+    /// 输出 `null`，避免崩溃并保留可读语义。参考：
+    /// `Sources/iOSExploreServer/JSONCoder.swift::toAny` 在序列化边界再做一次同口径兜底。
+    @MainActor
+    private static func finiteDouble(_ value: CGFloat) -> Double? {
+        let d = Double(value)
+        return d.isFinite ? d : nil
     }
 
     /// 提取 `UITableViewCell` / `UICollectionViewCell` 的 indexPath。

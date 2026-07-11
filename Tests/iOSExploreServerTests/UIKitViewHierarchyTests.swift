@@ -238,6 +238,42 @@ func viewHierarchyQueryRejectsOutOfRangeMaxDepth() {
 }
 #endif
 
+@Test("UIViewHierarchyAppearance cornerRadius=nil 经 JSONCoder 编码写 null 而非 NaN")
+func appearanceCornerRadiusNilSerializesToNull() throws {
+    // 采集层 finiteDouble 对非有限 CGFloat 返回 nil，对应 cornerRadius=nil。
+    // toJSON 把 nil 写为 .null，JSONCoder.encode 对 .null 输出 null，
+    // 不再走 _writeJSONNumber 抛 NSException 的崩溃路径。
+    let appearance = UIViewHierarchyAppearance(backgroundColor: "#FFFFFF",
+                                               tintColor: nil,
+                                               cornerRadius: nil,
+                                               borderWidth: nil,
+                                               borderColor: nil)
+    let json = appearance.toJSON()
+    #expect(json["cornerRadius"] == .null)
+    #expect(json["borderWidth"] == .null)
+
+    // 整棵 node 走 toJSON + JSONCoder.encode：不应抛、不应 abort。
+    let node = UIViewHierarchyNode(
+        path: "root", type: "UIView",
+        accessibility: UIViewHierarchyAccessibility(),
+        frame: UIViewHierarchyRect(x: 0, y: 0, width: 0, height: 0),
+        bounds: UIViewHierarchyRect(x: 0, y: 0, width: 0, height: 0),
+        state: UIViewHierarchyState(isHidden: false, alpha: 1, isOpaque: false, isUserInteractionEnabled: true),
+        text: nil,
+        appearance: appearance,
+        control: nil,
+        image: nil,
+        scroll: nil,
+        subviews: []
+    )
+    let encoded = JSONCoder.encode(node.toJSON())
+    let decoded = try #require(JSONCoder.decode(encoded))
+    guard case .object(let appearanceDecoded)? = decoded["appearance"] else {
+        Issue.record("appearance not object"); return
+    }
+    #expect(appearanceDecoded["cornerRadius"] == .null)
+}
+
 private struct TestViewElement: UIViewHierarchyElement {
     let type: String
     var accessibility: UIViewHierarchyAccessibility
