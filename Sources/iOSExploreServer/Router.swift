@@ -73,7 +73,7 @@ public final class Router: Sendable {
         switch result {
         case .success:
             ExploreLogger.info(.router, "router route success action=\(request.action)")
-        case .failure(let code, let message):
+        case .failure(let code, let message, _):
             ExploreLogger.error(.router, "router route business failure action=\(request.action) code=\(code.rawValue) message=\(message)")
         }
         return result

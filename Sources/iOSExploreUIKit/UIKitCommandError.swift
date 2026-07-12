@@ -23,8 +23,9 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     ///   - code: 业务失败码。
     ///   - message: 对外失败说明，进入 envelope。
     ///   - logMessage: 仅用于日志的内部说明，不进 envelope。
-    init(code: ExploreError, message: String, logMessage: String) {
-        self.failure = ExploreCommandFailure(code: code, message: message, logMessage: logMessage)
+    ///   - data: 可选的结构化 data，随 envelope 顶层 `data` 返回。
+    init(code: ExploreError, message: String, logMessage: String, data: JSON? = nil) {
+        self.failure = ExploreCommandFailure(code: code, message: message, logMessage: logMessage, data: data)
     }
 
     /// locator 陈旧（viewSnapshot 已过期、目标未被签发，或指纹 / 语义变化），需重新观察后重试。
@@ -164,11 +165,19 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     ///   - action: 触发失败的 action 名。
     ///   - mode: 等待模式摘要。
     ///   - elapsedMs: 已等待毫秒数。
-    /// - Returns: `wait_timeout` 失败描述。
-    static func waitTimeout(action: String, mode: String, elapsedMs: Int) -> UIKitCommandError {
-        UIKitCommandError(code: .waitTimeout,
-                          message: "wait timed out mode=\(mode) elapsedMs=\(elapsedMs)",
-                          logMessage: "ui wait timeout action=\(action) mode=\(mode) elapsedMs=\(elapsedMs)")
+    ///   - attempts: 轮询尝试次数（可选，提供时入 data）。
+    /// - Returns: `wait_timeout` 失败描述，`elapsedMs`/`attempts` 入 data。
+    static func waitTimeout(action: String, mode: String, elapsedMs: Int, attempts: Int? = nil) -> UIKitCommandError {
+        var data: JSON = [
+            "elapsedMs": .double(Double(elapsedMs))
+        ]
+        if let attempts {
+            data["attempts"] = .double(Double(attempts))
+        }
+        return UIKitCommandError(code: .waitTimeout,
+                                 message: "wait timed out mode=\(mode)",
+                                 logMessage: "ui wait timeout action=\(action) mode=\(mode) elapsedMs=\(elapsedMs) attempts=\(attempts.map(String.init) ?? "?")",
+                                 data: data)
     }
 
     /// 当前页面没有可返回的导航路径。

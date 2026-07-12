@@ -62,7 +62,8 @@ enum UIWaitExecutor {
                 let elapsedMs = Int((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
                 throw UIKitCommandError.waitTimeout(action: WaitCommand.actionName,
                                                     mode: input.mode.rawValue,
-                                                    elapsedMs: elapsedMs)
+                                                    elapsedMs: elapsedMs,
+                                                    attempts: attempts)
             }
             attempts += 1
             // 瞬时层级不可用（控制器转场、前后台切换、root 交换导致 activeWindow/topView 短暂为空）
@@ -96,7 +97,8 @@ enum UIWaitExecutor {
                 let elapsedMs = Int((now - start) / 1_000_000)
                 throw UIKitCommandError.waitTimeout(action: WaitCommand.actionName,
                                                     mode: input.mode.rawValue,
-                                                    elapsedMs: elapsedMs)
+                                                    elapsedMs: elapsedMs,
+                                                    attempts: attempts)
             }
 
             // sleep clamp 到剩余 deadline，确保业务 waitTimeout 先于命令级 35s cancel。
@@ -109,7 +111,8 @@ enum UIWaitExecutor {
                 let elapsedMs = Int((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
                 throw UIKitCommandError.waitTimeout(action: WaitCommand.actionName,
                                                     mode: input.mode.rawValue,
-                                                    elapsedMs: elapsedMs)
+                                                    elapsedMs: elapsedMs,
+                                                    attempts: attempts)
             }
         }
     }
@@ -213,10 +216,14 @@ enum UIWaitExecutor {
             return false
         case .targetExists:
             guard let target = probe.target else { return false }
-            return UIKitLocatorResolver.contains(locator: target.locator, in: context.rootView)
+            return UIKitLocatorResolver.contains(locator: target.locator,
+                                                  in: context.rootView,
+                                                  includeHidden: probe.includeHidden)
         case .targetGone:
             guard let target = probe.target else { return false }
-            return !UIKitLocatorResolver.contains(locator: target.locator, in: context.rootView)
+            return !UIKitLocatorResolver.contains(locator: target.locator,
+                                                   in: context.rootView,
+                                                   includeHidden: probe.includeHidden)
         case .textExists:
             guard let text = probe.text else { return false }
             return UIKitVisibleTextCollector.contains(text: text,

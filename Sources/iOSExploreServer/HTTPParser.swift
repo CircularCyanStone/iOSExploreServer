@@ -138,8 +138,11 @@ enum HTTPParser {
         case .success(let data):
             let body: JSON = ["code": .string("ok"), "data": .object(data)]
             return HTTPResponse(status: 200, reason: "OK", body: JSONCoder.encode(body))
-        case .failure(let code, let message):
-            let body: JSON = ["code": .string(code.rawValue), "message": .string(message)]
+        case .failure(let code, let message, let data):
+            var body: JSON = ["code": .string(code.rawValue), "message": .string(message)]
+            if let data {
+                body["data"] = .object(data)
+            }
             return HTTPResponse(status: 200, reason: "OK", body: JSONCoder.encode(body))
         }
     }

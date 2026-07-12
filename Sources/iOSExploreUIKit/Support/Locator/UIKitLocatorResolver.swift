@@ -87,19 +87,32 @@ enum UIKitLocatorResolver {
     /// 判断 `rootView` 中是否存在匹配 `locator` 的 view（至少一个），不抛错。
     ///
     /// 供 `ui.wait` 的 targetExists / targetGone 判断存在性：与 `locate(...)` 不同，本方法
-    /// 把"未找到 / 多个匹配"都视为存在性结果而非错误。
+    /// 把"未找到 / 多个匹配"都视为存在性结果而非错误。当 `includeHidden` 为 false 时，
+    /// 跳过 `isHidden=true` 或 `alpha<=0` 的 view（仅对 path 模式生效；accessibilityIdentifier
+    /// 模式先完全匹配再过滤隐藏），使 targetExists 不在隐藏 view 上误判为存在，同时让
+    /// targetGone 在隐藏 view 上正确判定为"消失"。
     ///
     /// - Parameters:
     ///   - locator: 统一定位器（accessibilityIdentifier / path）。
     ///   - rootView: 顶部控制器根 view。
-    /// - Returns: 是否存在至少一个匹配 view。
-    static func contains(locator: UIKitLocator, in rootView: UIView) -> Bool {
+    ///   - includeHidden: 是否计入隐藏 view（默认 false，跳过隐藏）。
+    /// - Returns: 是否存在至少一个匹配的可见 view。
+    static func contains(locator: UIKitLocator, in rootView: UIView, includeHidden: Bool = false) -> Bool {
         switch locator {
         case .accessibilityIdentifier(let identifier):
-            return !findViews(withAccessibilityIdentifier: identifier, in: rootView, path: []).isEmpty
+            let views = findViews(withAccessibilityIdentifier: identifier, in: rootView, path: [])
+            if includeHidden { return !views.isEmpty }
+            return views.contains(where: isVisible)
         case .path(let indexes):
-            return findView(at: indexes, in: rootView) != nil
+            guard let located = findView(at: indexes, in: rootView) else { return false }
+            return includeHidden || isVisible(located)
         }
+    }
+
+    /// 检查 LocatedView 是否"可见"：!isHidden && alpha > 0。
+    /// 供 contains(includeHidden:) 过滤隐藏 view。
+    private static func isVisible(_ located: LocatedView) -> Bool {
+        !located.view.isHidden && located.view.alpha > 0
     }
 
     /// 按 path 下标定位 view。

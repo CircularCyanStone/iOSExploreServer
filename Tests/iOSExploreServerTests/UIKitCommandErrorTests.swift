@@ -46,7 +46,7 @@ struct UIKitCommandErrorTests {
     @Test("目标未找到使用 target_not_found")
     func targetNotFoundMapsToDedicatedCode() {
         let error = UIKitCommandError.targetNotFound(action: "ui.tap", targetDescription: "accessibilityIdentifier=home")
-        #expect(error.result == .failure(code: .targetNotFound, message: "tap target not found"))
+        #expect(error.result == .failure(code: .targetNotFound, message: "tap target not found — the page view tree may have changed; call ui.inspect first, then retry with a fresh target"))
         #expect(error.failure.logMessage.contains("target=accessibilityIdentifier=home"))
     }
 

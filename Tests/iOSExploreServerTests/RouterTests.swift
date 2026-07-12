@@ -30,7 +30,7 @@ func routeHitsRegistered() async {
 func routeUnknown() async {
     let router = Router()
     let result = await router.route(ExploreRequest(action: "nope"))
-    if case .failure(let code, _) = result {
+    if case .failure(let code, _, _) = result {
         #expect(code == .unknownAction)
     } else {
         Issue.record("expected failure")
@@ -43,7 +43,7 @@ func routeThrowing() async {
     struct Boom: Error {}
     router.register(action: "boom", input: EmptyCommandInput.self) { _ in throw Boom() }
     let result = await router.route(ExploreRequest(action: "boom"))
-    if case .failure(let code, _) = result {
+    if case .failure(let code, _, _) = result {
         #expect(code == .internalError)
     } else {
         Issue.record("expected failure")
@@ -57,7 +57,7 @@ func routeMissingRequiredInputField() async {
         .success([:])
     }
     let result = await router.route(ExploreRequest(action: "greet"))
-    if case .failure(let code, let msg) = result {
+    if case .failure(let code, let msg, _) = result {
         #expect(code == .invalidData)
         #expect(msg.contains("name"))
     } else {
@@ -72,7 +72,7 @@ func routeInputTypeMismatch() async {
         .success([:])
     }
     let result = await router.route(ExploreRequest(action: "greet", data: ["name": 42]))
-    if case .failure(let code, _) = result {
+    if case .failure(let code, _, _) = result {
         #expect(code == .invalidData)
     } else {
         Issue.record("expected invalidData")

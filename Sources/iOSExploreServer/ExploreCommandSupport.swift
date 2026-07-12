@@ -21,23 +21,37 @@ public struct ExploreCommandFailure: Sendable, Equatable {
     /// 由调用方决定是否调用 `ExploreLogging.emitExtension` 输出。
     public let logMessage: String
 
+    /// 可选的结构化 data，随 envelope 顶层 `data` 返回。
+    ///
+    /// 用于业务失败需要给调用方返回额外结构化字段时（如超时时的 `elapsedMs`/`attempts`），
+    /// 默认为 `nil`（envelope 无 `data` 字段）。
+    public let data: JSON?
+
     /// 创建一条扩展命令失败描述。
     ///
     /// - Parameters:
     ///   - code: 业务失败码，对应 envelope 顶层 `code`。
     ///   - message: 对外失败说明，对应 envelope 顶层 `message`。
     ///   - logMessage: 仅用于日志的内部说明，不进响应。
-    public init(code: ExploreError, message: String, logMessage: String) {
+    ///   - data: 可选的结构化 data，随 envelope 顶层 `data` 返回。
+    public init(code: ExploreError, message: String, logMessage: String, data: JSON? = nil) {
         self.code = code
         self.message = message
         self.logMessage = logMessage
+        self.data = data
     }
 
     /// 转换为命令失败结果，由扩展 handler `return failure.result` 收敛进响应 envelope。
     ///
     /// 该类型不实现 `Error`，handler 不能 `throw` 它；只能通过 `return` 把扩展失败转为
     /// `ExploreResult.failure`，由 `AnyCommand` 走业务失败 envelope 路径输出。
-    public var result: ExploreResult { .failure(code: code, message: message) }
+    public var result: ExploreResult {
+        if let data {
+            return .failure(code: code, message: message, data: data)
+        } else {
+            return .failure(code: code, message: message)
+        }
+    }
 }
 
 /// 为扩展模块（UIKit 等）提供的日志入口。

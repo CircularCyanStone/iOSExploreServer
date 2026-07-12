@@ -64,7 +64,7 @@ public struct UIWaitInput: CommandInput, Sendable, Equatable {
         static let includeHidden = CommandFields.bool(
             "includeHidden",
             default: false,
-            description: "idle/textExists 是否考虑隐藏 view, 默认 false"
+            description: "idle/textExists/targetExists/targetGone 是否考虑隐藏 view, 默认 false"
         )
 
         static let all: [AnyCommandField] = [
@@ -97,7 +97,9 @@ public struct UIWaitInput: CommandInput, Sendable, Equatable {
     public let viewSnapshotID: String?
     /// 目标定位（targetExists / targetGone）。
     public let target: UIKitViewLookupTarget?
-    /// 是否考虑隐藏 view。
+    /// 是否考虑隐藏 view。对 idle/textExists 控制是否纳入隐藏 view 的文本/活动签名；
+    /// 对 targetExists/targetGone 控制是否把 `isHidden=true` 的 view 计入"存在"。
+    /// 默认 false：targetExists 不在隐藏 view 上误判为存在，targetGone 在隐藏 view 上判定为"消失"。
     public let includeHidden: Bool
 
     /// 创建一条 wait 输入。

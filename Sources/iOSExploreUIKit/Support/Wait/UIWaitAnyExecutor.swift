@@ -72,7 +72,8 @@ enum UIWaitAnyExecutor {
                 let elapsedMs = Int((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
                 throw UIKitCommandError.waitTimeout(action: WaitAnyCommand.actionName,
                                                     mode: "any",
-                                                    elapsedMs: elapsedMs)
+                                                    elapsedMs: elapsedMs,
+                                                    attempts: attempts)
             }
             attempts += 1
             let now = DispatchTime.now().uptimeNanoseconds
@@ -106,7 +107,8 @@ enum UIWaitAnyExecutor {
                 let elapsedMs = Int((now - start) / 1_000_000)
                 throw UIKitCommandError.waitTimeout(action: WaitAnyCommand.actionName,
                                                     mode: "any",
-                                                    elapsedMs: elapsedMs)
+                                                    elapsedMs: elapsedMs,
+                                                    attempts: attempts)
             }
 
             // sleep clamp 到剩余 deadline，确保业务 waitTimeout 先于命令级 35s cancel。
@@ -119,7 +121,8 @@ enum UIWaitAnyExecutor {
                 let elapsedMs = Int((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000)
                 throw UIKitCommandError.waitTimeout(action: WaitAnyCommand.actionName,
                                                     mode: "any",
-                                                    elapsedMs: elapsedMs)
+                                                    elapsedMs: elapsedMs,
+                                                    attempts: attempts)
             }
         }
     }

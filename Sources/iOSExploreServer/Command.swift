@@ -172,7 +172,7 @@ public struct AnyCommand: Sendable {
         switch result {
         case .success(let data):
             emit(.info, "command \(action) completed ok=true resultKeys=\(data.storage.count)")
-        case .failure(let code, let message):
+        case .failure(let code, let message, _):
             emit(.error, "command \(action) failed code=\(code.rawValue) message=\(message)")
         }
     }

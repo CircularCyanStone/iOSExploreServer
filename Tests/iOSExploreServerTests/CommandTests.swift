@@ -41,7 +41,7 @@ func anyCommandParseFailureMapsInvalidData() async {
     }
 
     let result = await cmd.handle(ExploreRequest(action: "greet"))
-    if case .failure(let code, let message) = result {
+    if case .failure(let code, let message, _) = result {
         #expect(code == .invalidData)
         #expect(message.contains("name"))
     } else {

@@ -134,7 +134,8 @@ public enum ExploreResult: Sendable, Equatable {
     case success(JSON)
 
     /// 业务失败，错误码和说明会被序列化进响应 envelope 的顶层 `code/message` 字段。
-    case failure(code: ExploreError, message: String)
+    /// 可选的 `data` 用于在失败时仍需要返回结构化字段（如超时的 `elapsedMs`/`attempts`）。
+    case failure(code: ExploreError, message: String, data: JSON? = nil)
 }
 
 /// 统一 envelope 中失败 `code` 的取值。
