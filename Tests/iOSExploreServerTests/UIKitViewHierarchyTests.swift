@@ -274,6 +274,84 @@ func appearanceCornerRadiusNilSerializesToNull() throws {
     #expect(appearanceDecoded["cornerRadius"] == .null)
 }
 
+#if canImport(UIKit)
+import UIKit
+
+// MARK: - UIKit 真实采集（仅 iOS framework 跑）
+
+/// 构造 keyWindow + 手动 `UIKitContextProvider.Context`（对齐 UIControllersTests 写法）。
+private func makeHierarchyContext(rootViewController: UIViewController,
+                                  topViewController: UIViewController,
+                                  rootView: UIView) -> UIKitContextProvider.Context {
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    window.rootViewController = rootViewController
+    window.makeKeyAndVisible()
+    return UIKitContextProvider.Context(window: window,
+                                        rootViewController: rootViewController,
+                                        topViewController: topViewController,
+                                        rootView: rootView)
+}
+
+/// 递归在层级 JSON 中查找 type 等于 `typeName` 的首个节点。
+private func findNode(in json: JSONValue?, typeName: String) -> JSONValue? {
+    guard let node = json?.objectValue else { return nil }
+    if node["type"]?.stringValue == typeName { return json }
+    for child in node["subviews"]?.arrayValue ?? [] {
+        if let found = findNode(in: child, typeName: typeName) { return found }
+    }
+    return nil
+}
+
+@Test("controller 参数采集非栈顶 VC 视图不被 window 守卫清空（regression）") @MainActor
+func collectControllerOverrideSkipsWindowGuard() throws {
+    let root = UIViewController()
+    let label = UILabel(frame: CGRect(x: 10, y: 10, width: 100, height: 30))
+    label.text = "RootLabel"
+    root.view.addSubview(label)
+    let detail = UIViewController()
+    let nav = UINavigationController(rootViewController: root)
+    nav.pushViewController(detail, animated: false)
+    // 让出一次 RunLoop 使 push 转场真正完成：之后 nav 只挂载栈顶 detail.view，
+    // root.view 脱离 window（root.view.window == nil）。
+    let ctx = makeHierarchyContext(rootViewController: nav,
+                                   topViewController: detail,
+                                   rootView: detail.view)
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+    let query = try UIViewHierarchyInput.parse(from: ["controller": "root.nav[0]"])
+    let data = try UIViewHierarchyCollector.collectTopViewHierarchy(query: query, context: ctx)
+    // 修复前：root.view 不在 window 层级 → isAttachedToWindow=false → subviews 被守卫清空
+    // → nodeCount=1（只剩 root.view 自身），controller 参数的核心用途失效。
+    // 修复后：controller-override 路径跳过 window 守卫 → label 子树正常采集。
+    let nodeCount = data["nodeCount"]?.doubleValue ?? 0
+    #expect(nodeCount > 1, "非栈顶 VC 的视图层级应包含子视图，nodeCount=\(nodeCount)")
+    #expect(data["controller"]?.stringValue == "root.nav[0]")
+    let rootChildren = data["root"]?.objectValue?["subviews"]?.arrayValue ?? []
+    #expect(rootChildren.contains { $0.objectValue?["type"]?.stringValue == "UILabel" } == true,
+            "应采集到 root.view 下的 UILabel 子视图")
+}
+
+@Test("UIStepper value 被采集为数值字符串（对齐 slider 输出格式）") @MainActor
+func collectStepperValueExposed() throws {
+    let host = UIViewController()
+    let stepper = UIStepper(frame: CGRect(x: 10, y: 10, width: 100, height: 30))
+    stepper.value = 5
+    host.view.addSubview(stepper)
+    let ctx = makeHierarchyContext(rootViewController: host,
+                                   topViewController: host,
+                                   rootView: host.view)
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+    let data = try UIViewHierarchyCollector.collectTopViewHierarchy(query: .default, context: ctx)
+    let stepperNode = findNode(in: data["root"], typeName: "UIStepper")
+    #expect(stepperNode != nil, "应采集到 UIStepper 节点")
+    // 修复前：UIStepper 默认不暴露数值型 accessibilityValue → accessibilityValue=null，
+    // executor 能写 stepper.value 但采集器读不到，设值闭环断裂。
+    // 修复后：直接读 stepper.value，输出对齐 slider 的 String(Double(...)) 格式 → "5.0"。
+    let value = stepperNode?.objectValue?["accessibilityValue"]?.stringValue
+    #expect(value == "5.0", "UIStepper value 应为 \"5.0\"，实际 \(value ?? "nil")")
+}
+
+#endif
+
 private struct TestViewElement: UIViewHierarchyElement {
     let type: String
     var accessibility: UIViewHierarchyAccessibility

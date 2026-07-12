@@ -118,3 +118,64 @@ func controlSendActionEventParsesSupportedNames() {
     #expect(UIControlSendActionEvent(rawValue: "editingDidBegin") == .editingDidBegin)
     #expect(UIControlSendActionEvent(rawValue: "editingDidEnd") == .editingDidEnd)
 }
+
+// MARK: - editing* 事件族文本输入引导（Bug #5）
+
+/// editing* 事件族（editingChanged/editingDidBegin/editingDidEnd）服务 UITextField，文本输入应
+/// 走专用 `ui.input` 命令。当 agent 用 sendAction + string value 尝试设文本时，value 的 number
+/// schema 会拒绝，错误必须明确引导到 `ui.input`，而不是只报 "value must be a finite number"。
+@Test("editingChanged + 字符串 value 引导使用 ui.input 命令")
+func sendActionEditingEventWithStringValueGuidesToInput() {
+    do {
+        _ = try UIControlSendActionInput.parse(from: [
+            "path": "root/0",
+            "viewSnapshotID": "view_snapshot_test",
+            "event": "editingChanged",
+            "value": "hello",
+        ])
+        Issue.record("expected CommandInputParseError guiding to ui.input")
+    } catch let error as CommandInputParseError {
+        #expect(error.message.contains("ui.input"),
+                "editing* + string value 错误应引导到 ui.input，实际: \(error.message)")
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
+}
+
+@Test("editingDidBegin + 字符串 value 同样引导使用 ui.input")
+func sendActionEditingDidBeginWithStringValueGuidesToInput() {
+    do {
+        _ = try UIControlSendActionInput.parse(from: [
+            "path": "root/0",
+            "viewSnapshotID": "view_snapshot_test",
+            "event": "editingDidBegin",
+            "value": "some text",
+        ])
+        Issue.record("expected CommandInputParseError guiding to ui.input")
+    } catch let error as CommandInputParseError {
+        #expect(error.message.contains("ui.input"),
+                "editing* + string value 错误应引导到 ui.input，实际: \(error.message)")
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
+}
+
+/// 非 editing 事件（如 valueChanged）传字符串 value 仍走原 number schema 错误，不应触发引导——
+/// 引导只在 editing* 事件族生效，避免误伤 slider/segmented 等数值控件的错误文案。
+@Test("valueChanged + 字符串 value 不触发 ui.input 引导（保持原 number 错误）")
+func sendActionValueChangedWithStringValueKeepsNumberError() {
+    do {
+        _ = try UIControlSendActionInput.parse(from: [
+            "path": "root/0",
+            "viewSnapshotID": "view_snapshot_test",
+            "event": "valueChanged",
+            "value": "hello",
+        ])
+        Issue.record("expected CommandInputParseError")
+    } catch let error as CommandInputParseError {
+        #expect(!error.message.contains("ui.input"),
+                "非 editing 事件不应引导到 ui.input，实际: \(error.message)")
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
+}

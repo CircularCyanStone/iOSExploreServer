@@ -126,6 +126,18 @@ private func makeContext(rootViewController: UIViewController,
                                         rootView: rootView)
 }
 
+/// 递归展平 controller 骨架 JSON 的所有节点（含 root 自身），用于跨树统计/查找。
+private func flattenControllerNodes(_ json: JSONValue) -> [JSONValue] {
+    guard let node = json.objectValue else { return [] }
+    var result: [JSONValue] = [json]
+    if let children = node["children"]?.arrayValue {
+        for child in children {
+            result.append(contentsOf: flattenControllerNodes(child))
+        }
+    }
+    return result
+}
+
 @Test("单普通 VC：骨架只有根节点，topPath=root") @MainActor
 func collectSingleViewController() {
     let vc = UIViewController()
@@ -251,6 +263,54 @@ func collectPresentedChain() {
     #expect(children.count == 1)
     #expect(children[0].objectValue?["path"]?.stringValue == "root.presented")
     #expect(children[0].objectValue?["role"]?.stringValue == "presented")
+}
+
+@Test("presented 只挂在真实呈现者下，不转发到子孙（regression: presentedViewController 转发致 modal 散落）") @MainActor
+func collectPresentedNotForwardedToDescendants() {
+    let root = UIViewController()
+    root.title = "Root"
+    let detail = UIViewController()
+    detail.title = "Detail"
+    let nav = UINavigationController(rootViewController: root)
+    nav.pushViewController(detail, animated: false)
+    let modal = UIViewController()
+    modal.title = "Modal"
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    window.rootViewController = nav
+    window.makeKeyAndVisible()
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+    // 从容器 nav present：UIKit 把 nav 登记为真实呈现者，并把 presentedViewController
+    // 沿后代链「转发」给 nav[0]/nav[1]（文档行为：子孙的 presentedViewController 返回
+    // 祖先 present 的 modal）。修复前每个转发节点都把 modal 当自己的 presented 子节点
+    // 附加，导致 modal 散落、controllerCount 虚高、topPath 指向错误挂载点（实测真机
+    // controllerCount=18 而非 ~10）。presentingViewController 返回唯一真实呈现者（非转发），
+    // 用它过滤即可让 modal 只挂在 nav 下。
+    nav.present(modal, animated: false)
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+    // present 在测试环境偶发不就绪；未就绪时跳过，转发场景由 SPMExample 真机验证覆盖。
+    guard nav.presentedViewController === modal,
+          modal.presentingViewController === nav else { return }
+    let ctx = UIKitContextProvider.Context(window: window,
+                                           rootViewController: nav,
+                                           topViewController: modal,
+                                           rootView: modal.view)
+    let data = UIControllersCollector.collect(query: .default, context: ctx)
+    // nav + root + detail + modal = 4。修复前转发会让 modal 同时挂在 nav/nav[0]/nav[1]
+    // 多个 presented 槽，计数变为 6。
+    #expect(data["controllerCount"]?.doubleValue == 4, "controllerCount 应为 4，实际 \(data["controllerCount"]?.doubleValue ?? -1)")
+    let allNodes = flattenControllerNodes(data["root"] ?? .null)
+    let presentedNodes = allNodes.filter { $0.objectValue?["role"]?.stringValue == "presented" }
+    // modal 在整棵树只出现一次（修复前散落到 nav[0]/nav[1]/nav 三个 presented 槽）。
+    #expect(presentedNodes.count == 1, "presented 角色节点应只有一个，实际 \(presentedNodes.count)")
+    #expect(presentedNodes.first?.objectValue?["path"]?.stringValue == "root.presented")
+    // nav[0]/nav[1]（navigation 角色）不应各自再转发挂载 modal 子节点。
+    for node in allNodes {
+        guard let role = node.objectValue?["role"]?.stringValue, role == "navigation",
+              let path = node.objectValue?["path"]?.stringValue else { continue }
+        let kids = node.objectValue?["children"]?.arrayValue ?? []
+        let presentedKids = kids.filter { $0.objectValue?["role"]?.stringValue == "presented" }
+        #expect(presentedKids.isEmpty, "navigation 子节点不应转发挂载 modal: \(path)")
+    }
 }
 
 @Test("context 不可用时 collect(query:) 抛 hierarchyUnavailable（环境受限时跳过）") @MainActor

@@ -67,11 +67,14 @@ final class ViewController: UIViewController {
 
     /// 功能菜单数据。
     private let menuItems: [MenuItem] = [
+        MenuItem(title: "导航与截图测试", subtitle: "导航栏按钮、push/pop、present/dismiss、多级导航，供 ui.navigation.* 和 ui.screenshot 验证", icon: "🧭", viewControllerType: NavigationTestViewController.self),
         MenuItem(title: "弹窗测试", subtitle: "5 种 UIAlertController 案例，供 ui.alert.respond 验证", icon: "🔔", viewControllerType: AlertTestViewController.self),
         MenuItem(title: "控件测试", subtitle: "UIButton / UISwitch / UISlider 等 6 类控件，供 ui.control.sendAction 验证", icon: "🎮", viewControllerType: ControlTestViewController.self),
+        MenuItem(title: "Controller 结构测试", subtitle: "Navigation / Tab / Modal / Child / Split 等多层嵌套结构，供 ui.controllers 验证", icon: "🏗️", viewControllerType: ControllerStructureTestViewController.self),
         MenuItem(title: "日志诊断测试", subtitle: "模拟网络请求、认证、业务事件等多种场景，验证所有日志来源", icon: "📋", viewControllerType: DiagnosticsTestViewController.self),
         MenuItem(title: "滚动测试", subtitle: "UICollectionView + 30 个 cell，供 ui.scrollToElement 验证", icon: "📜", viewControllerType: ScrollTestViewController.self),
         MenuItem(title: "Wait 测试", subtitle: "5 种 waitMode 动态出现/消失/变化场景,供 ui.wait / ui.waitAny 验证", icon: "⏱️", viewControllerType: WaitTestViewController.self),
+        MenuItem(title: "文本输入测试", subtitle: "UITextField / UITextView / UISearchTextField 等多种文本控件，供 ui.input 和 ui.keyboard.dismiss 验证", icon: "⌨️", viewControllerType: InputTestViewController.self),
     ]
 
     override func viewDidLoad() {

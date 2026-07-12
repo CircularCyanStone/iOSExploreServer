@@ -364,6 +364,71 @@ func valueFromForNonTextFieldStillWorks() {
     #expect(targets.contains { $0["type"]?.stringValue == "UISegmentedControl" && $0["value"]?.stringValue == "1" })
 }
 
+@Test("UIStepper 的 value 经原生属性读取（设值闭环采集端）") @MainActor
+func stepperValueExposedViaNativeProperty() {
+    // Bug #4：UIStepper 默认不暴露数值型 accessibilityValue，ui.inspect 的 value(from:)
+    // 原本 fallback 到 accessibilityValue 导致 stepper value 恒为 null，executor 能写
+    // stepper.value 但采集端读不到，设值闭环断裂。补 UIStepper 分支直接读 stepper.value，
+    // 与 UISlider/UISwitch/UISegmentedControl 同口径（输出格式对齐 slider 的 "5.0"）。
+    let context = UIKitTestHost.context { root in
+        let stepper = UIStepper()
+        stepper.minimumValue = 0
+        stepper.maximumValue = 10
+        stepper.value = 5
+        stepper.frame = CGRect(x: 10, y: 90, width: 100, height: 30)
+        root.addSubview(stepper)
+    }
+
+    let data = UIInspectCollector.collect(query: .default, context: context)
+    let targets = allTargetSummaries(from: data)
+
+    #expect(targets.contains { $0["type"]?.stringValue == "UIStepper" && $0["value"]?.stringValue == "5.0" })
+}
+
+@Test("UIButton 的 text 字段返回按钮标题（与 topViewHierarchy 口径一致）") @MainActor
+func buttonExposesCurrentTitleAsText() {
+    // Bug #1：ui.inspect 的 text 字段由 textualValue 提供，原实现只处理
+    // UILabel/UITextField/UITextView/UIListContentView/UITableViewCell，缺 UIButton 分支，
+    // 导致 inspect 返回的 UIButton 节点 text 恒为 null（按钮标题丢失）。
+    // 这里验证 inspect 的 UIButton target 的 text == 按钮 normal 状态标题。
+    let context = UIKitTestHost.context { root in
+        let button = UIButton(type: .system)
+        button.setTitle("Push 一层 VC", for: .normal)
+        button.frame = CGRect(x: 10, y: 10, width: 200, height: 40)
+        root.addSubview(button)
+    }
+
+    let data = UIInspectCollector.collect(query: .default, context: context)
+    let targets = allTargetSummaries(from: data)
+
+    let buttonTarget = targets.first { $0["type"]?.stringValue == "UIButton" }
+    #expect(buttonTarget != nil, "UIButton 应作为 target 出现")
+    #expect(buttonTarget?["text"]?.stringValue == "Push 一层 VC",
+            "UIButton 的 text 字段应返回按钮标题，而非 null")
+}
+
+@Test("UIButton 无标题时 text 为 null（不误报）") @MainActor
+func buttonWithoutTitleHasNullText() {
+    // 无标题按钮（仅 image 或空）的 text 应为 null，验证 UIButton 分支不会把 nil 标题
+    // 误转成空字符串或误读其它来源。
+    let context = UIKitTestHost.context { root in
+        let button = UIButton(type: .system)
+        button.frame = CGRect(x: 10, y: 10, width: 200, height: 40)
+        root.addSubview(button)
+    }
+
+    let data = UIInspectCollector.collect(query: .default, context: context)
+    let targets = allTargetSummaries(from: data)
+
+    let buttonTarget = targets.first { $0["type"]?.stringValue == "UIButton" }
+    #expect(buttonTarget != nil)
+    // full 节点 toJSON 把 nil text 序列化为 .null；只要不是任何非空 string 即可。
+    let textValue = buttonTarget?["text"]
+    if case .string(let s)? = textValue, !s.isEmpty {
+        Issue.record("无标题 UIButton 不应暴露非空 text: \"\(s)\"")
+    }
+}
+
 @Test("UIInspectInput 解析 maxVisitedNodes 默认值和边界")
 func inspectQueryParsesMaxVisitedNodes() throws {
     let defaultQuery = try UIInspectInput.parse(from: [:])

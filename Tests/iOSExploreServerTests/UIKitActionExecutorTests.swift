@@ -302,6 +302,14 @@ func sendActionSetsSliderValueBeforeValueChanged() throws {
     let slider = try #require(context.rootView.subviews.first as? UISlider)
     #expect(data["sent"]?.boolValue == true)
     #expect(slider.value == Float(0.85))
+    // Bug #3：响应须回传 previousValue/currentValue（与 ui.tap 的 switch.toggle 口径一致），
+    // 让 agent 从单次响应确认值是否生效，无需额外 inspect。
+    // UISlider.value 是 Float（32 位），升格成 Double 存入响应会有精度漂移
+    //（0.1→0.1000...149、0.85→0.8500...238），故用绝对误差比较而非精确相等。
+    let previousSlider = try #require(data["previousValue"]?.doubleValue)
+    let currentSlider = try #require(data["currentValue"]?.doubleValue)
+    #expect(abs(previousSlider - 0.1) < 0.001)
+    #expect(abs(currentSlider - 0.85) < 0.001)
 }
 
 @Test("executor control.sendAction valueChanged 可设置 UISegmentedControl selectedSegmentIndex") @MainActor
@@ -323,6 +331,9 @@ func sendActionSetsSegmentedControlSelectedIndexBeforeValueChanged() throws {
     let segmented = try #require(context.rootView.subviews.first as? UISegmentedControl)
     #expect(data["sent"]?.boolValue == true)
     #expect(segmented.selectedSegmentIndex == 2)
+    // Bug #3：segmented 的 previousValue/currentValue 为 segment index（double 表示）。
+    #expect(data["previousValue"]?.doubleValue == 0)
+    #expect(data["currentValue"]?.doubleValue == 2)
 }
 
 @Test("executor control.sendAction valueChanged 可设置 UIStepper value") @MainActor
@@ -346,6 +357,9 @@ func sendActionSetsStepperValueBeforeValueChanged() throws {
     let stepper = try #require(context.rootView.subviews.first as? UIStepper)
     #expect(data["sent"]?.boolValue == true)
     #expect(stepper.value == 4)
+    // Bug #3：stepper 的 previousValue/currentValue 为 value（double）。
+    #expect(data["previousValue"]?.doubleValue == 1)
+    #expect(data["currentValue"]?.doubleValue == 4)
 }
 
 @Test("executor control.sendAction valueChanged 可用 bool 设置 UISwitch isOn") @MainActor
@@ -367,6 +381,9 @@ func sendActionSetsSwitchValueFromBoolBeforeValueChanged() throws {
     let toggle = try #require(context.rootView.subviews.first as? UISwitch)
     #expect(data["sent"]?.boolValue == true)
     #expect(toggle.isOn == true)
+    // Bug #3：switch 的 previousValue/currentValue 为 bool。
+    #expect(data["previousValue"]?.boolValue == false)
+    #expect(data["currentValue"]?.boolValue == true)
 }
 
 @Test("executor control.sendAction valueChanged 可用 0 或 1 设置 UISwitch isOn") @MainActor
@@ -388,6 +405,60 @@ func sendActionSetsSwitchValueFromNumberBeforeValueChanged() throws {
     let toggle = try #require(context.rootView.subviews.first as? UISwitch)
     #expect(data["sent"]?.boolValue == true)
     #expect(toggle.isOn == false)
+    // Bug #3：无论 value 传 bool 还是 number，switch 的 previousValue/currentValue 恒为 bool。
+    #expect(data["previousValue"]?.boolValue == true)
+    #expect(data["currentValue"]?.boolValue == false)
+}
+
+@Test("executor control.sendAction UISlider 越界 value 被 UIKit clamp，currentValue 反映真实落点") @MainActor
+func sendActionSliderClampReflectedInCurrentValue() throws {
+    // Bug #3 核心场景：slider value=999 远超 [0,1]，UIKit 静默 clamp 到 1.0，applyValue 不做校验。
+    // 没有 currentValue 时 agent 只看到 sent:true，无法判断值是否真生效；有了 currentValue==1.0
+    // agent 能直接看出越界被 clamp，无需额外 inspect。
+    let context = UIKitTestHost.context { root in
+        let slider = UISlider()
+        slider.frame = CGRect(x: 100, y: 100, width: 200, height: 30)
+        slider.minimumValue = 0
+        slider.maximumValue = 1
+        slider.value = 0.2
+        root.addSubview(slider)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
+
+    let data = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
+                                                             event: .valueChanged,
+                                                             value: .double(999),
+                                                             viewSnapshotID: viewSnapshotID),
+                                               context: context)
+
+    let slider = try #require(context.rootView.subviews.first as? UISlider)
+    #expect(data["sent"]?.boolValue == true)
+    // UISlider.value 是 Float，0.2 升格成 Double 存入响应有精度漂移，用绝对误差比较。
+    let previousClamp = try #require(data["previousValue"]?.doubleValue)
+    #expect(abs(previousClamp - 0.2) < 0.001)
+    // currentValue 必须反映 UIKit clamp 后的真实落点 1.0，而非请求的 999（1.0 可精确表示）。
+    #expect(data["currentValue"]?.doubleValue == 1.0)
+    #expect(slider.value == 1.0)
+}
+
+@Test("executor control.sendAction UIButton 不输出 previousValue/currentValue（非值控件）") @MainActor
+func sendActionButtonOmitsValueFields() throws {
+    // Bug #3：previousValue/currentValue 只对值控件（slider/segmented/stepper/switch）有意义；
+    // UIButton 等非值控件不应输出这两个字段，避免响应冗余与误导。
+    let context = UIKitTestHost.context { root in
+        let button = UIButton(type: .system)
+        button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
+        root.addSubview(button)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
+
+    let data = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
+                                                             event: .touchUpInside,
+                                                             viewSnapshotID: viewSnapshotID),
+                                               context: context)
+    #expect(data["sent"]?.boolValue == true)
+    #expect(data["previousValue"] == nil, "UIButton 不应输出 previousValue")
+    #expect(data["currentValue"] == nil, "UIButton 不应输出 currentValue")
 }
 
 @Test("executor control.sendAction 非 UIControl(canonical scrollView) 抛 invalid_data") @MainActor

@@ -182,7 +182,15 @@ enum UIControllersCollector {
             }
         }
         // presented 正交：任何 controller（含容器）都可能 present，附为最后子节点。
-        if let presented = controller.presentedViewController {
+        // 用 presentingViewController 做身份过滤：presentedViewController 会被 UIKit 沿后代链
+        // 转发（某 controller present 一个 modal 时，其子孙的 presentedViewController 都返回
+        // 同一个 modal——这是 UIKit 文档行为）。若仅凭 presentedViewController 附加，modal 会
+        // 散落到多个子孙节点，导致 controllerCount 虚高、topPath 指向错误挂载点（实测真机
+        // nav[1] present 3 层链式 modal，controllerCount 虚高到 18，8 个 modal 叶子散落到
+        // nav[0]/nav[1]/tab[0..2]/root）。presentingViewController 返回唯一真实呈现者（非转发
+        // 值），只在该节点挂载 modal，转发节点被滤除。
+        if let presented = controller.presentedViewController,
+           presented.presentingViewController === controller {
             result.append(ControllerEdge(segment: .presented,
                                           child: presented,
                                           isSelected: nil,

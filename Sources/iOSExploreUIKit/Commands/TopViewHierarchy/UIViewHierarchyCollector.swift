@@ -74,7 +74,7 @@ enum UIViewHierarchyCollector {
         }
         UIKitCommandLogging.info("command", "ui hierarchy collect start controller=\(controllerLog) detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
 
-        let element = UIKitViewElement(view: rootView)
+        let element = UIKitViewElement(view: rootView, skipWindowGuard: isControllerOverride)
 
         var data: JSON = [
             "screen": .object(screenJSON(window: context.window,
@@ -167,13 +167,19 @@ private struct UIKitViewElement: UIViewHierarchyElement {
     var indexPath: IndexPathSummary? { _indexPath }
 
     /// 从 UIKit view 创建完整值快照。
+    ///
+    /// - Parameter skipWindowGuard: 是否跳过 window 归属守卫。仅在 controller-override 路径
+    ///   （`ui.topViewHierarchy` 带 `controller` 参数）下由根节点传入 `true`：该路径采集的是
+    ///   非栈顶 VC 的视图，其整棵子树本就不在 window 层级（`UINavigationController` 只挂载
+    ///   栈顶 VC 的 view），守卫会把这种合法采集目标清空。该标志沿子树递归传递，使整棵
+    ///   override 子树直接读 `view.subviews`；默认（栈顶）路径仍保留守卫，继续防 sendAction 过渡 view。
     @MainActor
-    init(view: UIView) {
+    init(view: UIView, skipWindowGuard: Bool = false) {
         self.type = String(describing: Swift.type(of: view))
         self.accessibility = UIViewHierarchyAccessibility(
             identifier: view.accessibilityIdentifier,
             label: view.accessibilityLabel,
-            value: view.accessibilityValue,
+            value: Self.resolvedAccessibilityValue(from: view),
             hint: view.accessibilityHint
         )
         self.frame = UIViewHierarchyRect(rect: view.frame)
@@ -208,16 +214,37 @@ private struct UIKitViewElement: UIViewHierarchyElement {
         // 之后短暂窗口内 subviews 数组可能含已脱离层级的过渡 view，对它们继续递归会读到
         // 不一致的 superview/window 状态、放大 nil-unwrap 风险。仍把这种 view 作为节点
         // 计入根（保持 nodeCount），但它不进入 window 层级时子树标空，避免错误的子树快照。
-        let isInWindowHierarchy = Self.isAttachedToWindow(view)
+        // controller-override 路径（skipWindowGuard=true）跳过守卫：其目标 VC 的视图合法地
+        // 不在 window 层级，清空会让 controller 参数失效（返回空树）。
         let subviews: [UIView]
-        if isInWindowHierarchy {
+        if skipWindowGuard {
             subviews = view.subviews
         } else {
-            UIKitCommandLogging.info("command", "ui hierarchy collect skip detached subtree type=\(self.type) reason=nil-window")
-            subviews = []
+            let isInWindowHierarchy = Self.isAttachedToWindow(view)
+            if isInWindowHierarchy {
+                subviews = view.subviews
+            } else {
+                UIKitCommandLogging.info("command", "ui hierarchy collect skip detached subtree type=\(self.type) reason=nil-window")
+                subviews = []
+            }
         }
-        self.subviews = subviews.map { UIKitViewElement(view: $0) }
+        self.subviews = subviews.map { UIKitViewElement(view: $0, skipWindowGuard: skipWindowGuard) }
         self._indexPath = Self.cellIndexPath(from: view)
+    }
+
+    /// 解析 view 的 accessibility value，对默认不暴露数值型 `accessibilityValue` 的控件
+    /// 读原生属性兜底。
+    ///
+    /// `UIStepper` 默认不暴露数值型 `accessibilityValue`（UIKit 通常只在辅助功能场景才合成），
+    /// 导致 `ui.topViewHierarchy` 永远读到 `null`，而 `UIKitActionExecutor` 能写 `stepper.value`，
+    /// 设值闭环在采集端断裂。这里直接读原生 `value`，输出对齐 slider 的 `String(Double(...))`
+    /// 格式（与 `UIInspectCollector` 对 slider 的输出一致），其余控件沿用系统 `accessibilityValue`。
+    @MainActor
+    private static func resolvedAccessibilityValue(from view: UIView) -> String? {
+        if let stepper = view as? UIStepper {
+            return String(Double(stepper.value))
+        }
+        return view.accessibilityValue
     }
 
     /// 把 `CGFloat` 安全转换为有限 `Double`，非有限值（NaN / ±Infinity）返回 `nil`。

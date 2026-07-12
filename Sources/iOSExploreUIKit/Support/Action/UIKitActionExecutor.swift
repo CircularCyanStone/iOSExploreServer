@@ -264,13 +264,20 @@ enum UIKitActionExecutor {
     /// `UISegmentedControl.selectedSegmentIndex`、`UIStepper.value` 或 `UISwitch.isOn`，再
     /// `sendActions(for:)`。不做 hit-test、不找祖先 control。
     ///
+    /// 对四类值控件（UISlider/UISegmentedControl/UIStepper/UISwitch），响应额外回传
+    /// `previousValue`/`currentValue`：在 applyValue 前采样 previous、sendActions 后采样 current，
+    /// 让 agent 从单次响应确认值是否生效（越界值会被 UIKit 静默 clamp，currentValue 反映真实
+    /// 落点，如 slider=999 → currentValue=1.0）。非值控件（UIButton 等）不输出这两个字段。
+    /// 口径与 `ui.tap` 的 switch.toggle 路径一致。
+    ///
     /// - Parameters:
     ///   - locator: 目标控件的统一定位器（identifier / path）。
     ///   - event: 要发送的 UIControl 事件。
     ///   - value: 要在发送事件前写入控件的可选值。
     ///   - viewSnapshotID: `ui.inspect` 签发的结构化快照标识。
     ///   - context: 当前 UIKit 查询上下文（由 `execute(_:)` 注入）。
-    /// - Returns: control.sendAction 语义 JSON（sent / event / type 等）。
+    /// - Returns: control.sendAction 语义 JSON（sent / event / type，值控件额外含
+    ///   previousValue / currentValue）。
     /// - Throws: `UIKitCommandError`——定位失败 / 非 control / 能力不支持 / 陈旧。
     private static func executeControlEvent(locator: UIKitLocator,
                                             event: UIControlSendActionEvent,
@@ -299,11 +306,19 @@ enum UIKitActionExecutor {
                                                       requestedAction: requestedAction.rawValue)
         }
 
+        // 在 applyValue 写入前采 previous、sendActions 后采 current，让 agent 从单次响应确认
+        // 值是否生效（尤其越界场景：slider=999 被 UIKit clamp 到 1.0、segmented 越界无效，
+        // 响应里的 currentValue 直接反映真实落点）。只对四类值控件输出这两个字段，非值控件
+        // （UIButton 等）controlValue 返回 nil，不污染响应。口径与 ui.tap 的 switch.toggle 一致。
+        let previous = controlValue(control)
+
         applyValue(value, to: control)
 
         UIKitCommandLogging.info("command", "ui control send action mainactor target=\(located.pathString) type=\(String(describing: Swift.type(of: control))) event=\(event.rawValue) enabled=\(control.isEnabled) valueProvided=\(value != nil)")
         control.sendActions(for: event.uiControlEvent)
-        return [
+
+        let current = controlValue(control)
+        var response: JSON = [
             "sent": .bool(true),
             "event": .string(event.rawValue),
             "path": .string(located.pathString),
@@ -312,6 +327,9 @@ enum UIKitActionExecutor {
             "isEnabled": .bool(control.isEnabled),
             "isSelected": .bool(control.isSelected),
         ]
+        if let previous { response["previousValue"] = previous }
+        if let current { response["currentValue"] = current }
+        return response
     }
 
     // MARK: - Helpers
@@ -337,6 +355,23 @@ enum UIKitActionExecutor {
         } else if let switchView = control as? UISwitch, let isOn = value.switchBoolValue {
             switchView.isOn = isOn
         }
+    }
+
+    /// 读取值控件的当前值，供 `executeControlEvent` 在 applyValue 前后采样 previous/current。
+    ///
+    /// 只对四类值控件返回非 nil：UISwitch→bool、UISlider→double、UISegmentedControl→
+    /// selectedSegmentIndex(double)、UIStepper→value(double)。UIButton 等非值控件返回 nil，
+    /// 使 `executeControlEvent` 不在响应里输出 previousValue/currentValue，避免冗余字段。
+    /// UISegmentedControl 无选中项时 selectedSegmentIndex 为 -1（UISegmentedNoSegment），
+    /// 仍以 double(-1) 如实回传，调用方据此判断"未选中"。
+    private static func controlValue(_ control: UIControl) -> JSONValue? {
+        if let switchView = control as? UISwitch { return .bool(switchView.isOn) }
+        if let slider = control as? UISlider { return .double(Double(slider.value)) }
+        if let segmented = control as? UISegmentedControl {
+            return .double(Double(segmented.selectedSegmentIndex))
+        }
+        if let stepper = control as? UIStepper { return .double(stepper.value) }
+        return nil
     }
 
     /// 把一对已触发的手势 target-action 摘要序列化进 `ui.tap` 响应的 `gestures` 数组。

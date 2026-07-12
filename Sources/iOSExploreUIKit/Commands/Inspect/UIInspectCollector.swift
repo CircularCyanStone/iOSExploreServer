@@ -469,14 +469,21 @@ enum UIInspectCollector {
 
     /// 提取可见文本，调用方负责按 query 裁剪。
     ///
-    /// 包括 UILabel.text、UITextField.text、UITextView.text。
+    /// 包括 UILabel.text、UITextField.text、UITextView.text、UIButton 标题。
     /// `UIListContentView` / `UITableViewCell` 本身无 text 属性，取首个非空子 UILabel
     /// 文本（如 cell 标题"🔔弹窗测试"），否则这些容器节点文本为空。
     /// `isSecureTextEntry == true` 的输入框（密码等）不返回内容，避免明文泄露；
     /// 其余编辑型控件（含 `_UIAlertControllerTextField`）的 text 字段正常返回，
     /// 让 agent 输入后可通过 ui.inspect 验证结果。
+    ///
+    /// UIButton 的 text 取 `title(for: .normal) ?? currentTitle`，与 `ui.topViewHierarchy`
+    /// 的 `UIViewHierarchyCollector.textInfo` 保持同一口径，避免 inspect 的按钮节点 text
+    /// 恒为 null 而层级树却有标题的字段间不一致。
     private static func textualValue(from view: UIView) -> String? {
         if let label = view as? UILabel { return label.text }
+        if let button = view as? UIButton {
+            return button.title(for: .normal) ?? button.currentTitle
+        }
         if let textField = view as? UITextField {
             guard !textField.isSecureTextEntry else { return nil }
             return textField.text
@@ -510,11 +517,17 @@ enum UIInspectCollector {
     }
 
     /// 提取控件当前值，避免返回可编辑输入内容或大块用户输入。
+    ///
+    /// UISwitch/UISlider/UISegmentedControl/UIStepper 都直接读原生属性：UIKit 只在辅助功能
+    /// 场景才为它们合成 `accessibilityValue`（UIStepper 默认甚至不暴露数值型），直接读原生
+    /// 值才能保证 `ui.control.sendAction` 设值后这里能稳定读回，闭合"设值→验证"链路。输出
+    /// 格式与 `UIViewHierarchyCollector.resolvedAccessibilityValue` 对齐。
     private static func value(from view: UIView) -> String? {
         if view is UITextField || view is UITextView { return nil }
         if let switchView = view as? UISwitch { return switchView.isOn ? "on" : "off" }
         if let slider = view as? UISlider { return String(Double(slider.value)) }
         if let segmented = view as? UISegmentedControl { return String(segmented.selectedSegmentIndex) }
+        if let stepper = view as? UIStepper { return String(Double(stepper.value)) }
         return view.accessibilityValue
     }
 
