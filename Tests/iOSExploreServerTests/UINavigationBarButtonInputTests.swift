@@ -51,11 +51,38 @@ func navigationBarButtonRejectsNegativeIndex() {
     }
 }
 
-@Test("navigation bar button 要求 index 必填")
-func navigationBarButtonRequiresIndex() {
-    #expect(throws: Error.self) {
-        try UINavigationBarButtonInput.parse(from: [
-            "placement": "right",
-        ])
-    }
+@Test("navigation bar button 允许只提供 accessibilityIdentifier 全局搜索")
+func navigationBarButtonAllowsAccessibilityIdentifierOnly() throws {
+    let input = try UINavigationBarButtonInput.parse(from: [
+        "accessibilityIdentifier": "example.controlTest",
+    ])
+
+    #expect(input.placement == nil)
+    #expect(input.index == nil)
+    #expect(input.accessibilityIdentifier == "example.controlTest")
+    #expect(input.waitAfterMs == 300)
+}
+
+@Test("navigation bar button 允许 placement + accessibilityIdentifier 组合")
+func navigationBarButtonAllowsPlacementWithAccessibilityIdentifier() throws {
+    let input = try UINavigationBarButtonInput.parse(from: [
+        "placement": "right",
+        "accessibilityIdentifier": "example.controlTest",
+    ])
+
+    #expect(input.placement == .right)
+    #expect(input.index == nil)
+    #expect(input.accessibilityIdentifier == "example.controlTest")
+}
+
+@Test("navigation bar button 允许只提供 placement + index")
+func navigationBarButtonAllowsPlacementAndIndex() throws {
+    let input = try UINavigationBarButtonInput.parse(from: [
+        "placement": "right",
+        "index": 0,
+    ])
+
+    #expect(input.placement == .right)
+    #expect(input.index == 0)
+    #expect(input.accessibilityIdentifier == nil)
 }

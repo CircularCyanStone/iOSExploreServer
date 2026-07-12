@@ -19,7 +19,7 @@ enum UINavigationBarButtonExecutor {
     static func execute(input: UINavigationBarButtonInput,
                         context: UIKitContextProvider.Context) throws -> JSON {
         let topBefore = describe(context.topViewController)
-        let item = try UINavigationBarInspector.item(for: input, topViewController: context.topViewController)
+        let (item, placement, index) = try UINavigationBarInspector.item(for: input, topViewController: context.topViewController)
         guard item.isEnabled else {
             throw UIKitCommandError.navigationBarItemDisabled(
                 action: NavigationBarButtonCommand.actionName,
@@ -36,11 +36,11 @@ enum UINavigationBarButtonExecutor {
 
         settle(milliseconds: input.waitAfterMs)
         let topAfter = describe(context.topViewController.navigationController?.topViewController ?? context.topViewController)
-        UIKitCommandLogging.info("command", "ui navigation bar button complete performed=true placement=\(input.placement.rawValue) index=\(input.index)")
+        UIKitCommandLogging.info("command", "ui navigation bar button complete performed=true placement=\(placement.rawValue) index=\(index)")
         return [
             "performed": .bool(true),
-            "placement": .string(input.placement.rawValue),
-            "index": .double(Double(input.index)),
+            "placement": .string(placement.rawValue),
+            "index": .double(Double(index)),
             "title": item.title.map(JSONValue.string) ?? .null,
             "accessibilityIdentifier": item.accessibilityIdentifier.map(JSONValue.string) ?? .null,
             "topBefore": .string(topBefore),

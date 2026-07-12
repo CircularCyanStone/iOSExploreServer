@@ -18,7 +18,7 @@ struct NavigationBackCommand: Command {
     let action = NavigationBackCommand.actionName
 
     /// `help` 命令展示的说明。
-    let description = "返回上一页。strategy=auto（默认）先尝试 dismiss 再尝试 navigation pop；strategy=dismiss 只走 dismiss；strategy=navigationController 只走 popViewController（注：旧文档中的 mode 字段已废弃，请用 strategy）"
+    let description = "返回上一页。strategy=auto（默认）先尝试 dismiss 再尝试 navigation pop；strategy=dismiss 只走 dismiss；strategy=navigationController 只走 popViewController。注意：dismiss 模态后返回的 topAfter 可能在动画完成前被采集，建议在关键导航操作后额外调用 ui.inspect 确认最终状态。（注：旧文档中的 mode 字段已废弃，请用 strategy）"
 
     /// 执行导航返回。
     ///

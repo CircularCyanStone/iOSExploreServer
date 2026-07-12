@@ -14,7 +14,9 @@ import UIKit
 /// 与 `ui.topViewHierarchy` 的关键差异：
 /// - **签发 `viewSnapshotID`**——`ui.tap` / `ui.control.sendAction` / `ui.input` 调用前
 ///   **必须**先调本命令，并把同响应返回的 `viewSnapshotID` 原样传入；`topViewHierarchy`
-///   不签发指纹，不能用于事件下发。
+///   不签发指纹，不能用于事件下发。**注意**：`viewSnapshotID` 在响应的顶层 `data.viewSnapshotID`
+///   字段（全局快照标识，覆盖本次返回的所有 targets），而非单个 target 对象内部——每个
+///   target 的 `viewSnapshotID` 字段为 `null`（设计如此）。
 /// - **扁平 targets 数组** vs 后者的嵌套 root 树；本命令只覆盖 canonical target（典型页面
 ///   nodeCount≈88，targetCount≈29），后者覆盖全量视图节点。
 /// - **cell 子 view 上挂 `indexPath`**：canonical target 通常是 cell 的内部子 view

@@ -204,6 +204,21 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           logMessage: "ui navigation bar unavailable action=\(action) top=\(top)")
     }
 
+    /// 导航栏按钮选择器参数不足或组合无效。
+    ///
+    /// `ui.navigation.tapBarButton` 必须提供 `(placement + index)` 或 `accessibilityIdentifier`
+    /// 之一才能定位按钮；单独提供 `placement` 无法确定具体按钮。
+    ///
+    /// - Parameters:
+    ///   - action: 触发失败的 action 名。
+    ///   - reason: 选择器无效的具体原因。
+    /// - Returns: `invalid_data` 失败描述。
+    static func invalidNavigationBarSelector(action: String, reason: String) -> UIKitCommandError {
+        UIKitCommandError(code: .invalidData,
+                          message: "invalid navigation bar button selector: \(reason)",
+                          logMessage: "ui navigation bar invalid selector action=\(action) reason=\(reason)")
+    }
+
     /// 指定侧和下标没有对应导航栏按钮。
     ///
     /// - Parameters:

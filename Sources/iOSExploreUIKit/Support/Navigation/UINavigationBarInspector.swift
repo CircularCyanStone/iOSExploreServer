@@ -90,13 +90,18 @@ enum UINavigationBarInspector {
 
     /// 按输入选择当前导航栏按钮，并执行 title / identifier 二次确认。
     ///
+    /// 支持三种定位方式：
+    /// 1. `placement` + `index`: 精确定位指定侧的第 N 个按钮
+    /// 2. 仅 `accessibilityIdentifier`: 在 leftItems 和 rightItems 中全局搜索
+    /// 3. `placement` + `accessibilityIdentifier`: 只在指定侧搜索
+    ///
     /// - Parameters:
     ///   - input: 已解析的按钮选择输入。
     ///   - topViewController: 当前顶部控制器。
-    /// - Returns: 当前匹配的 `UIBarButtonItem`。
+    /// - Returns: 匹配的 `UIBarButtonItem` 及其实际位置信息。
     /// - Throws: 导航栏不可用、按钮不存在或二次确认不一致时抛 `UIKitCommandError`。
     static func item(for input: UINavigationBarButtonInput,
-                     topViewController: UIViewController) throws -> UIBarButtonItem {
+                     topViewController: UIViewController) throws -> (item: UIBarButtonItem, placement: NavigationBarPlacement, index: Int) {
         guard topViewController.navigationController != nil else {
             throw UIKitCommandError.navigationBarUnavailable(
                 action: NavigationBarButtonCommand.actionName,
@@ -104,15 +109,56 @@ enum UINavigationBarInspector {
             )
         }
 
-        let items = barButtonItems(placement: input.placement, from: topViewController.navigationItem)
-        guard input.index < items.count else {
+        let navigationItem = topViewController.navigationItem
+
+        // 情况 1: placement + index 精确定位
+        if let placement = input.placement, let index = input.index {
+            let items = barButtonItems(placement: placement, from: navigationItem)
+            guard index < items.count else {
+                throw UIKitCommandError.navigationBarItemNotFound(
+                    action: NavigationBarButtonCommand.actionName,
+                    selector: input.selectorSummary
+                )
+            }
+            let item = items[index]
+            try verifyItem(item, input: input)
+            return (item, placement, index)
+        }
+
+        // 情况 2 & 3: 通过 accessibilityIdentifier 搜索（全局或指定侧）
+        if let identifier = input.accessibilityIdentifier {
+            let searchPlacements: [NavigationBarPlacement] = input.placement.map { [$0] } ?? [.left, .right]
+
+            for placement in searchPlacements {
+                let items = barButtonItems(placement: placement, from: navigationItem)
+                if let foundIndex = items.firstIndex(where: { $0.accessibilityIdentifier == identifier }) {
+                    let item = items[foundIndex]
+                    try verifyItem(item, input: input)
+                    return (item, placement, foundIndex)
+                }
+            }
+
+            // 未找到匹配的 accessibilityIdentifier
             throw UIKitCommandError.navigationBarItemNotFound(
                 action: NavigationBarButtonCommand.actionName,
                 selector: input.selectorSummary
             )
         }
 
-        let item = items[input.index]
+        // 情况 4: 只有 placement 没有 index 也没有 accessibilityIdentifier（参数不足）
+        throw UIKitCommandError.invalidNavigationBarSelector(
+            action: NavigationBarButtonCommand.actionName,
+            reason: "必须提供 (placement + index) 或 accessibilityIdentifier"
+        )
+    }
+
+    /// 验证按钮的 title 和 accessibilityIdentifier 是否与输入一致。
+    ///
+    /// - Parameters:
+    ///   - item: 待验证的按钮。
+    ///   - input: 用户输入的期望值。
+    /// - Throws: 当 title 或 identifier 不匹配时抛 `UIKitCommandError.navigationBarItemMismatch`。
+    private static func verifyItem(_ item: UIBarButtonItem, input: UINavigationBarButtonInput) throws {
         if let expectedTitle = input.title, item.title != expectedTitle {
             throw UIKitCommandError.navigationBarItemMismatch(
                 action: NavigationBarButtonCommand.actionName,
@@ -126,7 +172,6 @@ enum UINavigationBarInspector {
                 selector: input.selectorSummary
             )
         }
-        return item
     }
 
     /// 生成指定侧的按钮摘要。
