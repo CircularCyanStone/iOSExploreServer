@@ -62,7 +62,7 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// - Returns: `target_not_found` 失败描述。
     static func targetNotFound(action: String, targetDescription: String) -> UIKitCommandError {
         UIKitCommandError(code: .targetNotFound,
-                          message: "tap target not found",
+                          message: "tap target not found — the page view tree may have changed; call ui.inspect first, then retry with a fresh target",
                           logMessage: "ui tap target not found action=\(action) target=\(targetDescription)")
     }
 

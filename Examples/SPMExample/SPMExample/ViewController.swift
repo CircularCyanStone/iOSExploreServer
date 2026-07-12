@@ -495,8 +495,13 @@ extension ViewController: UITableViewDelegate {
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        if tableView.tag == 100 {
+            // 日志行被选中时保留系统选择高亮作为可见反馈（不立即 deselect），
+            // 避免 tap 返回 activated=true 但页面无可见变化。
+            // 系统会在下次选中或触摸其他行时自动清除高亮。
+            return
+        }
         tableView.deselectRow(at: indexPath, animated: true)
-        guard tableView.tag != 100 else { return }
 
         let item = menuItems[indexPath.row]
         let vc = item.viewControllerType.init()
