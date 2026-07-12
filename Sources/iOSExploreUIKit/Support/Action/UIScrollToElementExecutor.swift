@@ -72,9 +72,10 @@ enum UIScrollToElementExecutor {
     ///
     /// 逐页策略：
     /// - 记录开始时 contentOffset 作为方向原点
-    /// - 先尝试从原点向下 page 滚动，每次滚动后检查
-    /// - 向下滚到底且未找到时，回到原点尝试向上 page 滚动
-    /// - 向上滚到顶仍未找到 → 目标不存在
+    /// - 检测 UICollectionView 的 scrollDirection，决定垂直还是横向滚动
+    /// - 先尝试从原点向下/右 page 滚动，每次滚动后检查
+    /// - 滚到底/右且未找到时，回到原点尝试向上/左 page 滚动
+    /// - 向上/左滚到顶/左仍未找到 → 目标不存在
     ///
     /// - Parameters:
     ///   - match: 匹配方式。
@@ -97,18 +98,40 @@ enum UIScrollToElementExecutor {
 
         UIKitCommandLogging.info("command", "ui scroll to element not in visible cells, starting progressive scroll")
 
-        // 2. 渐进滚动
+        // 2. 检测滚动方向（UICollectionView 特有）
+        let isHorizontal: Bool
+        if let collectionView = scrollView as? UICollectionView,
+           let flowLayout = collectionView.collectionViewLayout as? UICollectionViewFlowLayout {
+            isHorizontal = (flowLayout.scrollDirection == .horizontal)
+        } else {
+            isHorizontal = false
+        }
+
+        // 3. 渐进滚动
         let startOffset = scrollView.contentOffset
         let contentSize = scrollView.contentSize
-        let viewportHeight = scrollView.bounds.height
-        let maxOffsetY = max(0, contentSize.height - viewportHeight)
+        let bounds = scrollView.bounds
+
+        let viewportSize: CGFloat
+        let maxOffset: CGFloat
+        let offsetKeyPath: WritableKeyPath<CGPoint, CGFloat>
+
+        if isHorizontal {
+            viewportSize = bounds.width
+            maxOffset = max(0, contentSize.width - viewportSize)
+            offsetKeyPath = \.x
+        } else {
+            viewportSize = bounds.height
+            maxOffset = max(0, contentSize.height - viewportSize)
+            offsetKeyPath = \.y
+        }
 
         /// 尝试在一个方向上逐页滚动搜索。
         /// - Parameters:
-        ///   - directionDown: true=向下滚动, false=向上滚动
+        ///   - forward: true=向下/右滚动, false=向上/左滚动
         ///   - startAt: 起始位置
         /// - Returns: 找到的目标；nil 表示该方向搜完仍未找到。
-        func scrollInDirection(directionDown: Bool, startAt: CGPoint) -> UIView? {
+        func scrollInDirection(forward: Bool, startAt: CGPoint) -> UIView? {
             var current = startAt
             var step = 0
 
@@ -116,44 +139,45 @@ enum UIScrollToElementExecutor {
                 step += 1
 
                 // 计算下一个分页位置
-                let nextY: CGFloat
-                if directionDown {
-                    nextY = min(current.y + viewportHeight, maxOffsetY)
+                let currentValue = current[keyPath: offsetKeyPath]
+                let nextValue: CGFloat
+                if forward {
+                    nextValue = min(currentValue + viewportSize, maxOffset)
                 } else {
-                    nextY = max(current.y - viewportHeight, 0)
+                    nextValue = max(currentValue - viewportSize, 0)
                 }
 
                 // 到达边界未移动，退出这个方向
-                if nextY == current.y {
-                    UIKitCommandLogging.info("command", "ui scroll to element progressive reached \(directionDown ? "bottom" : "top") step=\(step)")
+                if nextValue == currentValue {
+                    UIKitCommandLogging.info("command", "ui scroll to element progressive reached \(forward ? (isHorizontal ? "right" : "bottom") : (isHorizontal ? "left" : "top")) step=\(step)")
                     return nil
                 }
 
-                current.y = nextY
+                current[keyPath: offsetKeyPath] = nextValue
                 scrollView.setContentOffset(current, animated: false)
                 // 强制布局让 visibleCells 更新
                 scrollView.layoutIfNeeded()
 
                 if let found = findTargetInVisibleCells(match: match, value: value, in: scrollView) {
-                    UIKitCommandLogging.info("command", "ui scroll to element found via progressive scroll direction=\(directionDown ? "down" : "up") step=\(step)")
+                    UIKitCommandLogging.info("command", "ui scroll to element found via progressive scroll direction=\(forward ? (isHorizontal ? "right" : "down") : (isHorizontal ? "left" : "up")) step=\(step)")
                     return found
                 }
             }
 
-            UIKitCommandLogging.info("command", "ui scroll to element progressive exceeded maxStep=\(maxProgressiveScrolls) direction=\(directionDown ? "down" : "up")")
+            UIKitCommandLogging.info("command", "ui scroll to element progressive exceeded maxStep=\(maxProgressiveScrolls) direction=\(forward ? (isHorizontal ? "right" : "down") : (isHorizontal ? "left" : "up"))")
             return nil
         }
 
-        // 先向下搜
-        if let found = scrollInDirection(directionDown: true, startAt: startOffset) {
+        // 先向下/右搜
+        if let found = scrollInDirection(forward: true, startAt: startOffset) {
             return found
         }
 
-        // 向下搜不到，回到原点向上搜
+        // 向下/右搜不到，回到原点向上/左搜
         scrollView.setContentOffset(startOffset, animated: false)
         scrollView.layoutIfNeeded()
 
-        if let found = scrollInDirection(directionDown: false, startAt: startOffset) {
+        if let found = scrollInDirection(forward: false, startAt: startOffset) {
             return found
         }
 

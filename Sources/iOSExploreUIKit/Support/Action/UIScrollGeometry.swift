@@ -34,22 +34,44 @@ enum UIScrollGeometry {
     /// 用 `adjustedContentInset` 判断 contentOffset 是否已到边界，1pt 容差。
     ///
     /// minY = -adjusted.top（顶部留出 safe area），maxY = max(minY, contentSize.h - bounds.h + adjusted.bottom)。
-    /// x 轴同理。先判 top/left（小值边界），再判 bottom/right，保证短内容 scrollView 同时
-    /// 满足 top 与 bottom 时优先返回 top。
+    /// x 轴同理。
+    ///
+    /// **边界检测策略：** 只有当内容尺寸**大于** viewport 时，对应方向的边界才有意义。
+    /// 如果内容宽度 ≤ viewport 宽度，不返回 left/right；如果内容高度 ≤ viewport 高度，不返回 top/bottom。
+    /// 这避免了垂直滚动时因内容宽度不足而错误返回 `left` 的问题。
     static func reachedExtent(scrollView: UIScrollView) -> ScrollExtent? {
         let inset = scrollView.adjustedContentInset
-        let minY = -Double(inset.top)
-        if Double(scrollView.contentOffset.y) <= minY + 1 { return .top }
-        let maxY = max(minY, Double(scrollView.contentSize.height - scrollView.bounds.height) + Double(inset.bottom))
-        if Double(scrollView.contentOffset.y) >= maxY - 1 { return .bottom }
-        let minX = -Double(inset.left)
-        if Double(scrollView.contentOffset.x) <= minX + 1 { return .left }
-        let maxX = max(minX, Double(scrollView.contentSize.width - scrollView.bounds.width) + Double(inset.right))
-        if Double(scrollView.contentOffset.x) >= maxX - 1 { return .right }
+        let offsetY = Double(scrollView.contentOffset.y)
+        let offsetX = Double(scrollView.contentOffset.x)
+        let contentHeight = Double(scrollView.contentSize.height)
+        let contentWidth = Double(scrollView.contentSize.width)
+        let viewportHeight = Double(scrollView.bounds.height)
+        let viewportWidth = Double(scrollView.bounds.width)
+
+        // 垂直边界检测（仅当内容高度 > viewport 高度时）
+        if contentHeight > viewportHeight {
+            let minY = -Double(inset.top)
+            if offsetY <= minY + 1 { return .top }
+            let maxY = max(minY, contentHeight - viewportHeight + Double(inset.bottom))
+            if offsetY >= maxY - 1 { return .bottom }
+        }
+
+        // 横向边界检测（仅当内容宽度 > viewport 宽度时）
+        if contentWidth > viewportWidth {
+            let minX = -Double(inset.left)
+            if offsetX <= minX + 1 { return .left }
+            let maxX = max(minX, contentWidth - viewportWidth + Double(inset.right))
+            if offsetX >= maxX - 1 { return .right }
+        }
+
         return nil
     }
 
     /// 单步滚动：按方向 + 距离 `setContentOffset`，返回前后 offset 与边界结果。
+    ///
+    /// **Bug fix (2026-07-12):** 在读取 `offsetAfter` 之前先 `layoutIfNeeded()`，确保 UIKit
+    /// 完成布局并将 contentOffset clamp 到有效范围。但某些情况下 UIKit 仍允许负数 offset
+    /// （如快速滚动超出边界），所以手动将 offset clamp 到 [min, max] 范围再返回。
     static func step(scrollView: UIScrollView,
                      direction: ScrollDirection,
                      amount: Double,
@@ -57,10 +79,26 @@ enum UIScrollGeometry {
         let before = scrollView.contentOffset
         let d = delta(for: direction, amount: amount)
         scrollView.setContentOffset(CGPoint(x: before.x + d.x, y: before.y + d.y), animated: animated)
+        // 强制布局，确保 contentOffset 已被 clamp 到有效范围
+        scrollView.layoutIfNeeded()
+
+        // 读取并手动 clamp offset 到合法范围（基于 adjustedContentInset）
+        let inset = scrollView.adjustedContentInset
+        let rawOffset = scrollView.contentOffset
+        let minY = -inset.top
+        let maxY = max(minY, scrollView.contentSize.height - scrollView.bounds.height + inset.bottom)
+        let minX = -inset.left
+        let maxX = max(minX, scrollView.contentSize.width - scrollView.bounds.width + inset.right)
+
+        let clampedOffset = CGPoint(
+            x: max(minX, min(maxX, rawOffset.x)),
+            y: max(minY, min(maxY, rawOffset.y))
+        )
+
         return UIScrollStepResult(offsetBefore: before,
-                                  offsetAfter: scrollView.contentOffset,
+                                  offsetAfter: clampedOffset,
                                   reachedExtent: reachedExtent(scrollView: scrollView),
-                                  adjustedContentInset: scrollView.adjustedContentInset)
+                                  adjustedContentInset: inset)
     }
 }
 
