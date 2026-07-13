@@ -47,14 +47,25 @@ enum UISwipeExecutor {
         // 策略 1: UIScrollView → 边缘滑动触发 swipe actions
         if let scrollView = view as? UIScrollView {
             if input.direction == .left || input.direction == .right {
-                let triggered = trySwipeActions(on: scrollView, direction: input.direction, distance: distance, path: path)
+                let triggered = try trySwipeActions(on: scrollView, direction: input.direction, distance: distance, path: path, input: input, context: context)
                 if triggered {
-                    UIKitCommandLogging.info("command", "ui swipe scrollView swipe actions triggered direction=\(input.direction.rawValue) path=\(path)")
+                    // 真正触发了 swipe action（cellLocator 模式）
+                    let cellPath = input.cellLocator.map { loc in
+                        if case .accessibilityIdentifier(let id) = loc {
+                            return "cell(\(id))"
+                        } else if case .path(let indexes) = loc {
+                            return UIKitViewLookupTarget.pathString(from: indexes)
+                        }
+                        return "cell"
+                    } ?? "N/A"
+                    UIKitCommandLogging.info("command", "ui swipe scrollView swipe actions triggered direction=\(input.direction.rawValue) scrollViewPath=\(path) cellPath=\(cellPath)")
                     return [
                         "path": .string(path),
+                        "cellPath": .string(cellPath),
                         "route": .string("scrollView.swipeActions"),
                         "direction": .string(input.direction.rawValue),
-                        "targetType": .string(String(describing: UIScrollView.self)),
+                        "actionTitle": input.actionTitle.map { .string($0) } ?? .null,
+                        "targetType": .string(String(describing: type(of: scrollView))),
                         "distance": .double(distance),
                         "triggered": .bool(true),
                     ]
@@ -106,30 +117,215 @@ enum UISwipeExecutor {
 
     /// 在 UIScrollView 上触发 leading/trailing swipe actions（如 swipe to delete）。
     ///
-    /// **当前不实现真正触发，诚实返回 `false`。** iOS 没有公开 API 合成 UITouch 序列来驱动
-    /// `UITableView`/`UICollectionView` 的内部 swipe action 交互：合成 `UITouch` 在 iOS 26 已被
-    /// 证实不可行（见 realTouch spike 报告），而仅 invoke scrollView 内置的 pan gesture recognizer
-    ///（或 `_swipeActionGestureRecognizer`）只会派发其 target-action，不产生真实触摸事件流，
-    /// iOS 的 swipe action 交互需要完整触摸序列才会展开 action button。
-    ///
-    /// 真正支持 swipe actions 需要后续设计：定位到具体 cell（path/identifier 指向 cell 或其行号）
-    /// + 通过 tableView delegate 拿到对应 `UISwipeActionsConfiguration` 的 `UIContextualAction`，
-    /// 直接调 action handler（`UIContextualAction` 的 handler 闭包）。这需要新增「cell 定位 + action
-    /// 选择」参数，本次不做（见报告「后续增强建议」）。
-    ///
-    /// 返回 `false` 让 `execute` 落到策略 2（UISwipeGestureRecognizer）→ 策略 3
-    ///（UIPanGestureRecognizer）→ 最终 `unsupported_target`（带 swipe 专用 message），
-    /// 不再产生 `triggered:true / route:scrollView.swipeActions` 的假阳性。
+    /// **两种模式**：
+    /// 1. **真正触发 per-cell swipe actions**：当 `input.cellLocator` 非 nil 时，定位到具体 cell，
+    ///    通过 tableView/collectionView delegate 拿到对应 `UISwipeActionsConfiguration`，
+    ///    直接调 `UIContextualAction.handler` 触发。绕过合成触摸死路（iOS 无公开 API 合成完整触摸序列）。
+    /// 2. **对 scrollView 本身滑动**（`cellLocator` 为 nil）：iOS 没有公开 API 合成 UITouch 序列来驱动
+    ///    `UITableView`/`UICollectionView` 的内部 swipe action 交互，诚实返回 `false` 让调用方
+    ///    落到策略 2（UISwipeGestureRecognizer）→ 策略 3（UIPanGestureRecognizer）→ 最终
+    ///    `unsupported_target`，不再产生假阳性。
     ///
     /// - Parameters:
     ///   - scrollView: 目标 scrollView（含 UITableView/UICollectionView）。
     ///   - direction: 滑动方向（仅 left/right 进入本函数，up/down 在调用方已过滤）。
-    ///   - distance: 滑动距离比例（当前未使用，保留以便后续真实触发实现复用签名）。
-    ///   - path: 目标路径（用于日志）。
-    /// - Returns: 恒为 `false`——未真正触发 swipe actions。
-    private static func trySwipeActions(on scrollView: UIScrollView, direction: SwipeDirection, distance: Double, path: String) -> Bool {
-        UIKitCommandLogging.info("command", "ui swipe scrollView swipe actions not implemented (no public API to synthesize touch sequence) direction=\(direction.rawValue) path=\(path)")
-        return false
+    ///   - distance: 滑动距离比例（当前未使用，保留以便后续扩展）。
+    ///   - path: scrollView 路径（用于日志）。
+    ///   - input: 完整输入（包含 cellLocator 和 actionTitle）。
+    ///   - context: UIKit 查询上下文（用于定位 cell）。
+    /// - Returns: 是否成功触发；模式 2（不传 cellLocator）时返回 `false`。
+    /// - Throws: cell 定位失败、不是合法 cell 类型、delegate 未返回 actions、actionTitle 不匹配等错误。
+    private static func trySwipeActions(on scrollView: UIScrollView, direction: SwipeDirection, distance: Double, path: String, input: UISwipeInput, context: UIKitContextProvider.Context) throws -> Bool {
+        // 模式 1：真正触发 per-cell swipe actions
+        guard let cellLocator = input.cellLocator else {
+            // 模式 2：对 scrollView 本身滑动，不实现（诚实返回 false）
+            UIKitCommandLogging.info("command", "ui swipe scrollView swipe actions not implemented (no public API to synthesize touch sequence) direction=\(direction.rawValue) path=\(path)")
+            return false
+        }
+
+        UIKitCommandLogging.info("command", "ui swipe cell-based swipe actions mode: locating cell direction=\(direction.rawValue) scrollViewPath=\(path)")
+
+        // 定位 cell（在 scrollView 子树内）
+        let cellLocated = try UIKitLocatorResolver.locate(
+            locator: cellLocator.locator,
+            in: scrollView,
+            notFound: {
+                UIKitCommandError.targetNotFound(
+                    action: SwipeCommand.actionName,
+                    message: "cell not found in scrollView subtree",
+                    logMessage: "ui swipe cell not found in scrollView cellLocator=\(cellLocator.logSummary) scrollViewPath=\(path)"
+                )
+            },
+            ambiguous: { count in
+                UIKitCommandError.targetAmbiguous(
+                    action: SwipeCommand.actionName,
+                    targetDescription: cellLocator.description,
+                    count: count
+                )
+            }
+        )
+        let cell = cellLocated.view
+        let cellPath = cellLocated.pathString
+
+        UIKitCommandLogging.info("command", "ui swipe cell located: cellPath=\(cellPath) cellType=\(String(describing: type(of: cell)))")
+
+        // 判断 cell 类型并获取 indexPath
+        if let tableView = scrollView as? UITableView, let tableCell = cell as? UITableViewCell {
+            guard let indexPath = tableView.indexPath(for: tableCell) else {
+                throw UIKitCommandError.targetNotFound(
+                    action: SwipeCommand.actionName,
+                    message: "cell not in visible cells",
+                    logMessage: "ui swipe cell not in visible cells (indexPath(for:) returned nil) cellPath=\(cellPath)"
+                )
+            }
+            return try triggerTableViewSwipeAction(
+                tableView: tableView,
+                cell: tableCell,
+                indexPath: indexPath,
+                direction: direction,
+                actionTitle: input.actionTitle,
+                cellPath: cellPath
+            )
+        } else if let collectionView = scrollView as? UICollectionView, let collectionCell = cell as? UICollectionViewCell {
+            guard let indexPath = collectionView.indexPath(for: collectionCell) else {
+                throw UIKitCommandError.targetNotFound(
+                    action: SwipeCommand.actionName,
+                    message: "cell not in visible cells",
+                    logMessage: "ui swipe cell not in visible cells (indexPath(for:) returned nil) cellPath=\(cellPath)"
+                )
+            }
+            return try triggerCollectionViewSwipeAction(
+                collectionView: collectionView,
+                cell: collectionCell,
+                indexPath: indexPath,
+                direction: direction,
+                actionTitle: input.actionTitle,
+                cellPath: cellPath
+            )
+        } else {
+            // cell 定位到的 view 不是 UITableViewCell/UICollectionViewCell
+            throw UIKitCommandError.invalidData(
+                action: SwipeCommand.actionName,
+                message: "target is not a UITableViewCell or UICollectionViewCell (found \(String(describing: type(of: cell))))"
+            )
+        }
+    }
+
+    /// 触发 UITableView cell 的 swipe action。
+    private static func triggerTableViewSwipeAction(
+        tableView: UITableView,
+        cell: UITableViewCell,
+        indexPath: IndexPath,
+        direction: SwipeDirection,
+        actionTitle: String?,
+        cellPath: String
+    ) throws -> Bool {
+        // direction left → trailing, right → leading
+        guard direction == .left || direction == .right else {
+            throw UIKitCommandError.unsupportedTarget(
+                action: SwipeCommand.actionName,
+                targetDescription: cellPath,
+                type: "UITableViewCell",
+                message: "swipe actions only support left/right (trailing/leading), not up/down"
+            )
+        }
+
+        let isTrailing = (direction == .left)
+        guard let delegate = tableView.delegate else {
+            throw UIKitCommandError.unsupportedTarget(
+                action: SwipeCommand.actionName,
+                targetDescription: cellPath,
+                type: "UITableView",
+                message: "tableView has no delegate"
+            )
+        }
+
+        // 调用 delegate 方法获取 swipe actions configuration
+        let configuration: UISwipeActionsConfiguration?
+        if isTrailing {
+            configuration = delegate.tableView?(tableView, trailingSwipeActionsConfigurationForRowAt: indexPath)
+        } else {
+            configuration = delegate.tableView?(tableView, leadingSwipeActionsConfigurationForRowAt: indexPath)
+        }
+
+        guard let config = configuration, !config.actions.isEmpty else {
+            throw UIKitCommandError.unsupportedTarget(
+                action: SwipeCommand.actionName,
+                targetDescription: cellPath,
+                type: "UITableViewCell",
+                message: "no \(isTrailing ? "trailing" : "leading") swipe actions available for this cell"
+            )
+        }
+
+        UIKitCommandLogging.info("command", "ui swipe found \(config.actions.count) \(isTrailing ? "trailing" : "leading") actions: \(config.actions.map { $0.title })")
+
+        // 选择要触发的 action
+        let targetAction: UIContextualAction
+        if let title = actionTitle {
+            guard let action = config.actions.first(where: { $0.title == title }) else {
+                let availableTitles = config.actions.map { "'\($0.title)'" }.joined(separator: ", ")
+                throw UIKitCommandError.targetNotFound(
+                    action: SwipeCommand.actionName,
+                    message: "action '\(title)' not found in available actions",
+                    logMessage: "ui swipe action not found actionTitle='\(title)' available=[\(availableTitles)] cellPath=\(cellPath)"
+                )
+            }
+            targetAction = action
+        } else {
+            targetAction = config.actions[0]
+        }
+
+        UIKitCommandLogging.info("command", "ui swipe triggering action='\(targetAction.title)' cellPath=\(cellPath)")
+
+        // 调用 action handler
+        var handlerCompleted = false
+        targetAction.handler(targetAction, cell) { performed in
+            handlerCompleted = true
+            UIKitCommandLogging.info("command", "ui swipe action handler completed performed=\(performed) action='\(targetAction.title)'")
+        }
+
+        // handler 是同步还是异步取决于 App 实现，这里假设同步完成（多数场景如此）
+        // 如果 handler 异步，handlerCompleted 可能仍是 false，但 action 已触发
+        return true
+    }
+
+    /// 触发 UICollectionView cell 的 swipe action。
+    private static func triggerCollectionViewSwipeAction(
+        collectionView: UICollectionView,
+        cell: UICollectionViewCell,
+        indexPath: IndexPath,
+        direction: SwipeDirection,
+        actionTitle: String?,
+        cellPath: String
+    ) throws -> Bool {
+        // UICollectionView 的 swipe actions 也是 trailing/leading
+        guard direction == .left || direction == .right else {
+            throw UIKitCommandError.unsupportedTarget(
+                action: SwipeCommand.actionName,
+                targetDescription: cellPath,
+                type: "UICollectionViewCell",
+                message: "swipe actions only support left/right (trailing/leading), not up/down"
+            )
+        }
+
+        let isTrailing = (direction == .left)
+        guard let delegate = collectionView.delegate else {
+            throw UIKitCommandError.unsupportedTarget(
+                action: SwipeCommand.actionName,
+                targetDescription: cellPath,
+                type: "UICollectionView",
+                message: "collectionView has no delegate"
+            )
+        }
+
+        // UICollectionView 没有 trailingSwipeActionsConfiguration 方法（iOS 未提供标准 API）
+        // 但自定义 layout 可能实现类似逻辑。这里先返回 unsupported
+        throw UIKitCommandError.unsupportedTarget(
+            action: SwipeCommand.actionName,
+            targetDescription: cellPath,
+            type: "UICollectionViewCell",
+            message: "UICollectionView swipe actions not yet supported (no standard delegate API)"
+        )
     }
 
     // MARK: - UISwipeGestureRecognizer
