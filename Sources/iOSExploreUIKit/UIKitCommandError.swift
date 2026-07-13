@@ -95,24 +95,34 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           logMessage: "ui tap target ambiguous action=\(action) target=\(targetDescription) count=\(count)")
     }
 
-    /// ui.tap 找到了 view，但目标类型没有默认激活路由且 cell selection / 手势 adapter 均不可达。
+    /// 目标没有可触发的路由：`ui.tap` 找到了 view 但默认激活路由与 adapter 均不可达，
+    /// 或 `ui.swipe`/`ui.longPress` 在目标上未找到匹配的手势识别器。
     ///
-    /// 默认激活仅覆盖 UIButton（touchUpInside）、UISwitch（toggle + valueChanged）、文本输入
-    ///（becomeFirstResponder）；机械化层面还会先尝试 cell selection adapter（对 cell 子树内目标）
-    /// 与手势 target-action adapter（对挂 `UIGestureRecognizer` 的非 UIControl view，且仅 Debug 可用）。
-    /// 以上 fallback 均未命中时——典型如 UISlider / UISegmentedControl / 普通 UIView /
-    /// 无 gesture 的纯装饰 view / Release 构建下 ivar 不可读——才落本错误。区别于 `unsupportedAction`
-    ///（控件存在但请求的事件不支持）：这里是目标类型本身无任何可用 tap 路由。
+    /// 这是一个被多个命令复用的失败出口，对外 message 通过 `message` 参数按命令定制：
+    /// - **ui.tap**（默认值）：说明默认激活仅覆盖 UIButton / UISwitch / 文本输入，cell selection /
+    ///   手势 adapter 均未命中。典型如 UISlider / UISegmentedControl / 普通 UIView / 无 gesture 的
+    ///   纯装饰 view / Release 构建下 ivar 不可读。区别于 `unsupportedAction`（控件存在但请求的事件
+    ///   不支持）：这里是目标类型本身无任何可用 tap 路由。
+    /// - **ui.swipe**：调用方传 "no matching swipe gesture recognizer found on target"，
+    ///   说明策略 1/2/3（scrollView swipe actions / UISwipeGestureRecognizer / UIPanGestureRecognizer）
+    ///   均未命中或不可达。
+    /// - **ui.longPress**：调用方传 "no UILongPressGestureRecognizer found on target"。
+    ///
+    /// tap 的现有调用方不传 `message`（走默认值），保持文案与历史行为不变。
     ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名。
     ///   - targetDescription: 目标摘要。
     ///   - type: 目标 view 的类型名。
+    ///   - message: 对外失败说明，进入 envelope；缺省为 tap 专用文案。
     /// - Returns: `unsupported_target` 失败描述。
-    static func unsupportedTarget(action: String, targetDescription: String, type: String) -> UIKitCommandError {
+    static func unsupportedTarget(action: String,
+                                  targetDescription: String,
+                                  type: String,
+                                  message: String = "target has no default activation route (UIButton / UISwitch / text input only)") -> UIKitCommandError {
         UIKitCommandError(code: .unsupportedTarget,
-                          message: "target has no default activation route (UIButton / UISwitch / text input only)",
-                          logMessage: "ui tap unsupported target action=\(action) target=\(targetDescription) type=\(type)")
+                          message: message,
+                          logMessage: "uikit unsupported target action=\(action) target=\(targetDescription) type=\(type)")
     }
 
     /// 已定位的控件不支持请求动作，或控件当前不可用。

@@ -63,6 +63,50 @@ func controllersCommandSchemaMatchesInputFields() {
     #expect(ControllersCommand.Input.inputSchema.fields.map(\.name) == UIControllersInput.inputSchema.fields.map(\.name))
 }
 
+@Test("ui.swipe 命令 schema 声明 typed input 字段")
+func swipeCommandSchemaMatchesInputFields() {
+    #expect(SwipeCommand.Input.inputSchema.fields.map(\.name) == UISwipeInput.inputSchema.fields.map(\.name))
+}
+
+@Test("ui.longPress 命令 schema 声明 typed input 字段")
+func longPressCommandSchemaMatchesInputFields() {
+    #expect(LongPressCommand.Input.inputSchema.fields.map(\.name) == UILongPressInput.inputSchema.fields.map(\.name))
+}
+
+@Test("ui.longPress duration 超过 10 秒上限被拒绝为 invalid_data")
+func longPressDurationUpperLimitRejected() {
+    var decoder = CommandInputDecoder(JSON(["duration": 100.0]), schema: UILongPressInput.inputSchema)
+    #expect(throws: CommandInputParseError.self) {
+        try UILongPressInput.parse(decoding: &decoder)
+    }
+}
+
+@Test("ui.longPress duration=10 边界合法，duration>10 非法")
+func longPressDurationBoundary() throws {
+    // 10.0 是闭区间上界，合法
+    var atBoundary = CommandInputDecoder(JSON(["duration": 10.0]), schema: UILongPressInput.inputSchema)
+    let boundaryInput = try UILongPressInput.parse(decoding: &atBoundary)
+    #expect(boundaryInput.duration == 10.0)
+
+    // 略超上界即拒绝
+    var overBoundary = CommandInputDecoder(JSON(["duration": 10.1]), schema: UILongPressInput.inputSchema)
+    #expect(throws: CommandInputParseError.self) {
+        try UILongPressInput.parse(decoding: &overBoundary)
+    }
+}
+
+@Test("ui.longPress duration<=0 仍被拒绝（回归保护）")
+func longPressDurationNonPositiveRejected() {
+    var zeroDecoder = CommandInputDecoder(JSON(["duration": 0.0]), schema: UILongPressInput.inputSchema)
+    #expect(throws: CommandInputParseError.self) {
+        try UILongPressInput.parse(decoding: &zeroDecoder)
+    }
+    var negativeDecoder = CommandInputDecoder(JSON(["duration": -1.0]), schema: UILongPressInput.inputSchema)
+    #expect(throws: CommandInputParseError.self) {
+        try UILongPressInput.parse(decoding: &negativeDecoder)
+    }
+}
+
 @Test("ui.input 命令 description 写明 viewSnapshotID 与 identifier/path 都可搭配")
 func inputCommandDescriptionExplainsViewSnapshotAlignment() {
     let description = InputCommand().description

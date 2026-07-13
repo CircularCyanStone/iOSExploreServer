@@ -64,6 +64,29 @@ struct UIKitCommandErrorTests {
         #expect(error.failure.logMessage.contains("type=UILabel"))
     }
 
+    @Test("unsupportedTarget 支持按命令定制 message（swipe/longPress 不再用 tap 文案）")
+    func unsupportedTargetAcceptsCustomMessage() {
+        // tap 不传 message：保持默认文案（回归保护，不能因加参数破坏 ui.tap 行为）
+        let tapError = UIKitCommandError.unsupportedTarget(action: "ui.tap", targetDescription: "root/0", type: "UILabel")
+        #expect(tapError.failure.message == "target has no default activation route (UIButton / UISwitch / text input only)")
+
+        // swipe 传专用 message，不应再提到 UIButton/UISwitch/text input
+        let swipeError = UIKitCommandError.unsupportedTarget(
+            action: "ui.swipe", targetDescription: "root/1", type: "UILabel",
+            message: "no matching swipe gesture recognizer found on target")
+        #expect(swipeError.failure.code == .unsupportedTarget)
+        #expect(swipeError.failure.message == "no matching swipe gesture recognizer found on target")
+        #expect(swipeError.failure.message.contains("UIButton") == false)
+        #expect(swipeError.failure.logMessage.contains("action=ui.swipe"))
+
+        // longPress 传专用 message
+        let longPressError = UIKitCommandError.unsupportedTarget(
+            action: "ui.longPress", targetDescription: "root/2", type: "UILabel",
+            message: "no UILongPressGestureRecognizer found on target")
+        #expect(longPressError.failure.message == "no UILongPressGestureRecognizer found on target")
+        #expect(longPressError.failure.message.contains("UISwitch") == false)
+    }
+
     @Test("control 目标未找到使用 target_not_found")
     func controlTargetNotFoundMapsToDedicatedCode() {
         let error = UIKitCommandError.controlTargetNotFound(action: "ui.control.sendAction",

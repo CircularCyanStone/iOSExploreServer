@@ -69,7 +69,7 @@ enum UIGestureTargetExecutor {
         var triggered: [UIGestureTriggeredPair] = []
         for gesture in gestures {
             for pair in gesture.explore_targetActionPairs() {
-                invoke(target: pair.target, action: pair.action, sender: gesture)
+                invokeGestureAction(target: pair.target, action: pair.action, sender: gesture)
                 triggered.append(UIGestureTriggeredPair(
                     gestureType: String(describing: Swift.type(of: gesture)),
                     targetType: String(describing: Swift.type(of: pair.target)),
@@ -95,7 +95,9 @@ enum UIGestureTargetExecutor {
     ///
     /// `sender` 传手势识别器本身：手势 target-action 约定第一个参数（如有）是 `UIGestureRecognizer`，
     /// 不是 view（与 UIControl 的 sender 是控件本身同理）。
-    private static func invoke(target: NSObject, action: Selector, sender: UIGestureRecognizer) {
+    ///
+    /// internal：对同一 module 内的其他 executor（如 UISwipeExecutor）暴露，供 gesture target-action 触发复用。
+    static func invokeGestureAction(target: NSObject, action: Selector, sender: UIGestureRecognizer) {
         let argumentCount: UInt
         if let method = class_getInstanceMethod(type(of: target), action) {
             argumentCount = UInt(method_getNumberOfArguments(method))

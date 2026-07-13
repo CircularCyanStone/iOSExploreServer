@@ -44,6 +44,8 @@ struct UIKitCommandRegistrationTests {
         #expect(result.commandActions.contains("ui.scrollToElement"))
         #expect(result.commandActions.contains("ui.alert.respond"))
         #expect(result.commandActions.contains("ui.controllers"))
+        #expect(result.commandActions.contains("ui.swipe"))
+        #expect(result.commandActions.contains("ui.longPress"))
     }
 #endif
 }

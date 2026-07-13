@@ -7,7 +7,7 @@ import UIKit
 /// 重构后 core 不再自动注册 UIKit 命令；宿主 App 在初始化 `ExploreServer` 后，
 /// 调用 `server.registerUIKitCommands()` 把 `ui.topViewHierarchy`、`ui.inspect`、
 /// `ui.control.sendAction`、`ui.tap`、`ui.screenshot`、`ui.input`、`ui.keyboard.dismiss`、
-/// `ui.scroll`、`ui.navigation.back`、`ui.navigation.tapBarButton`、`ui.wait`、`ui.waitAny`、`ui.scrollToElement`、`ui.alert.respond`、`ui.controllers` 十五个命令显式挂到 router 上。
+/// `ui.scroll`、`ui.navigation.back`、`ui.navigation.tapBarButton`、`ui.wait`、`ui.waitAny`、`ui.scrollToElement`、`ui.alert.respond`、`ui.controllers`、`ui.swipe`、`ui.longPress` 十七个命令显式挂到 router 上。
 ///
 /// 该扩展整体位于 `#if canImport(UIKit)` 内：macOS 下不参与编译，iOS 下提供注册
 /// 实现。注册前会在 Debug 构建中安装 alert action handler 捕获；注册前后通过
@@ -45,7 +45,9 @@ public extension ExploreServer {
         register(ScrollToElementCommand(), logCategory: .extensionCommand(category: "command"))
         register(AlertRespondCommand(), logCategory: .extensionCommand(category: "command"))
         register(ControllersCommand(), logCategory: .extensionCommand(category: "command"))
-        UIKitCommandLogging.info("uikit.registrar", "registration completed count=15")
+        register(SwipeCommand(), logCategory: .extensionCommand(category: "command"))
+        register(LongPressCommand(), logCategory: .extensionCommand(category: "command"))
+        UIKitCommandLogging.info("uikit.registrar", "registration completed count=17")
     }
 }
 #endif

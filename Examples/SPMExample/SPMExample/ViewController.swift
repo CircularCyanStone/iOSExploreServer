@@ -75,6 +75,8 @@ final class ViewController: UIViewController {
         MenuItem(title: "滚动测试", subtitle: "UICollectionView + 30 个 cell，供 ui.scrollToElement 验证", icon: "📜", viewControllerType: ScrollTestViewController.self),
         MenuItem(title: "Wait 测试", subtitle: "5 种 waitMode 动态出现/消失/变化场景,供 ui.wait / ui.waitAny 验证", icon: "⏱️", viewControllerType: WaitTestViewController.self),
         MenuItem(title: "文本输入测试", subtitle: "UITextField / UITextView / UISearchTextField 等多种文本控件，供 ui.input 和 ui.keyboard.dismiss 验证", icon: "⌨️", viewControllerType: InputTestViewController.self),
+        MenuItem(title: "Swipe 测试", subtitle: "UITableView swipe actions、UISwipeGestureRecognizer、UIPanGestureRecognizer，供 ui.swipe 验证", icon: "👆", viewControllerType: SwipeTestViewController.self),
+        MenuItem(title: "LongPress 测试", subtitle: "UILongPressGestureRecognizer、Cell long press selection，供 ui.longPress 验证", icon: "✋", viewControllerType: LongPressTestViewController.self),
     ]
 
     override func viewDidLoad() {
@@ -110,10 +112,10 @@ final class ViewController: UIViewController {
 
         server.register(action: "debug.emitAppLog",
                         description: "写入一条 SPMExample bridge 诊断日志",
-                        input: EmptyCommandInput.self) { _ in
+                        input: ExampleStdIOMessageInput.self) { input in
             ExploreAppLog.emit(.info,
                                category: "spm.example",
-                               message: "SPMExample bridge diagnostic marker")
+                               message: input.message)
             return .success(["emitted": .bool(true)])
         }
 
@@ -349,7 +351,11 @@ extension ViewController {
         let shouldAutostart = true
         let shouldOpenAlertTest = arguments.contains("--ios-explore-open-alert-test")
             || environment["IOS_EXPLORE_OPEN_ALERT_TEST"] == "1"
-        print("iOSExplore launch automation autostart=\(shouldAutostart) openAlertTest=\(shouldOpenAlertTest) arguments=\(ProcessInfo.processInfo.arguments)")
+        let shouldOpenSwipeTest = arguments.contains("--ios-explore-open-swipe-test")
+            || environment["IOS_EXPLORE_OPEN_SWIPE_TEST"] == "1"
+        let shouldOpenLongPressTest = arguments.contains("--ios-explore-open-longpress-test")
+            || environment["IOS_EXPLORE_OPEN_LONGPRESS_TEST"] == "1"
+        print("iOSExplore launch automation autostart=\(shouldAutostart) openAlertTest=\(shouldOpenAlertTest) openSwipeTest=\(shouldOpenSwipeTest) openLongPressTest=\(shouldOpenLongPressTest) arguments=\(ProcessInfo.processInfo.arguments)")
 
         if shouldAutostart {
             appendLog("launch automation: start server")
@@ -359,10 +365,26 @@ extension ViewController {
             appendLog("launch automation: open alert test")
             openAlertTest()
         }
+        if shouldOpenSwipeTest {
+            appendLog("launch automation: open swipe test")
+            openSwipeTest()
+        }
+        if shouldOpenLongPressTest {
+            appendLog("launch automation: open longPress test")
+            openLongPressTest()
+        }
     }
 
     private func openAlertTest() {
         navigationController?.pushViewController(AlertTestViewController(), animated: true)
+    }
+
+    private func openSwipeTest() {
+        navigationController?.pushViewController(SwipeTestViewController(), animated: true)
+    }
+
+    private func openLongPressTest() {
+        navigationController?.pushViewController(LongPressTestViewController(), animated: true)
     }
 }
 
