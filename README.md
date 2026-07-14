@@ -12,10 +12,45 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 
 ## 快速开始
 
+### 方式 1：使用 Claude Code + MCP（推荐）
+
+```bash
+# 1. 配置 MCP 服务（已配置在 .mcp.json）
+# 2. 在 Claude Code 中使用统一入口 skill
+/ios-automation
+
+# 自动处理：
+# - 连接检查（模拟器/真机）
+# - iproxy 启动/停止/状态管理
+# - 任务路由到专业 skills（表单/弹窗/导航...）
+# - 快速诊断（ping/inspect/screenshot）
+```
+
+**可用的专业 skills：**
+- `/ios-form-filling` — 表单填写 ⭐⭐⭐⭐⭐
+- `/ios-alert-handling` — 弹窗处理 ⭐⭐⭐⭐⭐
+- `/ios-navigation` — 页面导航 ⭐⭐⭐⭐⭐
+- `/ios-list-interaction` — 列表交互 ⭐⭐⭐⭐⭐
+- `/ios-screenshot` — 截图验证 ⭐⭐⭐⭐⭐
+
+**完整 skills 索引：** `docs/ios-automation-skills-index.md`
+
+### 方式 2：手动使用 curl
+
 1. 在手机/模拟器上运行集成了 iOSExploreServer 的 App（见 `Examples/SPMExample`），启动 Server。
 2. Mac 上起转发（真机）：
    ```bash
+   # 前台运行（Ctrl-C 停止）
    ./scripts/proxy.sh
+   
+   # 后台运行（推荐）
+   ./scripts/proxy.sh --daemon
+   
+   # 检查状态
+   ./scripts/proxy.sh --status
+   
+   # 停止后台进程
+   ./scripts/proxy.sh --stop
    ```
    > 模拟器无需 `iproxy`：App 监听的端口 Mac 本机直接可达。
 3. 发命令：
