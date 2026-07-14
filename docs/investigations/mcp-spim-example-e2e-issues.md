@@ -1,7 +1,7 @@
 # SPMExample MCP 端到端测试问题 - 2026-04-28
 
 > 测试时间：2026-04-28
-> 测试方式：通过 MCP 协议（stdio）调用 `MCPServer/dist/src/index.js`，对 `Examples/SPMExample` 在 iPhone 17 模拟器上跑整套端到端
+> 测试方式：通过 MCP 协议（stdio）调用 `iOSDriver/dist/src/index.js`，对 `Examples/SPMExample` 在 iPhone 17 模拟器上跑整套端到端
 > 测试覆盖：基础命令、主页、弹窗测试页（5 种 alert）、控件测试页（6 类控件）、日志诊断页（5 场景 + 6 来源 + 6 emit）、wait/observe、scroll、screenshot、navigation、call_action、refresh_tools
 > 总工具数：34（5 固定 + 29 动态）
 > 健康检查：`{ ok: true, dynamicToolCount: 29, conflicts: [] }`
@@ -437,7 +437,7 @@ collector 文档（L11-15）声明的不变式："`ui.viewTargets` 返回的 can
 
 - 设备：iPhone 17 模拟器（ID `065CC8DB-8978-46C5-82D6-C96625B608D8`）
 - App：SPMExample，bundleId `com.coo.SPMExample`，启动 env `IOS_EXPLORE_AUTOSTART=1`
-- MCPServer：`MCPServer/dist/src/index.js`，stdio JSON-RPC，baseURL `http://localhost:38321/`
+- iOSDriver：`iOSDriver/dist/src/index.js`，stdio JSON-RPC，baseURL `http://localhost:38321/`
 - XcodeBuildMCP profile：`sim-app`
 - 测试日期：2026-04-28
 

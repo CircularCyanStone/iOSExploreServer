@@ -8,7 +8,7 @@
 
 - 设备：iPhone 17 模拟器
 - App：SPMExample，bundleId `com.coo.SPMExample`
-- MCPServer：`MCPServer/dist/src/index.js`
+- iOSDriver：`iOSDriver/dist/src/index.js`
 - XcodeBuildMCP profile：`sim-app`
 
 ## 修复清单
@@ -59,7 +59,7 @@ Test run with 248 tests in 8 suites passed after 6.5 seconds.
 
 ## 未验证的端到端路径
 
-由于当前会话中模拟器 App 未启动且 MCPServer 依赖 `dist/src/index.js`（需要先 `npm run build`），以下验证需要手动在模拟器上执行：
+由于当前会话中模拟器 App 未启动且 iOSDriver 依赖 `dist/src/index.js`（需要先 `npm run build`），以下验证需要手动在模拟器上执行：
 
 1. 启动模拟器 App（XcodeBuildMCP + `launch_app_sim(env={"IOS_EXPLORE_AUTOSTART":"1"})`）
 2. 运行 `/tmp/verify_fixes.py` 或直接 curl 调 iOSExploreServer 发 `ui.scrollToElement` / `ui.tap` / `ui.navigation.back` 命令

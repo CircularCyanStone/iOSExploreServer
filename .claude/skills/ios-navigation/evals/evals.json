@@ -1,0 +1,24 @@
+{
+  "skill_name": "ios-navigation",
+  "description": "Test cases for iOS screen navigation and traversal automation",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Navigate from the home screen to the Settings screen in an iOS app, verify the navigation bar title changed to 'Settings', then go back to home.",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to get current screen title and find Settings button/cell\n2. Call ui.tap to navigate to Settings screen\n3. Wait 500ms for screen transition animation\n4. Call ui.inspect to verify navigationBar.title is 'Settings'\n5. Verify navigationBar.backAvailable is true\n6. Call ui.navigation.back to return to home\n7. Wait 500ms and verify returned to previous screen\n8. Total navigation cycle ~1.5 seconds",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "In an iOS app, tap the right navigation bar button (Share button) with accessibility identifier 'nav.right.share'.",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to verify right navigation buttons exist\n2. Call ui.navigation.tapBarButton with placement='right' and accessibilityIdentifier='nav.right.share'\n3. Response should include performed=true, placement='right', title='分享', accessibilityIdentifier='nav.right.share'\n4. Duration ~304ms\n5. Verify action performed (may trigger share sheet or other action)",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Navigate through a deep hierarchy: Home → Settings → Account → Privacy, then navigate back to Home one screen at a time.",
+      "expected_output": "Should successfully:\n1. Start at Home, verify navigationBar.backAvailable is false\n2. Navigate to Settings: ui.tap → wait 500ms → verify title='Settings'\n3. Navigate to Account: ui.tap → wait 500ms → verify title='Account'\n4. Navigate to Privacy: ui.tap → wait 500ms → verify title='Privacy'\n5. Go back: ui.navigation.back → wait 500ms → verify title='Account'\n6. Go back: ui.navigation.back → wait 500ms → verify title='Settings'\n7. Go back: ui.navigation.back → wait 500ms → verify title='Home'\n8. Total ~4.5 seconds for full cycle\n9. All navigation actions return performed=true",
+      "files": []
+    }
+  ]
+}

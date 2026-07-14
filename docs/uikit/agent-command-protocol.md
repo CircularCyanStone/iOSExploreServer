@@ -37,7 +37,7 @@ ui.inspect     ────┼──>  选定 path/identifier  ──>  ui.tap
 
 > 一句话：**`ui.inspect` 用于"操作"，`topViewHierarchy` 用于"观察"**。需要 `viewSnapshotID` → ui.inspect；需要看完整结构/验收字段 → topViewHierarchy。
 
-MCP 调用方优先走 `MCPServer` 的 `observe` 和 `wait_and_observe` 固定工具；需要精细控制或排障时再调用动态 `ios_*` 原子工具或 `call_action`。
+MCP 调用方优先走 `iOSDriver` 的 `observe` 和 `wait_and_observe` 固定工具；需要精细控制或排障时再调用动态 `ios_*` 原子工具或 `call_action`。
 
 下表是各命令的前置/后置关系速查：
 

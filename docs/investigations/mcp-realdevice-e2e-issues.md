@@ -1,7 +1,7 @@
 # iOSExplore MCP 真机端到端测试 - 发现问题全集
 
 > 调查时间：2026-04-28
-> 调查方式：MCP stdio server（`MCPServer/dist/src/index.js`）经 iproxy USB 转发（端口 38321）→ 真机 SPMExample（`com.coo.SPMExample`，iOS 26.5），按页面分批执行验证脚本
+> 调查方式：MCP stdio server（`iOSDriver/dist/src/index.js`）经 iproxy USB 转发（端口 38321）→ 真机 SPMExample（`com.coo.SPMExample`，iOS 26.5），按页面分批执行验证脚本
 > 测试设备：李奇奇的iPhone（CoreDevice id `3AC0C7D6-22F6-572B-8368-4047A14BAB52`，UDID `00008030-001045C136D1402E`，iOS 26.5）
 > 测试用例 App：`Examples/SPMExample`（首页 / AlertTest / ControlTest / DiagnosticsTest 等）
 > 测试通过率：24/26 = 92.3%，2 个已知失败 + 多个改进项
@@ -12,12 +12,12 @@
 
 ## 0. 测试脚手架
 
-每一组测试都用一次性 stdio 客户端（`/tmp/mcp_*.mjs`）连到 MCPServer，调用 `tools/call` 触发动态/静态工具，工具内部走 `iOSExploreClient.call(action, data)` → `fetch http://localhost:38321/` → iproxy → 真机 iOSExploreServer。每个测试用例独立 session，避免 stale `viewSnapshotID`。
+每一组测试都用一次性 stdio 客户端（`/tmp/mcp_*.mjs`）连到 iOSDriver，调用 `tools/call` 触发动态/静态工具，工具内部走 `iOSExploreClient.call(action, data)` → `fetch http://localhost:38321/` → iproxy → 真机 iOSExploreServer。每个测试用例独立 session，避免 stale `viewSnapshotID`。
 
 测试发现的问题按范畴分两组：
 
 - **范畴 A**：iOSExploreServer 主体（Swift）功能缺陷（问题 1–3）
-- **范畴 B**：MCPServer（TypeScript bridge）改进点（问题 4–9）
+- **范畴 B**：iOSDriver（TypeScript bridge）改进点（问题 4–9）
 
 ---
 
@@ -28,12 +28,12 @@
 | 1 | UIKit/ControlAction | UIStepper 的 `valueChanged` 不声明，`control.sendAction` 拒绝派发 | 中 | 任何 UIStepper + sendAction valueChanged |
 | 2 | UIKit/ControlAction | `control.sendAction` 无法携带新 value，slider/segmented/stepper 只能发"空"事件 | 中 | slider 设特定值、stepper 步进到指定值 |
 | 3 | UIKit/Alert | alert dismiss 是动画，紧接的 `observe`/`topViewHierarchy` 仍报告 `UIAlertController` | 低 | alert.respond dryRun=false 之后立即调用 observe |
-| 4 | MCPServer/transport | 真机 App 退出 / iproxy 断开后 MCP 调用报 `connection_failed`，无自愈 | 中 | 杀掉 SPMExample 进程，再调任意 tool |
-| 5 | MCPServer/registry | 动态工具不自动 refresh：App 重装上报不同 action 集合时旧工具会变 `unknown_tool` | 中 | App 进程被替换 / 更新 |
-| 6 | MCPServer/toolName | `ios_` 前缀过长，工具名动辄 30 字符（`ios_ui_navigation_tapBarButton`） | 低 | agent 选择工具时认知距离大 |
-| 7 | MCPServer/static | `observe` 硬编码 `ui.viewTargets`，无 `topViewHierarchy` 选项 | 低 | 想拿完整层级树时必须显式调动态工具 |
-| 8 | MCPServer/static | `wait_and_observe` 把 `viewTargetsOptions` 当顶层字段 conn 到 `ui.viewTargets`，但 `ui.viewTargets` schema 拒绝该字段 | 中 | wait_and_observe 传 viewTargetsOptions |
-| 9 | MCPServer/screenshot | `ui.screenshot` 返回 base64 整段塞进 `content[0].text`，几十 KB 起 | 低 | 每次截图膨胀 MCP 响应 |
+| 4 | iOSDriver/transport | 真机 App 退出 / iproxy 断开后 MCP 调用报 `connection_failed`，无自愈 | 中 | 杀掉 SPMExample 进程，再调任意 tool |
+| 5 | iOSDriver/registry | 动态工具不自动 refresh：App 重装上报不同 action 集合时旧工具会变 `unknown_tool` | 中 | App 进程被替换 / 更新 |
+| 6 | iOSDriver/toolName | `ios_` 前缀过长，工具名动辄 30 字符（`ios_ui_navigation_tapBarButton`） | 低 | agent 选择工具时认知距离大 |
+| 7 | iOSDriver/static | `observe` 硬编码 `ui.viewTargets`，无 `topViewHierarchy` 选项 | 低 | 想拿完整层级树时必须显式调动态工具 |
+| 8 | iOSDriver/static | `wait_and_observe` 把 `viewTargetsOptions` 当顶层字段 conn 到 `ui.viewTargets`，但 `ui.viewTargets` schema 拒绝该字段 | 中 | wait_and_observe 传 viewTargetsOptions |
+| 9 | iOSDriver/screenshot | `ui.screenshot` 返回 base64 整段塞进 `content[0].text`，几十 KB 起 | 低 | 每次截图膨胀 MCP 响应 |
 
 > **2 个真"失败"** = 问题 1（UIStepper）+ 问题 8（wait_and_observe 视图参数透传）；其它为改进项或下游修复建议。
 
@@ -130,7 +130,7 @@ if control is UISwitch || control is UISlider || control is UISegmentedControl |
 # 假设已 navigate 到 ControlTestViewController + 真机已连
 node -e "
 const {spawn}=require('node:child_process');
-const ch=spawn('node',['/Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/MCPServer/dist/src/index.js'],{stdio:['pipe','pipe','pipe'],env:{...process.env,IOS_EXPLORE_BASE_URL:'http://localhost:38321/'}});
+const ch=spawn('node',['/Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSDriver/dist/src/index.js'],{stdio:['pipe','pipe','pipe'],env:{...process.env,IOS_EXPLORE_BASE_URL:'http://localhost:38321/'}});
 // ... 标准 stdio 协议封装
 await tool('ios_ui_control_sendAction',{accessibilityIdentifier:'test.stepper',event:'valueChanged',viewSnapshotID:snap});
 // 修复前 -> 'requested action is not supported for target'
@@ -271,7 +271,7 @@ control.sendActions(for: event.uiControlEvent)
 
 1. **session 内置 wait**：在 `alert.respond` 完成后，`UIKitCommandLogging` 之外加一次"等待 presentedViewController 变 nil"，或者返回 `dismissed=true` 之后 server 端先 await runloop 一次
 2. **文档加默认 sleep 建议**：在 `ui.alert.respond` 的 description 显式说明"dismiss 后请等待 ≥500ms 再 observe"
-3. **client-side 重试**：MCPServer `wait_and_observe` 在 alert.respond 之后能用来明确等待稳定
+3. **client-side 重试**：iOSDriver `wait_and_observe` 在 alert.respond 之后能用来明确等待稳定
 
 最简且不破坏协议：在 `UIAlertRespondExecutor.perform` 的 dismiss 后，RunLoop spin 最多 500ms 或 to `presentedViewController == nil`，再返回结果。这一项已经在"问题"清单中，因为对 agent 透明（agent 看见 `dismissed: true` 后任何后续调用都安全）。
 
@@ -293,7 +293,7 @@ control.sendActions(for: event.uiControlEvent)
 
 1. 真机 SPMExample 进程被 `stop_app_device` 或自然 crash / 退出
 2. iproxy 仍在 38321 监听（`lsof -iTCP:38321` 仍能看到 iproxy PID），但底层 device socket 端被远端 reset
-3. 调任何 iOSExplore MCP 工具 → `MCPServer/dist/src/iosExploreClient.ts:23-34` 抛 `fetch failed`
+3. 调任何 iOSExplore MCP 工具 → `iOSDriver/dist/src/iosExploreClient.ts:23-34` 抛 `fetch failed`
 4. 该抛错被 `errors.ts` 包成 `{ source: "transport", code: "connection_failed", message: "fetch failed", action, baseURL, timeoutMs }`
 
 实测发生过两次：
@@ -306,13 +306,13 @@ control.sendActions(for: event.uiControlEvent)
 
 - 调用任一动态工具时，iOSExploreServer 真机端进程不存在（被杀掉 / crashed / 设备睡眠）
 - `iproxy 38321` 在 Mac 上仍 LISTEN，但有连接进入后立即 RST（`Recv failure: Connection reset by peer`）
-- MCPServer fetch 此错误 → 返回 `connection_failed`，且没有任何 retry/refresh 机制
+- iOSDriver fetch 此错误 → 返回 `connection_failed`，且没有任何 retry/refresh 机制
 
 ### 5.3 根因分析
 
-- **`MCPServer/src/iosExploreClient.ts:11-25`**：`fetch` 失败立即抛 `IOSExploreStructuredError({ source: "transport", code: "connection_failed" ... })`，无重试
-- **`MCPServer/src/server.ts:30-40`** `callTool` 把 error 包成 `errorResult`，调用方收到 `isError: true`，但 `next_steps` / 描述里没有"重启 SPMExample"的步骤
-- **`MCPServer/src/staticTools.ts:13-25`** `health_check` 能区分 ok/false，但 caller 拿到 `connection_failed` 后**不会自动调 health_check 给 agent 提示恢复路径**
+- **`iOSDriver/src/iosExploreClient.ts:11-25`**：`fetch` 失败立即抛 `IOSExploreStructuredError({ source: "transport", code: "connection_failed" ... })`，无重试
+- **`iOSDriver/src/server.ts:30-40`** `callTool` 把 error 包成 `errorResult`，调用方收到 `isError: true`，但 `next_steps` / 描述里没有"重启 SPMExample"的步骤
+- **`iOSDriver/src/staticTools.ts:13-25`** `health_check` 能区分 ok/false，但 caller 拿到 `connection_failed` 后**不会自动调 health_check 给 agent 提示恢复路径**
 
 ### 5.4 影响
 
@@ -345,21 +345,21 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 
 ### 6.1 现象
 
-`ToolRegistry.refresh()` 在 MCPServer 启动时调用一次。后续如果 App 重启上报不同 help 输出（罕见，但例如升级了 iOSExploreServer 添加了新 action），MCP 客户端只看到旧 tool 列表；新工具会返回 `unknown_tool`。
+`ToolRegistry.refresh()` 在 iOSDriver 启动时调用一次。后续如果 App 重启上报不同 help 输出（罕见，但例如升级了 iOSExploreServer 添加了新 action），MCP 客户端只看到旧 tool 列表；新工具会返回 `unknown_tool`。
 
 ### 6.2 触发关键点
 
-1. MCPServer 启动（首个 stdio 连接） → 注册一批动态工具
-2. 不要 `refresh_tools`，不要重启 MCPServer
+1. iOSDriver 启动（首个 stdio 连接） → 注册一批动态工具
+2. 不要 `refresh_tools`，不要重启 iOSDriver
 3. App 进程被替换为新版（iOSExploreServer 帮助列表多出新的 action 比如 `ui.foo`）
 4. 客户端调用 `ios_ui_foo` → `server.ts:36-50` findByName → nil → 返回 `Unknown tool 'ios_ui_foo'`
 
-之所以触发条件"罕见"：同一次会话内 App 不会变；但跨会话或长生命周期 MCPServer 容易漏 refresh。
+之所以触发条件"罕见"：同一次会话内 App 不会变；但跨会话或长生命周期 iOSDriver 容易漏 refresh。
 
 ### 6.3 根因分析
 
-- **`MCPServer/src/server.ts:30-40`** 在 `callTool` 命中 unknown_tool 时不会自动 `registry.refresh()` + 重试
-- **`MCPServer/src/staticTools.ts:26-34`** 显式提供了 `refresh_tools` 工具，但调用方需要主动想到去调
+- **`iOSDriver/src/server.ts:30-40`** 在 `callTool` 命中 unknown_tool 时不会自动 `registry.refresh()` + 重试
+- **`iOSDriver/src/staticTools.ts:26-34`** 显式提供了 `refresh_tools` 工具，但调用方需要主动想到去调
 
 ### 6.4 修复建议（与问题 4 合一）
 
@@ -371,7 +371,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 
 ### 7.1 现象
 
-`toolNameForAction(action)`（`MCPServer/src/toolName.ts:7-9`）无条件加 `ios_` 前缀 + 把 `.` 替换为 `_`：
+`toolNameForAction(action)`（`iOSDriver/src/toolName.ts:7-9`）无条件加 `ios_` 前缀 + 把 `.` 替换为 `_`：
 
 - `ui.tap` → `ios_ui_tap`
 - `ui.navigation.tapBarButton` → `ios_ui_navigation_tapBarButton`（30 字符）
@@ -486,7 +486,7 @@ await tool('wait_and_observe', {
 
 ### 10.1 现象
 
-`ui.screenshot` 返回 `{ image: <30 KB base64>, format: 'png', width, height, scale }`。`MCPServer/src/server.ts` 把整个 response JSON 化后塞进 `content[0].text`：
+`ui.screenshot` 返回 `{ image: <30 KB base64>, format: 'png', width, height, scale }`。`iOSDriver/src/server.ts` 把整个 response JSON 化后塞进 `content[0].text`：
 
 ```typescript
 return jsonResult(await options.client.call(dynamic.action, args));
@@ -530,10 +530,10 @@ if (dynamic.action === 'ui.screenshot' && data.image && data.format === 'png') {
 
 | # | 现象 | 根因 | 处理 |
 |---|------|------|------|
-| 11.1 | `ui.waitAny` `conditions[]` 内层 schema 是 `{type:"array"}` 不约束元素字段 | `MCPServer/src/schemaMapper.ts` 没下钻 items schema；Swift 端 `UIWaitAnyModels.swift` 仅在描述里用文字说"targetExists 需 accessibilityIdentifier" | 在 description 里加大段文字描述（已有），或 schemaMapper 把 oneOf 嵌进 items |
+| 11.1 | `ui.waitAny` `conditions[]` 内层 schema 是 `{type:"array"}` 不约束元素字段 | `iOSDriver/src/schemaMapper.ts` 没下钻 items schema；Swift 端 `UIWaitAnyModels.swift` 仅在描述里用文字说"targetExists 需 accessibilityIdentifier" | 在 description 里加大段文字描述（已有），或 schemaMapper 把 oneOf 嵌进 items |
 | 11.2 | `help` 输出每次都全量 ~30 个 command metadata，HTTP 体积可观 | `HelpCommand.swift` 一次性 dump 所有 | 不需要改 |
-| 11.3 | `ui.scrollToElement` 输入字段 `value` 必填，参数名不易猜 | 文档未强调 | 在 MCPServer descriptionSuffix 里加"value 必填" 已是现有约束 |
-| 11.4 | `app.logs.read` 用 `after: { id, captureSessionID }` 不是 `sinceCursorID` | Swift 端字段命名 | 已是设计选择；MCPServer 不做字段重命名 |
+| 11.3 | `ui.scrollToElement` 输入字段 `value` 必填，参数名不易猜 | 文档未强调 | 在 iOSDriver descriptionSuffix 里加"value 必填" 已是现有约束 |
+| 11.4 | `app.logs.read` 用 `after: { id, captureSessionID }` 不是 `sinceCursorID` | Swift 端字段命名 | 已是设计选择；iOSDriver 不做字段重命名 |
 | 11.5 | `emitStdout` / `emitStderr` 接受 `message`（不是 `text`）；`emitAppLog`/`emitLogger` 等也是 `message` | `DebugEmitCommands.swift` 各 input type 各自定义字段 | 已是设计；agent 需读 schema |
 
 这些不是问题，仅作记录。
@@ -663,10 +663,10 @@ const r = await tool('wait_and_observe', {
 | 3 | `Sources/iOSExploreUIKit/Support/Action/UIAlertRespondExecutor.swift` | 60-66 |
 | 3 | `Sources/iOSExploreUIKit/Support/Context/UIKitContextProvider.swift` | 73-87 |
 | 3 | `Sources/iOSExploreUIKit/Support/Action/UIAlertInspector.swift` | 53-55 |
-| 4 | `MCPServer/src/iosExploreClient.ts` | 11-25 |
-| 4 | `MCPServer/src/server.ts` | 30-40 |
-| 5 | `MCPServer/src/toolRegistry.ts` | `refresh()` 30-50 |
-| 6 | `MCPServer/src/toolName.ts` | 7-9 |
-| 7 | `MCPServer/src/staticTools.ts` | 35-40 |
-| 8 | `MCPServer/src/staticTools.ts` | 42-86 |
-| 9 | `MCPServer/src/server.ts` (jsonResult 用法) | jsonResult 函数 |
+| 4 | `iOSDriver/src/iosExploreClient.ts` | 11-25 |
+| 4 | `iOSDriver/src/server.ts` | 30-40 |
+| 5 | `iOSDriver/src/toolRegistry.ts` | `refresh()` 30-50 |
+| 6 | `iOSDriver/src/toolName.ts` | 7-9 |
+| 7 | `iOSDriver/src/staticTools.ts` | 35-40 |
+| 8 | `iOSDriver/src/staticTools.ts` | 42-86 |
+| 9 | `iOSDriver/src/server.ts` (jsonResult 用法) | jsonResult 函数 |

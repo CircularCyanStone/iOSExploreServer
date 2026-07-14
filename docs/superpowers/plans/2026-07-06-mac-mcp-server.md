@@ -4,7 +4,7 @@
 
 **Goal:** Build a Mac-local TypeScript MCP server that exposes the existing iOSExplore HTTP actions as MCP tools and adds Agent-friendly fixed tools for observation, action forwarding, and wait-then-observe flow.
 
-**Architecture:** Keep the iPhone-side Swift libraries unchanged except for pre-existing contract text fixes that affect `help` output. Add a root-level `MCPServer/` Node package that talks to `http://localhost:38321/`, discovers dynamic tools from `help`, and exposes fixed MCP tools through stdio.
+**Architecture:** Keep the iPhone-side Swift libraries unchanged except for pre-existing contract text fixes that affect `help` output. Add a root-level `iOSDriver/` Node package that talks to `http://localhost:38321/`, discovers dynamic tools from `help`, and exposes fixed MCP tools through stdio.
 
 **Tech Stack:** Swift tests for the UIKit contract fix; Node 20+, TypeScript, `@modelcontextprotocol/sdk`, Vitest, built-in `fetch` and `http` test server.
 
@@ -21,46 +21,46 @@ Swift contract repair:
 
 MCP server package:
 
-- Create: `MCPServer/package.json`
+- Create: `iOSDriver/package.json`
   - Responsibility: Node package scripts and dependencies.
-- Create: `MCPServer/tsconfig.json`
+- Create: `iOSDriver/tsconfig.json`
   - Responsibility: strict TypeScript compiler options.
-- Create: `MCPServer/vitest.config.ts`
+- Create: `iOSDriver/vitest.config.ts`
   - Responsibility: Vitest configuration.
-- Create: `MCPServer/README.md`
+- Create: `iOSDriver/README.md`
   - Responsibility: local startup, environment variables, true-device `iproxy` note, recommended tool sequence.
-- Create: `MCPServer/src/config.ts`
+- Create: `iOSDriver/src/config.ts`
   - Responsibility: environment parsing and request timeout settings.
-- Create: `MCPServer/src/types.ts`
+- Create: `iOSDriver/src/types.ts`
   - Responsibility: shared JSON, envelope, tool, and result types.
-- Create: `MCPServer/src/errors.ts`
+- Create: `iOSDriver/src/errors.ts`
   - Responsibility: structured error normalization for MCP, transport, HTTP, and iOS envelope errors.
-- Create: `MCPServer/src/iosExploreClient.ts`
+- Create: `iOSDriver/src/iosExploreClient.ts`
   - Responsibility: HTTP `POST /` client and envelope parsing.
-- Create: `MCPServer/src/toolName.ts`
+- Create: `iOSDriver/src/toolName.ts`
   - Responsibility: action-to-tool-name mapping and conflict detection.
-- Create: `MCPServer/src/schemaMapper.ts`
+- Create: `iOSDriver/src/schemaMapper.ts`
   - Responsibility: map iOSExplore `inputSchema` into MCP-compatible JSON schema and preserve extension constraints.
-- Create: `MCPServer/src/toolRegistry.ts`
+- Create: `iOSDriver/src/toolRegistry.ts`
   - Responsibility: call `help`, build dynamic tools, and preserve `call_action` fallback.
-- Create: `MCPServer/src/result.ts`
+- Create: `iOSDriver/src/result.ts`
   - Responsibility: MCP text/JSON result builders.
-- Create: `MCPServer/src/staticTools.ts`
+- Create: `iOSDriver/src/staticTools.ts`
   - Responsibility: `health_check`, `refresh_tools`, `call_action`, `observe`, `wait_and_observe`.
-- Create: `MCPServer/src/server.ts`
+- Create: `iOSDriver/src/server.ts`
   - Responsibility: low-level MCP `tools/list` and `tools/call` handlers.
-- Create: `MCPServer/src/index.ts`
+- Create: `iOSDriver/src/index.ts`
   - Responsibility: stdio process entrypoint.
 
 MCP server tests:
 
-- Create: `MCPServer/tests/iosExploreClient.test.ts`
-- Create: `MCPServer/tests/toolName.test.ts`
-- Create: `MCPServer/tests/schemaMapper.test.ts`
-- Create: `MCPServer/tests/toolRegistry.test.ts`
-- Create: `MCPServer/tests/staticTools.test.ts`
-- Create: `MCPServer/tests/server.test.ts`
-- Create: `MCPServer/tests/support/mockIOSExploreServer.ts`
+- Create: `iOSDriver/tests/iosExploreClient.test.ts`
+- Create: `iOSDriver/tests/toolName.test.ts`
+- Create: `iOSDriver/tests/schemaMapper.test.ts`
+- Create: `iOSDriver/tests/toolRegistry.test.ts`
+- Create: `iOSDriver/tests/staticTools.test.ts`
+- Create: `iOSDriver/tests/server.test.ts`
+- Create: `iOSDriver/tests/support/mockIOSExploreServer.ts`
 
 Docs:
 
@@ -135,17 +135,17 @@ git add Sources/iOSExploreUIKit/Commands/Input/UIInputCommand.swift Tests/iOSExp
 git commit -m "docs(uikit): align ui.input help contract"
 ```
 
-## Task 2: Scaffold `MCPServer/`
+## Task 2: Scaffold `iOSDriver/`
 
 **Files:**
-- Create: `MCPServer/package.json`
-- Create: `MCPServer/tsconfig.json`
-- Create: `MCPServer/vitest.config.ts`
-- Create: `MCPServer/src/index.ts`
+- Create: `iOSDriver/package.json`
+- Create: `iOSDriver/tsconfig.json`
+- Create: `iOSDriver/vitest.config.ts`
+- Create: `iOSDriver/src/index.ts`
 
 - [ ] **Step 1: Create `package.json`**
 
-Create `MCPServer/package.json`:
+Create `iOSDriver/package.json`:
 
 ```json
 {
@@ -180,7 +180,7 @@ Create `MCPServer/package.json`:
 
 - [ ] **Step 2: Create TypeScript config**
 
-Create `MCPServer/tsconfig.json`:
+Create `iOSDriver/tsconfig.json`:
 
 ```json
 {
@@ -205,7 +205,7 @@ Create `MCPServer/tsconfig.json`:
 
 - [ ] **Step 3: Create Vitest config**
 
-Create `MCPServer/vitest.config.ts`:
+Create `iOSDriver/vitest.config.ts`:
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -221,7 +221,7 @@ export default defineConfig({
 
 - [ ] **Step 4: Create temporary entrypoint**
 
-Create `MCPServer/src/index.ts`:
+Create `iOSDriver/src/index.ts`:
 
 ```ts
 console.error("ios-explore-mcp-server: scaffold ready");
@@ -232,7 +232,7 @@ console.error("ios-explore-mcp-server: scaffold ready");
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm install
 ```
 
@@ -243,7 +243,7 @@ Expected: `package-lock.json` is created and dependencies install successfully.
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm run typecheck
 npm run build
 ```
@@ -256,22 +256,22 @@ Expected:
 - [ ] **Step 7: Commit**
 
 ```bash
-git add MCPServer/package.json MCPServer/package-lock.json MCPServer/tsconfig.json MCPServer/vitest.config.ts MCPServer/src/index.ts
+git add iOSDriver/package.json iOSDriver/package-lock.json iOSDriver/tsconfig.json iOSDriver/vitest.config.ts iOSDriver/src/index.ts
 git commit -m "feat(mcp): scaffold mac mcp server"
 ```
 
 ## Task 3: Implement Config, Types, and Result Helpers
 
 **Files:**
-- Create: `MCPServer/src/config.ts`
-- Create: `MCPServer/src/types.ts`
-- Create: `MCPServer/src/result.ts`
-- Create: `MCPServer/tests/config.test.ts`
-- Create: `MCPServer/tests/result.test.ts`
+- Create: `iOSDriver/src/config.ts`
+- Create: `iOSDriver/src/types.ts`
+- Create: `iOSDriver/src/result.ts`
+- Create: `iOSDriver/tests/config.test.ts`
+- Create: `iOSDriver/tests/result.test.ts`
 
 - [ ] **Step 1: Write config tests**
 
-Create `MCPServer/tests/config.test.ts`:
+Create `iOSDriver/tests/config.test.ts`:
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -304,7 +304,7 @@ describe("config", () => {
 
 - [ ] **Step 2: Write result tests**
 
-Create `MCPServer/tests/result.test.ts`:
+Create `iOSDriver/tests/result.test.ts`:
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -337,7 +337,7 @@ describe("MCP result helpers", () => {
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- config.test.ts result.test.ts
 ```
 
@@ -345,7 +345,7 @@ Expected: FAIL because source files do not exist.
 
 - [ ] **Step 4: Implement shared types**
 
-Create `MCPServer/src/types.ts`:
+Create `iOSDriver/src/types.ts`:
 
 ```ts
 export type JSONPrimitive = string | number | boolean | null;
@@ -401,17 +401,17 @@ export type MCPToolResult = {
 
 - [ ] **Step 5: Implement config**
 
-Create `MCPServer/src/config.ts`:
+Create `iOSDriver/src/config.ts`:
 
 ```ts
 import type { JSONObject } from "./types.js";
 
-export type MCPServerConfig = {
+export type iOSDriverConfig = {
   baseURL: string;
   requestTimeoutMs: number;
 };
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): MCPServerConfig {
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): iOSDriverConfig {
   const rawBaseURL = env.IOS_EXPLORE_BASE_URL ?? "http://localhost:38321/";
   let baseURL: URL;
   try {
@@ -438,7 +438,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MCPServerConfi
   };
 }
 
-export function requestTimeoutForAction(config: MCPServerConfig, action: string, data: JSONObject = {}): number {
+export function requestTimeoutForAction(config: iOSDriverConfig, action: string, data: JSONObject = {}): number {
   if (action !== "ui.wait" && action !== "ui.waitAny") {
     return config.requestTimeoutMs;
   }
@@ -449,7 +449,7 @@ export function requestTimeoutForAction(config: MCPServerConfig, action: string,
 
 - [ ] **Step 6: Implement result helpers**
 
-Create `MCPServer/src/result.ts`:
+Create `iOSDriver/src/result.ts`:
 
 ```ts
 import type { JSONValue, MCPToolResult, StructuredError } from "./types.js";
@@ -476,7 +476,7 @@ export function errorResult(error: StructuredError): MCPToolResult {
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- config.test.ts result.test.ts
 npm run typecheck
 ```
@@ -486,21 +486,21 @@ Expected: PASS.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add MCPServer/src/config.ts MCPServer/src/types.ts MCPServer/src/result.ts MCPServer/tests/config.test.ts MCPServer/tests/result.test.ts
+git add iOSDriver/src/config.ts iOSDriver/src/types.ts iOSDriver/src/result.ts iOSDriver/tests/config.test.ts iOSDriver/tests/result.test.ts
 git commit -m "feat(mcp): add config and result helpers"
 ```
 
 ## Task 4: Implement Error Mapper and HTTP Client
 
 **Files:**
-- Create: `MCPServer/src/errors.ts`
-- Create: `MCPServer/src/iosExploreClient.ts`
-- Create: `MCPServer/tests/iosExploreClient.test.ts`
-- Create: `MCPServer/tests/support/mockIOSExploreServer.ts`
+- Create: `iOSDriver/src/errors.ts`
+- Create: `iOSDriver/src/iosExploreClient.ts`
+- Create: `iOSDriver/tests/iosExploreClient.test.ts`
+- Create: `iOSDriver/tests/support/mockIOSExploreServer.ts`
 
 - [ ] **Step 1: Write mock server helper**
 
-Create `MCPServer/tests/support/mockIOSExploreServer.ts`:
+Create `iOSDriver/tests/support/mockIOSExploreServer.ts`:
 
 ```ts
 import http from "node:http";
@@ -558,7 +558,7 @@ export async function withMockIOSExploreServer<T>(
 
 - [ ] **Step 2: Write HTTP client tests**
 
-Create `MCPServer/tests/iosExploreClient.test.ts`:
+Create `iOSDriver/tests/iosExploreClient.test.ts`:
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -629,7 +629,7 @@ describe("IOSExploreClient", () => {
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- iosExploreClient.test.ts
 ```
 
@@ -637,7 +637,7 @@ Expected: FAIL because `IOSExploreClient` does not exist.
 
 - [ ] **Step 4: Implement error helpers**
 
-Create `MCPServer/src/errors.ts`:
+Create `iOSDriver/src/errors.ts`:
 
 ```ts
 import type { StructuredError } from "./types.js";
@@ -688,15 +688,15 @@ function compactError(error: StructuredError): StructuredError {
 
 - [ ] **Step 5: Implement HTTP client**
 
-Create `MCPServer/src/iosExploreClient.ts`:
+Create `iOSDriver/src/iosExploreClient.ts`:
 
 ```ts
-import { requestTimeoutForAction, type MCPServerConfig } from "./config.js";
+import { requestTimeoutForAction, type iOSDriverConfig } from "./config.js";
 import { bodySnippet, IOSExploreStructuredError } from "./errors.js";
 import type { IOSExploreEnvelope, JSONObject } from "./types.js";
 
 export class IOSExploreClient {
-  constructor(private readonly config: MCPServerConfig) {}
+  constructor(private readonly config: iOSDriverConfig) {}
 
   async call(action: string, data: JSONObject = {}): Promise<JSONObject> {
     const timeoutMs = requestTimeoutForAction(this.config, action, data);
@@ -768,7 +768,7 @@ export class IOSExploreClient {
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- iosExploreClient.test.ts
 npm run typecheck
 ```
@@ -778,21 +778,21 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add MCPServer/src/errors.ts MCPServer/src/iosExploreClient.ts MCPServer/tests/iosExploreClient.test.ts MCPServer/tests/support/mockIOSExploreServer.ts
+git add iOSDriver/src/errors.ts iOSDriver/src/iosExploreClient.ts iOSDriver/tests/iosExploreClient.test.ts iOSDriver/tests/support/mockIOSExploreServer.ts
 git commit -m "feat(mcp): add ios explore http client"
 ```
 
 ## Task 5: Implement Tool Naming and Schema Mapper
 
 **Files:**
-- Create: `MCPServer/src/toolName.ts`
-- Create: `MCPServer/src/schemaMapper.ts`
-- Create: `MCPServer/tests/toolName.test.ts`
-- Create: `MCPServer/tests/schemaMapper.test.ts`
+- Create: `iOSDriver/src/toolName.ts`
+- Create: `iOSDriver/src/schemaMapper.ts`
+- Create: `iOSDriver/tests/toolName.test.ts`
+- Create: `iOSDriver/tests/schemaMapper.test.ts`
 
 - [ ] **Step 1: Write tool name tests**
 
-Create `MCPServer/tests/toolName.test.ts`:
+Create `iOSDriver/tests/toolName.test.ts`:
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -834,7 +834,7 @@ describe("toolName", () => {
 
 - [ ] **Step 2: Write schema mapper tests**
 
-Create `MCPServer/tests/schemaMapper.test.ts`:
+Create `iOSDriver/tests/schemaMapper.test.ts`:
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -876,7 +876,7 @@ describe("schemaMapper", () => {
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- toolName.test.ts schemaMapper.test.ts
 ```
 
@@ -884,7 +884,7 @@ Expected: FAIL because modules do not exist.
 
 - [ ] **Step 4: Implement tool naming**
 
-Create `MCPServer/src/toolName.ts`:
+Create `iOSDriver/src/toolName.ts`:
 
 ```ts
 import type { CommandMetadata, ToolDefinition } from "./types.js";
@@ -937,7 +937,7 @@ export function buildActionToolMap(commands: CommandMetadata[], fixedToolNames: 
 
 - [ ] **Step 5: Implement schema mapper**
 
-Create `MCPServer/src/schemaMapper.ts`:
+Create `iOSDriver/src/schemaMapper.ts`:
 
 ```ts
 import type { JSONObject, JSONValue } from "./types.js";
@@ -981,7 +981,7 @@ function extensionValueLines(key: string, value: JSONValue): string[] {
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- toolName.test.ts schemaMapper.test.ts
 npm run typecheck
 ```
@@ -991,19 +991,19 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add MCPServer/src/toolName.ts MCPServer/src/schemaMapper.ts MCPServer/tests/toolName.test.ts MCPServer/tests/schemaMapper.test.ts
+git add iOSDriver/src/toolName.ts iOSDriver/src/schemaMapper.ts iOSDriver/tests/toolName.test.ts iOSDriver/tests/schemaMapper.test.ts
 git commit -m "feat(mcp): map dynamic tools and schemas"
 ```
 
 ## Task 6: Implement Dynamic Tool Registry
 
 **Files:**
-- Create: `MCPServer/src/toolRegistry.ts`
-- Create: `MCPServer/tests/toolRegistry.test.ts`
+- Create: `iOSDriver/src/toolRegistry.ts`
+- Create: `iOSDriver/tests/toolRegistry.test.ts`
 
 - [ ] **Step 1: Write registry tests**
 
-Create `MCPServer/tests/toolRegistry.test.ts`:
+Create `iOSDriver/tests/toolRegistry.test.ts`:
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -1072,7 +1072,7 @@ type FakeClient = {
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- toolRegistry.test.ts
 ```
 
@@ -1080,7 +1080,7 @@ Expected: FAIL because `ToolRegistry` does not exist.
 
 - [ ] **Step 3: Implement registry**
 
-Create `MCPServer/src/toolRegistry.ts`:
+Create `iOSDriver/src/toolRegistry.ts`:
 
 ```ts
 import { IOSExploreStructuredError } from "./errors.js";
@@ -1183,7 +1183,7 @@ function isObject(value: unknown): value is JSONObject {
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- toolRegistry.test.ts
 npm run typecheck
 ```
@@ -1193,19 +1193,19 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add MCPServer/src/toolRegistry.ts MCPServer/tests/toolRegistry.test.ts
+git add iOSDriver/src/toolRegistry.ts iOSDriver/tests/toolRegistry.test.ts
 git commit -m "feat(mcp): discover tools from help"
 ```
 
 ## Task 7: Implement Static Tools
 
 **Files:**
-- Create: `MCPServer/src/staticTools.ts`
-- Create: `MCPServer/tests/staticTools.test.ts`
+- Create: `iOSDriver/src/staticTools.ts`
+- Create: `iOSDriver/tests/staticTools.test.ts`
 
 - [ ] **Step 1: Write static tool tests**
 
-Create `MCPServer/tests/staticTools.test.ts`:
+Create `iOSDriver/tests/staticTools.test.ts`:
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -1299,7 +1299,7 @@ function fakeRegistry(toolCount: number) {
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- staticTools.test.ts
 ```
 
@@ -1307,7 +1307,7 @@ Expected: FAIL because static tools do not exist.
 
 - [ ] **Step 3: Implement static tools**
 
-Create `MCPServer/src/staticTools.ts`:
+Create `iOSDriver/src/staticTools.ts`:
 
 ```ts
 import { IOSExploreStructuredError } from "./errors.js";
@@ -1443,7 +1443,7 @@ function normalizeError(error: unknown) {
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- staticTools.test.ts
 npm run typecheck
 ```
@@ -1453,20 +1453,20 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add MCPServer/src/staticTools.ts MCPServer/tests/staticTools.test.ts
+git add iOSDriver/src/staticTools.ts iOSDriver/tests/staticTools.test.ts
 git commit -m "feat(mcp): add fixed agent tools"
 ```
 
 ## Task 8: Wire MCP Stdio Server
 
 **Files:**
-- Create: `MCPServer/src/server.ts`
-- Modify: `MCPServer/src/index.ts`
-- Create: `MCPServer/tests/server.test.ts`
+- Create: `iOSDriver/src/server.ts`
+- Modify: `iOSDriver/src/index.ts`
+- Create: `iOSDriver/tests/server.test.ts`
 
 - [ ] **Step 1: Write server handler tests**
 
-Create `MCPServer/tests/server.test.ts`:
+Create `iOSDriver/tests/server.test.ts`:
 
 ```ts
 import { describe, expect, test } from "vitest";
@@ -1523,7 +1523,7 @@ describe("server handlers", () => {
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- server.test.ts
 ```
 
@@ -1531,7 +1531,7 @@ Expected: FAIL because `server.ts` does not exist.
 
 - [ ] **Step 3: Implement server handlers and stdio startup**
 
-Create `MCPServer/src/server.ts`:
+Create `iOSDriver/src/server.ts`:
 
 ```ts
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -1630,7 +1630,7 @@ function normalizeUnknownError(error: unknown) {
 }
 ```
 
-Replace `MCPServer/src/index.ts` with:
+Replace `iOSDriver/src/index.ts` with:
 
 ```ts
 import { loadConfig } from "./config.js";
@@ -1654,7 +1654,7 @@ await startStdioServer({ staticTools, registry, client });
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test -- server.test.ts
 npm run typecheck
 npm run build
@@ -1665,20 +1665,20 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add MCPServer/src/server.ts MCPServer/src/index.ts MCPServer/tests/server.test.ts
+git add iOSDriver/src/server.ts iOSDriver/src/index.ts iOSDriver/tests/server.test.ts
 git commit -m "feat(mcp): expose tools over stdio"
 ```
 
-## Task 9: Add MCPServer README and Repo Docs
+## Task 9: Add iOSDriver README and Repo Docs
 
 **Files:**
-- Create: `MCPServer/README.md`
+- Create: `iOSDriver/README.md`
 - Modify: `docs/superpowers/agent-mcp-exploration/README.md`
 - Modify: `docs/uikit/agent-command-protocol.md`
 
-- [ ] **Step 1: Write MCPServer README**
+- [ ] **Step 1: Write iOSDriver README**
 
-Create `MCPServer/README.md`:
+Create `iOSDriver/README.md`:
 
 ```md
 # iOSExplore MCP Server
@@ -1733,13 +1733,13 @@ health_check
 In `docs/superpowers/agent-mcp-exploration/README.md`, update §6.1 status after implementation:
 
 ```md
-**第一版实现位置**：`MCPServer/`。它是 TypeScript / Node stdio MCP server，默认连接 `http://localhost:38321/`，通过 `help` 动态发现 App 已注册 action，并提供 `health_check`、`refresh_tools`、`call_action`、`observe`、`wait_and_observe` 五个固定工具。
+**第一版实现位置**：`iOSDriver/`。它是 TypeScript / Node stdio MCP server，默认连接 `http://localhost:38321/`，通过 `help` 动态发现 App 已注册 action，并提供 `health_check`、`refresh_tools`、`call_action`、`observe`、`wait_and_observe` 五个固定工具。
 ```
 
 In `docs/uikit/agent-command-protocol.md`, add a short MCP note after the first command table:
 
 ```md
-MCP 调用方优先走 `MCPServer` 的 `observe` 和 `wait_and_observe` 固定工具；需要精细控制或排障时再调用动态 `ios_*` 原子工具或 `call_action`。
+MCP 调用方优先走 `iOSDriver` 的 `observe` 和 `wait_and_observe` 固定工具；需要精细控制或排障时再调用动态 `ios_*` 原子工具或 `call_action`。
 ```
 
 - [ ] **Step 3: Run docs grep checks**
@@ -1769,7 +1769,7 @@ Expected: no output.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add MCPServer/README.md docs/superpowers/agent-mcp-exploration/README.md docs/uikit/agent-command-protocol.md
+git add iOSDriver/README.md docs/superpowers/agent-mcp-exploration/README.md docs/uikit/agent-command-protocol.md
 git commit -m "docs(mcp): document mac mcp server usage"
 ```
 
@@ -1793,7 +1793,7 @@ Expected: PASS. Current baseline is 225 macOS SPM tests.
 Run:
 
 ```bash
-cd MCPServer
+cd iOSDriver
 npm test
 npm run typecheck
 npm run build
@@ -1854,7 +1854,7 @@ Expected:
 
 - [ ] **Step 2: Run MCP server through an MCP inspector or Codex MCP client**
 
-Run from `MCPServer/`:
+Run from `iOSDriver/`:
 
 ```bash
 npm run build
@@ -1906,12 +1906,12 @@ Expected: MCP result goes through `MCP → HTTP → App → HTTP response → MC
 
 - [ ] **Step 5: Record validation outcome**
 
-Update `MCPServer/README.md` or `docs/superpowers/agent-mcp-exploration/README.md` only if the command sequence or prerequisites changed. Do not claim “real MCP loop complete” unless Step 3 and Step 4 both went through an MCP client, not raw curl.
+Update `iOSDriver/README.md` or `docs/superpowers/agent-mcp-exploration/README.md` only if the command sequence or prerequisites changed. Do not claim “real MCP loop complete” unless Step 3 and Step 4 both went through an MCP client, not raw curl.
 
 - [ ] **Step 6: Commit if validation docs changed**
 
 ```bash
-git add MCPServer/README.md docs/superpowers/agent-mcp-exploration/README.md
+git add iOSDriver/README.md docs/superpowers/agent-mcp-exploration/README.md
 git commit -m "docs(mcp): record real app mcp validation"
 ```
 

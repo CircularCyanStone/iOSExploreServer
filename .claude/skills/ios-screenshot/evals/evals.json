@@ -1,0 +1,24 @@
+{
+  "skill_name": "ios-screenshot",
+  "description": "Test cases for iOS screenshot capture and visual verification automation",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Capture a screenshot of the current iOS app screen and save it to a file named 'current_state.png'.",
+      "expected_output": "Should successfully:\n1. Call ui.screenshot (no parameters needed)\n2. Response includes code='ok' and data with image (base64 PNG), format='png', width, height\n3. Extract base64 image string with jq -r '.data.image'\n4. Decode with base64 -d and save to current_state.png\n5. File size should be 50-200KB typical\n6. Total time ~200-500ms for capture + save\n7. Verify PNG file is valid and can be opened",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Capture before and after screenshots when toggling a switch in an iOS app, then save both for comparison.",
+      "expected_output": "Should successfully:\n1. Call ui.screenshot and save as before.png\n2. Call ui.control.sendAction to toggle switch\n3. Wait 200ms for UI update\n4. Call ui.screenshot and save as after.png\n5. Both files should be valid PNGs with same dimensions\n6. Visual difference should show switch state changed\n7. Can use external tools (ImageMagick, Pillow) to compute diff if needed",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Document a 4-step navigation flow in an iOS app by capturing screenshots at each step with descriptive filenames.",
+      "expected_output": "Should successfully:\n1. Capture initial state: 01_home.png\n2. Navigate to Settings, wait 500ms, capture: 02_settings.png\n3. Navigate to Account, wait 500ms, capture: 03_account.png\n4. Navigate to Privacy, wait 500ms, capture: 04_privacy.png\n5. Each screenshot includes navigationBar title change\n6. All files valid PNGs with consistent resolution\n7. Total ~4 screenshots documenting complete flow\n8. Can also capture ui.inspect metadata for each step",
+      "files": []
+    }
+  ]
+}

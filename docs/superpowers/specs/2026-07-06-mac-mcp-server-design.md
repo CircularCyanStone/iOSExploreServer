@@ -83,7 +83,7 @@ C 已接近“测试平台”。只有在第一版 MCP server 已能稳定支撑
 落点定为仓库根目录下的独立目录：
 
 ```text
-MCPServer/
+iOSDriver/
 ```
 
 该目录不放进 `Sources/`，因为 `Sources/` 是 iPhone 端 Swift SPM 与 framework 工程共享源码。

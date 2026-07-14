@@ -1,0 +1,24 @@
+{
+  "skill_name": "ios-gestures",
+  "description": "Test cases for iOS advanced gesture automation (swipe, long press, drag)",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Swipe up (scroll down) in an iOS collection view to reveal more items below.",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to get elementRef for UICollectionView or UITableView\n2. Call ui.swipe with withinElementRef=<scroll_ref>, direction='up', distance=0.8\n3. Wait 300ms for scroll animation to settle\n4. Call ui.inspect to verify new items are now visible\n5. Total time ~500-800ms",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Long press on a table cell for 1 second to trigger a context menu in an iOS app.",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to get elementRef for the target cell\n2. Call ui.longPress with elementRef=<cell_ref>, duration=1000 (1 second)\n3. Wait 500ms for context menu animation\n4. Call ui.inspect to verify menu appeared with menu items visible\n5. Context menu should show actions like Copy, Delete, Share",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Swipe left on a table cell to reveal swipe actions (Delete, Edit buttons).",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to find table cell elementRef\n2. Call ui.swipe with withinElementRef=<cell_ref>, direction='left', distance=0.6\n3. Wait 300ms for swipe action animation\n4. Call ui.inspect to verify Delete and Edit buttons are now visible\n5. Can tap these action buttons to trigger cell actions",
+      "files": []
+    }
+  ]
+}

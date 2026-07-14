@@ -1,0 +1,2066 @@
+{
+  "timestamp": "2026-07-13T15:18:10.623Z",
+  "summary": {
+    "total": 21,
+    "passed": 15,
+    "failed": 6,
+    "successRate": "71.43"
+  },
+  "commands": {
+    "greet": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "debug.probe": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "debug.emitStdout": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "debug.emitStderr": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "debug.emitNSLog": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "debug.emitOSLog": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "debug.emit+logs.read": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1
+    },
+    "ui.controllers": {
+      "total": 3,
+      "passed": 1,
+      "failed": 2
+    },
+    "ui.navigation.tapBarButton": {
+      "total": 3,
+      "passed": 2,
+      "failed": 1
+    },
+    "ui.scrollToElement": {
+      "total": 4,
+      "passed": 2,
+      "failed": 2
+    },
+    "debug.emitLogger": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "debug.emitAppLog": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "details": [
+    {
+      "command": "greet",
+      "scenario": "基础调用",
+      "passed": true,
+      "expected": true,
+      "actual": true,
+      "duration": 2,
+      "response": {
+        "code": "ok",
+        "data": {
+          "message": "Hello, world"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:10.649Z"
+    },
+    {
+      "command": "greet",
+      "scenario": "带参数调用",
+      "passed": true,
+      "expected": true,
+      "actual": true,
+      "duration": 4,
+      "response": {
+        "code": "ok",
+        "data": {
+          "message": "Hello, world"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:11.154Z"
+    },
+    {
+      "command": "debug.probe",
+      "scenario": "基础探测",
+      "passed": true,
+      "expected": true,
+      "actual": true,
+      "duration": 3,
+      "response": {
+        "code": "ok",
+        "data": {
+          "alive": true,
+          "build": "gesture-adapter-2026-07-04"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:11.658Z"
+    },
+    {
+      "command": "debug.probe",
+      "scenario": "验证返回调试信息",
+      "passed": true,
+      "expected": true,
+      "actual": true,
+      "duration": 4,
+      "response": {
+        "code": "ok",
+        "data": {
+          "alive": true,
+          "build": "gesture-adapter-2026-07-04"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:12.163Z"
+    },
+    {
+      "command": "debug.emitStdout",
+      "scenario": "输出到 stdout",
+      "passed": true,
+      "expected": true,
+      "actual": true,
+      "duration": 4,
+      "response": {
+        "code": "ok",
+        "data": {
+          "bytes": 35,
+          "message": "SPMExample stdio diagnostic marker",
+          "source": "stdout"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:12.667Z"
+    },
+    {
+      "command": "debug.emitStderr",
+      "scenario": "输出到 stderr",
+      "passed": true,
+      "expected": true,
+      "actual": true,
+      "duration": 7,
+      "response": {
+        "code": "ok",
+        "data": {
+          "bytes": 35,
+          "message": "SPMExample stdio diagnostic marker",
+          "source": "stderr"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:13.174Z"
+    },
+    {
+      "command": "debug.emitNSLog",
+      "scenario": "输出到 NSLog",
+      "passed": true,
+      "expected": true,
+      "actual": true,
+      "duration": 3,
+      "response": {
+        "code": "ok",
+        "data": {
+          "message": "SPMExample stdio diagnostic marker",
+          "source": "nslog"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:13.678Z"
+    },
+    {
+      "command": "debug.emitOSLog",
+      "scenario": "输出到 OSLog",
+      "passed": true,
+      "expected": true,
+      "actual": true,
+      "duration": 2,
+      "response": {
+        "code": "ok",
+        "data": {
+          "api": "os_log",
+          "message": "SPMExample stdio diagnostic marker",
+          "source": "oslog"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:14.180Z"
+    },
+    {
+      "command": "debug.emit+logs.read",
+      "scenario": "验证日志已写入",
+      "passed": false,
+      "expected": true,
+      "actual": false,
+      "duration": 9,
+      "response": {
+        "code": "ok",
+        "data": {
+          "capture": {
+            "bridge": {
+              "state": "enabled"
+            },
+            "explore": {
+              "state": "enabled"
+            },
+            "nslog": {
+              "state": "enabled"
+            },
+            "oslog": {
+              "state": "enabled"
+            },
+            "stderr": {
+              "state": "enabled"
+            },
+            "stdout": {
+              "state": "enabled"
+            }
+          },
+          "capturedThrough": {
+            "captureSessionID": "A2FFD85F-593D-4954-8309-6EB0F6AB6878",
+            "id": 467394
+          },
+          "entries": [
+            {
+              "category": "http",
+              "id": 467295,
+              "level": "info",
+              "message": "http received session=s502 method=POST path=/ action=ui.tap bodyBytes=62",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467296,
+              "level": "info",
+              "message": "UIKitLocatorInput.parse identifier=nil rawPath=nil",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467297,
+              "level": "error",
+              "message": "command ui.tap parse failed code=invalid_data message=invalid data action=ui.tap message=either accessibilityIdentifier or path is required",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467298,
+              "level": "error",
+              "message": "router route business failure action=ui.tap code=invalid_data message=either accessibilityIdentifier or path is required",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467299,
+              "level": "info",
+              "message": "session closed id=s502 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467300,
+              "level": "info",
+              "message": "http responded session=s502 status=200 ok=false action=ui.tap",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467301,
+              "level": "info",
+              "message": "session accepted id=s503",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467302,
+              "level": "info",
+              "message": "http received session=s503 method=POST path=/ action=ui.scrollToElement bodyBytes=66",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467303,
+              "level": "error",
+              "message": "command ui.scrollToElement parse failed code=invalid_data message=invalid data action=ui.scrollToElement message=missing required parameter 'value'",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467304,
+              "level": "error",
+              "message": "router route business failure action=ui.scrollToElement code=invalid_data message=missing required parameter 'value'",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467305,
+              "level": "info",
+              "message": "session closed id=s503 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467306,
+              "level": "info",
+              "message": "http responded session=s503 status=200 ok=false action=ui.scrollToElement",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467307,
+              "level": "info",
+              "message": "session accepted id=s504",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467308,
+              "level": "info",
+              "message": "http received session=s504 method=POST path=/ action=ui.scrollToElement bodyBytes=65",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467309,
+              "level": "error",
+              "message": "command ui.scrollToElement parse failed code=invalid_data message=invalid data action=ui.scrollToElement message=missing required parameter 'value'",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467310,
+              "level": "error",
+              "message": "router route business failure action=ui.scrollToElement code=invalid_data message=missing required parameter 'value'",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467311,
+              "level": "info",
+              "message": "session closed id=s504 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467312,
+              "level": "info",
+              "message": "http responded session=s504 status=200 ok=false action=ui.scrollToElement",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467313,
+              "level": "info",
+              "message": "session accepted id=s505",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467314,
+              "level": "info",
+              "message": "http received session=s505 method=POST path=/ action=ui.scrollToElement bodyBytes=60",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467315,
+              "level": "error",
+              "message": "command ui.scrollToElement parse failed code=invalid_data message=invalid data action=ui.scrollToElement message=missing required parameter 'value'",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467316,
+              "level": "error",
+              "message": "router route business failure action=ui.scrollToElement code=invalid_data message=missing required parameter 'value'",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467317,
+              "level": "info",
+              "message": "session closed id=s505 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467318,
+              "level": "info",
+              "message": "http responded session=s505 status=200 ok=false action=ui.scrollToElement",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467319,
+              "level": "info",
+              "message": "session accepted id=s506",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467320,
+              "level": "info",
+              "message": "http received session=s506 method=POST path=/ action=ui.scrollToElement bodyBytes=31",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467321,
+              "level": "error",
+              "message": "command ui.scrollToElement parse failed code=invalid_data message=invalid data action=ui.scrollToElement message=missing required parameter 'value'",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467322,
+              "level": "error",
+              "message": "router route business failure action=ui.scrollToElement code=invalid_data message=missing required parameter 'value'",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467323,
+              "level": "info",
+              "message": "session closed id=s506 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467324,
+              "level": "info",
+              "message": "http responded session=s506 status=200 ok=false action=ui.scrollToElement",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467325,
+              "level": "info",
+              "message": "session accepted id=s507",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467326,
+              "level": "info",
+              "message": "http received session=s507 method=POST path=/ action=ui.navigation.back bodyBytes=31",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467327,
+              "level": "info",
+              "message": "command ui.navigation.back start strategy=auto animated=false waitAfterMs=300",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467328,
+              "level": "error",
+              "message": "ui navigation back unavailable action=ui.navigation.back top=ViewController",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467329,
+              "level": "error",
+              "message": "command ui.navigation.back failed code=navigation_back_unavailable message=navigation back unavailable",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467330,
+              "level": "error",
+              "message": "router route business failure action=ui.navigation.back code=navigation_back_unavailable message=navigation back unavailable",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467331,
+              "level": "info",
+              "message": "session closed id=s507 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467332,
+              "level": "info",
+              "message": "http responded session=s507 status=200 ok=false action=ui.navigation.back",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467333,
+              "level": "info",
+              "message": "session accepted id=s508",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467334,
+              "level": "info",
+              "message": "http received session=s508 method=POST path=/ action=debug.emitLogger bodyBytes=76",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "diagnostics",
+              "id": 467335,
+              "level": "error",
+              "message": "SPMExample stdio diagnostic marker",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "diagnostics",
+                "subsystem": "com.coo.SPMExample"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467336,
+              "level": "info",
+              "message": "command debug.emitLogger completed ok=true resultKeys=3",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467337,
+              "level": "info",
+              "message": "router route success action=debug.emitLogger",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467338,
+              "level": "info",
+              "message": "session closed id=s508 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467339,
+              "level": "info",
+              "message": "http responded session=s508 status=200 ok=true action=debug.emitLogger",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467340,
+              "level": "info",
+              "message": "session accepted id=s509",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467341,
+              "level": "info",
+              "message": "http received session=s509 method=POST path=/ action=debug.emitAppLog bodyBytes=70",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467342,
+              "level": "info",
+              "message": "command debug.emitAppLog completed ok=true resultKeys=1",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467343,
+              "level": "info",
+              "message": "router route success action=debug.emitAppLog",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467344,
+              "level": "info",
+              "message": "session closed id=s509 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467345,
+              "level": "info",
+              "message": "http responded session=s509 status=200 ok=true action=debug.emitAppLog",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467346,
+              "level": "info",
+              "message": "session accepted id=s510",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467347,
+              "level": "info",
+              "message": "http received session=s510 method=POST path=/ action=ping bodyBytes=17",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467348,
+              "level": "info",
+              "message": "command ping completed ok=true resultKeys=1",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467349,
+              "level": "info",
+              "message": "router route success action=ping",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467350,
+              "level": "info",
+              "message": "session closed id=s510 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467351,
+              "level": "info",
+              "message": "http responded session=s510 status=200 ok=true action=ping",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467352,
+              "level": "info",
+              "message": "session accepted id=s511",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467353,
+              "level": "info",
+              "message": "http received session=s511 method=POST path=/ action=greet bodyBytes=18",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467354,
+              "level": "info",
+              "message": "command greet completed ok=true resultKeys=1",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467355,
+              "level": "info",
+              "message": "router route success action=greet",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467356,
+              "level": "info",
+              "message": "session closed id=s511 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467357,
+              "level": "info",
+              "message": "http responded session=s511 status=200 ok=true action=greet",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467358,
+              "level": "info",
+              "message": "session accepted id=s512",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467359,
+              "level": "info",
+              "message": "http received session=s512 method=POST path=/ action=greet bodyBytes=34",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467360,
+              "level": "info",
+              "message": "command greet completed ok=true resultKeys=1",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467361,
+              "level": "info",
+              "message": "router route success action=greet",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467362,
+              "level": "info",
+              "message": "session closed id=s512 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467363,
+              "level": "info",
+              "message": "http responded session=s512 status=200 ok=true action=greet",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467364,
+              "level": "info",
+              "message": "session accepted id=s513",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467365,
+              "level": "info",
+              "message": "http received session=s513 method=POST path=/ action=debug.probe bodyBytes=24",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467366,
+              "level": "info",
+              "message": "command debug.probe completed ok=true resultKeys=2",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467367,
+              "level": "info",
+              "message": "router route success action=debug.probe",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467368,
+              "level": "info",
+              "message": "session closed id=s513 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467369,
+              "level": "info",
+              "message": "http responded session=s513 status=200 ok=true action=debug.probe",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467370,
+              "level": "info",
+              "message": "session accepted id=s514",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467371,
+              "level": "info",
+              "message": "http received session=s514 method=POST path=/ action=debug.probe bodyBytes=24",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467372,
+              "level": "info",
+              "message": "command debug.probe completed ok=true resultKeys=2",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467373,
+              "level": "info",
+              "message": "router route success action=debug.probe",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467374,
+              "level": "info",
+              "message": "session closed id=s514 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467375,
+              "level": "info",
+              "message": "http responded session=s514 status=200 ok=true action=debug.probe",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467376,
+              "level": "info",
+              "message": "session accepted id=s515",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467377,
+              "level": "info",
+              "message": "http received session=s515 method=POST path=/ action=debug.emitStdout bodyBytes=61",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467378,
+              "level": "info",
+              "message": "command debug.emitStdout completed ok=true resultKeys=3",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467379,
+              "level": "info",
+              "message": "router route success action=debug.emitStdout",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467380,
+              "level": "info",
+              "message": "session closed id=s515 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467381,
+              "level": "info",
+              "message": "http responded session=s515 status=200 ok=true action=debug.emitStdout",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467382,
+              "level": "info",
+              "message": "session accepted id=s516",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467383,
+              "level": "info",
+              "message": "http received session=s516 method=POST path=/ action=debug.emitStderr bodyBytes=61",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "command",
+              "id": 467384,
+              "level": "info",
+              "message": "command debug.emitStderr completed ok=true resultKeys=3",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "command",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "router",
+              "id": 467385,
+              "level": "info",
+              "message": "router route success action=debug.emitStderr",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "router",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467386,
+              "level": "info",
+              "message": "session closed id=s516 reason=response_sent",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "listener",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "http",
+              "id": 467387,
+              "level": "info",
+              "message": "http responded session=s516 status=200 ok=true action=debug.emitStderr",
+              "messageTruncated": false,
+              "metadata": {
+                "category": "http",
+                "subsystem": "iOSExploreServer"
+              },
+              "source": "oslog",
+              "timestamp": "2026-07-13T15:18:14Z"
+            },
+            {
+              "category": "listener",
+              "id": 467388,
+              "level": "debug",
+              "message": "connection accepted session=s519 active=1 limit=4",
+              "messageTruncated": false,
+              "metadata": null,
+              "source": "explore",
+              "timestamp": "2026-07-13T15:18:15Z"
+            },
+            {
+              "category": "listener",
+              "id": 467389,
+              "level": "info",
+              "message": "session accepted id=s519",
+              "messageTruncated": false,
+              "metadata": null,
+              "source": "explore",
+              "timestamp": "2026-07-13T15:18:15Z"
+            },
+            {
+              "category": "listener",
+              "id": 467390,
+              "level": "debug",
+              "message": "session ready id=s519",
+              "messageTruncated": false,
+              "metadata": null,
+              "source": "explore",
+              "timestamp": "2026-07-13T15:18:15Z"
+            },
+            {
+              "category": "listener",
+              "id": 467391,
+              "level": "debug",
+              "message": "session received id=s519 chunkBytes=278 totalBytes=278",
+              "messageTruncated": false,
+              "metadata": null,
+              "source": "explore",
+              "timestamp": "2026-07-13T15:18:15Z"
+            },
+            {
+              "category": "http",
+              "id": 467392,
+              "level": "info",
+              "message": "http received session=s519 method=POST path=/ action=app.logs.read bodyBytes=55",
+              "messageTruncated": false,
+              "metadata": null,
+              "source": "explore",
+              "timestamp": "2026-07-13T15:18:15Z"
+            },
+            {
+              "category": "router",
+              "id": 467393,
+              "level": "debug",
+              "message": "router route start action=app.logs.read payloadKeys=0",
+              "messageTruncated": false,
+              "metadata": null,
+              "source": "explore",
+              "timestamp": "2026-07-13T15:18:15Z"
+            },
+            {
+              "category": "command",
+              "id": 467394,
+              "level": "debug",
+              "message": "command app.logs.read start schemaFields=4 payloadKeys=0",
+              "messageTruncated": false,
+              "metadata": null,
+              "source": "explore",
+              "timestamp": "2026-07-13T15:18:15Z"
+            }
+          ],
+          "gap": null,
+          "hasMore": false,
+          "nextCursor": {
+            "captureSessionID": "A2FFD85F-593D-4954-8309-6EB0F6AB6878",
+            "id": 467394
+          },
+          "oldestAvailableID": 465395
+        }
+      },
+      "timestamp": "2026-07-13T15:18:15.690Z"
+    },
+    {
+      "command": "ui.controllers",
+      "scenario": "主页控制器层级",
+      "passed": true,
+      "expected": true,
+      "actual": true,
+      "duration": 3,
+      "response": {
+        "code": "ok",
+        "data": {
+          "controllerCount": 7,
+          "root": {
+            "children": [
+              {
+                "children": [
+                  {
+                    "children": [],
+                    "isViewLoaded": true,
+                    "isVisible": true,
+                    "path": "root.tab[0].nav[0]",
+                    "role": "navigation",
+                    "title": "iOSExploreServer",
+                    "type": "ViewController"
+                  }
+                ],
+                "isSelected": true,
+                "isViewLoaded": true,
+                "path": "root.tab[0]",
+                "role": "tab",
+                "title": "iOSExploreServer",
+                "type": "UINavigationController"
+              },
+              {
+                "children": [
+                  {
+                    "children": [],
+                    "isViewLoaded": false,
+                    "isVisible": true,
+                    "path": "root.tab[1].nav[0]",
+                    "role": "navigation",
+                    "title": null,
+                    "type": "UITableViewController"
+                  }
+                ],
+                "isSelected": false,
+                "isViewLoaded": false,
+                "path": "root.tab[1]",
+                "role": "tab",
+                "title": null,
+                "type": "UINavigationController"
+              },
+              {
+                "children": [
+                  {
+                    "children": [],
+                    "isViewLoaded": false,
+                    "isVisible": true,
+                    "path": "root.tab[2].nav[0]",
+                    "role": "navigation",
+                    "title": null,
+                    "type": "UITableViewController"
+                  }
+                ],
+                "isSelected": false,
+                "isViewLoaded": false,
+                "path": "root.tab[2]",
+                "role": "tab",
+                "title": null,
+                "type": "UINavigationController"
+              }
+            ],
+            "isViewLoaded": true,
+            "path": "root",
+            "role": "root",
+            "title": null,
+            "type": "UITabBarController"
+          },
+          "screen": {
+            "rootViewController": "UITabBarController",
+            "topViewController": "ViewController",
+            "windowType": "UIWindow"
+          },
+          "topPath": "root.tab[0].nav[0]"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:17.000Z"
+    },
+    {
+      "command": "ui.controllers",
+      "scenario": "验证返回数据结构",
+      "passed": false,
+      "expected": true,
+      "duration": 4,
+      "response": {
+        "code": "ok",
+        "data": {
+          "controllerCount": 7,
+          "root": {
+            "children": [
+              {
+                "children": [
+                  {
+                    "children": [],
+                    "isViewLoaded": true,
+                    "isVisible": true,
+                    "path": "root.tab[0].nav[0]",
+                    "role": "navigation",
+                    "title": "iOSExploreServer",
+                    "type": "ViewController"
+                  }
+                ],
+                "isSelected": true,
+                "isViewLoaded": true,
+                "path": "root.tab[0]",
+                "role": "tab",
+                "title": "iOSExploreServer",
+                "type": "UINavigationController"
+              },
+              {
+                "children": [
+                  {
+                    "children": [],
+                    "isViewLoaded": false,
+                    "isVisible": true,
+                    "path": "root.tab[1].nav[0]",
+                    "role": "navigation",
+                    "title": null,
+                    "type": "UITableViewController"
+                  }
+                ],
+                "isSelected": false,
+                "isViewLoaded": false,
+                "path": "root.tab[1]",
+                "role": "tab",
+                "title": null,
+                "type": "UINavigationController"
+              },
+              {
+                "children": [
+                  {
+                    "children": [],
+                    "isViewLoaded": false,
+                    "isVisible": true,
+                    "path": "root.tab[2].nav[0]",
+                    "role": "navigation",
+                    "title": null,
+                    "type": "UITableViewController"
+                  }
+                ],
+                "isSelected": false,
+                "isViewLoaded": false,
+                "path": "root.tab[2]",
+                "role": "tab",
+                "title": null,
+                "type": "UINavigationController"
+              }
+            ],
+            "isViewLoaded": true,
+            "path": "root",
+            "role": "root",
+            "title": null,
+            "type": "UITabBarController"
+          },
+          "screen": {
+            "rootViewController": "UITabBarController",
+            "topViewController": "ViewController",
+            "windowType": "UIWindow"
+          },
+          "topPath": "root.tab[0].nav[0]"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:17.504Z"
+    },
+    {
+      "command": "ui.controllers",
+      "scenario": "按钮页面控制器",
+      "passed": false,
+      "expected": true,
+      "actual": false,
+      "duration": 3,
+      "response": {
+        "code": "ok",
+        "data": {
+          "controllerCount": 7,
+          "root": {
+            "children": [
+              {
+                "children": [
+                  {
+                    "children": [],
+                    "isViewLoaded": true,
+                    "isVisible": true,
+                    "path": "root.tab[0].nav[0]",
+                    "role": "navigation",
+                    "title": "iOSExploreServer",
+                    "type": "ViewController"
+                  }
+                ],
+                "isSelected": true,
+                "isViewLoaded": true,
+                "path": "root.tab[0]",
+                "role": "tab",
+                "title": "iOSExploreServer",
+                "type": "UINavigationController"
+              },
+              {
+                "children": [
+                  {
+                    "children": [],
+                    "isViewLoaded": false,
+                    "isVisible": true,
+                    "path": "root.tab[1].nav[0]",
+                    "role": "navigation",
+                    "title": null,
+                    "type": "UITableViewController"
+                  }
+                ],
+                "isSelected": false,
+                "isViewLoaded": false,
+                "path": "root.tab[1]",
+                "role": "tab",
+                "title": null,
+                "type": "UINavigationController"
+              },
+              {
+                "children": [
+                  {
+                    "children": [],
+                    "isViewLoaded": false,
+                    "isVisible": true,
+                    "path": "root.tab[2].nav[0]",
+                    "role": "navigation",
+                    "title": null,
+                    "type": "UITableViewController"
+                  }
+                ],
+                "isSelected": false,
+                "isViewLoaded": false,
+                "path": "root.tab[2]",
+                "role": "tab",
+                "title": null,
+                "type": "UINavigationController"
+              }
+            ],
+            "isViewLoaded": true,
+            "path": "root",
+            "role": "root",
+            "title": null,
+            "type": "UITabBarController"
+          },
+          "screen": {
+            "rootViewController": "UITabBarController",
+            "topViewController": "ViewController",
+            "windowType": "UIWindow"
+          },
+          "topPath": "root.tab[0].nav[0]"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:20.743Z"
+    },
+    {
+      "command": "ui.navigation.tapBarButton",
+      "scenario": "点击左侧导航按钮",
+      "passed": false,
+      "expected": true,
+      "actual": false,
+      "duration": 7,
+      "response": {
+        "code": "invalid_data",
+        "message": "invalid navigation bar button selector: 必须提供 (placement + index) 或 accessibilityIdentifier"
+      },
+      "timestamp": "2026-07-13T15:18:23.988Z"
+    },
+    {
+      "command": "ui.navigation.tapBarButton",
+      "scenario": "点击不存在的右侧按钮",
+      "passed": true,
+      "expected": false,
+      "actual": false,
+      "duration": 3,
+      "response": {
+        "code": "invalid_data",
+        "message": "invalid navigation bar button selector: 必须提供 (placement + index) 或 accessibilityIdentifier"
+      },
+      "timestamp": "2026-07-13T15:18:27.523Z"
+    },
+    {
+      "command": "ui.navigation.tapBarButton",
+      "scenario": "无效位置参数",
+      "passed": true,
+      "expected": false,
+      "actual": false,
+      "duration": 5,
+      "response": {
+        "code": "invalid_data",
+        "message": "invalid navigation bar button selector: 必须提供 (placement + index) 或 accessibilityIdentifier"
+      },
+      "timestamp": "2026-07-13T15:18:28.030Z"
+    },
+    {
+      "command": "ui.scrollToElement",
+      "scenario": "滚动到文本元素（Item 50）",
+      "passed": false,
+      "expected": true,
+      "actual": false,
+      "duration": 3,
+      "response": {
+        "code": "invalid_data",
+        "message": "missing required parameter 'value'"
+      },
+      "timestamp": "2026-07-13T15:18:31.570Z"
+    },
+    {
+      "command": "ui.scrollToElement",
+      "scenario": "带动画滚动到 Item 10",
+      "passed": false,
+      "expected": true,
+      "actual": false,
+      "duration": 5,
+      "response": {
+        "code": "invalid_data",
+        "message": "missing required parameter 'value'"
+      },
+      "timestamp": "2026-07-13T15:18:32.377Z"
+    },
+    {
+      "command": "ui.scrollToElement",
+      "scenario": "滚动到不存在的元素",
+      "passed": true,
+      "expected": false,
+      "actual": false,
+      "duration": 2,
+      "response": {
+        "code": "invalid_data",
+        "message": "missing required parameter 'value'"
+      },
+      "timestamp": "2026-07-13T15:18:33.181Z"
+    },
+    {
+      "command": "ui.scrollToElement",
+      "scenario": "缺少 value 参数",
+      "passed": true,
+      "expected": false,
+      "actual": false,
+      "duration": 3,
+      "response": {
+        "code": "invalid_data",
+        "message": "missing required parameter 'value'"
+      },
+      "timestamp": "2026-07-13T15:18:33.685Z"
+    },
+    {
+      "command": "debug.emitLogger",
+      "scenario": "使用 Swift Logger 输出",
+      "passed": true,
+      "expected": true,
+      "actual": true,
+      "duration": 2,
+      "response": {
+        "code": "ok",
+        "data": {
+          "api": "Logger",
+          "message": "SPMExample stdio diagnostic marker",
+          "source": "oslog"
+        }
+      },
+      "timestamp": "2026-07-13T15:18:34.993Z"
+    },
+    {
+      "command": "debug.emitAppLog",
+      "scenario": "输出应用日志",
+      "passed": true,
+      "expected": true,
+      "actual": true,
+      "duration": 3,
+      "response": {
+        "code": "ok",
+        "data": {
+          "emitted": true
+        }
+      },
+      "timestamp": "2026-07-13T15:18:35.497Z"
+    }
+  ],
+  "performance": {
+    "ping": {
+      "times": [
+        22
+      ],
+      "min": 22,
+      "max": 22,
+      "avg": 22
+    },
+    "greet": {
+      "times": [
+        2,
+        4
+      ],
+      "min": 2,
+      "max": 4,
+      "avg": 3
+    },
+    "debug.probe": {
+      "times": [
+        3,
+        4
+      ],
+      "min": 3,
+      "max": 4,
+      "avg": 3.5
+    },
+    "debug.emitStdout": {
+      "times": [
+        4
+      ],
+      "min": 4,
+      "max": 4,
+      "avg": 4
+    },
+    "debug.emitStderr": {
+      "times": [
+        7
+      ],
+      "min": 7,
+      "max": 7,
+      "avg": 7
+    },
+    "debug.emitNSLog": {
+      "times": [
+        3
+      ],
+      "min": 3,
+      "max": 3,
+      "avg": 3
+    },
+    "debug.emitOSLog": {
+      "times": [
+        2
+      ],
+      "min": 2,
+      "max": 2,
+      "avg": 2
+    },
+    "app.logs.read": {
+      "times": [
+        9
+      ],
+      "min": 9,
+      "max": 9,
+      "avg": 9
+    },
+    "ui.navigation.back": {
+      "times": [
+        2,
+        3,
+        2,
+        2,
+        3,
+        3
+      ],
+      "min": 2,
+      "max": 3,
+      "avg": 2.5
+    },
+    "ui.controllers": {
+      "times": [
+        3,
+        4,
+        3
+      ],
+      "min": 3,
+      "max": 4,
+      "avg": 3.3333333333333335
+    },
+    "ui.wait": {
+      "times": [
+        321,
+        326,
+        322,
+        326
+      ],
+      "min": 321,
+      "max": 326,
+      "avg": 323.75
+    },
+    "ui.tap": {
+      "times": [
+        6,
+        3,
+        2,
+        3
+      ],
+      "min": 2,
+      "max": 6,
+      "avg": 3.5
+    },
+    "ui.navigation.tapBarButton": {
+      "times": [
+        7,
+        3,
+        5
+      ],
+      "min": 3,
+      "max": 7,
+      "avg": 5
+    },
+    "ui.scrollToElement": {
+      "times": [
+        3,
+        5,
+        2,
+        3
+      ],
+      "min": 2,
+      "max": 5,
+      "avg": 3.25
+    },
+    "debug.emitLogger": {
+      "times": [
+        2
+      ],
+      "min": 2,
+      "max": 2,
+      "avg": 2
+    },
+    "debug.emitAppLog": {
+      "times": [
+        3
+      ],
+      "min": 3,
+      "max": 3,
+      "avg": 3
+    }
+  },
+  "coverage": {
+    "tested": 12,
+    "total": 32,
+    "percentage": "37.50"
+  }
+}

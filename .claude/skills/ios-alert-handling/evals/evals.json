@@ -1,0 +1,24 @@
+{
+  "skill_name": "ios-alert-handling",
+  "description": "Test cases for iOS alert and dialog handling automation",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "An iOS app shows a confirmation alert with title '确认操作' and two buttons: '取消' (Cancel) and '确认' (Confirm). Respond by tapping the Confirm button.",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to verify alert.available is true\n2. Read alert.buttons array to identify button indices and roles\n3. Call ui.alert.respond with buttonIndex=1 or buttonTitle='确认' or role='default'\n4. Response should include dismissed=true, performed=true, and button details\n5. Total time ~560ms including dismissal animation",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Handle a three-button alert for file operations with 'Delete' (destructive), 'Save' (default), and 'Cancel' buttons. Tap the Cancel button using role-based selection.",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to see alert with 3 buttons\n2. Identify button roles: destructive, default, cancel\n3. Call ui.alert.respond with role='cancel'\n4. Response should show button.role='cancel' and dismissed=true\n5. If role='destructive' fails, fallback to index or title",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "An iOS app shows a login alert with two text fields (username and password). Fill username with 'testuser', password with 'testpass', then tap Login button.",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to get alert.textFields array with paths\n2. Call ui.input to fill first text field (username) with 'testuser'\n3. Call ui.input to fill second text field (password) with 'testpass' (should return masked response)\n4. Call ui.alert.respond to tap login button (typically index 0 or 1)\n5. All fields filled and alert dismissed successfully",
+      "files": []
+    }
+  ]
+}

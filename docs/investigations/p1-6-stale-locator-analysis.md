@@ -53,8 +53,8 @@
    - 位置：同上文件 第 409‑423 行。  
 3. **把 `isStale` 改为只判断上下文和指纹**（去掉 `isExpired` 调用），保留对 `entry.context == context` 和 `stored == current` 的比较。  
    - 位置：同上文件 第 299‑324 行。  
-4. **为了在 stale 时仍能给 Agent 提供最新快照**，在 `UIKitCommandError.staleLocator` 中加入可选字段 `newSnapshotID`（和/或 `newSnapshotVersion`），在 `MCPServer/src/staticTools.ts` 捕获到 `stale_locator` 时，**自动再执行一次 `ui.inspect`**，把最新的 `viewSnapshotID` 塞进该字段后返回。  
-   - 位置：`Sources/iOSExploreUIKit/UIKitCommandError.swift`（错误工厂） + `MCPServer/src/staticTools.ts`（错误包装）。  
+4. **为了在 stale 时仍能给 Agent 提供最新快照**，在 `UIKitCommandError.staleLocator` 中加入可选字段 `newSnapshotID`（和/或 `newSnapshotVersion`），在 `iOSDriver/src/staticTools.ts` 捕获到 `stale_locator` 时，**自动再执行一次 `ui.inspect`**，把最新的 `viewSnapshotID` 塞进该字段后返回。  
+   - 位置：`Sources/iOSExploreUIKit/UIKitCommandError.swift`（错误工厂） + `iOSDriver/src/staticTools.ts`（错误包装）。  
 5. **更新 TypeScript schema**（`ui_inspect` 的返回体）使 `newSnapshotID?: string`、`snapshotVersion?: string` 为可选字段，以免破坏旧客户端。  
 6. **补充单元测试**：  
    - 验证在指纹未变但时间已超过 TTL 时，**不再返回 stale**（仅靠 `isExpired` 为 `false`）。  

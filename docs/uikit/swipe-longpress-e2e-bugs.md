@@ -2,7 +2,7 @@
 
 > 测试日期: 2026-07-13
 > 测试对象: `ui.swipe`（action `ui.swipe`）、`ui.longPress`（action `ui.longPress`）
-> 测试方法: `MCPServer/scripts/mcp-inspector.mjs` 驱动真 stdio + 真 HTTP，打模拟器 SPMExample（38321 端口）
+> 测试方法: `iOSDriver/scripts/mcp-inspector.mjs` 驱动真 stdio + 真 HTTP，打模拟器 SPMExample（38321 端口）
 > 测试页面: `Examples/SPMExample/SPMExample/SwipeTestViewController.swift`、`LongPressTestViewController.swift`
 
 ## 修复状态（2026-07-13，subagent 修复 + 端到端复测）
@@ -36,11 +36,11 @@ mcp-inspector.mjs ─stdio JSON-RPC─► dist/index.js ─HTTP POST /─► SPM
 调用示例：
 
 ```bash
-cd MCPServer
+cd iOSDriver
 node scripts/mcp-inspector.mjs ui_swipe '{"direction":"left","accessibilityIdentifier":"swipe.tableview"}'
 ```
 
-完整说明见 `MCPServer/docs/local-mcp-test.md`。
+完整说明见 `iOSDriver/docs/local-mcp-test.md`。
 
 ### 三重验证（关键）
 

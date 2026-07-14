@@ -11,7 +11,7 @@
 ### 0.1 项目结构
 
 - **`/Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer`**：iOSExploreServer 主体（SwiftPM 包），含 `Sources/iOSExploreDiagnostics/` 诊断日志捕获框架
-- **`/Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/MCPServer`**：在 Mac 上跑的 MCP bridge server，对 iOS 真机通过 iproxy（端口 38321）调用 iOSExploreServer 的 HTTP API
+- **`/Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSDriver`**：在 Mac 上跑的 MCP bridge server，对 iOS 真机通过 iproxy（端口 38321）调用 iOSExploreServer 的 HTTP API
 - **`/Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/Examples/SPMExample`**：测试用 iOS App（bundlid `com.coo.SPMExample`），含 `DiagnosticsTestViewController.swift` 5 个日志诊断场景按钮
 - 当前真机设备：bundleId `com.coo.SPMExample`，iOS 26.5 (Build 23F77)
 
@@ -626,7 +626,7 @@ print("Wrote 50 os_log entries")
 
 ### 8.3 现成 MCP 命令清单
 
-通过 `MCPServer/dist/src/index.js` (重新 build 后) 调用：
+通过 `iOSDriver/dist/src/index.js` (重新 build 后) 调用：
 
 | 命令 | 说明 |
 |---|---|
@@ -655,7 +655,7 @@ print("Wrote 50 os_log entries")
 | `Examples/SPMExample/SPMExample/DiagnosticsTestViewController.swift` | 5 个场景按钮的 print/fputs/NSLog/os_log/Logger/ExploreAppLog 调用 |
 | `Tests/iOSExploreServerTests/DiagnosticsCommandTests.swift` | 测试各 source 捕获正确性 |
 | `docs/superpowers/specs/iOSExploreServer-进程日志能力-修订版设计与评估.md` | 设计规格，对所有 source 的设计意图有详细说明 |
-| `MCPServer/src/schemaMapper.ts` | MCP bridge 把 iOSExplore x- 扩展转为 description suffix |
+| `iOSDriver/src/schemaMapper.ts` | MCP bridge 把 iOSExplore x- 扩展转为 description suffix |
 
 ---
 

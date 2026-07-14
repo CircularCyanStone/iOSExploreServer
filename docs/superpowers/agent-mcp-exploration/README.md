@@ -266,7 +266,7 @@ Agent 能通过 MCP 服务持续观察 App、执行动作、拿到反馈，
 
 **第一版范围已定为 A：本机 Mac MCP 包装器。** 它默认连接 `http://localhost:38321/`，复用现有模拟器直连或真机 `iproxy` 转发，不负责设备发现、`iproxy` 进程管理、用例报告或批量执行。技术方向是 TypeScript / Node MCP server，采用”固定推荐工具 + `help` 动态生成原子工具 + `call_action` 兜底”的混合动态发现设计。详见 [2026-07-06-mac-mcp-server-design.md](../specs/2026-07-06-mac-mcp-server-design.md)。
 
-**第一版实现位置**：`MCPServer/`。它是 TypeScript / Node stdio MCP server，默认连接 `http://localhost:38321/`，通过 `help` 动态发现 App 已注册 action，并提供 `health_check`、`refresh_tools`、`call_action`、`observe`、`wait_and_observe` 五个固定工具。
+**第一版实现位置**：`iOSDriver/`。它是 TypeScript / Node stdio MCP server，默认连接 `http://localhost:38321/`，通过 `help` 动态发现 App 已注册 action，并提供 `health_check`、`refresh_tools`、`call_action`、`observe`、`wait_and_observe` 五个固定工具。
 
 **后续路线保留两层，不进入第一版：B 设备管理层、C 测试编排层。** B 负责发现真机/模拟器、管理 `iproxy`、多设备选择、端口占用和残留进程诊断；C 负责自然语言用例拆解、步骤状态、证据归档、结果报告和批量执行。把 B/C 放在这里，是为了防止后续只记得第一版 MCP 包装器，而遗忘项目可以继续演进到更自动的设备管理和测试编排。
 

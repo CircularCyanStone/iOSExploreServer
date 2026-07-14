@@ -1,0 +1,24 @@
+{
+  "skill_name": "ios-form-filling",
+  "description": "Test cases for iOS form filling and data entry automation",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Fill out a login form on an iOS app with username 'john.doe@example.com' and password 'SecurePass123', then tap the login button",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to find form fields\n2. Call ui.input to fill username field with mode='replace'\n3. Call ui.input to fill password field with mode='replace' and submit=true\n4. Call ui.tap to tap login button\n5. All operations should complete in under 1 second",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "In an iOS settings screen, toggle the notifications switch ON, adjust the volume slider to 75%, and select the second segment in a segmented control",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to get snapshot and element paths\n2. Call ui.control.sendAction with event='valueChanged' for switch (no value needed)\n3. Call ui.control.sendAction with event='valueChanged' and value=0.75 for slider\n4. Call ui.control.sendAction with event='valueChanged' and value=1 for segment\n5. All control actions should complete in ~10ms total (3-4ms each)",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Fill a multi-line text view in an iOS app with three lines of text: 'Line 1', 'Line 2', and 'Line 3', then dismiss the keyboard",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to find UITextView element\n2. Call ui.input with text='Line 1\\nLine 2\\nLine 3' and mode='replace'\n3. Call ui.keyboard.dismiss to close keyboard\n4. Response should show finalText with newlines preserved\n5. Total time should be under 400ms (93ms input + 206ms dismiss)",
+      "files": []
+    }
+  ]
+}

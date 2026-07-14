@@ -1,0 +1,24 @@
+{
+  "skill_name": "ios-date-picker",
+  "description": "Test cases for iOS date and time picker interactions",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Select December 25, 2026 from a UIDatePicker in an iOS app.",
+      "expected_output": "⚠️ NOT TESTED YET\nExpected behavior:\n1. Call ui.inspect to find UIDatePicker path\n2. Call ui.datePicker.setDate with date='2026-12-25'\n3. Picker should visually update to selected date\n4. Verify selection with ui.inspect (if picker exposes selected value)\n5. Requires testing before production use",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Select 14:30 (2:30 PM) from a time picker in an iOS app.",
+      "expected_output": "⚠️ NOT TESTED YET\nExpected behavior:\n1. Find UIDatePicker in time mode\n2. Call ui.datePicker.setTime with time='14:30'\n3. Picker wheels should scroll to 2:30 PM\n4. Verify time selection\n5. Requires testing before production use",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Use swipe gestures as a workaround to manually scroll a date picker wheel.",
+      "expected_output": "Workaround approach:\n1. Call ui.inspect to find UIPickerView or UIDatePicker elementRef\n2. Call ui.swipe with withinElementRef=<picker_ref>, direction='up', distance=0.3\n3. Swipe up scrolls picker down (selects lower/earlier values)\n4. Swipe down scrolls picker up (selects higher/later values)\n5. Multiple swipes may be needed to reach target value\n6. No precise value selection - trial and error\n7. ⚠️ Not recommended for production - unreliable",
+      "files": []
+    }
+  ]
+}

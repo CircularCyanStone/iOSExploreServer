@@ -137,7 +137,7 @@ minimal 节点出现在返回里（维持层级），但不可操作。
 
 ### 3.9 静态工具清理：废弃 observe，简化 wait_and_observe
 
-- **废弃 `observe`**：它内部就是调 viewTargets，改名后 `ui_inspect` 动态工具已可直接用，observe 是多余封装层。从 `MCPServer/src/staticTools.ts` 移除。
+- **废弃 `observe`**：它内部就是调 viewTargets，改名后 `ui_inspect` 动态工具已可直接用，observe 是多余封装层。从 `iOSDriver/src/staticTools.ts` 移除。
 - **`wait_and_observe` → `wait_and_inspect`**：保留"wait 条件命中后自动 inspect"的组合便利语义，仅把内部 `ui.viewTargets` 调用改为 `ui.inspect`、名字同步更新。不并入 `ui.wait`——组合工具仍有独立价值。
 - **`wait_and_observe` schema 的 `viewTargetsOptions` 嵌套字段名 → `inspectOptions`**（description 同步更新），保持命名一致。
 
@@ -164,9 +164,9 @@ minimal 节点出现在返回里（维持层级），但不可操作。
 | `UIKitCommandRegistrar.swift` | 注册名同步 |
 | **6 处运行时用户可见字符串**（agent/MCP 实际读得到）| `UIKitCommandError.swift` L41 staleLocator message "call ui.viewTargets first..." → "ui.inspect"；`UIKitCommandFields.swift` L58 path description（含 "ui.viewTargets"）+ L69 viewSnapshotID description；`UIWaitModels.swift` L60 viewSnapshotID description；`UITapModels.swift` L32 extensionMessage；`UIControlSendActionModels.swift` L63 extensionMessage |
 | `UIKitCommandError.swift` | 新增 `notActionable` 工厂方法（与 `staleLocator` 工厂同模式，code 用 core 新增的 `not_actionable`） |
-| `MCPServer/src/staticTools.ts` | 废弃 observe；wait_and_observe → wait_and_inspect；viewTargetsOptions → inspectOptions |
+| `iOSDriver/src/staticTools.ts` | 废弃 observe；wait_and_observe → wait_and_inspect；viewTargetsOptions → inspectOptions |
 | 测试 | 所有 viewTargets 测试改 inspect；新增 full/minimal 判定、minimal tap/control 返回 not_actionable、截断只数 full、snapshotChanged 重采、cell 内 label 可 tap 的回归 |
-| 文档 | `AGENTS.md` 命令清单、`docs/uikit/*`、`MCPServer/README.md`、`MCPServer/docs/local-mcp-test.md` |
+| 文档 | `AGENTS.md` 命令清单、`docs/uikit/*`、`iOSDriver/README.md`、`iOSDriver/docs/local-mcp-test.md` |
 
 ### 4.2 不需要改（已确认解耦或自带支持）
 

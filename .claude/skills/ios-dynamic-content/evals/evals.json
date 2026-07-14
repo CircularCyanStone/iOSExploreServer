@@ -1,0 +1,24 @@
+{
+  "skill_name": "ios-dynamic-content",
+  "description": "Test cases for iOS dynamic content and loading state handling",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Wait for a 'Loading...' indicator to disappear in an iOS app after triggering a refresh, with a 10 second timeout.",
+      "expected_output": "Should successfully:\n1. Trigger refresh action with ui.tap\n2. Start polling loop with 300ms interval, 10s timeout\n3. Call ui.inspect repeatedly to check for 'Loading...' text\n4. When element not found in targets, break loop and report success\n5. If timeout reached, report timeout error\n6. Typical loading time: 1-5 seconds",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Wait for either a 'Success' or 'Error' message to appear after submitting a form in an iOS app.",
+      "expected_output": "Should successfully:\n1. Submit form with ui.tap\n2. Start polling with 500ms interval\n3. Call ui.inspect on each iteration\n4. Check for both 'Success' and 'Error' text in targets\n5. Break when either found and return which one appeared\n6. Maximum wait 10 seconds\n7. Handle timeout if neither appears",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Wait for a 'Welcome back' message to appear after login in an iOS app, with 5 second timeout.",
+      "expected_output": "Should successfully:\n1. Perform login action\n2. Poll ui.inspect every 500ms\n3. Search for 'Welcome back' text in targets array\n4. Return success when found with elapsed time\n5. Timeout after 5 seconds if not found\n6. Typical appearance time: 1-3 seconds for successful login",
+      "files": []
+    }
+  ]
+}

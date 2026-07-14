@@ -1,0 +1,218 @@
+{
+  "tests": [
+    {
+      "name": "UITextField basic input",
+      "action": "ui.input",
+      "duration_ms": 582,
+      "code": "ok",
+      "timestamp": "2026-07-13T14:47:22Z",
+      "details": {
+        "code": "ok",
+        "data": {
+          "finalText": "Hello World",
+          "type": "UITextField"
+        }
+      }
+    },
+    {
+      "name": "UITextField replace text",
+      "action": "ui.input",
+      "duration_ms": 28,
+      "code": "invalid_data",
+      "timestamp": "2026-07-13T14:47:22Z",
+      "details": {
+        "code": "invalid_data",
+        "message": "unknown command input field 'clearExisting'"
+      }
+    },
+    {
+      "name": "UITextView multiline",
+      "action": "ui.input",
+      "duration_ms": 134,
+      "code": "ok",
+      "timestamp": "2026-07-13T14:47:22Z",
+      "details": {
+        "code": "ok",
+        "data": {
+          "finalText": "Line 1\nLine 2\nLine 3",
+          "type": "UITextView"
+        }
+      }
+    },
+    {
+      "name": "UISearchTextField",
+      "action": "ui.input",
+      "duration_ms": 137,
+      "code": "ok",
+      "timestamp": "2026-07-13T14:47:22Z",
+      "details": {
+        "code": "ok",
+        "data": {
+          "finalText": "search query",
+          "type": "UISearchTextField"
+        }
+      }
+    },
+    {
+      "name": "Dismiss keyboard",
+      "action": "ui.keyboard.dismiss",
+      "duration_ms": 230,
+      "code": "ok",
+      "timestamp": "2026-07-13T14:47:22Z",
+      "details": {
+        "code": "ok",
+        "data": {
+          "dismissed": false,
+          "firstResponderAfter": null,
+          "firstResponderBefore": null,
+          "strategy": "auto"
+        }
+      }
+    },
+    {
+      "name": "Long text input",
+      "action": "ui.input",
+      "duration_ms": 127,
+      "code": "ok",
+      "timestamp": "2026-07-13T14:47:23Z",
+      "details": {
+        "code": "ok",
+        "data": {
+          "length": 200,
+          "masked": "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+          "type": "UITextField"
+        }
+      }
+    },
+    {
+      "name": "Empty string input",
+      "action": "ui.input",
+      "duration_ms": 125,
+      "code": "ok",
+      "timestamp": "2026-07-13T14:47:23Z",
+      "details": {
+        "code": "ok",
+        "data": {
+          "finalText": "",
+          "type": "UITextField"
+        }
+      }
+    },
+    {
+      "name": "Special characters",
+      "action": "ui.input",
+      "duration_ms": 29,
+      "code": "become_first_responder_failed",
+      "timestamp": "2026-07-13T14:47:23Z",
+      "details": {
+        "code": "become_first_responder_failed",
+        "message": "failed to become first responder"
+      }
+    },
+    {
+      "name": "Alert: Push Level 2 (\u6709\u8fd4\u56de\u6309\u94ae) (no alert)",
+      "action": "ui.tap",
+      "duration_ms": 33,
+      "code": "no_alert",
+      "timestamp": "2026-07-13T14:48:33.119797Z",
+      "details": {
+        "message": "Alert did not appear"
+      }
+    },
+    {
+      "name": "Alert: Push Level 2 (\u81ea\u5b9a\u4e49 title) (no alert)",
+      "action": "ui.tap",
+      "duration_ms": 4,
+      "code": "no_alert",
+      "timestamp": "2026-07-13T14:48:33.633453Z",
+      "details": {
+        "message": "Alert did not appear"
+      }
+    },
+    {
+      "name": "Alert: Push Level 2 (\u65e0\u5bfc\u822a\u680f) (no alert)",
+      "action": "ui.tap",
+      "duration_ms": 2,
+      "code": "no_alert",
+      "timestamp": "2026-07-13T14:48:34.147038Z",
+      "details": {
+        "message": "Alert did not appear"
+      }
+    },
+    {
+      "name": "Alert: Present \u5168\u5c4f (no alert)",
+      "action": "ui.tap",
+      "duration_ms": 4,
+      "code": "no_alert",
+      "timestamp": "2026-07-13T14:48:34.661939Z",
+      "details": {
+        "message": "Alert did not appear"
+      }
+    },
+    {
+      "name": "Alert: Present \u5361\u7247\u6837\u5f0f (no alert)",
+      "action": "ui.tap",
+      "duration_ms": 2,
+      "code": "no_alert",
+      "timestamp": "2026-07-13T14:48:35.173992Z",
+      "details": {
+        "message": "Alert did not appear"
+      }
+    },
+    {
+      "name": "UIButton touchUpInside: \u70b9\u6211 (test.button)",
+      "action": "ui.control.sendAction",
+      "duration_ms": 3,
+      "code": "invalid_data",
+      "timestamp": "2026-07-13T14:49:45.524633Z",
+      "details": {
+        "code": "invalid_data",
+        "message": "unknown command input field 'action'"
+      }
+    },
+    {
+      "name": "UISwitch valueChanged",
+      "action": "ui.control.sendAction",
+      "duration_ms": 2,
+      "code": "invalid_data",
+      "timestamp": "2026-07-13T14:49:45.533389Z",
+      "details": {
+        "code": "invalid_data",
+        "message": "unknown command input field 'action'"
+      }
+    },
+    {
+      "name": "UISlider setValue to 0.75",
+      "action": "ui.control.sendAction",
+      "duration_ms": 2,
+      "code": "invalid_data",
+      "timestamp": "2026-07-13T14:49:45.542322Z",
+      "details": {
+        "code": "invalid_data",
+        "message": "unknown command input field 'action'"
+      }
+    },
+    {
+      "name": "UISegmentedControl select segment 1",
+      "action": "ui.control.sendAction",
+      "duration_ms": 2,
+      "code": "invalid_data",
+      "timestamp": "2026-07-13T14:49:45.550014Z",
+      "details": {
+        "code": "invalid_data",
+        "message": "unknown command input field 'selectedSegmentIndex'"
+      }
+    },
+    {
+      "name": "UIStepper valueChanged",
+      "action": "ui.control.sendAction",
+      "duration_ms": 1,
+      "code": "invalid_data",
+      "timestamp": "2026-07-13T14:49:45.557492Z",
+      "details": {
+        "code": "invalid_data",
+        "message": "unknown command input field 'action'"
+      }
+    }
+  ]
+}

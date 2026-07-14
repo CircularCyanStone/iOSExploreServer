@@ -1,6 +1,8 @@
 # iOSExploreServer
 
-手机端 HTTP Server（基于 `NWListener`）的 SPM 库。Mac 经 `iproxy`（USB）转发后用 `curl` 向 iPhone App 发送 JSON 命令，App 按 `action` 分发执行并返回统一 envelope。为后续 Mac 侧 MCP 对接铺路。
+手机端 HTTP Server（基于 `NWListener`）的 SPM 库。Mac 经 `iproxy`（USB）转发后用 `curl` 向 iPhone App 发送 JSON 命令，App 按 `action` 分发执行并返回统一 envelope。
+
+**🚀 [iOSDriver](iOSDriver/)** - 基于本项目的生产级 MCP Server，提供完整的 iOS 自动化测试能力和 Claude Code 集成。
 
 ## 通信链路
 

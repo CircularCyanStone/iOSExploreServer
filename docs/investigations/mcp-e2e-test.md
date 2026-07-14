@@ -1,4 +1,4 @@
-# MCPServer 端到端测试指南
+# iOSDriver 端到端测试指南
 
 > 适用场景：Mac MCP Server + iOS 真机（经 iproxy USB 转发）
 > 最后更新：2026-07-06
@@ -207,12 +207,12 @@ curl -s http://localhost:38321/ -d '{"action":"app.logs.read","data":{"limit":50
 
 ---
 
-## 第三层：MCPServer 测试（MCP JSON-RPC 协议）
+## 第三层：iOSDriver 测试（MCP JSON-RPC 协议）
 
-### 3.1 编译 MCPServer
+### 3.1 编译 iOSDriver
 
 ```bash
-cd /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/MCPServer
+cd /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSDriver
 npm run build
 ```
 

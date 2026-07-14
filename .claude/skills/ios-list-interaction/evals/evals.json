@@ -1,0 +1,24 @@
+{
+  "skill_name": "ios-list-interaction",
+  "description": "Test cases for iOS list and collection view interaction automation",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "In an iOS app with a long list, find and select the item with text 'Item 50' which is not currently visible on screen.",
+      "expected_output": "Should successfully:\n1. Call ui.scrollToElement with match='text' and value='Item 50'\n2. Response should show found=true, targetPath, targetType='UILabel', container='UICollectionView'\n3. Duration should be 2-7ms (extremely fast)\n4. Call ui.inspect to get fresh snapshot after scroll\n5. Find item path in targets array\n6. Call ui.tap with fresh viewSnapshotID and item path\n7. Wait 500ms for navigation to detail view\n8. Total time < 1 second",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Scroll to the first item in an iOS collection view with animated scrolling, then tap it.",
+      "expected_output": "Should successfully:\n1. Call ui.scrollToElement with match='text', value='Item 0', animated=true\n2. Response shows found=true with 5ms duration (animated is slightly slower)\n3. Call ui.inspect to get fresh snapshot\n4. Extract item path from targets\n5. Call ui.tap to select first item\n6. Verify navigation or selection action completed",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Try to scroll to an item that doesn't exist in the list: 'NonExistentItem12345'",
+      "expected_output": "Should handle gracefully:\n1. Call ui.scrollToElement with match='text', value='NonExistentItem12345'\n2. Response should have code='target_not_found'\n3. Message should be 'scroll target not found'\n4. Duration ~7ms\n5. Should not crash or throw unexpected errors\n6. Can fallback to manual scrolling with ui.swipe or inform user item not found",
+      "files": []
+    }
+  ]
+}
