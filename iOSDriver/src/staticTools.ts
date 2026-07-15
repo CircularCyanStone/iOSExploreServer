@@ -142,6 +142,64 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
           return resultForFailure(normalizeError(error));
         }
       }
+    },
+    ui_tap_and_inspect: {
+      name: "ui_tap_and_inspect",
+      description: "点击元素后自动检查 UI 状态。组合 ui.tap + ui.wait + ui.inspect，减少 Agent 推理次数。95% 的点击场景需要检查结果，建议优先使用此工具。",
+      inputSchema: uiTapAndInspectSchema(),
+      handler: async input => {
+        const startTime = Date.now();
+        const tapParams = pickAllowedFields(input, ["accessibilityIdentifier", "path", "viewSnapshotID"]);
+        const waitForStable = input.waitForStable !== false; // default true
+        const stableTimeMs = typeof input.stableTimeMs === "number" ? input.stableTimeMs : 300;
+        const inspectDepth = typeof input.inspectDepth === "number" ? input.inspectDepth : 2;
+        const inspectMaxTargets = typeof input.inspectMaxTargets === "number" ? input.inspectMaxTargets : 20;
+
+        const timing: { tapMs: number; waitMs?: number; inspectMs: number; totalMs: number } = {
+          tapMs: 0,
+          inspectMs: 0,
+          totalMs: 0
+        };
+
+        try {
+          // Step 1: Execute tap
+          const tapStart = Date.now();
+          const tapResult = await client.call("ui.tap", tapParams);
+          timing.tapMs = Date.now() - tapStart;
+
+          // Step 2: Wait for UI to stabilize (if requested)
+          if (waitForStable) {
+            const waitStart = Date.now();
+            try {
+              await client.call("ui.wait", { mode: "idle", stableMs: stableTimeMs, timeoutMs: stableTimeMs + 1000 });
+              timing.waitMs = Date.now() - waitStart;
+            } catch (waitError) {
+              // If wait times out, continue to inspect anyway
+              timing.waitMs = Date.now() - waitStart;
+            }
+          }
+
+          // Step 3: Inspect current UI state
+          const inspectStart = Date.now();
+          const inspectResult = await client.call("ui.inspect", {
+            maxDepth: inspectDepth,
+            maxTargets: inspectMaxTargets
+          });
+          timing.inspectMs = Date.now() - inspectStart;
+          timing.totalMs = Date.now() - startTime;
+
+          return jsonResult({
+            tap: tapResult,
+            stateAfter: inspectResult,
+            timing
+          });
+        } catch (error) {
+          // If tap fails, return error immediately without continuing
+          const normalized = normalizeError(error);
+          timing.totalMs = Date.now() - startTime;
+          return errorResult({ ...normalized, timing } as StructuredError);
+        }
+      }
     }
   };
 }
@@ -227,6 +285,49 @@ function uiWaitSchema(): JSONObject {
         description: "idle/textExists/targetExists/targetGone 是否考虑隐藏 view, 默认 false"
       }
     }
+  };
+}
+
+function uiTapAndInspectSchema(): JSONObject {
+  return {
+    type: "object",
+    properties: {
+      accessibilityIdentifier: {
+        type: "string",
+        description: "按 accessibilityIdentifier 精确定位目标 view。与 path 二选一（互斥）：两字段中有且仅提供一个"
+      },
+      path: {
+        type: "string",
+        description: "按 ui.inspect 或 ui.topViewHierarchy 返回的 root/0/1 路径定位目标 view。与 accessibilityIdentifier 二选一（互斥）：两字段中有且仅提供一个"
+      },
+      viewSnapshotID: {
+        type: "string",
+        description: "ui.inspect 签发的结构化 target 指纹快照标识"
+      },
+      waitForStable: {
+        type: "boolean",
+        description: "是否等待 UI 稳定后再 inspect，默认 true"
+      },
+      stableTimeMs: {
+        type: "integer",
+        minimum: 0,
+        maximum: 3000,
+        description: "等待 UI 稳定的时长（毫秒），默认 300"
+      },
+      inspectDepth: {
+        type: "integer",
+        minimum: 0,
+        maximum: 10,
+        description: "inspect 的最大递归深度，默认 2"
+      },
+      inspectMaxTargets: {
+        type: "integer",
+        minimum: 1,
+        maximum: 512,
+        description: "inspect 返回的最大目标数量，默认 20"
+      }
+    },
+    required: ["viewSnapshotID"]
   };
 }
 
