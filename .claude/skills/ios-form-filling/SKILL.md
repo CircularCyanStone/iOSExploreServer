@@ -42,16 +42,14 @@ Use this skill when you need to:
 | Command | Purpose | Performance | Native MCP tool? |
 |---------|---------|-------------|------------------|
 | `ui.inspect` | Find form fields and their paths | 100-200ms | ✅ `mcp__iOSDriver__ui_inspect` |
-| `ui.input` | Enter text into fields (replace/append) | 88-129ms per field | ❌ **无** — 用 `call_action` 兜底 |
-| `ui.control.sendAction` | Toggle switches, adjust sliders/steppers/segments | 3-4ms | ❌ **无** — 用 `call_action` 兜底 |
+| `ui.input` | Enter text into fields (replace/append) | 88-129ms per field | ✅ `mcp__iOSDriver__ui_input` |
+| `ui.control.sendAction` | Toggle switches, adjust sliders/steppers/segments | 3-4ms | ✅ `mcp__iOSDriver__ui_control_sendAction` |
 | `ui.keyboard.dismiss` | Close keyboard after input | 200-250ms | ✅ `mcp__iOSDriver__ui_keyboard_dismiss` |
-| `ui.tap` | Tap submit buttons | 50-100ms | ❌ **无** — 用 `call_action` 兜底 |
+| `ui.tap` | Tap submit buttons | 50-100ms | ✅ `mcp__iOSDriver__ui_tap` |
 
-> **重要（F-02 / F-38）**：`ui.input`、`ui.control.sendAction`、`ui.tap` 这三个
-> 命令在 App server 注册并可用，但 iOSDriver MCP **没有**把它们暴露成原生
-> `mcp__iOSDriver__*` 工具。调用时必须走通用兜底入口
-> `mcp__iOSDriver__call_action(action:"ui.input", data:{...})`
-> （把 `ui.input` 换成对应命令名），否则 agent 会报"工具不存在"。
+> **排障兜底**：所有命令都有专用 MCP 工具。如遇参数问题或调用失败，
+> 可使用 `mcp__iOSDriver__call_action(action:"ui.input", data:{...})` 绕过。
+> 正常情况优先使用专用工具。
 > 因此本 skill 的 **控件交互（开关/滑块/步进/分段）全部依赖 `call_action` 兜底**，
 > 而不是有专属工具。
 

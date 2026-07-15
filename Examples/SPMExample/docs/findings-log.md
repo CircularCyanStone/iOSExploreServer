@@ -25,14 +25,6 @@
 
 ## 🟠 待确认/改进
 
-### F-02【P1·skill↔库一致性】ui.tap/ui.input/ui.control.sendAction 未暴露为 MCP 工具
-- **现象**：App server（help）注册了 ui.tap/ui.input/ui.control.sendAction，但 iOSDriver MCP 暴露的 `mcp__iOSDriver__*` 工具列表里**没有**这三个。skill 文档（ios-automation「MCP 工具映射」）却写 `mcp__iOSDriver__ui_tap`、`mcp__iOSDriver__ui_input`。按 skill 走会直接"工具不存在"。
-- **根因（2026-07-15 修正）**：原「动态工具生成器无法处理 oneOf」**定位错误**。逐文件核实 `iOSDriver/src/` **无任何代码过滤 oneOf**（`schemaMapper.ts:43` 明写 oneOf 原样透传，`toolRegistry.ts:51-79` 对每命令都映射且为 ui.input 专门追加描述，`toolName.ts:13-15` 仅字符替换，`index.ts:9` fixedToolNames 不含这三个不会冲突跳过）。**真正结论**：iOSDriver 生成并返回了这三个工具（含 oneOf inputSchema），但 **MCP 客户端（Claude Code）在 ListTools 时没暴露给 agent**，过滤在客户端侧、不在被测代码库内。方向（oneOf 是触发因素）对，位置定错。
-- **影响**：最核心的三个交互命令（点击/输入/控件事件）只能 `call_action` 兜底，skill 文档误导
-- **复现**：会话启动后检查可用 MCP 工具列表，无 mcp__iOSDriver__ui_tap；refresh_tools 返回 dynamicToolCount=32 但仍缺这三个
-- **建议**：iOSDriver MCP 动态工具生成支持 oneOf；或 skill 文档改为标注 call_action 兜底
-- **状态**：🟠 待确认（修复点改为 `iOSDriver/src/schemaMapper.ts` 把顶层 oneOf 拍平为客户端可消化的 properties + 互斥提示，或排查客户端 oneOf 支持）
-
 ### F-03【P2·一致性】tap 与 input "目标找不到" 错误码不统一
 - **现象**：`ui.tap(不存在identifier)` → `code:"target_not_found"` + 恢复指引；`ui.input(不存在identifier)` → `code:"invalid_data"` + message:"input target not_found"（无指引）
 - **根因**：input 复用了通用 invalid_data 码，未对"目标不存在"单列
@@ -204,6 +196,16 @@
 - D-11 snapshotChanged 稳定页无假阳性（超时返回）
 
 ## ✅ 已修复
+
+### F-02【P1·skill↔库一致性】ui.tap/ui.input/ui.control.sendAction oneOf 拍平
+- **原问题**：App server 注册的 ui.tap/ui.input/ui.control.sendAction 三个命令的参数定义使用了 JSON Schema oneOf（identifier/path 二选一），早期 MCP 客户端可能无法处理导致工具不可用
+- **修复**：`iOSDriver/src/schemaMapper.ts:56-90` 实现 `flattenTopLevelComposition` 函数，自动拍平顶层 oneOf/anyOf/allOf：
+  - 删除顶层 oneOf 关键字
+  - 合并各分支的 properties 到顶层
+  - 在各替代字段的 description 追加"⚠️ 与 X 二选一(互斥)"提示
+  - 在工具 description 追加"accessibilityIdentifier / path 二选一(互斥:必须且只能提供其中一个)"说明
+- **验证**：2026-07-15 实测 `mcp__iOSDriver__ui_tap` 工具存在且可调用，schema 无 oneOf 关键字，正确标记 viewSnapshotID 为 required
+- **状态**：✅ 已修复
 
 ### F-06【P2】semanticText 对 accessibilityIdentifier 截断
 - **现象**：长 identifier（如 register_confirm_password_field 28字符）被 textLimit 截断为 "register_confirm_password"，但 semanticTextSource 仍标注 accessibilityIdentifier（误导）

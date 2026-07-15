@@ -216,17 +216,16 @@ xcrun simctl terminate <UDID> com.coo.SPMExample
 | 连接检查 | `mcp__iOSDriver__ping` |
 | UI 检查 | `mcp__iOSDriver__ui_inspect` |
 | 截图 | `mcp__iOSDriver__ui_screenshot` |
-| 点击 | **无原生工具** — 用 `call_action(action:"ui.tap", data:{...})` 兜底（F-02） |
+| 点击 | `mcp__iOSDriver__ui_tap` |
 | 弹窗响应 | `mcp__iOSDriver__ui_alert_respond` |
-| 文本输入 | **无原生工具** — 用 `call_action(action:"ui.input", data:{...})` 兜底（F-02） |
-| 控件事件（开关/滑块） | **无原生工具** — 用 `call_action(action:"ui.control.sendAction", data:{...})` 兜底（F-02） |
+| 文本输入 | `mcp__iOSDriver__ui_input` |
+| 控件事件（开关/滑块） | `mcp__iOSDriver__ui_control_sendAction` |
 | 滚动 | `mcp__iOSDriver__ui_scroll` |
 | 导航返回 | `mcp__iOSDriver__ui_navigation_back` |
 
-> **重要（F-02）**：`ui.tap` / `ui.input` / `ui.control.sendAction` 三个命令虽然
-> 在 App server 注册并可用，但 iOSDriver MCP 没有把它们作为原生 `mcp__iOSDriver__*`
-> 工具暴露给 agent。调用这三个命令必须走通用兜底入口
-> `mcp__iOSDriver__call_action(action:"ui.tap", data:{...})`，否则会"工具不存在"。
+> **排障兜底**：所有 UI 命令都有对应的专用 MCP 工具（如 `ui_tap`、`ui_input`）。
+> 如遇参数问题或工具调用失败，可使用通用工具 `mcp__iOSDriver__call_action(action:"ui.tap", data:{...})` 绕过。
+> 正常情况下优先使用专用工具。
 
 ## 性能指标
 
@@ -283,6 +282,91 @@ ios-automation (入口 skill)
         └─ ...30+ 命令
 ```
 
+## 执行原则
+
+### 1. 惰性检测（Lazy Detection）
+
+连接检查遵循"先假设正常、失败才诊断"的原则：
+
+```
+优先级 1: 直接 ping
+  ✅ 成功 → 继续任务
+  ❌ 失败 → 进入优先级 2
+
+优先级 2: 启动 App（模拟器/真机）
+  - 模拟器：launch_app_sim
+  - 真机：确保 iproxy 运行 + launch_app_device
+  ✅ 启动后 ping 成功 → 继续任务
+  ❌ 仍失败 → 进入优先级 3
+
+优先级 3: 深度诊断
+  - 端口占用检查（lsof -iTCP:38321）
+  - 进程冲突排查（残留模拟器 App）
+  - iproxy 状态检查（真机）
+  - 给出修复建议
+```
+
+**反模式：** 每次任务前都执行完整诊断流程（端口检查、进程扫描、health check），浪费 2-3 秒。
+
+**正确做法：** 先 ping，失败了再诊断。90% 的场景下 App 已运行，ping 直接成功。
+
+### 2. 工具调用规则
+
+#### 必须顺序调用的场景
+
+1. **ui.inspect → ui.tap/ui.input/ui.control.sendAction**
+   - `ui.inspect` 签发 `viewSnapshotID`（陈旧校验指纹）
+   - 后续交互工具需要 `viewSnapshotID` 验证 UI 未变化
+   - 两次调用之间如有其他 UI 操作，需重新 `ui.inspect`
+
+2. **ui.wait → 后续操作**
+   - 等待加载完成、动画结束、目标出现后再操作
+   - 避免在过渡状态下操作元素
+
+3. **ui.alert.respond → 后续操作**
+   - 弹窗响应是阻塞性的，必须处理完才能继续
+   - 处理弹窗后需重新 `ui.inspect` 获取新状态
+
+#### 可并发调用的场景
+
+1. **多个独立查询**
+   - 同时查询多个页面的 UI 状态（不同 controller）
+   - 并发截图多个测试场景
+
+2. **批量诊断**
+   - 同时检查端口状态、进程状态、连接状态
+   - 并发执行多个健康检查
+
+**反模式：** 把所有工具调用串行化，即使它们之间没有依赖关系。
+
+**正确做法：** 识别数据依赖关系，无依赖的并发执行，有依赖的顺序执行。
+
+### 3. 常见 UI 行为
+
+了解 iOS 标准 UI 行为，避免误判为 Bug：
+
+| 场景 | 标准行为 | 自动化影响 |
+|------|---------|-----------|
+| 登录失败 | 密码框被清空 | 重试需重新输入密码，不能复用旧值 |
+| 键盘弹出 | 输入框自动滚动到可见区域 | 操作前需等待键盘动画完成 |
+| Alert 响应 | 弹窗关闭后才返回响应 | 后续操作需在 alert.respond 完成后 |
+| 页面跳转 | 导航动画 0.3-0.5 秒 | 跳转后需 `ui.wait` idle 等待动画完成 |
+| Pull to Refresh | 刷新指示器显示 1-2 秒 | 刷新后需等待内容重新加载 |
+| 网络请求 | 加载指示器（loading spinner） | 需等待 loading 消失再验证结果 |
+
+**登录失败重试示例：**
+```
+1. ui.input(username="test", password="wrong")
+2. ui.tap(登录按钮)
+3. ui.wait(textExists="用户名或密码错误")
+4. ui.input(username="test", password="123456")  ← 密码已被清空，需重新输入完整密码
+5. ui.tap(登录按钮)
+```
+
+**反模式：** 登录失败后只清空密码框再输入新密码，导致用户名也丢失。
+
+**正确做法：** 失败后重新输入完整的用户名和密码。
+
 ## 最佳实践
 
 1. **优先使用此 skill 作为入口**，让我自动路由到专业 skill
@@ -290,6 +374,8 @@ ios-automation (入口 skill)
 3. **模拟器残留问题**：定期检查 `lsof -iTCP:38321`，清理残留进程
 4. **DEBUG 自动启动服务**：SPMExample 在 DEBUG 环境下于 `viewDidAppear` 自动调用 `server.start()`，无需 `IOS_EXPLORE_AUTOSTART` 等环境变量（该旧变量已废弃，不再被读取）
 5. **保留截图证据**：关键操作前后截图，便于排查问题
+6. **使用 ui.wait 等待动态内容**：页面跳转、加载、动画后需等待 UI 稳定
+7. **理解 iOS 标准行为**：登录失败清空密码、键盘弹出滚动等是正常行为，不是 Bug
 
 ## 相关文档
 

@@ -44,12 +44,9 @@ Use this skill when you need to:
 | `ui.tap` | Select list item | 50-100ms |
 | `ui.swipe` | Manual scrolling or swipe actions | 300-500ms |
 
-> **MCP tool availability:** `ui.inspect`, `ui.scrollToElement`, and `ui.swipe`
-> have native `mcp__iOSDriver__*` tools. **`ui.tap` does not** — it has no native
-> MCP tool exposed to the agent (see findings F-02). Send it through the fallback
-> dispatcher instead:
+> **MCP tool availability:** All commands (`ui.inspect`, `ui.tap`, `ui.scrollToElement`, `ui.swipe`)
+> have native `mcp__iOSDriver__*` tools. If you encounter issues, use the fallback:
 > `call_action(action: "ui.tap", data: { "path": ..., "viewSnapshotID": ... })`.
-> All `ui.tap` examples below assume this fallback form.
 
 **Find item with scrolling:** 1-5 seconds (depends on list size and item position)
 

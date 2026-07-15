@@ -75,6 +75,16 @@ override func viewDidLoad() {
 
 这些开关用于测试工程快速进入特定测试场景，不是 iOSExploreServer 的核心 API。
 
+## 测试凭据
+
+SPMExample 预置测试账号（位于 `Examples/SPMExample/SPMExample/Login/Services/AuthService.swift:31`）：
+
+| 用户名 | 密码 | 说明 |
+|-------|------|------|
+| test | 123456 | 预置账号，用于登录测试 |
+
+登录失败后密码框会被清空（iOS 标准行为），重试需重新输入密码。
+
 ## XcodeBuildMCP 运行配置
 
 ### 三个 profile

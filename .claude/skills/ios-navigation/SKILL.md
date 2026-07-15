@@ -45,11 +45,9 @@ Use this skill when you need to:
 | `ui.navigation.tapBarButton` | Tap navigation bar buttons (left/right) | 304-305ms |
 | `ui.screenshot` | Capture screen state for verification | 200-500ms |
 
-> **MCP tool availability (F-02):** `ui.inspect`, `ui.navigation.back`,
-> `ui.navigation.tapBarButton`, and `ui.screenshot` have native `mcp__iOSDriver__*`
-> tools. **`ui.tap` does not** — send it via the fallback:
-> `call_action(action:"ui.tap", data:{...})`. All `ui.tap` examples below assume
-> this fallback form.
+> **MCP tool availability:** All commands have native `mcp__iOSDriver__*` tools
+> (`ui.inspect`, `ui.tap`, `ui.navigation.back`, `ui.navigation.tapBarButton`, `ui.screenshot`).
+> If issues occur, use fallback: `call_action(action:"ui.tap", data:{...})`.
 
 **Screen transition time:** 200-500ms (including animation)
 

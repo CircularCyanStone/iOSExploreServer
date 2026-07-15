@@ -42,13 +42,11 @@ Use this skill when you need to:
 |---------|---------|-------------|------------------|
 | `ui.inspect` | Detect alert presence and read alert structure | 21ms median | ✅ `mcp__iOSDriver__ui_inspect` |
 | `ui.alert.respond` | Respond to alert by tapping a button | 560ms median (includes animation) | ✅ `mcp__iOSDriver__ui_alert_respond` |
-| `ui.input` | Fill text fields in input alerts (if needed) | 88-129ms | ❌ **无** — 用 `call_action` 兜底 |
-| `ui.tap` | Trigger an action that produces an alert | ~22ms | ❌ **无** — 用 `call_action` 兜底 |
+| `ui.input` | Fill text fields in input alerts (if needed) | 88-129ms | ✅ `mcp__iOSDriver__ui_input` |
+| `ui.tap` | Trigger an action that produces an alert | ~22ms | ✅ `mcp__iOSDriver__ui_tap` |
 
-> **MCP tool availability (F-02):** the alert core (`ui.inspect`, `ui.alert.respond`)
-> has native tools. But `ui.input` and `ui.tap` (used below to fill alert text fields
-> and to trigger alerts) have **no** native `mcp__iOSDriver__*` tool — send them via
-> `call_action(action:"ui.input", data:{...})` / `call_action(action:"ui.tap", data:{...})`.
+> **MCP tool availability:** All commands have native `mcp__iOSDriver__*` tools.
+> If issues occur, use fallback: `call_action(action:"ui.tap", data:{...})`.
 
 **End-to-end alert handling:** ~1.1 seconds (trigger → detect → respond)
 

@@ -130,6 +130,18 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
           return errorResult(normalized as StructuredError);
         }
       }
+    },
+    ui_wait: {
+      name: "ui_wait",
+      description: "等待 UI 稳定或等待目标/文本/快照变化",
+      inputSchema: uiWaitSchema(),
+      handler: async input => {
+        try {
+          return jsonResult(await client.call("ui.wait", input));
+        } catch (error) {
+          return resultForFailure(normalizeError(error));
+        }
+      }
     }
   };
 }
@@ -164,6 +176,57 @@ function waitAndInspectSchema(): JSONObject {
       }
     },
     required: ["conditions"]
+  };
+}
+
+function uiWaitSchema(): JSONObject {
+  return {
+    type: "object",
+    properties: {
+      mode: {
+        type: "string",
+        enum: ["idle", "targetExists", "targetGone", "textExists", "snapshotChanged"],
+        description: "等待模式: idle / targetExists / targetGone / textExists / snapshotChanged"
+      },
+      timeoutMs: {
+        type: "integer",
+        minimum: 0,
+        maximum: 30000,
+        description: "业务超时毫秒数, 范围 0...30000, 默认 3000"
+      },
+      intervalMs: {
+        type: "integer",
+        minimum: 50,
+        maximum: 5000,
+        description: "轮询间隔毫秒数, 范围 50...5000, 默认 100"
+      },
+      stableMs: {
+        type: "integer",
+        minimum: 0,
+        maximum: 10000,
+        description: "idle 模式下连续稳定的毫秒数, 范围 0...10000, 默认 300"
+      },
+      text: {
+        type: "string",
+        description: "textExists 模式要等待的文本片段"
+      },
+      viewSnapshotID: {
+        type: "string",
+        description: "snapshotChanged 模式参照的 viewSnapshotID (由 ui.inspect 签发)"
+      },
+      accessibilityIdentifier: {
+        type: "string",
+        description: "targetExists/targetGone 模式: 按 accessibilityIdentifier 精确定位目标 view"
+      },
+      path: {
+        type: "string",
+        description: "targetExists/targetGone 模式: 按 ui.inspect 或 ui.topViewHierarchy 返回的 root/0/1 路径定位目标 view"
+      },
+      includeHidden: {
+        type: "boolean",
+        description: "idle/textExists/targetExists/targetGone 是否考虑隐藏 view, 默认 false"
+      }
+    }
   };
 }
 
