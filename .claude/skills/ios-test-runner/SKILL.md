@@ -64,12 +64,23 @@ description: |
    - MVP 只跑指定子集时，按用户给的顺序，但仍遵守种子依赖。
 3. 决定 MVP 范围：用户没指定就**全跑**；指定子集（如"跑这 5 条"）就只跑子集，其余标 `skipped`。
 
-### Step 2 — 核对起始状态
+### Step 2 — 核对起始状态 + 清除上一条残留（关键）
 
-每条 intent 执行前，先 `ui_inspect` 确认在预期页面：
+每条 intent 执行前做两件事：**回到正确页面** + **清除上一条的 UI 残留**。
+
+**(a) 回到正确页面**：
 - 登录类 intent 起始须在登录页（`navigationBar.title == "登录"` 或见到"欢迎登录"标题 + "登录"按钮）。
-- 若不在起点：成功路径跑完会跳首页，下一条失败类 intent 必须**回到登录页**——用 `ui_navigation_back`（若能返回）或重启 App 回起点。
-- 登录成功后整栈替换 + `hidesBackButton`，**无法 back** → 失败类 intent 必须重启 App（`stop_app_sim` + `launch_app_sim` 带登录参数）回到登录页。这是 SPMExample 的已知特性。
+- 若不在起点：成功路径跑完会跳首页，下一条失败类 intent 必须**回到登录页**——用 `ui_navigation_back`（若能返回）或重启 App。
+- 登录成功后整栈替换 + `hidesBackButton`，**无法 back** → 失败类 intent 必须重启 App（`stop_app_sim` + `launch_app_sim` 带 `--ios-explore-show-login`）回登录页。
+
+**(b) 清除上一条的 UI 残留（防止同文案串味——最容易踩的坑）**：
+- 连续失败类 intent（如 `login-user-not-found` → `login-wrong-password`）都显示同一句"用户名或密码错误"。前一条跑完后 **errorLabel 残留该文本**；下一条点登录后的 loading 期间（~1.5s）errorLabel 仍是旧文本，`wait_and_inspect` 第一次轮询就会误匹配成 pass（`elapsedMs=0` 时序假象），根本没等新请求完成。
+- 根因：`LoginViewController.loginButtonTapped` 只 `updateLoadingState`，**不清 errorLabel**；新请求失败后才覆盖文本（同文案，看不出区别）。
+- **解法（按可靠性排序）**：
+  1. **每条 intent 前重启 App** 回干净登录页（errorLabel 初始 `isHidden=true`）——消除一切残留，最可靠。代价是慢（每条 ~5s），但 MVP 阶段准确性优先。
+  2. 不愿每条重启时，至少在**点提交前 `ui_inspect` 核对 errorLabel 不可见**，残留就重启。
+  3. 退而求其次：同文案失败用 `app.logs.read` 佐证——看是否有**新的**"开始登录请求"日志条目（证明是新请求，非残留匹配）。
+- **同文案失败类 intent 之间，强烈建议重启**——纯 UI 文本判据无法区分"新一次失败"与"上一条残留"。
 
 ### Step 3 — 执行 prompt（现场解析，不用清单里的 path）
 
@@ -176,6 +187,8 @@ description: |
 4. **诚实 skip**。判据落不了地的（双击守卫、loading 期间按钮禁用的时序窗口、需配合日志的请求次数）标 skipped + 原因，不要硬造 pass。这些正是要反馈给意图层的信号。
 5. **共享状态注意顺序**。成功路径依赖种子数据，注册/重置会改单例——排序时把"依赖种子"的成功路径放前，或跑前重启 App 重置状态。
 6. **成功后回不去登录页就重启**。SPMExample 登录成功整栈替换 + hidesBackButton，下一条失败类 intent 必须 `stop_app_sim` + `launch_app_sim`（带 `--ios-explore-show-login`）回登录页，别浪费时间找返回按钮。
+
+7. **同文案失败类 intent 之间重启 App**（状态隔离）。连续的 `login-user-not-found` / `login-wrong-password` 显示同一句错误，errorLabel 残留会让下一条的 wait 在 loading 期间误匹配成 pass（`elapsedMs=0` 时序假象，见 Step 2b）。重启回干净登录页是最可靠的状态隔离；不重启时必须用 `app.logs.read` 佐证是新请求。
 
 ## Limitations
 
