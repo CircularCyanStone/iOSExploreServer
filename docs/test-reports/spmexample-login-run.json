@@ -1,0 +1,121 @@
+{
+  "run_at": "2026-07-15T15:12:00Z",
+  "app": "SPMExample",
+  "simulator": "iPhone 17 (065CC8DB-8978-46C5-82D6-C96625B608D8)",
+  "manifest": "docs/test-intents/spmexample-login.json",
+  "runner_skill": "ios-test-runner",
+  "connection": "simulator localhost:38321 (no iproxy; SPMExampl PID 62081 listening)",
+  "launch_args": ["--ios-explore-show-login"],
+  "summary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "pass_rate": 1.0,
+    "note": "MVP scope: 5 of 10 login intents. The other 5 (out_of_scope below) need app.logs request-counting or timing-window capture and were not run in this pass."
+  },
+  "business_points_covered": [
+    "LoginViewModel.login — username.isEmpty guard (login-empty-username)",
+    "LoginViewModel.login — password.isEmpty guard (login-empty-password)",
+    "LoginViewModel.login — passes client guard, enters AuthService (login-user-not-found, login-wrong-password, login-success)",
+    "AuthService.login — users[username]==nil → invalidCredentials (login-user-not-found)",
+    "AuthService.login — userData.password != password → invalidCredentials (login-wrong-password)",
+    "AuthService.login — test/123456 match, 1.5s networkDelay, success token (login-success)",
+    "LoginViewController.loginButtonTapped → navigateToHome setViewControllers whole-stack replace (login-success)",
+    "HomeViewController hidesBackButton=true (login-success, backAvailable=false)"
+  ],
+  "results": [
+    {
+      "id": "login-empty-username",
+      "status": "pass",
+      "matched_criterion": "pass:textExists:请输入用户名",
+      "timing_observed": "immediate (client-side guard, before AuthService)",
+      "duration_ms": 600,
+      "wait_elapsedMs_reported": 0,
+      "conditions_used": [
+        {"id": "pass:textExists:请输入用户名", "mode": "textExists", "text": "请输入用户名"},
+        {"id": "fail:textExists:用户名或密码错误", "mode": "textExists", "text": "用户名或密码错误"}
+      ],
+      "evidence": "login_error_label (root/0/0/3) text == '请输入用户名'; alert.available=false; still on LoginViewController.",
+      "notes": "Sync/immediate intent. Username left empty, password=123456. ui_tap → wait_and_inspect matched pass on first poll. Confirms client guard fires before AuthService (no 1.5s delay)."
+    },
+    {
+      "id": "login-empty-password",
+      "status": "pass",
+      "matched_criterion": "pass:textExists:请输入密码",
+      "timing_observed": "immediate (client-side guard, before AuthService)",
+      "duration_ms": 700,
+      "wait_elapsedMs_reported": 0,
+      "conditions_used": [
+        {"id": "pass:textExists:请输入密码", "mode": "textExists", "text": "请输入密码"},
+        {"id": "fail:textExists:用户名或密码错误", "mode": "textExists", "text": "用户名或密码错误"}
+      ],
+      "evidence": "login_error_label text == '请输入密码'; username field shows 'test'; alert.available=false; still on LoginViewController.",
+      "notes": "Sync/immediate intent. Username=test, password cleared (empty). Client guard fires before AuthService."
+    },
+    {
+      "id": "login-user-not-found",
+      "status": "pass",
+      "matched_criterion": "pass:textExists:用户名或密码错误",
+      "timing_observed": "async (~1.5s AuthService networkDelay)",
+      "duration_ms": 1500,
+      "wait_elapsedMs_reported": 0,
+      "conditions_used": [
+        {"id": "pass:textExists:用户名或密码错误", "mode": "textExists", "text": "用户名或密码错误"},
+        {"id": "fail:textExists:请输入用户名", "mode": "textExists", "text": "请输入用户名"}
+      ],
+      "evidence": "login_error_label text == '用户名或密码错误'; username field shows 'nouser'; alert.available=false; still on LoginViewController.",
+      "notes": "Async intent (networkDelay=1.5s, AuthService.swift:22/47). wait_and_inspect reported elapsedMs=0/attempts=1: by the time the first poll ran, the ~1.5s AuthService sleep had already elapsed (inter-call latency between ui_tap and the wait exceeded networkDelay). The criterion-driven wait still matched the correct terminal state — demonstrating robustness over fixed sleep. The elapsedMs metric measures only the polling loop, not total async latency."
+    },
+    {
+      "id": "login-wrong-password",
+      "status": "pass",
+      "matched_criterion": "pass:textExists:用户名或密码错误",
+      "timing_observed": "async (~1.5s AuthService networkDelay)",
+      "duration_ms": 1500,
+      "wait_elapsedMs_reported": 0,
+      "conditions_used": [
+        {"id": "pass:textContains:用户名或密码错误", "mode": "textExists", "text": "用户名或密码错误"}
+      ],
+      "evidence": "app.logs.read (oslog) shows FRESH AuthService request: id754 '📤 开始登录请求: username=test' @15:12:00 → id757 '⚠️ 登录失败（密码错误）: username=test' @15:12:01 → id759 '⚠️ 显示错误信息: 用户名或密码错误'. Confirms test/wrongpassword triggered AuthService L61-63 (password mismatch → invalidCredentials), not residual text.",
+      "notes": "RESIDUAL DISAMBIGUATION CAVEAT (important runner finding): the pass text '用户名或密码错误' is identical to the residual left by the prior login-user-not-found intent on the same login page. Pure-text ui_waitAny cannot distinguish 'fresh AuthService error' from 'leftover label text'. Definitive evidence came from app.logs.read (AuthService '开始登录请求' + '密码错误' log entries). Recommendation: between same-text sequential failure intents, the runner should clear the error label (e.g. re-input a field) OR corroborate with app.logs to prove a fresh request ran."
+    },
+    {
+      "id": "login-success",
+      "status": "pass",
+      "matched_criterion": "pass:textExists:欢迎回来！ + targetGone:导航返回按钮(backAvailable=false)",
+      "timing_observed": "async (~1.5s AuthService networkDelay + navigation)",
+      "duration_ms": 1500,
+      "wait_elapsedMs_reported": 0,
+      "conditions_used": [
+        {"id": "pass:textExists:欢迎回来！", "mode": "textExists", "text": "欢迎回来！"}
+      ],
+      "evidence": "topViewController transitioned LoginViewController → HomeViewController; navigationBar.title='首页', backAvailable=false; home_welcome_label (root/0/0/0) text=='欢迎回来！'; home_username_label 'test', home_email_label 'test@example.com'; no '登录' button visible (whole-stack replace); alert.available=false.",
+      "notes": "Fail conditions (alert / textContains '用户名或密码错误') were DELIBERATELY EXCLUDED from ui_waitAny: the login page still showed residual '用户名或密码错误' from the prior intent, which would have matched a text-based fail condition instantly and produced a false fail. Since success navigates AWAY from the login page (residual error label is on the removed login VC), waiting for the pass-only home text '欢迎回来！' is correct; a timeout would have indicated fail. This is the mirror of the residual caveat on login-wrong-password. Runner lesson: when a pass path navigates away from a page carrying residual fail-text, drop the residual-matching fail conditions from the wait and rely on pass + timeout."
+    }
+  ],
+  "out_of_scope": [
+    {"id": "login-password-retained-on-failure", "reason": "MVP scope (5 intents). Verifiable: needs two consecutive submits and indirect evidence (secure field hides text)."},
+    {"id": "login-button-disabled-during-loading", "reason": "Pure-UI criterion is a ~1.5s timing window (button title cleared + spinner). ui_waitAny can miss the window. Needs targeted mid-loading inspect or app.logs."},
+    {"id": "login-double-tap-guard", "reason": "Pure-UI criterion insufficient — manifest itself notes strong verification requires app.logs.read to count AuthService '开始登录请求' entries (expect 1). Would need double-tap injection + log counting."},
+    {"id": "login-no-back-after-success", "reason": "Already covered indirectly by login-success (backAvailable=false observed). Deduplicated."},
+    {"id": "login-simulate-failure-knob", "reason": "Debug knob only; simulateFailureRate=0 by default (never triggers). Not a business-path test."}
+  ],
+  "runner_findings": {
+    "criteria_that_judge_cleanly": [
+      "textExists for immediate client-side guards (请输入用户名 / 请输入密码) — instant, unambiguous.",
+      "textExists for async terminal states that navigate AWAY (欢迎回来！ on home) — clean, no residual collision.",
+      "targetGone:导航返回按钮 mapped via navigationBar.backAvailable==false — clean signal for hidesBackButton."
+    ],
+    "criteria_that_need_corroboration": [
+      "Same-text sequential failures (用户名或密码错误 for both user-not-found and wrong-password): pure text cannot distinguish fresh vs residual. MUST pair with app.logs.read (AuthService 开始登录请求 / 用户不存在 / 密码错误 entries) or clear error between intents.",
+      "alert criteria have no ui_waitAny mode — must post-check via ui_inspect.alert.available. Workable but requires the extra inspect call."
+    ],
+    "criteria_hard_to_land_in_pure_ui": [
+      "login-double-tap-guard: request-count semantics invisible to UI; needs app.logs request counting.",
+      "login-button-disabled-during-loading: ~1.5s timing window; ui_waitAny polling may miss the transient loading state; needs a mid-flight inspect or a loading-aware wait.",
+      "login-password-retained-on-failure: secure field hides text; needs indirect two-submit protocol."
+    ],
+    "timing_metric_caveat": "ui_waitAny/wait_and_inspect elapsedMs measures only the polling loop. When inter-call latency (tap → wait) exceeds the async delay, the first poll already sees the terminal state and reports elapsedMs=0. Do NOT read elapsedMs as the true async latency — use app.logs timestamps for that (e.g. 15:12:00 → 15:12:01 for the 1.5s networkDelay)."
+  }
+}

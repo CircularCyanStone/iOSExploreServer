@@ -1,0 +1,46 @@
+{
+  "skill_name": "ios-test-runner",
+  "description": "Test cases verifying the skill correctly consumes a test-intent manifest, translates criteria into ui_waitAny.conditions, drives the app, judges pass/fail by which condition fires first, and emits a coverage report. These are shape/behavior checks for the runner workflow (the actual app run is verified by docs/test-reports/spmexample-login-run.json).",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "消费 docs/test-intents/spmexample-login.json 的 login-success intent：在模拟器 SPMExample 上输入 test/123456 点登录，判断 pass/fail。",
+      "expected_output": "Should: (1) ui_inspect the login page and resolve username/password/login-button by TEXT/ROLE not by any path from the manifest (manifest has none); (2) ui_input test + 123456; (3) ui_tap the 登录 button (plain tap, NOT ui_tap_and_inspect); (4) wait_and_inspect with conditions combining pass [textExists:'欢迎回来！'] AND fail [textExists:'用户名或密码错误'], timeoutMs ~5000 (async 1.5s + margin); (5) NO fixed sleep; (6) record status by matchedID — pass if '欢迎回来！' fires. Must NOT use snapshotChanged as success signal (login failure also changes UI).",
+      "files": [
+        "docs/test-intents/spmexample-login.json"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "消费 login-empty-username intent（用户名空、密码任意、点登录），判断 pass/fail。",
+      "expected_output": "Should: (1) leave username empty (do NOT input, or input then clear); (2) ui_tap 登录; (3) wait_and_inspect with pass [textExists:'请输入用户名'] + fail [textExists:'用户名或密码错误'], timeoutMs ~2000 (immediate client-side validation, NOT 5000); (4) record pass when '请输入用户名' fires near-instantly. The timing field '立即（客户端校验）' must drive the short timeout — must NOT wait 1.5s for a client guard that returns before AuthService.",
+      "files": [
+        "docs/test-intents/spmexample-login.json"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "消费 login-success 后紧接着消费 login-user-not-found，如何处理页面状态？",
+      "expected_output": "Should recognize that login-success does setViewControllers whole-stack replace + hidesBackButton, so after success the app is on the home page with NO back button. To run the next failure intent, the runner MUST return to the login page by stop_app_sim + launch_app_sim (with --ios-explore-show-login), NOT by ui_navigation_back (which will fail / is blocked). Must verify via ui_inspect that navigationBar.title == '登录' / '欢迎登录' label is visible before executing the next intent.",
+      "files": [
+        "docs/test-intents/spmexample-login.json"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "消费 login-double-tap-guard intent（快速双击登录，第二次被同步守卫丢弃），纯 UI 判据够吗？",
+      "expected_output": "Should identify this intent as HARD to judge with pure UI criteria: the pass criterion '仅一次首页跳转' is weak (UI only shows one home). The notes in the manifest say strong verification needs app.logs.read to count AuthService '开始登录请求' log entries (should be 1). Should mark this intent skipped (or pass-with-weak-evidence) and explicitly note that pure UI criteria are insufficient — recommend pairing with app.logs.read. Must NOT fabricate a confident pass from UI alone.",
+      "files": [
+        "docs/test-intents/spmexample-login.json"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "把 login-user-not-found 和 login-wrong-password 的 pass_criteria 翻译成 ui_waitAny.conditions。",
+      "expected_output": "Both map to {mode:'textExists', text:'用户名或密码错误'} (textContains ≡ textExists substring in ui_waitAny). Should put pass + fail conditions in ONE ui_waitAny call, each condition carrying an id like 'pass:textExists:用户名或密码错误' / 'fail:textExists:请输入用户名', and use matchedID to decide. For login-user-not-found the fail condition 'textExists:请输入用户名' should NOT fire (the path goes through AuthService). timeoutMs ~5000 (async). Must NOT emit any path/accessibilityIdentifier/viewSnapshotID from the runner — those are resolved at runtime by ui_inspect.",
+      "files": [
+        "docs/test-intents/spmexample-login.json"
+      ]
+    }
+  ]
+}
