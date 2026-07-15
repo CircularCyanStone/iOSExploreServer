@@ -88,6 +88,11 @@ final class SwipeTestViewController: UIViewController {
 
     private var logLines: [String] = []
 
+    /// TableView 数据源（可变）：支持 swipe-to-delete 真删除与 cell 重排。
+    /// 初始 5 行；删除后 `numberOfRowsInSection` 返回 `items.count`，cell 真重排，
+    /// 用于端到端验证「删除后旧 snapshot 是否误中错位 cell」（F-30 测试床）。
+    private var items: [Int] = Array(1...5)
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
@@ -221,13 +226,13 @@ final class SwipeTestViewController: UIViewController {
 
 extension SwipeTestViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        5
+        items.count
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "SwipeCell", for: indexPath)
         var config = cell.defaultContentConfiguration()
-        config.text = "Cell \(indexPath.row + 1)"
+        config.text = "Cell \(items[indexPath.row])"
         config.secondaryText = "左右滑动查看 actions"
         cell.contentConfiguration = config
         cell.accessibilityIdentifier = "swipe.cell.\(indexPath.row)"
@@ -242,7 +247,17 @@ extension SwipeTestViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         let deleteAction = UIContextualAction(style: .destructive, title: "删除") { [weak self] _, _, completion in
-            self?.log("Trailing Swipe: 删除 Cell \(indexPath.row + 1)")
+            guard let self = self else { completion(false); return }
+            // 防御：确保 indexPath 在并发/连续删除场景下仍有效，避免越界崩溃
+            guard indexPath.row < self.items.count else {
+                self.log("Trailing Swipe: 删除取消，row=\(indexPath.row) 已不存在")
+                completion(false)
+                return
+            }
+            // 真删除：先移除数据源，再 deleteRows 触发 cell 重排（动画 .automatic）
+            let removed = self.items.remove(at: indexPath.row)
+            self.tableView.deleteRows(at: [indexPath], with: .automatic)
+            self.log("Trailing Swipe: 已删除 Cell \(removed)（row=\(indexPath.row)），剩余 \(self.items.count) 行")
             completion(true)
         }
         deleteAction.backgroundColor = .systemRed

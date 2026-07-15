@@ -164,12 +164,12 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 # 模拟器：
 session_use_defaults_profile("sim-app")
 build_run_sim()
-launch_app_sim(env={"IOS_EXPLORE_AUTOSTART":"1"})
+launch_app_sim()  # Server 会在 DEBUG 环境自动启动
 
 # 真机：
 session_use_defaults_profile("device-app")
 build_run_device()
-launch_app_device(env={"IOS_EXPLORE_AUTOSTART":"1"})
+launch_app_device()  # Server 会在 DEBUG 环境自动启动
 ```
 
 ### 问题 2: 真机 `curl` 返回的是旧数据/模拟器数据
@@ -216,11 +216,17 @@ xcrun simctl terminate <UDID> com.coo.SPMExample
 | 连接检查 | `mcp__iOSDriver__ping` |
 | UI 检查 | `mcp__iOSDriver__ui_inspect` |
 | 截图 | `mcp__iOSDriver__ui_screenshot` |
-| 点击 | `mcp__iOSDriver__ui_tap` |
+| 点击 | **无原生工具** — 用 `call_action(action:"ui.tap", data:{...})` 兜底（F-02） |
 | 弹窗响应 | `mcp__iOSDriver__ui_alert_respond` |
-| 文本输入 | `mcp__iOSDriver__ui_input` |
+| 文本输入 | **无原生工具** — 用 `call_action(action:"ui.input", data:{...})` 兜底（F-02） |
+| 控件事件（开关/滑块） | **无原生工具** — 用 `call_action(action:"ui.control.sendAction", data:{...})` 兜底（F-02） |
 | 滚动 | `mcp__iOSDriver__ui_scroll` |
 | 导航返回 | `mcp__iOSDriver__ui_navigation_back` |
+
+> **重要（F-02）**：`ui.tap` / `ui.input` / `ui.control.sendAction` 三个命令虽然
+> 在 App server 注册并可用，但 iOSDriver MCP 没有把它们作为原生 `mcp__iOSDriver__*`
+> 工具暴露给 agent。调用这三个命令必须走通用兜底入口
+> `mcp__iOSDriver__call_action(action:"ui.tap", data:{...})`，否则会"工具不存在"。
 
 ## 性能指标
 
@@ -282,7 +288,7 @@ ios-automation (入口 skill)
 1. **优先使用此 skill 作为入口**，让我自动路由到专业 skill
 2. **真机测试前先检查连接状态**，确保 iproxy 正确运行
 3. **模拟器残留问题**：定期检查 `lsof -iTCP:38321`，清理残留进程
-4. **环境变量驱动自动启动**：使用 `IOS_EXPLORE_AUTOSTART=1` 让 App 自动启动服务
+4. **DEBUG 自动启动服务**：SPMExample 在 DEBUG 环境下于 `viewDidAppear` 自动调用 `server.start()`，无需 `IOS_EXPLORE_AUTOSTART` 等环境变量（该旧变量已废弃，不再被读取）
 5. **保留截图证据**：关键操作前后截图，便于排查问题
 
 ## 相关文档
@@ -296,7 +302,7 @@ ios-automation (入口 skill)
 
 ---
 
-**版本**：1.0  
-**创建日期**：2026-07-14  
-**测试覆盖率**：96.3% (200+ 场景)  
+**版本**：1.0
+**创建日期**：2026-07-14
+**测试覆盖率**：库整体覆盖率见 `swift test --enable-code-coverage`（当前约 86.6%）；本 skill 自身的端到端场景数以仓库根 `docs/skills-test-report.json` 为准（待核实，勿沿用旧文的"96.3%/200+"等无源数字）
 **MCP 服务**：XcodeBuildMCP + iOSDriver

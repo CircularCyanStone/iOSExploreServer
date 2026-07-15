@@ -38,11 +38,17 @@ Use this skill when you need to:
 
 ## Commands Used
 
-| Command | Purpose | Performance |
-|---------|---------|-------------|
-| `ui.inspect` | Detect alert presence and read alert structure | 21ms median |
-| `ui.alert.respond` | Respond to alert by tapping a button | 560ms median (includes animation) |
-| `ui.input` | Fill text fields in input alerts (if needed) | 88-129ms |
+| Command | Purpose | Performance | Native MCP tool? |
+|---------|---------|-------------|------------------|
+| `ui.inspect` | Detect alert presence and read alert structure | 21ms median | ✅ `mcp__iOSDriver__ui_inspect` |
+| `ui.alert.respond` | Respond to alert by tapping a button | 560ms median (includes animation) | ✅ `mcp__iOSDriver__ui_alert_respond` |
+| `ui.input` | Fill text fields in input alerts (if needed) | 88-129ms | ❌ **无** — 用 `call_action` 兜底 |
+| `ui.tap` | Trigger an action that produces an alert | ~22ms | ❌ **无** — 用 `call_action` 兜底 |
+
+> **MCP tool availability (F-02):** the alert core (`ui.inspect`, `ui.alert.respond`)
+> has native tools. But `ui.input` and `ui.tap` (used below to fill alert text fields
+> and to trigger alerts) have **no** native `mcp__iOSDriver__*` tool — send them via
+> `call_action(action:"ui.input", data:{...})` / `call_action(action:"ui.tap", data:{...})`.
 
 **End-to-end alert handling:** ~1.1 seconds (trigger → detect → respond)
 
@@ -398,43 +404,14 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}' | jq '.data.al
 # Output shows exact titles and roles
 ```
 
-#### 3. Destructive Role Lookup with Fallback
-
-**Known Issue:** Destructive role lookup occasionally fails on first attempt (seen in 1 of 42 tests).
-
-**Recommended Pattern:**
-```bash
-# Try by role first
-RESULT=$(curl -s -X POST http://localhost:38321/ -d '{
-  "action": "ui.alert.respond",
-  "data": {"role": "destructive"}
-}')
-
-# Check if failed
-if echo "$RESULT" | grep -q '"code":"alert_button_not_found"'; then
-  echo "First attempt failed, retrying..."
-  sleep 0.2
-  RESULT=$(curl -s -X POST http://localhost:38321/ -d '{
-    "action": "ui.alert.respond",
-    "data": {"role": "destructive"}
-  }')
-  
-  # If still fails, fall back to title or index
-  if echo "$RESULT" | grep -q '"code":"alert_button_not_found"'; then
-    echo "Role lookup failed, falling back to title"
-    curl -X POST http://localhost:38321/ -d '{
-      "action": "ui.alert.respond",
-      "data": {"buttonTitle": "Delete"}
-    }'
-  fi
-fi
-```
-
-**Fallback Strategy:**
-1. **First:** Try by role (semantic, language-independent)
-2. **Retry once:** Same role after 200ms delay
-3. **Second:** Fall back to button title (readable, language-dependent)
-4. **Last resort:** Use button index (requires knowing order)
+> **Role lookup reliability (F-39 核对结论):** `destructive` role 查找与
+> `cancel`/`default` 完全一致——`UIAlertRespondExecutor.selectAction` 对三种 role
+> 统一用 `$0.role == parsedRole` 等值匹配（`UIAlertAction.Style` 映射），无特殊失败
+> 分支。早期文档声称的"destructive 偶发失败 (1 of 42)"是把测试报告里**唯一的**失败
+> 用例（test #42「Invalid button index」——传 index=99 期望 `invalid_button_index`
+> 实得 `alert_button_not_found`，与 role 无关）误植到 destructive role 上。结论：
+> **不需要为 destructive role 套 retry/fallback 逻辑**，按需用 role/title/index 任
+> 一即可。
 
 #### 3. Invalid Button Index
 **Cause:** buttonIndex > 20 or < 0
@@ -474,26 +451,18 @@ else
 fi
 ```
 
-### 2. Prefer Role-Based with Fallback Strategy
+### 2. Prefer Role-Based or Index-Based Response
 
 ```bash
-# Best: Semantic and language-independent, with fallback
-# Try role first
-RESULT=$(curl -s -X POST http://localhost:38321/ -d '{"action":"ui.alert.respond","data":{"role":"destructive"}}')
+# Best: language-independent semantic selection (role works the same for
+# cancel / default / destructive — no special retry needed)
+curl -X POST http://localhost:38321/ -d '{"action":"ui.alert.respond","data":{"role":"cancel"}}'
 
-# If fails, retry once
-if echo "$RESULT" | grep -q "alert_button_not_found"; then
-  sleep 0.2
-  RESULT=$(curl -s -X POST http://localhost:38321/ -d '{"action":"ui.alert.respond","data":{"role":"destructive"}}')
-fi
-
-# If still fails, fall back to title
-if echo "$RESULT" | grep -q "alert_button_not_found"; then
-  curl -X POST http://localhost:38321/ -d '{"action":"ui.alert.respond","data":{"buttonTitle":"Delete"}}'
-fi
-
-# Last resort: use index (requires knowing button order)
+# Or by index when button order is known
 # {"buttonIndex": 1}
+
+# Or by exact title when order/role is unknown (case-sensitive)
+# {"buttonTitle": "确认"}
 ```
 
 ### 3. Handle Timing Properly
@@ -577,15 +546,13 @@ All response fields verified:
 
 ### Known Limitations
 
-1. **Destructive Role Edge Case:** Occasionally fails on first attempt with role-based destructive lookup. Retry or use index/title as fallback.
+1. **Animation Timing:** Response includes ~400-500ms wait for dismissal animation. Cannot be skipped.
 
-2. **Animation Timing:** Response includes ~400-500ms wait for dismissal animation. Cannot be skipped.
+2. **Nested Alerts:** Only top-most alert is accessible. If multiple alerts are stacked, must dismiss current alert before accessing next.
 
-3. **Nested Alerts:** Only top-most alert is accessible. If multiple alerts are stacked, must dismiss current alert before accessing next.
+3. **System Alerts:** Cannot handle system alerts (permissions, notifications) - only UIAlertController alerts within the app.
 
-4. **System Alerts:** Cannot handle system alerts (permissions, notifications) - only UIAlertController alerts within the app.
-
-5. **Custom Alert Views:** Only works with UIAlertController. Custom modal views require other skills (ios-navigation, ios-gestures).
+4. **Custom Alert Views:** Only works with UIAlertController. Custom modal views require other skills (ios-navigation, ios-gestures).
 
 ## Related Skills
 
@@ -598,7 +565,7 @@ All response fields verified:
 
 **Total Tests:** 42  
 **Passed:** 41  
-**Failed:** 1 (destructive role edge case)  
+**Failed:** 1 (invalid button index error-code mismatch — sent index 99, expected `invalid_button_index`, got `alert_button_not_found`; unrelated to role lookup)  
 **Success Rate:** 97%  
 **Test Report:** `docs/alert-test-complete-report.json`
 
@@ -613,10 +580,15 @@ All response fields verified:
 - ✅ Error handling (no alert, invalid button)
 - ✅ Rapid consecutive alerts (5 alerts in sequence)
 - ✅ Performance benchmarks (10 iterations)
-- ⚠️ Destructive role lookup (partial failure, needs investigation)
+
+> **F-39 核对结论**：报告 `scenarios_tested` 里有条手写备注"Role 'destructive'
+> failed - needs investigation"，但该 scenario 整体标 PASS，且 42 条 `detailed_results`
+> 里**没有任何**role/destructive 相关的失败用例——唯一失败是 test #42 invalid button
+> index（见上）。源码 `UIAlertRespondExecutor.selectAction` 对三种 role 等值匹配，
+> destructive 无特殊失败路径。因此 skill 不再保留"destructive 偶发失败"声明。
 
 ## Production Readiness
 
-✅ **Production Ready with Known Limitations**
+✅ **Production Ready**
 
-This skill is 97% tested across 42 scenarios including all alert types, response methods, and error cases. Core functionality is solid. One edge case (destructive role lookup) has occasional failures - use index or title as fallback. Safe for production use with proper error handling.
+This skill is 97% tested across 42 scenarios including all alert types, response methods, and error cases. Core functionality is solid. Role-based response (`cancel`/`default`/`destructive`) is handled uniformly in the executor — no known role-specific failure mode. The single failed test is an invalid-button-index error-code mismatch (error code naming, not a functional defect). Safe for production use with proper error handling.

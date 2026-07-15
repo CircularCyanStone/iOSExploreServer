@@ -399,11 +399,14 @@ enum UIInspectCollector {
 
     /// 提取 canonical target 的稳定语义文本（按钮内部 label/image 不再作为独立 target，
     /// 其文本汇总到父 target）。优先级：accessibilityIdentifier（最稳定）→ a11y label → a11y value → 控件标题（button/segmented）→ label text → placeholder → textView text。
-    /// 不记录明文到日志；返回文本按 `limit` 裁剪。
+    /// 不记录明文到日志；返回文本按 `limit` 裁剪（accessibilityIdentifier 除外，完整保留）。
     private static func semanticText(for view: UIView, limit: Int) -> (text: String, source: String)? {
-        // 优先级 1：accessibilityIdentifier —— UI 自动化专用，最稳定
+        // secure UITextField 子节点（如编辑态 UIFieldEditor）的 accessibilityValue 返回明文密码，
+        // 必须在取值前按祖先链屏蔽。见 F-01。
+        if view.explore_secureTextEntryAncestor != nil { return nil }
+        // 优先级 1：accessibilityIdentifier —— UI 自动化专用，最稳定，完整保留不截断
         if let identifier = view.accessibilityIdentifier, !identifier.isEmpty {
-            return (UIInspectText.limited(identifier, limit: limit) ?? identifier, "accessibilityIdentifier")
+            return (identifier, "accessibilityIdentifier")
         }
         // 优先级 2：accessibilityLabel —— 无障碍名称
         if let label = view.accessibilityLabel, !label.isEmpty {
@@ -480,6 +483,10 @@ enum UIInspectCollector {
     /// 的 `UIViewHierarchyCollector.textInfo` 保持同一口径，避免 inspect 的按钮节点 text
     /// 恒为 null 而层级树却有标题的字段间不一致。
     private static func textualValue(from view: UIView) -> String? {
+        // secure UITextField 子节点（如编辑态 UIFieldEditor）的文本属性返回明文密码，
+        // 必须在取值前按祖先链屏蔽，与 textField 本体的 isSecureTextEntry 守卫共用同一判定。
+        // 见 F-01。
+        if view.explore_secureTextEntryAncestor != nil { return nil }
         if let label = view as? UILabel { return label.text }
         if let button = view as? UIButton {
             return button.title(for: .normal) ?? button.currentTitle
@@ -523,6 +530,10 @@ enum UIInspectCollector {
     /// 值才能保证 `ui.control.sendAction` 设值后这里能稳定读回，闭合"设值→验证"链路。输出
     /// 格式与 `UIViewHierarchyCollector.resolvedAccessibilityValue` 对齐。
     private static func value(from view: UIView) -> String? {
+        // secure UITextField 子节点（如编辑态 UIFieldEditor）的 accessibilityValue 返回明文密码，
+        // 必须在取值前按祖先链屏蔽。textField/.textView 本体已由下方显式 return nil 覆盖，
+        // 此处覆盖的是不继承 UITextField 类型但祖先链含 secure field 的子节点。见 F-01。
+        if view.explore_secureTextEntryAncestor != nil { return nil }
         if view is UITextField || view is UITextView { return nil }
         if let switchView = view as? UISwitch { return switchView.isOn ? "on" : "off" }
         if let slider = view as? UISlider { return String(Double(slider.value)) }

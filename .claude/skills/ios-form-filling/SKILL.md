@@ -7,8 +7,9 @@ description: |
   select segments, or submit forms in iOS applications (iPhone/iPad apps).
   
   Must explicitly mention iOS, iPhone, iPad, or mobile app form filling to trigger.
-  
-  Based on iOSDriver MCP Server with 100% command coverage and 200+ test scenarios.
+
+  Based on iOSDriver MCP Server. Note: ui.input/ui.tap/ui.control.sendAction have no
+  native MCP tool and must go through call_action (see F-02 inside).
 ---
 
 # iOS Form Filling & Data Entry
@@ -38,13 +39,21 @@ Use this skill when you need to:
 
 ## Commands Used
 
-| Command | Purpose | Performance |
-|---------|---------|-------------|
-| `ui.inspect` | Find form fields and their paths | 100-200ms |
-| `ui.input` | Enter text into fields (replace/append) | 88-129ms per field |
-| `ui.control.sendAction` | Toggle switches, adjust sliders/steppers/segments | 3-4ms |
-| `ui.keyboard.dismiss` | Close keyboard after input | 200-250ms |
-| `ui.tap` | Tap submit buttons | 50-100ms |
+| Command | Purpose | Performance | Native MCP tool? |
+|---------|---------|-------------|------------------|
+| `ui.inspect` | Find form fields and their paths | 100-200ms | ✅ `mcp__iOSDriver__ui_inspect` |
+| `ui.input` | Enter text into fields (replace/append) | 88-129ms per field | ❌ **无** — 用 `call_action` 兜底 |
+| `ui.control.sendAction` | Toggle switches, adjust sliders/steppers/segments | 3-4ms | ❌ **无** — 用 `call_action` 兜底 |
+| `ui.keyboard.dismiss` | Close keyboard after input | 200-250ms | ✅ `mcp__iOSDriver__ui_keyboard_dismiss` |
+| `ui.tap` | Tap submit buttons | 50-100ms | ❌ **无** — 用 `call_action` 兜底 |
+
+> **重要（F-02 / F-38）**：`ui.input`、`ui.control.sendAction`、`ui.tap` 这三个
+> 命令在 App server 注册并可用，但 iOSDriver MCP **没有**把它们暴露成原生
+> `mcp__iOSDriver__*` 工具。调用时必须走通用兜底入口
+> `mcp__iOSDriver__call_action(action:"ui.input", data:{...})`
+> （把 `ui.input` 换成对应命令名），否则 agent 会报"工具不存在"。
+> 因此本 skill 的 **控件交互（开关/滑块/步进/分段）全部依赖 `call_action` 兜底**，
+> 而不是有专属工具。
 
 **Total form fill time (5 fields):** < 1 second
 
@@ -65,10 +74,14 @@ Use this skill when you need to:
 - Unicode and emoji support (full UTF-8)
 - Empty string input (clear field)
 - Secure text fields (passwords) - text is masked
-- Multi-line input with `\n` line breaks
-- Auto-submit option to dismiss keyboard
+- Multi-line input with `\n` — **only in `UITextView`**; `UITextField` rejects newline (the return key triggers its action instead of inserting a line break). See Example 3.
+- Auto-submit option to dismiss keyboard (`submit`, default `true`)
 
 ### 2. Control Interaction
+
+> **所有控件交互都走 `ui.control.sendAction`，该命令无原生 MCP 工具（F-02/F-38）。**
+> 把下面示例里的 `{"action":"ui.control.sendAction","data":{...}}` 改用
+> `call_action(action:"ui.control.sendAction", data:{...})` 发送即可。
 
 **UISwitch (Toggle Switches):**
 ```json
@@ -213,9 +226,16 @@ curl -X POST http://localhost:38321/ -d '{
 }'
 ```
 
-### Example 3: Multi-line Text Entry
+### Example 3: Multi-line Text Entry (UITextView only)
+
+> **`UITextField` rejects `\n`.** The newline character is only accepted by
+> `UITextView`. Sending `"Line 1\nLine 2"` to a `UITextField` returns
+> `input_rejected` (the return key triggers the field's action instead of inserting
+> a line break — UIKit inherent behavior, see findings F-04). Confirm the target is
+> a `UITextView` via `ui.inspect` before using `\n`.
 
 ```bash
+# Target must be UITextView (verified via ui.inspect .type == "UITextView")
 curl -X POST http://localhost:38321/ -d '{
   "action": "ui.input",
   "data": {
@@ -405,7 +425,7 @@ echo "✅ Multi-page form completed"
   "viewSnapshotID": "snap-abc123",      // Required: snapshot ID from ui.inspect
   "text": "Hello World",                 // Required: text to enter (can be empty string)
   "mode": "replace",                     // Optional: "replace" (default) or "append"
-  "submit": false                        // Optional: dismiss keyboard after input (default: false)
+  "submit": true                         // Optional: resignFirstResponder after input (default: true)
 }
 ```
 
@@ -509,7 +529,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.input","data":{"path":"ro
 **Solution:**
 - Call `ui.inspect` again to get fresh snapshot ID
 - Retry operation with new snapshot ID
-- Snapshots have 60-second TTL
+- Snapshots have a 120-second TTL
 
 **Example:**
 ```bash
@@ -618,7 +638,7 @@ Instead of fragile path-based lookups, use accessibilityIdentifier when availabl
 
 ### Known Limitations
 
-1. **Snapshot TTL:** Snapshots expire after 60 seconds. For long forms, refresh snapshot periodically.
+1. **Snapshot TTL:** Snapshots expire after 120 seconds. For long forms, refresh snapshot periodically.
 
 2. **Keyboard Types:** Cannot change keyboard type (numeric, email, URL). Keyboard type is determined by field configuration.
 
@@ -632,7 +652,7 @@ Instead of fragile path-based lookups, use accessibilityIdentifier when availabl
 
 ### Platform Constraints
 
-- **iOS 14.0+** required
+- **iOS 26.2+** required (matches the SPMExample deployment target; older "iOS 14+" claim was outdated)
 - **Debug builds only** (uses private APIs for control manipulation)
 - **Main thread execution** - control actions must complete within 5 seconds
 
@@ -645,9 +665,9 @@ Instead of fragile path-based lookups, use accessibilityIdentifier when availabl
 
 ## Test Coverage
 
-**Total Tests:** 10  
-**Success Rate:** 100%  
-**Test Report:** `docs/input-alert-control-test-report.json`
+**Total Tests:** 10 (per the report below; the old "200+ scenarios" headline was unsourced and removed — F-40)
+**Success Rate:** 100%
+**Test Report:** `docs/input-alert-control-test-report.json`（路径相对于**仓库根**，不是相对于本 skill 目录）
 
 **Tested Scenarios:**
 - ✅ UITextField replace mode

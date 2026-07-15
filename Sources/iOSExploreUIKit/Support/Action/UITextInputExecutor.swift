@@ -34,10 +34,17 @@ enum UITextInputExecutor {
         let action = InputCommand.actionName
 
         // 1. 定位（真实签名：ambiguous 单参闭包）。
+        //    notFound 用 target_not_found（与 tap/control/scroll/scrollToElement/swipe/longPress
+        //    同款 code + 恢复指引），不再用 invalid_data（旧码与 message "input target not_found"
+        //    自相矛盾，且是 6 个命令里唯一的离群点）。ambiguous 保持 invalid_data（全库一致惯例）。
+        //    见 F-03。
         let located = try UIKitLocatorResolver.locate(
             locator: input.target.locator,
             in: context.rootView,
-            notFound: { UIKitCommandError.invalidData(action: action, message: "input target not found") },
+            notFound: { UIKitCommandError.targetNotFound(
+                action: action,
+                message: "input target not found — the page view tree may have changed; call ui.inspect first, then retry with a fresh target",
+                logMessage: "ui input target not found action=\(action) target=\(input.target.logSummary)") },
             ambiguous: { n in UIKitCommandError.invalidData(action: action, message: "input target ambiguous count=\(n)") }
         )
 
@@ -89,6 +96,14 @@ enum UITextInputExecutor {
         }
 
         // 7. 注入文本。
+        // 设计特性 F-27（勿当 bug 重提）: ui.input 的文本经 UIKit `insertText` **字面量**
+        // 写入 UITextField/UITextView——不做任何转义、不求值、不做注入防护。`<script>`、
+        // `' OR 1=1--`、`${7*7}`、路径穿越串、超长串、零宽字符等都会原样存进控件的 text。
+        // 这是 UITextField/UITextView 的预期行为（它们是文本编辑控件，不是 HTML/模板/SQL
+        // 渲染器，UIKit 本身就不对这些内容做处理）。本库是 Debug 探索工具，不负责、也不应该
+        // 在这里替宿主做注入过滤。**宿主若把用户输入（含经 ui.input 写入的文本）拼进 SQL /
+        // HTML / Shell / 模板，必须自行参数化或转义**，否则 `' OR 1=1--` 这类输入在生产侧是
+        // 真实注入向量。同理，文本长度无上限也是性能隐患，长输入由调用方自行约束。
         textInput.insertText(input.text)
 
         // 8. 读取最终文本并比对（append 期望含旧文本）。
@@ -99,7 +114,8 @@ enum UITextInputExecutor {
             throw UIKitCommandError.inputRejected(action: action,
                                                   expectedLen: expected.count,
                                                   finalLen: finalText.count,
-                                                  secure: secure)
+                                                  secure: secure,
+                                                  singleLineField: view is UITextField)
         }
 
         // 9. 可选 resignFirstResponder。

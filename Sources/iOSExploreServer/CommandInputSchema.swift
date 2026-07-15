@@ -54,8 +54,24 @@ public struct CommandInputOneOfBranch: Sendable, Equatable {
 ///
 /// JSON Schema 能表达一部分结构化约束；无法标准表达或暂不执行的业务约束会进入
 /// `x-iosExplore-constraints`，供上层工具和文档展示。
+///
+/// - Important (设计特性 F-25，勿当 bug 重提): 本枚举的所有约束（含 `exactlyOneOf` 与
+///   `oneOf`）**只在 `CommandInputSchema.toJSON()` 生成给 MCP 客户端的 JSON Schema
+///   描述时被消费**，作用是向工具客户端声明字段之间的互斥/必选关系。**运行时
+///   `CommandInput.parse(from:)` 不会评估这些约束**——默认解析入口只做三件事：拒绝未知
+///   字段、逐字段按声明类型读取、断言每个声明字段都被读到（`assertAllDeclaredFieldsRead`）。
+///   它不会因为"互斥字段同时出现"或"必选字段都没出现"而报错。因此，凡是 schema 里声明了
+///   `exactlyOneOf` 的命令，**必须**在自身的 `parse(decoding:)` 里手写互斥/必选校验，
+///   参考实现见 `UIKitViewLookupTarget.parse`（identifier 与 path 二选一的互斥兜底就写在
+///   那里）。若漏写，运行时会静默接受 schema 上声明互斥的两个字段，只在客户端侧靠 schema
+///   提示拦截，服务端不拦——这是已知设计特性，不是 bug。新增带互斥字段的命令时，务必
+///   同步补上手写校验，别误以为"声明了 exactlyOneOf 就安全"。
 public enum CommandInputConstraint: Sendable, Equatable {
     /// 要求给定字段中恰好一个出现。
+    ///
+    /// - Warning (F-25): 该约束只影响 `toJSON()` 输出的 schema 描述，`CommandInput.parse(from:)`
+    ///   运行时**不**强制。使用此约束的命令必须在 `parse(decoding:)` 里自行实现"恰好一个"
+    ///   的校验（参考 `UIKitViewLookupTarget.parse`），否则运行时会静默接受两个字段。
     case exactlyOneOf([String])
     /// 输出显式 `oneOf` 分支，用于表达成对字段、互斥字段和补充禁止条件。
     case oneOf([CommandInputOneOfBranch])

@@ -210,6 +210,21 @@ enum UIKitActionExecutor {
                                                           targetDescription: located.pathString,
                                                           type: String(describing: Swift.type(of: located.view)))
             }
+            // isEnabled 守卫：UIKit 中 `isEnabled` 只拦截真实触摸追踪，不拦截编程式
+            // `sendActions(for:)`。若不在此拦截，agent 对 disabled 按钮的 tap 仍会触发
+            // target-action，绕过 App 的防重入逻辑（如 loading 中 loginButton.isEnabled=false），
+            // 与人类触摸语义不一致。disabled 时返回 activated:false 让 agent 知晓按钮未响应。
+            // 见 F-18。
+            if !control.isEnabled {
+                UIKitCommandLogging.info("command", "ui tap default activation route=control.touchUpInside skipped disabled path=\(located.pathString) type=\(String(describing: Swift.type(of: control)))")
+                return [
+                    "activated": .bool(false),
+                    "activationRoute": .string(route.rawValue),
+                    "path": .string(located.pathString),
+                    "type": .string(String(describing: Swift.type(of: control))),
+                    "reason": .string("disabled"),
+                ]
+            }
             UIKitCommandLogging.info("command", "ui tap default activation route=control.touchUpInside path=\(located.pathString) type=\(String(describing: Swift.type(of: control)))")
             control.sendActions(for: .touchUpInside)
             return [
@@ -429,6 +444,14 @@ private extension JSONValue {
     }
 
     /// UISwitch 接受的布尔输入：JSON bool 或 JSON number 0/1。
+    ///
+    /// - Note (设计特性 F-26，已文档化特例，勿当 bug 重提): 这是整个库里**唯一**一处把 JSON
+    ///   number 当 bool 接受的地方，且仅作用于 `ui.control.sendAction` 写 UISwitch 时的
+    ///   `value` 字段（经 `applyValue` 调用）。原因是 UISwitch 的开/关天然映射 0/1，工具
+    ///   客户端常以数字表达开关状态，故此处放宽。**不要把这个 0/1 宽容推广到其它布尔字段**：
+    ///   `submit`、`animated`、`includeHidden` 等由 `CommandFields.bool` 严格判定，只接受
+    ///   JSON `true`/`false`，传 `1`/`0` 会被拒为 `invalid_data`。若未来要新增"接受数字当
+    ///   bool"的字段，应像这里一样单写一个解析器并在此注释里登记，而不是改 `CommandFields.bool`。
     var switchBoolValue: Bool? {
         if let value = boolValue {
             return value

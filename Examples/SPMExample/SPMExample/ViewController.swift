@@ -11,37 +11,6 @@ import iOSExploreServer
 import iOSExploreUIKit
 import iOSExploreDiagnostics
 
-private struct ExampleGreetingInput: CommandInput {
-    static let nameField = CommandFields.optionalString("name", description: "名字；缺省时返回 world")
-    static let inputSchema = CommandInputSchema(fields: [nameField.erased])
-
-    let name: String
-
-    static func parse(decoding decoder: inout CommandInputDecoder) throws -> ExampleGreetingInput {
-        ExampleGreetingInput(name: try decoder.read(nameField) ?? "world")
-    }
-}
-
-#if DEBUG
-private struct ExampleStdIOMessageInput: CommandInput {
-    /// 注意：字段名是 `message` 而非 `text`（与其他命令走不同命名风格）。
-    /// `text` 是 ui.input 的注入文本字段；这里的 `message` 是 logger/stdio 消息语义。
-    /// 如果不确定，查一下 `debug.emitStdout` 的描述：message = 诊断文本。
-    static let messageField = CommandFields.optionalString("message", description: "写入 stdout/stderr 的文本（注意字段名是 message 不是 text）；缺省时使用默认诊断 marker。")
-    static let tokenField = CommandFields.optionalString("token", description: "兼容测试脚本的短 token；未传 message 时作为写入文本。")
-    static let inputSchema = CommandInputSchema(fields: [messageField.erased, tokenField.erased])
-
-    let message: String
-
-    static func parse(decoding decoder: inout CommandInputDecoder) throws -> ExampleStdIOMessageInput {
-        let messageValue = try decoder.read(messageField)
-        let tokenValue = try decoder.read(tokenField)
-        let message = messageValue ?? tokenValue ?? "SPMExample stdio diagnostic marker"
-        return ExampleStdIOMessageInput(message: message)
-    }
-}
-#endif
-
 /// 主页菜单项。
 private struct MenuItem {
     let title: String
@@ -51,7 +20,11 @@ private struct MenuItem {
 }
 
 final class ViewController: UIViewController {
-    private let server = ExploreServer()
+    /// 使用 AppDelegate 中的全局 server 实例
+    private var server: ExploreServer {
+        return AppDelegate.shared.server
+    }
+
     private var logLines: [String] = []
     private let statusLabel = UILabel()
     private let startButton = UIButton(type: .system)
@@ -86,67 +59,7 @@ final class ViewController: UIViewController {
         setupLayout()
         updateStatus(running: false)
 
-        server.register(action: "greet", description: "按 name 打招呼", input: ExampleGreetingInput.self) { input in
-            .success(["message": .string("Hello, \(input.name)")])
-        }
-        server.register(action: "device", description: "返回设备机型与名称(UIKit 注入)", input: EmptyCommandInput.self) { _ in
-            return await MainActor.run {
-                .success(["model": .string(UIDevice.current.model),
-                          "name": .string(UIDevice.current.name)])
-            }
-        }
-
-        server.registerUIKitCommands()
-
-        #if DEBUG
-        server.registerDiagnosticsCommands(Self.exampleDiagnosticsConfiguration())
-        #else
-        server.registerDiagnosticsCommands(.init(captureStdout: false, captureStderr: false))
-        #endif
-
-        server.register(action: "debug.probe",
-                        description: "alive probe (非 DEBUG, 验证新 binary)",
-                        input: EmptyCommandInput.self) { _ in
-            .success(["alive": .bool(true), "build": .string("gesture-adapter-2026-07-04")])
-        }
-
-        server.register(action: "debug.emitAppLog",
-                        description: "写入一条 SPMExample bridge 诊断日志",
-                        input: ExampleStdIOMessageInput.self) { input in
-            ExploreAppLog.emit(.info,
-                               category: "spm.example",
-                               message: input.message)
-            return .success(["emitted": .bool(true)])
-        }
-
-        #if DEBUG
-        server.register(action: "debug.emitStdout",
-                        description: "向 stdout 写入一条 SPMExample 诊断文本",
-                        input: ExampleStdIOMessageInput.self) { input in
-            Self.emitStdIOMessage(input.message, source: "stdout")
-        }
-        server.register(action: "debug.emitStderr",
-                        description: "向 stderr 写入一条 SPMExample 诊断文本",
-                        input: ExampleStdIOMessageInput.self) { input in
-            Self.emitStdIOMessage(input.message, source: "stderr")
-        }
-        server.register(action: "debug.emitNSLog",
-                        description: "通过 NSLog 写入一条 SPMExample 诊断文本",
-                        input: ExampleStdIOMessageInput.self) { input in
-            Self.emitNSLogMessage(input.message)
-        }
-        server.register(action: "debug.emitOSLog",
-                        description: "通过 os_log 写入一条 SPMExample 诊断文本",
-                        input: ExampleStdIOMessageInput.self) { input in
-            Self.emitOSLogMessage(input.message)
-        }
-        server.register(action: "debug.emitLogger",
-                        description: "通过 Swift Logger 写入一条 SPMExample 诊断文本",
-                        input: ExampleStdIOMessageInput.self) { input in
-            Self.emitLoggerMessage(input.message)
-        }
-        #endif
-
+        // 监听 server 事件（命令已在 AppDelegate 中注册）
         eventsTask = Task { @MainActor [weak self, server] in
             for await event in server.events() {
                 guard let self else { return }
@@ -346,21 +259,18 @@ extension ViewController {
         guard !didRunLaunchAutomation else { return }
         didRunLaunchAutomation = true
 
+        // server 已在 AppDelegate.didFinishLaunchingWithOptions 中启动，
+        // 这里只负责根据启动参数打开特定测试页面。
         let arguments = Set(ProcessInfo.processInfo.arguments)
         let environment = ProcessInfo.processInfo.environment
-        let shouldAutostart = true
+
         let shouldOpenAlertTest = arguments.contains("--ios-explore-open-alert-test")
             || environment["IOS_EXPLORE_OPEN_ALERT_TEST"] == "1"
         let shouldOpenSwipeTest = arguments.contains("--ios-explore-open-swipe-test")
             || environment["IOS_EXPLORE_OPEN_SWIPE_TEST"] == "1"
         let shouldOpenLongPressTest = arguments.contains("--ios-explore-open-longpress-test")
             || environment["IOS_EXPLORE_OPEN_LONGPRESS_TEST"] == "1"
-        print("iOSExplore launch automation autostart=\(shouldAutostart) openAlertTest=\(shouldOpenAlertTest) openSwipeTest=\(shouldOpenSwipeTest) openLongPressTest=\(shouldOpenLongPressTest) arguments=\(ProcessInfo.processInfo.arguments)")
 
-        if shouldAutostart {
-            appendLog("launch automation: start server")
-            startServer()
-        }
         if shouldOpenAlertTest {
             appendLog("launch automation: open alert test")
             openAlertTest()
@@ -388,96 +298,36 @@ extension ViewController {
     }
 }
 
-// MARK: - Diagnostics 配置 & Debug 命令
+// MARK: - Diagnostics / Debug 测试入口（转发到 AppDelegate）
+//
+// 真正的命令注册、Diagnostics 配置和 emit 实现都在 AppDelegate（server 归属处）。
+// 这里只保留测试用例调用的入口，转发到 AppDelegate，避免逻辑分散。
 extension ViewController {
     #if DEBUG
     static func exampleDiagnosticsConfiguration() -> DiagnosticsConfiguration {
-        DiagnosticsConfiguration(captureStdout: true,
-                                 captureStderr: true,
-                                 captureNSLog: true,
-                                 captureOSLog: true)
-    }
-
-    nonisolated static func emitStdIOMessage(_ message: String, source: String) -> ExploreResult {
-        let line = message + "\n"
-        let data = Data(line.utf8)
-        switch source {
-        case "stdout":
-            FileHandle.standardOutput.write(data)
-        case "stderr":
-            FileHandle.standardError.write(data)
-        default:
-            return .failure(code: .invalidData, message: "unsupported stdio source")
-        }
-        ExploreAppLog.emit(.info,
-                           category: "spm.example.stdio",
-                           message: "SPMExample \(source) debug command wrote bytes=\(data.count)")
-        return .success([
-            "source": .string(source),
-            "message": .string(message),
-            "bytes": .double(Double(data.count)),
-        ])
+        AppDelegate.shared.exampleDiagnosticsConfiguration()
     }
 
     static func emitStdIOMessageForTesting(_ message: String, source: String) -> ExploreResult {
-        emitStdIOMessage(message, source: source)
-    }
-
-    nonisolated static func emitNSLogMessage(_ message: String) -> ExploreResult {
-        NSLog("%@", message)
-        ExploreAppLog.emit(.info,
-                           category: "spm.example.nslog",
-                           message: "SPMExample NSLog debug command emitted")
-        return .success([
-            "source": .string("nslog"),
-            "message": .string(message),
-        ])
+        AppDelegate.emitStdIOMessage(message, source: source)
     }
 
     static func emitNSLogMessageForTesting(_ message: String) -> ExploreResult {
-        emitNSLogMessage(message)
-    }
-
-    nonisolated static func emitOSLogMessage(_ message: String) -> ExploreResult {
-        os_log("%{public}@", log: OSLog(subsystem: "com.coo.SPMExample",
-                                        category: "diagnostics"),
-               type: .error,
-               message)
-        return .success([
-            "source": .string("oslog"),
-            "message": .string(message),
-            "api": .string("os_log"),
-        ])
+        AppDelegate.emitNSLogMessage(message)
     }
 
     static func emitOSLogMessageForTesting(_ message: String) -> ExploreResult {
-        emitOSLogMessage(message)
-    }
-
-    nonisolated static func emitLoggerMessage(_ message: String) -> ExploreResult {
-        if #available(iOS 14.0, macOS 11.0, *) {
-            let logger = Logger(subsystem: "com.coo.SPMExample", category: "diagnostics")
-            logger.error("\(message, privacy: .public)")
-            return .success([
-                "source": .string("oslog"),
-                "message": .string(message),
-                "api": .string("Logger"),
-            ])
-        }
-        return .failure(code: .unsupportedTarget,
-                        message: "Swift Logger requires iOS 14 or newer.")
+        AppDelegate.emitOSLogMessage(message)
     }
 
     static func emitLoggerMessageForTesting(_ message: String) -> ExploreResult {
-        emitLoggerMessage(message)
+        AppDelegate.emitLoggerMessage(message)
     }
 
     static func stdIOMessageForTesting(data: JSON) throws -> String {
-        try ExampleStdIOMessageInput.parse(from: data).message
+        try AppDelegate.stdIOMessageForTesting(data: data)
     }
-    #endif
 
-    #if DEBUG
     func registeredCommandActionsForTesting() -> [String] {
         server.commandMetadata().map(\.action)
     }

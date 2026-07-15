@@ -72,5 +72,33 @@ extension UIView {
         }
         return nil
     }
+
+    /// 从自身向上遍历 superview 链，返回第一个 `isSecureTextEntry == true` 的 `UITextField` 祖先
+    /// （不含自身）。
+    ///
+    /// 用于 ui.inspect / ui.topViewHierarchy 的取值脱敏：当 secure `UITextField`（密码框）成为
+    /// firstResponder 后，UIKit 会插入一个 `UIFieldEditor` 子节点承载编辑态文本，该子节点的
+    /// `accessibilityValue` / 文本属性返回**明文密码**（`UITextField.text` 在子节点上不经过
+    /// `isSecureTextEntry` 的圆点渲染）。如果不检查祖先链，`UIInspectCollector` 的
+    /// `value` / `semanticText` / `textualValue` 三个取值点都会把这个子节点的明文透传到响应。
+    ///
+    /// 本方法与 F-16（`UIViewHierarchyCollector.textInfo` 直接读 `textField.text`）共用同一套
+    /// 脱敏判定：只要祖先链含 secure UITextField，子节点一律视为敏感，不返回任何文本。
+    ///
+    /// 遍历顺序：`superview` → `superview?.superview` → ... → `nil`（不包含自身）。
+    /// 找不到 secure 祖先时返回 `nil`。
+    ///
+    /// 见 F-01。
+    @MainActor
+    var explore_secureTextEntryAncestor: UITextField? {
+        var current: UIView? = superview
+        while let node = current {
+            if let field = node as? UITextField, field.isSecureTextEntry {
+                return field
+            }
+            current = node.superview
+        }
+        return nil
+    }
 }
 #endif

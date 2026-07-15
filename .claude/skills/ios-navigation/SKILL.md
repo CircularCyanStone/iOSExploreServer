@@ -45,6 +45,12 @@ Use this skill when you need to:
 | `ui.navigation.tapBarButton` | Tap navigation bar buttons (left/right) | 304-305ms |
 | `ui.screenshot` | Capture screen state for verification | 200-500ms |
 
+> **MCP tool availability (F-02):** `ui.inspect`, `ui.navigation.back`,
+> `ui.navigation.tapBarButton`, and `ui.screenshot` have native `mcp__iOSDriver__*`
+> tools. **`ui.tap` does not** — send it via the fallback:
+> `call_action(action:"ui.tap", data:{...})`. All `ui.tap` examples below assume
+> this fallback form.
+
 **Screen transition time:** 200-500ms (including animation)
 
 ## Capabilities
@@ -93,9 +99,17 @@ Response:
 
 ### 2. Back Navigation
 
-**Using ui.navigation.back:**
+**Using ui.navigation.back (no args = auto strategy):**
 ```bash
 curl -X POST http://localhost:38321/ -d '{"action":"ui.navigation.back"}'
+```
+
+**Dismiss a modal explicitly:**
+```bash
+curl -X POST http://localhost:38321/ -d '{
+  "action": "ui.navigation.back",
+  "data": { "strategy": "dismiss" }
+}'
 ```
 
 Response:
@@ -104,11 +118,15 @@ Response:
   "code": "ok",
   "data": {
     "performed": true,
-    "topBefore": "DetailViewController",
+    "strategy": "dismiss",
+    "topBefore": "ModalViewController",
     "topAfter": "ListViewController"
   }
 }
 ```
+
+`strategy` in the response is the **strategy that actually took effect** (under `auto`,
+it reflects whether dismiss or navigationController was used).
 
 **Verify Back Button Available:**
 ```bash
@@ -441,7 +459,19 @@ switch_to_tab "Profile"
 
 ### ui.navigation.back
 
-No parameters required.
+All parameters optional — calling with no `data` uses the `auto` strategy.
+
+```json
+{
+  "strategy": "auto",       // Optional: "auto" (default) / "navigationController" / "dismiss"
+  "animated": false,        // Optional: default false (disabled to reduce transition wait)
+  "waitAfterMs": 300        // Optional: 0...3000, default 300 — settle wait before reading UI
+}
+```
+
+- `auto` (default): try `dismiss` first, then `navigationController` pop.
+- `navigationController`: only `popViewController` (fails if no nav stack).
+- `dismiss`: only `dismiss` (fails if nothing is presented) — **this IS how you dismiss a modal**.
 
 **Response:**
 ```json
@@ -449,11 +479,16 @@ No parameters required.
   "code": "ok",
   "data": {
     "performed": true,
+    "strategy": "navigationController",
     "topBefore": "DetailViewController",
     "topAfter": "ListViewController"
   }
 }
 ```
+
+> `strategy` in the response is the strategy that actually took effect (under `auto`,
+> reflects dismiss vs navigationController). Source: `Sources/iOSExploreUIKit/Commands/
+> Navigation/UINavigationBackModels.swift`. (The old `mode` field never existed.)
 
 ### ui.navigation.tapBarButton
 
@@ -662,7 +697,10 @@ navigate_back() {
 
 ### Known Limitations
 
-1. **Modal Presentations:** `ui.navigation.back` only works for push navigation, not modal dismissal. Use specific dismiss buttons for modals.
+1. **Modal Presentations:** `ui.navigation.back` **can** dismiss modals — pass
+   `"strategy": "dismiss"`. The default `auto` strategy also tries dismiss before
+   navigation pop, so it handles both pushed and presented controllers. (Earlier docs
+   claiming "only works for push navigation, not modal dismissal" were wrong.)
 
 2. **Tab Bar Navigation:** Changing tabs requires `ui.tap` on tab bar items, not navigation commands.
 
@@ -686,7 +724,7 @@ navigate_back() {
 - ✅ ui.navigation.tapBarButton (4 scenarios, 100% pass rate)
 - ✅ ui.tap for navigation (implicit in all navigation tests)
 
-**Test Report:** `docs/final-two-commands-test-report.json`
+**Test Report:** `docs/final-two-commands-test-report.json`（路径相对于**仓库根**，非本 skill 目录）
 
 **Tested Scenarios:**
 - ✅ Tap left navigation button by index

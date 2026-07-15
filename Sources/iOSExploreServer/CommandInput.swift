@@ -42,6 +42,12 @@ public protocol CommandInput: Sendable {
 public extension CommandInput {
     /// 默认解析入口：先拒绝未知字段，再交给模型读取声明字段。
     ///
+    /// - Note (设计特性 F-25): 该入口**不评估** `inputSchema.constraints`（如 `exactlyOneOf`
+    ///   声明的字段互斥关系）。跨字段约束只用于 `toJSON()` 生成给客户端的 schema 描述，
+    ///   运行时不强制。若命令需要"两个字段二选一"之类的互斥/必选语义，必须在自身
+    ///   `parse(decoding:)` 里手写校验（参考 `UIKitViewLookupTarget.parse`），否则运行时
+    ///   会静默接受 schema 上声明互斥的两个字段。
+    ///
     /// - Parameter data: `ExploreRequest.data` 中的原始参数对象。
     /// - Returns: 已完成类型校验和默认值填充的输入模型。
     /// - Throws: 字段校验或模型自定义校验失败时抛出 `CommandInputParseError`。

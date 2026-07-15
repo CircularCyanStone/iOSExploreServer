@@ -44,6 +44,13 @@ Use this skill when you need to:
 | `ui.tap` | Select list item | 50-100ms |
 | `ui.swipe` | Manual scrolling or swipe actions | 300-500ms |
 
+> **MCP tool availability:** `ui.inspect`, `ui.scrollToElement`, and `ui.swipe`
+> have native `mcp__iOSDriver__*` tools. **`ui.tap` does not** — it has no native
+> MCP tool exposed to the agent (see findings F-02). Send it through the fallback
+> dispatcher instead:
+> `call_action(action: "ui.tap", data: { "path": ..., "viewSnapshotID": ... })`.
+> All `ui.tap` examples below assume this fallback form.
+
 **Find item with scrolling:** 1-5 seconds (depends on list size and item position)
 
 ## Capabilities
@@ -152,12 +159,17 @@ sleep 0.5
 ### 4. Manual Scrolling
 
 **Swipe to Scroll:**
+
+`ui.swipe` locates the scroll container with `accessibilityIdentifier` or `path`
+(neither is XcodeBuildMCP's `withinElementRef` — iOSExploreServer has no such
+parameter). If both are omitted it swipes the keyWindow's frontmost scrollView.
+
 ```bash
-# Scroll down (swipe up)
+# Scroll down (swipe up) — locate scrollView by accessibilityIdentifier
 curl -X POST http://localhost:38321/ -d '{
   "action": "ui.swipe",
   "data": {
-    "withinElementRef": "scroll_view_ref",
+    "accessibilityIdentifier": "contact_list_scrollview",
     "direction": "up",
     "distance": 0.8
   }
@@ -167,7 +179,7 @@ curl -X POST http://localhost:38321/ -d '{
 curl -X POST http://localhost:38321/ -d '{
   "action": "ui.swipe",
   "data": {
-    "withinElementRef": "scroll_view_ref",
+    "accessibilityIdentifier": "contact_list_scrollview",
     "direction": "down",
     "distance": 0.8
   }
@@ -176,15 +188,20 @@ curl -X POST http://localhost:38321/ -d '{
 
 ### 5. Cell Swipe Actions
 
-**Reveal Swipe Actions:**
+**Trigger Cell Swipe Actions:**
+
+Cell swipe actions use `cellAccessibilityIdentifier` (or `cellPath`) to locate the
+cell, plus `direction` (`left` → trailing actions, `right` → leading actions).
+`actionTitle` picks a specific action; omit it to trigger the first one.
+
 ```bash
-# Swipe left to reveal delete/edit actions
+# Swipe left on a cell to trigger its trailing swipe action (e.g. delete)
 curl -X POST http://localhost:38321/ -d '{
   "action": "ui.swipe",
   "data": {
-    "withinElementRef": "cell_ref",
+    "cellAccessibilityIdentifier": "contact.cell.42",
     "direction": "left",
-    "distance": 0.6
+    "actionTitle": "删除"
   }
 }'
 ```
@@ -284,16 +301,16 @@ find_item_with_manual_scroll() {
       return 0
     fi
     
-    # Manual scroll as fallback
+    # Manual scroll as fallback (ui.swipe locates the scrollView via path)
     echo "Scrolling manually..."
     SNAPSHOT_ID=$(echo $INSPECT | jq -r '.data.viewSnapshotID')
     SCROLL_VIEW_REF=$(echo $INSPECT | jq -r '.data.targets[] | select(.type == "UICollectionView" or .type == "UITableView") | .path' | head -1)
-    
+
     if [ -n "$SCROLL_VIEW_REF" ]; then
       curl -s -X POST http://localhost:38321/ -d "{
         \"action\": \"ui.swipe\",
         \"data\": {
-          \"withinElementRef\": \"$SCROLL_VIEW_REF\",
+          \"path\": \"$SCROLL_VIEW_REF\",
           \"direction\": \"up\",
           \"distance\": 0.8
         }
@@ -330,12 +347,11 @@ scroll_to_top() {
 
 # Scroll to bottom
 scroll_to_bottom() {
-  # Scroll down multiple times
+  # Scroll down multiple times (omit locator to swipe the frontmost scrollView)
   for i in {1..10}; do
     curl -s -X POST http://localhost:38321/ -d '{
       "action": "ui.swipe",
       "data": {
-        "withinElementRef": "scroll_view_ref",
         "direction": "up",
         "distance": 0.9
       }
@@ -425,14 +441,14 @@ load_and_collect_items() {
     
     previous_count=$CURRENT_COUNT
     
-    # Scroll down to trigger loading more
-    SCROLL_VIEW=$(echo $INSPECT | jq -r '.data.targets[] | select(.type == "UICollectionView" or .type == "UITableView") | .elementRef' | head -1)
-    
+    # Scroll down to trigger loading more (inspect returns .path, not elementRef)
+    SCROLL_VIEW=$(echo $INSPECT | jq -r '.data.targets[] | select(.type == "UICollectionView" or .type == "UITableView") | .path' | head -1)
+
     if [ -n "$SCROLL_VIEW" ]; then
       curl -s -X POST http://localhost:38321/ -d "{
         \"action\": \"ui.swipe\",
         \"data\": {
-          \"withinElementRef\": \"$SCROLL_VIEW\",
+          \"path\": \"$SCROLL_VIEW\",
           \"direction\": \"up\",
           \"distance\": 0.9
         }
@@ -496,15 +512,29 @@ load_and_collect_items
 }
 ```
 
-### ui.swipe (for scrolling)
+### ui.swipe (for scrolling / cell swipe actions)
 
 ```json
 {
-  "withinElementRef": "scroll_view_ref",  // Required: scroll container reference
-  "direction": "up",                      // Required: "up", "down", "left", "right"
-  "distance": 0.8                         // Optional: 0.0-1.0 (default 0.8)
+  "direction": "up",                          // Required: "up", "down", "left", "right"
+  "distance": 0.8,                            // Optional: (0,1], default 0.8
+  "accessibilityIdentifier": "list_scroll",   // Optional: locate the scrollView/view
+  "path": "root/0/5",                         // Optional: locate the scrollView/view (alt to identifier)
+  "viewSnapshotID": "snap-XXX",               // Optional: staleness check
+  "cellAccessibilityIdentifier": "cell.42",   // Optional: for swipe actions — locate the cell
+  "cellPath": "root/0/5/0/3",                 // Optional: for swipe actions — locate the cell (alt)
+  "actionTitle": "删除"                        // Optional: which swipe action to trigger (nil → first)
 }
 ```
+
+**Scrolling:** pass `accessibilityIdentifier`/`path` of the scroll container. Omit
+both to swipe the keyWindow's frontmost scrollView. `direction: "up"` scrolls down,
+`"down"` scrolls up.
+
+**Cell swipe actions:** pass `cellAccessibilityIdentifier` (or `cellPath`) instead.
+`direction: "left"` → trailing actions, `"right"` → leading actions. `actionTitle`
+selects a specific action; omit to trigger the first. (See `Sources/iOSExploreUIKit/
+Commands/Swipe/UISwipeModels.swift`.)
 
 ## Error Handling
 
@@ -532,7 +562,7 @@ echo $INSPECT | jq '.data.targets[] | select(.text | contains("John"))'
 **Solution:**
 - Call `ui.inspect` again after `ui.scrollToElement`
 - Get fresh snapshot ID before tapping
-- Snapshots have 60-second TTL
+- Snapshots have a 120-second TTL
 
 **Example:**
 ```bash
@@ -677,7 +707,7 @@ done
 - ✅ ui.scrollToElement with animation
 - ✅ Error handling: target not found
 
-**Test Report:** `docs/final-two-commands-test-report.json`
+**Test Report:** `docs/final-two-commands-test-report.json`（路径相对于**仓库根**，非本 skill 目录）
 
 **Tested Scenarios:**
 - ✅ Scroll to Item 5 (middle): 2ms

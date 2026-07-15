@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "iOSDriver": {
+      "command": "node",
+      "args": [
+        "/Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSDriver/dist/index.js"
+      ],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "10000"
+      }
+    }
+  }
+}

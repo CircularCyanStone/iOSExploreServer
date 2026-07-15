@@ -220,6 +220,35 @@ func executorIdentifierWithStaleViewSnapshotThrows() {
     }
 }
 
+@Test("F-03: executor 目标未找到抛 target_not_found（非 invalid_data）") @MainActor
+func executorTargetNotFoundUsesTargetNotFoundCode() {
+    // 不存在的 path → UIKitLocatorResolver.locate 的 notFound 闭包应抛 target_not_found，
+    // 不再是 invalid_data（旧码与 message "input target not_found" 自相矛盾，且是 6 个命令里唯一离群点）。
+    let context = UIKitTestHost.context { root in
+        let field = UITextField()
+        field.text = ""
+        field.frame = CGRect(x: 10, y: 10, width: 200, height: 40)
+        root.addSubview(field)
+    }
+
+    let input = UIInputInput(target: .path([99]), text: "x")
+    do {
+        _ = try UITextInputExecutor.execute(input: input, context: context)
+        Issue.record("expected failure, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .targetNotFound)
+        // message 应含恢复指引（与 tap 同款），不再是旧 "input target not_found"。
+        let message = error.failure.message
+        #expect(message.contains("not found"))
+        #expect(message.contains("call ui.inspect first"))
+        #expect(message.contains("invalid_data") == false)
+        // logMessage 应标注 action 和 target。
+        #expect(error.failure.logMessage.contains("action=ui.input"))
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
+}
+
 /// 把 JSON 序列化为字符串用于断言不含敏感原文。
 private func describe(_ json: JSON) -> String {
     "\(json.storage)"

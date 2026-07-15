@@ -162,6 +162,15 @@ public enum CommandFields {
 
     /// 布尔字段：缺失使用默认值，存在但非布尔抛出解析错误。
     ///
+    /// - Important (设计特性 F-26，勿当 bug 重提): 本工厂对"布尔"采用**严格**判定——只接受
+    ///   JSON `true`/`false`，JSON number 一律拒绝。例如 `"submit": 1` 或 `"animated": 0`
+    ///   会被判为非布尔，抛出 `"<name> must be a boolean"`（运行时映射为 `invalid_data`）。
+    ///   这是有意的严格设计，保证布尔字段不接受隐式数字→布尔转换。**唯一的例外**是
+    ///   `ui.control.sendAction` 写 UISwitch 时的 `value` 字段——它走 `UIKitActionExecutor`
+    ///   的 `switchBoolValue`，额外接受 JSON number `0`/`1` 当 bool，详见该处注释。该例外
+    ///   **仅限 UISwitch 的 value**，不要推广到 submit/animated/includeHidden 等其它布尔
+    ///   字段，它们仍严格拒数字。
+    ///
     /// - Parameters:
     ///   - name: 字段名。
     ///   - default: 字段缺失时使用的默认值。

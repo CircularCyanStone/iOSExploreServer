@@ -326,7 +326,12 @@ private struct UIKitViewElement: UIViewHierarchyElement {
                                        numberOfLines: label?.numberOfLines)
         }
         if let textField = view as? UITextField {
-            return UIViewHierarchyText(value: textField.text,
+            // isSecureTextEntry（密码框）不返回明文 value：UITextField.text 总是持有明文
+            // （isSecureTextEntry 只控制圆点渲染，不改 .text），直接输出会经 ui.topViewHierarchy
+            // 的 text.value 泄露密码。这里与 UIInspectCollector.textualValue 口径对齐——
+            // secure 字段一律返回 nil，accessibilityValue 仍由 UIKit 正确脱敏为圆点。
+            // 见 F-16。
+            return UIViewHierarchyText(value: textField.isSecureTextEntry ? nil : textField.text,
                                        fontName: textField.font?.fontName,
                                        fontSize: textField.font.map { Double($0.pointSize) },
                                        textColor: textField.textColor?.hierarchyHexString,

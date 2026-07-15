@@ -126,6 +126,47 @@ func tapSegmentedControlReturnsUnsupportedTarget() {
     }
 }
 
+@Test("F-18: executor tap disabled UIButton 返回 activated:false + reason:disabled") @MainActor
+func tapDisabledButtonReturnsNotActivated() throws {
+    // isEnabled=false 的按钮不应被 sendActions(for:) 绕过：UIKit 中 isEnabled 只拦截真实触摸追踪，
+    // 不拦截编程式 sendActions。executor 必须在此拦截，返回 activated:false 让 agent 知晓按钮未响应。
+    let context = UIKitTestHost.context { root in
+        let button = UIButton(type: .system)
+        button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
+        button.isEnabled = false
+        root.addSubview(button)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
+
+    let data = try UIKitActionExecutor.execute(.tap(locator: .path([0]), viewSnapshotID: viewSnapshotID),
+                                               context: context)
+
+    #expect(data["activated"]?.boolValue == false)
+    #expect(data["reason"]?.stringValue == "disabled")
+    #expect(data["activationRoute"]?.stringValue == "control.touchUpInside")
+    #expect(data["path"]?.stringValue == "root/0")
+    #expect(data["type"]?.stringValue == "UIButton")
+}
+
+@Test("F-18: executor tap enabled UIButton 正常激活（回归保障）") @MainActor
+func tapEnabledButtonStillActivates() throws {
+    // 确认 isEnabled 守卫不影响 enabled 按钮的正常激活路径。
+    let context = UIKitTestHost.context { root in
+        let button = UIButton(type: .system)
+        button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
+        button.isEnabled = true
+        root.addSubview(button)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
+
+    let data = try UIKitActionExecutor.execute(.tap(locator: .path([0]), viewSnapshotID: viewSnapshotID),
+                                               context: context)
+
+    #expect(data["activated"]?.boolValue == true)
+    #expect(data["activationRoute"]?.stringValue == "control.touchUpInside")
+    #expect(data["reason"] == nil)
+}
+
 @Test("executor tap 未签发 path(普通 UIView 非 canonical) 返回 not_actionable") @MainActor
 func tapUnsignedPathReturnsNotActionable() {
     let context = UIKitTestHost.context { root in

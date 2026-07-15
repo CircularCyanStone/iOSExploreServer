@@ -331,4 +331,43 @@ func semanticTextTextViewTextFallback() {
     #expect(target["semanticText"]?.stringValue == "备注内容")
     #expect(target["semanticTextSource"]?.stringValue == "textViewText")
 }
+
+@Test("semanticText: accessibilityIdentifier 不截断，即使超过 textLimit") @MainActor
+func semanticTextIdentifierNotTruncated() {
+    // Bug fix 验证：accessibilityIdentifier 是定位标识符，完整保留不截断（默认 textLimit=80）。
+    // 真实案例：注册页的 "register_confirm_password_field" (28 字符) 曾被截成 "register_confirm_password"。
+    let longIdentifier = String(repeating: "a", count: 150)  // 150 字符，远超默认 textLimit=80
+    let context = UIKitTestHost.context { root in
+        let button = UIButton(type: .system)
+        button.accessibilityIdentifier = longIdentifier
+        button.setTitle("按钮", for: .normal)
+        button.frame = CGRect(x: 10, y: 10, width: 120, height: 40)
+        root.addSubview(button)
+    }
+
+    let query = try! UIInspectInput.parse(from: ["textLimit": 80])  // 显式设置 textLimit=80
+    guard let target = firstTargetSummary(
+        from: UIInspectCollector.collect(query: query, context: context)) else { return }
+    #expect(target["semanticText"]?.stringValue == longIdentifier)  // 完整 150 字符
+    #expect(target["semanticTextSource"]?.stringValue == "accessibilityIdentifier")
+}
+
+@Test("semanticText: accessibilityLabel 仍然按 textLimit 截断") @MainActor
+func semanticTextLabelTruncated() {
+    // 回归验证：accessibilityLabel 等显示文本仍应按 textLimit 截断。
+    let longLabel = String(repeating: "b", count: 150)
+    let context = UIKitTestHost.context { root in
+        let label = UILabel()
+        label.accessibilityLabel = longLabel
+        label.text = "短文本"
+        label.frame = CGRect(x: 10, y: 10, width: 200, height: 20)
+        root.addSubview(label)
+    }
+
+    let query = try! UIInspectInput.parse(from: ["textLimit": 80])
+    guard let target = firstTargetSummary(
+        from: UIInspectCollector.collect(query: query, context: context)) else { return }
+    #expect(target["semanticText"]?.stringValue?.count == 80)  // 截断到 textLimit
+    #expect(target["semanticTextSource"]?.stringValue == "accessibilityLabel")
+}
 #endif

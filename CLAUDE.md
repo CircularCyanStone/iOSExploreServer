@@ -16,13 +16,15 @@
 
 如果本次是阶段性功能，要额外解释这个阶段给用户带来的具体变化。例如 Diagnostics 进程日志捕获不是“Release 线上日志 SDK”，而是“在 Debug 下按配置捕获 stdout、stderr、NSLog、`os_log` 和 Swift `Logger`，让 Agent 能通过 `app.logs.read` 按 `stdout` / `stderr` / `nslog` / `oslog` 来源读到”。同时要明确默认关闭和系统限制，例如 `captureOSLog` 依赖当前进程 `OSLogStore`，系统不允许读取时会返回 `unavailable`，不能解释成“没有发生日志”。
 
-## Claude Code 额外提醒：示例 App 验证要自动启动 Server
+## Claude Code 额外提醒：示例 App 验证使用直接启动
 
-做 `Examples/SPMExample` 的真实闭环验证时，不要重新研究“服务没启动，远程命令无法点击启动服务按钮”这个问题。固定做法是通过启动参数或环境变量让 `Examples/SPMExample/SPMExample/ViewController.swift` 在 Debug 启动后自动调用 `server.start()`，先让 38321 端口可访问，再继续用 `curl` 或 `ui.*` 命令验证页面交互。
+做 `Examples/SPMExample` 的真实闭环验证时，server 会在 App 启动时自动调用 `server.start()`（`ViewController.viewDidAppear` 中 DEBUG 环境下自动执行），不需要传递 autostart 环境变量。
 
-推荐沿用语义清楚的开关：`--ios-explore-autostart` 或 `IOS_EXPLORE_AUTOSTART=1` 表示自动启动 server；需要直接进入弹窗测试页时，用 `--ios-explore-open-alert-test` 或 `IOS_EXPLORE_OPEN_ALERT_TEST=1`。如果代码里还没有这些入口，先补 Debug-only 的启动参数/环境变量读取逻辑，不要退回手动点击“启动 Server”的流程。
+可选的测试页面启动参数：
+- `--ios-explore-open-alert-test` 或 `IOS_EXPLORE_OPEN_ALERT_TEST=1` — 启动后自动进入弹窗测试页
+- `--ios-explore-show-login` 或 `IOS_EXPLORE_SHOW_LOGIN=1` — 显示登录流程测试界面
 
-这些开关是测试工具的长期约定，不是一次性临时环境。验证结束后不用专门删除环境变量或启动参数；后续继续复用，除非项目明确改名或改变行为。
+这些开关用于测试工程快速进入特定测试场景。集成到实际项目时，推荐在 `viewDidLoad` 或 `applicationDidFinishLaunching` 中直接调用 `server.start()`。
 
 ## Claude Code 额外提醒：用 XcodeBuildMCP 跑真机/模拟器走 profile + iproxy
 
@@ -30,7 +32,7 @@
 
 1. **设备 ID 两套**：MCP 的 `deviceId` 是 CoreDevice identifier（`list_devices` 返回的 `3AC0C7D6-...`），`iproxy -u` 是 USB UDID（`00008030-...`），同一台设备不能混用。
 2. **devicectl 的机型字段会串号**：判 iOS 版本看 `list_devices` 的 `osVersion`，别信 `devicectl` 的 `Model`（曾把 iOS 26.5 的真机显成 iPhone 11）。SPMExample 部署目标 26.2，低于装不上。
-3. **`build_run_sim`/`build_run_device` 不注入 profile 的 `env`**：autostart 必须用 `launch_app_sim`/`launch_app_device` 的 `env` 或 `launchArgs` 驱动，且要先 `stop_app_*` 再 `launch_app_*`（已运行的 App 不重启、参数不生效）。
+3. **`build_run_sim`/`build_run_device` 不注入 profile 的 `env`**：如需传递启动参数，必须用 `launch_app_sim`/`launch_app_device` 的 `env` 或 `launchArgs`，且要先 `stop_app_*` 再 `launch_app_*`（已运行的 App 不重启、参数不生效）。
 4. **curl 真机前先 `lsof -iTCP:38321` 确认是 `iproxy` 在监听**：`sim-app` 跑过没关的模拟器 SPMExample 会残留成 Mac 进程占住 38321，`curl localhost:38321` 打到的是这个**模拟器残留**（旧 binary、不是真机、env 也没设），结果对不上真机预期——曾导致真机验证反复卡住。`lsof` 的 COMMAND 列是 `SPMExampl` 则 `xcrun simctl terminate 065CC8DB-8978-46C5-82D6-C96625B608D8 com.coo.SPMExample` 清理后再起 iproxy；`iproxy` 启动立即报 `Address already in use: 38321` 也是这个原因。详细排查见 AGENTS.md「四个必须记住的差异」第 4 点。
 
 @AGENTS.md

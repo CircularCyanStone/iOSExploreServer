@@ -28,6 +28,9 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
         static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
         static let path = UIKitLocatorFields.path
         static let viewSnapshotID = UIKitLocatorFields.viewSnapshotID
+        // 设计特性 F-27: text 经 UIKit insertText 字面量写入，无转义/不求值/无注入防护
+        // （UITextField/UITextView 预期行为，非 HTML 渲染）。宿主把该文本拼进 SQL/HTML/Shell
+        // 时必须自行参数化/转义。详见 UITextInputExecutor.execute 第 7 步注释。
         static let text = CommandFields.requiredString(
             "text",
             description: "要输入的文本 (任意 Unicode, 含中文/emoji)"

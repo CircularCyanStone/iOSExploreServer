@@ -33,13 +33,17 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// 提示调用方重新调用 `ui.inspect` 拿到新 `viewSnapshotID` 再下发交互。viewSnapshotID
     /// 只由 `ui.inspect` 签发（不再来自 `ui.screenshot`）。
     ///
+    /// message 额外提醒：snapshot 指纹不含 UILabel/UITextField/UITextView 的展示文本，
+    /// 异步文本变化（如 "加载中"→"已完成"）不会触发 stale。若 agent 的决策依赖当前展示文本，
+    /// 应主动重新 inspect 而非依赖 stale 校验拦截。见 F-24。
+    ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名，用于日志关联。
     ///   - viewSnapshotID: 过期的 viewSnapshot 标识摘要。
     /// - Returns: `stale_locator` 失败描述。
     static func staleLocator(action: String, viewSnapshotID: String) -> UIKitCommandError {
         UIKitCommandError(code: .staleLocator,
-                          message: "view snapshot expired (TTL \(Int(UIKitSnapshotStore.ttlSeconds))s) or target changed; call ui.inspect first, then retry with the new viewSnapshotID",
+                          message: "view snapshot expired (TTL \(Int(UIKitSnapshotStore.ttlSeconds))s) or target changed; call ui.inspect first, then retry with the new viewSnapshotID. Note: snapshots do not track label/text content changes — if your decision depends on displayed text, re-inspect before acting",
                           logMessage: "uikit locator stale action=\(action) viewSnapshot=\(viewSnapshotID)")
     }
 
@@ -478,15 +482,28 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// append 模式期望等于 `旧文本 + input.text`。差异通常源于 `textField(_:shouldChangeCharactersIn:)`
     /// 返回 false、输入过滤（如数字键盘删掉非数字字符）、或 formatter 改写。
     ///
+    /// 当目标为 UITextField（单行控件）且 `finalLen < expectedLen` 时，message 会追加换行符提示：
+    /// UITextField 的 return 键触发 action 而非插入换行，含 `\n` 的文本会被 UIKit 静默截断，
+    /// 这不是库的主动拒绝而是 UIKit 固有行为。agent 可据此切换到 UITextView 完成多行输入。
+    ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名。
     ///   - expectedLen: 期望文本长度。
     ///   - finalLen: 实际文本长度。
     ///   - secure: 目标是否为密码输入（`isSecureTextEntry`），决定是否对响应脱敏。
+    ///   - singleLineField: 目标是否为 UITextField（单行控件）；为 true 且 finalLen<expectedLen
+    ///     时追加换行符拒绝提示。默认 false，保持已有调用方的行为不变。
     /// - Returns: `input_rejected` 失败描述；**日志与 message 都不回原文**，只回长度与 secure 标记。
-    static func inputRejected(action: String, expectedLen: Int, finalLen: Int, secure: Bool) -> UIKitCommandError {
-        UIKitCommandError(code: .inputRejected,
-                          message: "text input was rejected or altered by delegate",
-                          logMessage: "ui input rejected action=\(action) expectedLen=\(expectedLen) finalLen=\(finalLen) secure=\(secure)")
+    static func inputRejected(action: String, expectedLen: Int, finalLen: Int, secure: Bool, singleLineField: Bool = false) -> UIKitCommandError {
+        var message = "text input was rejected or altered by delegate"
+        // UITextField（单行控件）的 return 键触发 action 而非插入换行，含 \n / 控制字符的
+        // 输入会被 UIKit 静默截断（finalLen < expectedLen）。这不是库的主动拒绝，告知 agent
+        // 改用 UITextView 即可完成多行输入。见 F-23 / F-04。
+        if singleLineField && finalLen < expectedLen {
+            message += "; newline or control characters may be rejected by UITextField — use UITextView for multiline input"
+        }
+        return UIKitCommandError(code: .inputRejected,
+                          message: message,
+                          logMessage: "ui input rejected action=\(action) expectedLen=\(expectedLen) finalLen=\(finalLen) secure=\(secure) singleLineField=\(singleLineField)")
     }
 }

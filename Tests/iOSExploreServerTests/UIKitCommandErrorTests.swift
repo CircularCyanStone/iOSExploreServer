@@ -14,6 +14,14 @@ struct UIKitCommandErrorTests {
         #expect(error.failure.logMessage.contains("viewSnapshot=snap-1"))
     }
 
+    @Test("F-24: staleLocator message 提示 snapshot 不跟踪文本变化")
+    func staleLocatorMessageWarnsAboutTextTracking() {
+        let error = UIKitCommandError.staleLocator(action: "ui.tap", viewSnapshotID: "snap-1")
+        // message 应含文本追踪限制提示，让 agent 知晓异步文本变化不触发 stale。
+        #expect(error.failure.message.contains("do not track label/text content changes"))
+        #expect(error.failure.message.contains("re-inspect"))
+    }
+
     @Test("notActionable 工厂生成 not_actionable 业务码并引导 ui.inspect")
     func notActionableMapsToCode() {
         let error = UIKitCommandError.notActionable(action: "ui.tap", path: "root/5/0")
@@ -144,5 +152,52 @@ struct UIKitCommandErrorTests {
         #expect(log.contains("expectedLen=8"))
         #expect(log.contains("finalLen=0"))
         #expect(log.contains("secure=true"))
+    }
+
+    @Test("F-23: inputRejected 对 UITextField 且 finalLen<expectedLen 追加换行符提示")
+    func inputRejectedSingleLineFieldAppendsNewlineHint() {
+        // 模拟向 UITextField 输入含 \n 的文本被 UIKit 截断：expectedLen > finalLen。
+        let error = UIKitCommandError.inputRejected(action: "ui.input",
+                                                     expectedLen: 12,
+                                                     finalLen: 5,
+                                                     secure: false,
+                                                     singleLineField: true)
+        #expect(error.failure.code == .inputRejected)
+        // message 应追加换行符/控制字符拒绝提示和 UITextView 建议。
+        let message = error.failure.message
+        #expect(message.contains("rejected or altered by delegate"))
+        #expect(message.contains("UITextField"))
+        #expect(message.contains("UITextView"))
+        #expect(message.contains("multiline"))
+        // logMessage 应记录 singleLineField 标记。
+        #expect(error.failure.logMessage.contains("singleLineField=true"))
+        // message 仍不含明文输入。
+        #expect(message.contains("invalid_data") == false)
+    }
+
+    @Test("F-23: inputRejected 对 UITextView（非单行）不追加换行符提示")
+    func inputRejectedMultilineFieldDoesNotAppendHint() {
+        // UITextView 接受换行，不应追加 UITextField 特有的提示。
+        let error = UIKitCommandError.inputRejected(action: "ui.input",
+                                                     expectedLen: 12,
+                                                     finalLen: 5,
+                                                     secure: false,
+                                                     singleLineField: false)
+        let message = error.failure.message
+        // 只有基础 message，无换行符提示。
+        #expect(message == "text input was rejected or altered by delegate")
+        #expect(error.failure.logMessage.contains("singleLineField=false"))
+    }
+
+    @Test("F-23: inputRejected 对 UITextField 但 finalLen==expectedLen 不追加提示")
+    func inputRejectedSingleLineFieldEqualLengthDoesNotAppendHint() {
+        // finalLen == expectedLen 时差异不是长度截断（可能是字符替换），不追加换行符提示。
+        let error = UIKitCommandError.inputRejected(action: "ui.input",
+                                                     expectedLen: 5,
+                                                     finalLen: 5,
+                                                     secure: false,
+                                                     singleLineField: true)
+        let message = error.failure.message
+        #expect(message == "text input was rejected or altered by delegate")
     }
 }
