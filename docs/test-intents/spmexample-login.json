@@ -1,0 +1,260 @@
+{
+  "skill_name": "ios-test-intent",
+  "source_app": "SPMExample",
+  "flow": "login",
+  "description": "由 ios-test-intent skill 读 SPMExample 登录业务源代码产出的测试意图清单。判据用 ios-* 等待词汇（textExists/textContains/targetExists/targetGone/alert），不含 path/identifier（由运行时 ui_inspect 解析）。覆盖 LoginViewModel + AuthService.login + LoginViewController 的全部分支。",
+  "source_files_read": [
+    "Examples/SPMExample/SPMExample/Login/ViewModels/LoginViewModel.swift",
+    "Examples/SPMExample/SPMExample/Login/Services/AuthService.swift",
+    "Examples/SPMExample/SPMExample/Login/ViewControllers/LoginViewController.swift",
+    "Examples/SPMExample/SPMExample/Login/Models/AuthResponse.swift"
+  ],
+  "evals": [
+    {
+      "id": "login-success",
+      "flow": "login",
+      "intent": "预置账号 test/123456 登录成功，整栈跳首页且无法返回",
+      "prompt": "登录页输入 test / 123456，点「登录」；预期约 1.5s 后整栈替换到首页，导航无返回按钮。",
+      "business_points": [
+        "LoginViewModel.login（username/password 非空校验通过 → 进 AuthService）",
+        "AuthService.login（test 命中、密码匹配、1.5s networkDelay）",
+        "LoginViewController.loginButtonTapped → navigateToHome（setViewControllers 整栈替换）"
+      ],
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/ViewModels/LoginViewModel.swift",
+        "Examples/SPMExample/SPMExample/Login/Services/AuthService.swift",
+        "Examples/SPMExample/SPMExample/Login/ViewControllers/LoginViewController.swift"
+      ],
+      "depends_on": { "seed_data": "AuthService.init 预置 test/123456" },
+      "pass_criteria": [
+        { "mode": "textExists", "value": "欢迎回来！", "description": "首页欢迎语出现，证明整栈跳转成功", "timing": "约 1.5s 后" },
+        { "mode": "targetGone", "value": "导航返回按钮", "description": "hidesBackButton=true，无法 back 回登录页" }
+      ],
+      "fail_criteria": [
+        { "mode": "alert", "value": null, "description": "成功路径不应出现任何弹窗" },
+        { "mode": "textContains", "value": "用户名或密码错误", "description": "失败文案未出现" },
+        { "mode": "targetExists", "value": "「登录」按钮重新启用且仍停留登录页", "description": "loading 结束但未跳转——请求失败" }
+      ],
+      "timing": "约 1.5s 后出结果",
+      "source_refs": [
+        "AuthService.swift:43 login",
+        "AuthService.swift:66-76 成功返回",
+        "LoginViewController.swift:274 navigateToHome setViewControllers"
+      ]
+    },
+    {
+      "id": "login-empty-username",
+      "flow": "login",
+      "intent": "用户名为空时客户端立即报「请输入用户名」，不进网络、无 loading",
+      "prompt": "用户名留空、密码任意，点「登录」；预期立即显示「请输入用户名」，无活动指示器。",
+      "business_points": [
+        "LoginViewModel.login（username.isEmpty guard → return nil，在 isLoading=true 之前）"
+      ],
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/ViewModels/LoginViewModel.swift"
+      ],
+      "pass_criteria": [
+        { "mode": "textExists", "value": "请输入用户名", "description": "客户端校验文案", "timing": "立即" },
+        { "mode": "targetGone", "value": "活动指示器（loading spinner）", "description": "未进 AuthService，无 loading", "timing": "立即" }
+      ],
+      "fail_criteria": [
+        { "mode": "textContains", "value": "用户名或密码错误", "description": "若出现说明误进了 Service（客户端校验未拦截）" },
+        { "mode": "targetExists", "value": "活动指示器（loading spinner）", "description": "若出现说明误走了网络" },
+        { "mode": "alert", "value": null, "description": "本 App 用内联 errorLabel 报错，不应弹窗" }
+      ],
+      "timing": "立即（客户端校验）",
+      "source_refs": ["LoginViewModel.swift:28-32"]
+    },
+    {
+      "id": "login-empty-password",
+      "flow": "login",
+      "intent": "密码为空时客户端立即报「请输入密码」，不进网络、无 loading",
+      "prompt": "输入任意用户名、密码留空，点「登录」；预期立即显示「请输入密码」，无活动指示器。",
+      "business_points": [
+        "LoginViewModel.login（password.isEmpty guard → return nil）"
+      ],
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/ViewModels/LoginViewModel.swift"
+      ],
+      "pass_criteria": [
+        { "mode": "textExists", "value": "请输入密码", "description": "客户端校验文案", "timing": "立即" },
+        { "mode": "targetGone", "value": "活动指示器（loading spinner）", "description": "未进 AuthService，无 loading", "timing": "立即" }
+      ],
+      "fail_criteria": [
+        { "mode": "textContains", "value": "用户名或密码错误", "description": "若出现说明误进了 Service" },
+        { "mode": "targetExists", "value": "活动指示器（loading spinner）", "description": "若出现说明误走了网络" }
+      ],
+      "timing": "立即（客户端校验）",
+      "source_refs": ["LoginViewModel.swift:34-38"]
+    },
+    {
+      "id": "login-user-not-found",
+      "flow": "login",
+      "intent": "不存在的账号登录，约 1.5s 后报「用户名或密码错误」，停留登录页（与密码错不可区分）",
+      "prompt": "输入不存在的用户名（如 nouser）/ 123456，点登录；预期约 1.5s 后显示「用户名或密码错误」，仍停留登录页。",
+      "business_points": [
+        "LoginViewModel.login（进 AuthService）",
+        "AuthService.login（users[username]==nil → throw invalidCredentials）"
+      ],
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/Services/AuthService.swift",
+        "Examples/SPMExample/SPMExample/Login/Models/AuthResponse.swift"
+      ],
+      "depends_on": { "shared_state": "AuthService.shared.users 不含该用户名" },
+      "pass_criteria": [
+        { "mode": "textContains", "value": "用户名或密码错误", "description": "invalidCredentials 文案（errorLabel 内联）", "timing": "约 1.5s 后" },
+        { "mode": "targetExists", "value": "登录页（含「欢迎登录」标题）", "description": "失败停留登录页，未跳转" }
+      ],
+      "fail_criteria": [
+        { "mode": "textExists", "value": "请输入用户名", "description": "若出现说明误判成客户端校验" },
+        { "mode": "alert", "value": null, "description": "用内联 errorLabel，不应弹窗" }
+      ],
+      "timing": "约 1.5s 后",
+      "cross_flow_verifiable": "与 login-wrong-password 文案完全相同——AuthService 故意把「用户不存在」和「密码错」都映射成 invalidCredentials（安全模糊），不可区分",
+      "source_refs": [
+        "AuthService.swift:56-58 用户不存在→invalidCredentials",
+        "AuthResponse.swift:36-37 文案"
+      ]
+    },
+    {
+      "id": "login-wrong-password",
+      "flow": "login",
+      "intent": "正确账号 + 错误密码登录，约 1.5s 后报「用户名或密码错误」——与账号不存在同文案、故意不可区分",
+      "prompt": "输入 test / wrongpass，点登录；预期约 1.5s 后显示「用户名或密码错误」。",
+      "business_points": [
+        "AuthService.login（userData.password != password → throw invalidCredentials）"
+      ],
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/Services/AuthService.swift"
+      ],
+      "depends_on": { "seed_data": "test 用户存在（密码 123456）" },
+      "pass_criteria": [
+        { "mode": "textContains", "value": "用户名或密码错误", "description": "与 login-user-not-found 同文案", "timing": "约 1.5s 后" }
+      ],
+      "fail_criteria": [
+        { "mode": "textExists", "value": "能区分「账号不存在」与「密码错」的文案", "description": "实际不可区分；若能区分则与源码不符（AuthService L56-64 都 throw invalidCredentials）" }
+      ],
+      "timing": "约 1.5s 后",
+      "cross_flow_verifiable": "与 login-user-not-found 文案相同，不可区分",
+      "source_refs": ["AuthService.swift:61-63 密码错→invalidCredentials"]
+    },
+    {
+      "id": "login-password-retained-on-failure",
+      "flow": "login",
+      "intent": "登录失败后密码框保留——失败后不重输密码直接再点登录，应再次走 Service（而非报「请输入密码」）",
+      "prompt": "输入 test / wrongpass 登录失败后，不清空密码、不重输，直接再点「登录」；预期再次约 1.5s 后报「用户名或密码错误」（证明密码仍在框里、走了 Service）。",
+      "business_points": [
+        "LoginViewController.loginButtonTapped 失败分支（仅 showError，不清 passwordTextField）",
+        "LoginViewModel.login（password 非空 → 通过客户端 guard → 进 AuthService）"
+      ],
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/ViewControllers/LoginViewController.swift",
+        "Examples/SPMExample/SPMExample/Login/ViewModels/LoginViewModel.swift"
+      ],
+      "pass_criteria": [
+        { "mode": "textContains", "value": "用户名或密码错误", "description": "第二次点登录后约 1.5s 又出现该文案，证明密码仍在、走了 Service", "timing": "约 1.5s 后（第二次提交）" }
+      ],
+      "fail_criteria": [
+        { "mode": "textExists", "value": "请输入密码", "description": "若密码框被清空，第二次会触发客户端「请输入密码」立即报错（说明被清空了，与源码不符）" }
+      ],
+      "timing": "约 1.5s 后（第二次提交）",
+      "source_refs": [
+        "LoginViewController.swift:230-232 失败仅 showError、不清密码",
+        "LoginViewModel.swift:34 密码空校验"
+      ],
+      "notes": "反假设核心：secure 字段不暴露 text，故用「第二次提交走 Service（~1.5s 报错）vs 走客户端校验（立即报请输入密码）」间接验证密码框是否被清空。源码确认不清空，与某些通用文档声称的「标准清空」相反。"
+    },
+    {
+      "id": "login-button-disabled-during-loading",
+      "flow": "login",
+      "intent": "提交期间登录按钮标题清空 + 禁用 + 出现活动指示器",
+      "prompt": "输入任意合法非空账号密码（如 test / 123456），点「登录」；预期提交期间（点登录后 ~1.5s 窗口）登录按钮标题清空、不可点、出现活动指示器。",
+      "business_points": [
+        "LoginViewController.updateLoadingState(true)（setTitle('') + isEnabled=false + startAnimating）"
+      ],
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/ViewControllers/LoginViewController.swift"
+      ],
+      "pass_criteria": [
+        { "mode": "targetGone", "value": "「登录」按钮的标题文本", "description": "setTitle('') 清空按钮文字", "timing": "点登录后 ~1.5s 窗口" },
+        { "mode": "targetExists", "value": "活动指示器（loading spinner）", "description": "loadingIndicator startAnimating" }
+      ],
+      "fail_criteria": [
+        { "mode": "targetExists", "value": "可点的「登录」按钮（标题「登录」仍在）", "description": "未禁用/未清空标题，与源码不符" }
+      ],
+      "timing": "点登录后 ~1.5s 窗口",
+      "source_refs": ["LoginViewController.swift:251-262 updateLoadingState"]
+    },
+    {
+      "id": "login-double-tap-guard",
+      "flow": "login",
+      "intent": "快速双击登录按钮，第二次被同步重入守卫丢弃（仅一次请求、仅一次跳转）",
+      "prompt": "输入 test / 123456，快速连点「登录」两次；预期仅触发一次登录请求、仅跳转一次首页。",
+      "business_points": [
+        "LoginViewController.loginButtonTapped（isLoading 在 Task 外同步置位，guard !isLoading 第二次直接 return）"
+      ],
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/ViewControllers/LoginViewController.swift"
+      ],
+      "pass_criteria": [
+        { "mode": "textExists", "value": "欢迎回来！", "description": "仅一次首页出现（跳转一次）", "timing": "约 1.5s 后" }
+      ],
+      "fail_criteria": [
+        { "mode": "targetExists", "value": "两次首页跳转迹象 / 两次登录请求", "description": "若守卫失效会出现重复请求" }
+      ],
+      "timing": "连点瞬时触发，约 1.5s 后出结果",
+      "source_refs": ["LoginViewController.swift:219-220 isLoading 同步守卫"],
+      "notes": "强验证需配合 app.logs.read 看 AuthService「开始登录请求」日志条数（应为 1）；UI 判据（仅一次跳转）为辅。"
+    },
+    {
+      "id": "login-no-back-after-success",
+      "flow": "login",
+      "intent": "登录成功后无法返回登录页（整栈替换 + hidesBackButton）",
+      "prompt": "test / 123456 登录成功进入首页后，尝试返回；预期导航栏无返回按钮、无法回到登录页。",
+      "business_points": [
+        "LoginViewController.navigateToHome（setViewControllers([homeVC]) 整栈替换）",
+        "HomeViewController（navigationItem.hidesBackButton = true）"
+      ],
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/ViewControllers/LoginViewController.swift",
+        "Examples/SPMExample/SPMExample/Login/ViewControllers/HomeViewController.swift"
+      ],
+      "depends_on": { "seed_data": "test/123456" },
+      "pass_criteria": [
+        { "mode": "targetGone", "value": "导航返回按钮", "description": "hidesBackButton=true" },
+        { "mode": "textExists", "value": "欢迎回来！", "description": "首页常驻，返回手势无效" }
+      ],
+      "fail_criteria": [
+        { "mode": "targetExists", "value": "导航返回按钮", "description": "若能 back 回登录页则与源码不符" }
+      ],
+      "timing": "跳转后",
+      "source_refs": [
+        "LoginViewController.swift:277 setViewControllers 整栈替换",
+        "HomeViewController.swift:127 hidesBackButton"
+      ]
+    },
+    {
+      "id": "login-simulate-failure-knob",
+      "flow": "login",
+      "intent": "调试旋钮 simulateFailureRate>0 时随机触发「网络连接失败」（默认 rate=0 永不触发，人工定是否纳入测试）",
+      "prompt": "（仅当 simulateFailureRate 被设为 >0 时）登录可能随机失败，约 1.5s 后显示「网络连接失败」。",
+      "business_points": [
+        "AuthService.shouldSimulateFailure（Double.random < simulateFailureRate → throw networkError）"
+      ],
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/Services/AuthService.swift"
+      ],
+      "pass_criteria": [
+        { "mode": "textContains", "value": "网络连接失败", "description": "networkError 文案（随机出现）", "timing": "约 1.5s 后（随机）" }
+      ],
+      "fail_criteria": [],
+      "timing": "约 1.5s 后（随机，仅 rate>0）",
+      "source_refs": [
+        "AuthService.swift:27 simulateFailureRate=0 默认",
+        "AuthService.swift:50-53 shouldSimulateFailure→networkError",
+        "AuthResponse.swift:44-45 文案"
+      ],
+      "notes": "调试旋钮，非业务缺陷，known_defect 不适用。默认 rate=0 永不触发；是否纳入测试由人工定（非测试场景勿动该旋钮）。"
+    }
+  ]
+}

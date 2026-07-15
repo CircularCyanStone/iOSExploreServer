@@ -120,7 +120,7 @@ SNAPSHOT_ID=$(echo $INSPECT | jq -r '.data.viewSnapshotID')
 VALUE_PATH=$(echo $INSPECT | jq -r '.data.targets[] | select(.text == "December") | .path')
 
 curl -X POST http://localhost:38321/ -d "{
-  \"action\": \"ui.tap\",
+  \"action\": \"ui_tap_and_inspect\",
   \"data\": {
     \"path\": \"$VALUE_PATH\",
     \"viewSnapshotID\": \"$SNAPSHOT_ID\"

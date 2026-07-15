@@ -8,8 +8,9 @@ description: |
   
   Must explicitly mention iOS, iPhone, iPad, or mobile app form filling to trigger.
 
-  Based on iOSDriver MCP Server. Note: ui.input/ui.tap/ui.control.sendAction have no
-  native MCP tool and must go through call_action (see F-02 inside).
+  Based on iOSDriver MCP Server. All commands below have native MCP tools
+  (ui_input / ui_tap / ui_control_sendAction / ui_tap_and_inspect etc.); use them first.
+  call_action is only a fallback when a native tool call fails.
 ---
 
 # iOS Form Filling & Data Entry
@@ -45,13 +46,13 @@ Use this skill when you need to:
 | `ui.input` | Enter text into fields (replace/append) | 88-129ms per field | ✅ `mcp__iOSDriver__ui_input` |
 | `ui.control.sendAction` | Toggle switches, adjust sliders/steppers/segments | 3-4ms | ✅ `mcp__iOSDriver__ui_control_sendAction` |
 | `ui.keyboard.dismiss` | Close keyboard after input | 200-250ms | ✅ `mcp__iOSDriver__ui_keyboard_dismiss` |
-| `ui.tap` | Tap submit buttons | 50-100ms | ✅ `mcp__iOSDriver__ui_tap` |
+| `ui_tap_and_inspect` | Tap submit buttons and check state | ~50ms + wait + inspect | ✅ `mcp__iOSDriver__ui_tap_and_inspect` |
 
-> **排障兜底**：所有命令都有专用 MCP 工具。如遇参数问题或调用失败，
-> 可使用 `mcp__iOSDriver__call_action(action:"ui.input", data:{...})` 绕过。
-> 正常情况优先使用专用工具。
-> 因此本 skill 的 **控件交互（开关/滑块/步进/分段）全部依赖 `call_action` 兜底**，
-> 而不是有专属工具。
+> **排障兜底**：所有命令（含控件交互）都有专用 MCP 工具，正常情况优先使用。
+> 仅当专用工具调用失败时，才用 `mcp__iOSDriver__call_action(action:"ui.input", data:{...})` 兜底。
+> 
+> **Performance tip:** Use `ui_tap_and_inspect` for submit buttons to combine tap and 
+> state verification in one call, reducing agent reasoning cycles by 2-3 seconds.
 
 **Total form fill time (5 fields):** < 1 second
 
@@ -77,9 +78,9 @@ Use this skill when you need to:
 
 ### 2. Control Interaction
 
-> **所有控件交互都走 `ui.control.sendAction`，该命令无原生 MCP 工具（F-02/F-38）。**
-> 把下面示例里的 `{"action":"ui.control.sendAction","data":{...}}` 改用
-> `call_action(action:"ui.control.sendAction", data:{...})` 发送即可。
+> **控件交互走 `ui.control.sendAction`，有原生 MCP 工具 `mcp__iOSDriver__ui_control_sendAction`。**
+> 下面示例用 `action` 形式展示参数结构；通过 MCP 调用时直接用原生工具，
+> 失败再退回 `call_action(action:"ui.control.sendAction", data:{...})`。
 
 **UISwitch (Toggle Switches):**
 ```json
@@ -137,11 +138,25 @@ Set `value` to segment index (0-based).
 
 ### 3. Form Submission
 
-After filling all fields:
-1. Use `ui.keyboard.dismiss` to close keyboard (if visible)
-2. Find submit button via `ui.inspect`
-3. Use `ui.tap` to submit form
-4. Wait 500ms for form submission animation/transition
+填完字段后：1. `ui.keyboard.dismiss` 收键盘 → 2. `ui.inspect` 找提交按钮 → 3. 点击提交。
+
+**点击前先判断同步还是异步，二者等法不同：**
+
+- **同步提交**（纯前端校验、本地切页）：点击后 UI 几乎立即到终态 → 用 `ui_tap_and_inspect`，
+  `stableTimeMs=300~500ms` 覆盖动画即可。
+- **异步提交**（登录/注册/保存到服务器，有 loading 或网络）：点击后先进 loading 中间态
+  （按钮禁用 + `UIActivityIndicatorView`），最终才跳转或报错。
+  **不要用 `ui_tap_and_inspect` + 固定 sleep**——`stableTimeMs` 判的是"UI 结构稳定"，
+  loading 期间 spinner 一直转、结构不变，会提前"稳定"并抓到 loading 中间态；固定 sleep 也覆盖不了网络慢。
+
+  **正确做法**：点击后用 `wait_and_inspect` 等**明确终态判据**（不是等"时间到"或"界面变了"）：
+  - 成功：目标页确定元素，如 `targetExists("home_welcome_label")`、`textExists("欢迎回来")`
+  - 失败：`targetExists` alert（弹错误框）、`textContains("错误")`、或提交按钮重新启用（loading 结束但没跳转）
+  - 成功/失败两个条件塞进 `ui_waitAny` 的 `conditions` 数组，先命中谁就是谁
+
+> **不用 `snapshotChanged` 判成功**：它只表达"界面变了"。登录失败（弹 alert、清空密码框）界面同样会变，
+> 会被误判为"登录成功"。必须用目标页的**确定元素**当成功判据。
+> **不用固定 `sleep`**：loading/网络时长不确定——sleep 短了抓到 loading 中间态，长了白白等待；判据驱动才又快又准。
 
 ## Usage Examples
 
@@ -616,11 +631,12 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data
 curl -X POST http://localhost:38321/ -d '{"action":"ui.keyboard.dismiss"}'
 ```
 
-### 5. Wait After Form Submission
-```bash
-curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{...}}'
-sleep 0.5  # Wait for submission animation/navigation
-```
+### 5. Form Submission 等待策略
+
+提交后怎么等，取决于同步还是异步（详见上面 **Form Submission** 节）：
+- **同步提交**：`ui_tap_and_inspect`（`stableTimeMs=300~500ms`）。
+- **异步提交（登录/网络）不要用固定 `sleep`**：用 `wait_and_inspect` + 目标页确定元素判成功、
+  alert/错误文本判失败。固定 `sleep 0.5` 在异步场景会抓到 loading 中间态，甚至误判成败。
 
 ### 6. Use Accessibility Identifiers When Available
 Instead of fragile path-based lookups, use accessibilityIdentifier when available:

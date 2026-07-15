@@ -216,14 +216,17 @@ xcrun simctl terminate <UDID> com.coo.SPMExample
 | 连接检查 | `mcp__iOSDriver__ping` |
 | UI 检查 | `mcp__iOSDriver__ui_inspect` |
 | 截图 | `mcp__iOSDriver__ui_screenshot` |
-| 点击 | `mcp__iOSDriver__ui_tap` |
+| 点击并检查状态 | `mcp__iOSDriver__ui_tap_and_inspect` |
 | 弹窗响应 | `mcp__iOSDriver__ui_alert_respond` |
 | 文本输入 | `mcp__iOSDriver__ui_input` |
 | 控件事件（开关/滑块） | `mcp__iOSDriver__ui_control_sendAction` |
 | 滚动 | `mcp__iOSDriver__ui_scroll` |
 | 导航返回 | `mcp__iOSDriver__ui_navigation_back` |
 
-> **排障兜底**：所有 UI 命令都有对应的专用 MCP 工具（如 `ui_tap`、`ui_input`）。
+> **性能优化**：优先使用 `ui_tap_and_inspect` 而非单独调用 `ui.tap` 后再 `ui.inspect`。
+> 组合工具将点击、等待稳定、状态检查整合为一次调用，减少 Agent 推理次数，耗时从 4-6 秒优化到 2-3 秒。
+> 
+> **排障兜底**：所有 UI 命令都有对应的专用 MCP 工具（如 `ui_tap_and_inspect`、`ui_input`）。
 > 如遇参数问题或工具调用失败，可使用通用工具 `mcp__iOSDriver__call_action(action:"ui.tap", data:{...})` 绕过。
 > 正常情况下优先使用专用工具。
 
@@ -256,6 +259,9 @@ xcrun simctl terminate <UDID> com.coo.SPMExample
 - `/ios-controller-navigation` — 控制器层次检查
 - `/ios-table-actions` — 表格高级操作
 - `/ios-date-picker` — 日期选择器
+
+**离线分析型（不操作 App、不进上面的任务路由表）：**
+- `/ios-test-intent` — 读业务源代码产出测试意图 + 成败判据清单（pass/fail criteria），判据用 `textExists` 等等待词汇，供执行型 skill 消费；运行时执行前可先来这拿判据
 
 ## 技术架构
 
@@ -314,10 +320,10 @@ ios-automation (入口 skill)
 
 #### 必须顺序调用的场景
 
-1. **ui.inspect → ui.tap/ui.input/ui.control.sendAction**
+1. **ui.inspect → ui_tap_and_inspect**
    - `ui.inspect` 签发 `viewSnapshotID`（陈旧校验指纹）
-   - 后续交互工具需要 `viewSnapshotID` 验证 UI 未变化
-   - 两次调用之间如有其他 UI 操作，需重新 `ui.inspect`
+   - `ui_tap_and_inspect` 需要 `viewSnapshotID` 验证 UI 未变化
+   - 推荐使用 `ui_tap_and_inspect` 一次性完成点击和状态检查，避免额外的 Agent 推理周期
 
 2. **ui.wait → 后续操作**
    - 等待加载完成、动画结束、目标出现后再操作

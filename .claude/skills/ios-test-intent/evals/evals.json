@@ -1,0 +1,49 @@
+{
+  "skill_name": "ios-test-intent",
+  "description": "Test cases verifying the skill correctly derives test intents + pass/fail criteria FROM SOURCE CODE (offline, no app run). Each eval feeds a source-analysis task and checks the skill's output shape, vocabulary compliance, and source-grounding.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "读 SPMExample 登录源代码，产出「登录成功」场景的测试意图（pass/fail 判据）。源码在 Examples/SPMExample/SPMExample/Login/。",
+      "expected_output": "Should produce ONE intent object with:\n1. pass_criteria containing textExists('欢迎回来！') (首页欢迎语) and targetGone(导航返回按钮)\n2. fail_criteria containing alert and textContains('用户名或密码错误')\n3. timing = '约 1.5s 后' (from AuthService.networkDelay)\n4. NO path / accessibilityIdentifier / viewSnapshotID in any criterion value\n5. business_points referencing AuthService.login and LoginViewController.navigateToHome\n6. source_refs with file:line (e.g. AuthService.swift:43, LoginViewController.swift:274)\n7. depends_on.seed_data = 'test/123456'",
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/ViewModels/LoginViewModel.swift",
+        "Examples/SPMExample/SPMExample/Login/Services/AuthService.swift",
+        "Examples/SPMExample/SPMExample/Login/ViewControllers/LoginViewController.swift"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "读登录源代码，判断「用户不存在」和「密码错」两个失败分支能否被用户区分。",
+      "expected_output": "Should identify that AuthService.login throws invalidCredentials for BOTH 'user not found' (L56-58) AND 'wrong password' (L61-63), both mapped to the SAME message '用户名或密码错误'. Should produce TWO intents (login-user-not-found, login-wrong-password) with identical textContains('用户名或密码错误') criteria, and set cross_flow_verifiable noting they are deliberately indistinguishable (security blurring). Must NOT fabricate distinct error messages.",
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/Services/AuthService.swift",
+        "Examples/SPMExample/SPMExample/Login/Models/AuthResponse.swift"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "分析 SPMExample 登录失败后密码框是否被清空，并产出对应测试意图。",
+      "expected_output": "Should read LoginViewController.loginButtonTapped failure branch (L230-232) and find it only calls showError — it does NOT clear passwordTextField. Must NOT assume the generic 'iOS standard clears password on failure'. Should produce a 'login-password-retained-on-failure' intent whose criteria verify retention INDIRECTLY (second submit without re-entering password goes to AuthService ~1.5s and shows '用户名或密码错误', vs immediate '请输入密码' if it had been cleared), because secure text fields don't expose text. source_refs must cite LoginViewController.swift:230-232.",
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/ViewControllers/LoginViewController.swift",
+        "Examples/SPMExample/SPMExample/Login/ViewModels/LoginViewModel.swift"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "给重置密码流程（AuthService.resetPassword）产出测试意图，注意失败文案是否准确。",
+      "expected_output": "Should read AuthService.resetPassword and find that failure (user not found OR email mismatch, L160-163) throws invalidCredentials → '用户名或密码错误', which is semantically WRONG for a reset flow (should describe '用户不存在或邮箱不匹配'). Should produce an intent with known_defect=true whose criteria STILL assert the ACTUAL current text '用户名或密码错误' (to keep the test deterministic), with a description flagging the semantic defect for human review. Must distinguish 'business rule to test as-is' from 'implementation defect to flag'.",
+      "files": [
+        "Examples/SPMExample/SPMExample/Login/Services/AuthService.swift",
+        "Examples/SPMExample/SPMExample/Login/Models/AuthResponse.swift"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "把登录意图清单格式化成可被 ios-automation 执行的判据。",
+      "expected_output": "Should output criteria using ONLY the allowed vocabulary: textExists / textContains / targetExists / targetGone / alert. Must NOT emit any path (root/0/...), accessibilityIdentifier value (e.g. home_logout_button, login_button), or viewSnapshotID inside criterion values. Each criterion must carry a description (human reason) and timing. accessibilityIdentifier may appear ONLY in source_refs for runtime reference, never as a criterion value. Output should be a JSON array of intent objects following the extended evals schema.",
+      "files": []
+    }
+  ]
+}

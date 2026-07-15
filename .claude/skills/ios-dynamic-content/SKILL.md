@@ -134,7 +134,7 @@ wait_for_element_gone "Loading..." 10.0
 
 ```bash
 # Trigger refresh
-curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{...}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}'
 
 # Wait for loading spinner to disappear
 wait_for_element_gone "Loading..." 10.0

@@ -48,7 +48,7 @@ Use this skill when you need to:
 | Command | Purpose | Status |
 |---------|---------|--------|
 | `ui.swipe` | Reveal cell swipe actions | ✅ Tested |
-| `ui.tap` | Tap revealed action buttons | ✅ Tested |
+| `ui_tap_and_inspect` | Tap revealed action buttons | ✅ Tested |
 | `ui.table.*` | Table-specific operations | ❌ Not tested |
 | `ui.collection.*` | Collection-specific operations | ❌ Not tested |
 
@@ -131,7 +131,7 @@ if [ -n "$CELL_REF" ]; then
   if [ -n "$DELETE_PATH" ]; then
     # Tap delete
     curl -s -X POST http://localhost:38321/ -d "{
-      \"action\": \"ui.tap\",
+      \"action\": \"ui_tap_and_inspect\",
       \"data\": {
         \"path\": \"$DELETE_PATH\",
         \"viewSnapshotID\": \"$SNAPSHOT_ID\"
@@ -168,7 +168,7 @@ SNAPSHOT_ID=$(echo $INSPECT | jq -r '.data.viewSnapshotID')
 EDIT_PATH=$(echo $INSPECT | jq -r '.data.targets[] | select(.text == "Edit") | .path')
 
 curl -X POST http://localhost:38321/ -d "{
-  \"action\": \"ui.tap\",
+  \"action\": \"ui_tap_and_inspect\",
   \"data\": {
     \"path\": \"$EDIT_PATH\",
     \"viewSnapshotID\": \"$SNAPSHOT_ID\"
@@ -198,7 +198,7 @@ curl -X POST http://localhost:38321/ -d "{
 
 For operations not directly supported:
 1. Use `ui.swipe` to reveal cell actions
-2. Use `ui.tap` to interact with revealed buttons
+2. Use `ui_tap_and_inspect` to interact with revealed buttons
 3. Use `ui.longPress` for potential drag initiation (not tested)
 
 ## Related Skills

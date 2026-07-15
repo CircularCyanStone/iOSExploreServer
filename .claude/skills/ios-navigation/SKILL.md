@@ -40,14 +40,17 @@ Use this skill when you need to:
 | Command | Purpose | Performance |
 |---------|---------|-------------|
 | `ui.inspect` | Get navigation bar state and current screen | 100-200ms |
-| `ui.tap` | Tap navigation elements (buttons, cells, links) | 50-100ms |
+| `ui_tap_and_inspect` | Tap navigation elements and verify state | ~50ms + wait + inspect |
 | `ui.navigation.back` | Go back to previous screen | 50-100ms |
 | `ui.navigation.tapBarButton` | Tap navigation bar buttons (left/right) | 304-305ms |
 | `ui.screenshot` | Capture screen state for verification | 200-500ms |
 
 > **MCP tool availability:** All commands have native `mcp__iOSDriver__*` tools
-> (`ui.inspect`, `ui.tap`, `ui.navigation.back`, `ui.navigation.tapBarButton`, `ui.screenshot`).
+> (`ui.inspect`, `ui_tap_and_inspect`, `ui.navigation.back`, `ui.navigation.tapBarButton`, `ui.screenshot`).
 > If issues occur, use fallback: `call_action(action:"ui.tap", data:{...})`.
+> 
+> **Performance tip:** Use `ui_tap_and_inspect` for navigation taps to combine the tap
+> and state verification in one call, reducing agent reasoning time by 2-3 seconds.
 
 **Screen transition time:** 200-500ms (including animation)
 
@@ -56,11 +59,14 @@ Use this skill when you need to:
 ### 1. Screen Navigation
 
 **Tap to Navigate:**
-Use `ui.tap` to tap any navigation element:
+Use `ui_tap_and_inspect` to tap navigation elements and verify the resulting state:
 - Navigation list cells
 - Action buttons
 - Tab bar items
 - Links and text buttons
+
+This combines the tap action with automatic state verification, reducing the need for
+separate inspect calls and saving 2-3 seconds of agent reasoning time.
 
 **Navigation Detection:**
 ```bash

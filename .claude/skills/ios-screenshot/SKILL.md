@@ -163,17 +163,17 @@ capture_step() {
 capture_step "01_home"
 
 # Navigate to settings
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{...}}' > /dev/null
+curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
 sleep 0.5
 capture_step "02_settings"
 
 # Navigate to account
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{...}}' > /dev/null
+curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
 sleep 0.5
 capture_step "03_account"
 
 # Navigate to privacy
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{...}}' > /dev/null
+curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
 sleep 0.5
 capture_step "04_privacy"
 
@@ -187,7 +187,7 @@ echo "✅ Flow documented with 4 screenshots"
 # Capture alert appearance
 
 # Trigger alert
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{...}}' > /dev/null
+curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
 sleep 0.3
 
 # Capture alert
@@ -329,14 +329,14 @@ echo "Starting visual regression test: $TEST_NAME"
 capture_and_compare "home"
 
 # Navigate to settings
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{...}}' > /dev/null
+curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
 sleep 0.5
 
 # Settings screen
 capture_and_compare "settings"
 
 # Navigate to account
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{...}}' > /dev/null
+curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
 sleep 0.5
 
 # Account screen
@@ -465,7 +465,7 @@ echo $IMAGE | base64 -d > file.png
 
 **Example:**
 ```bash
-curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{...}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}'
 sleep 0.5  # Wait for transition
 curl -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}'
 ```
@@ -512,12 +512,12 @@ screenshot.png
 
 ```bash
 # Good: Wait for stability
-curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{...}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}'
 sleep 0.5  # Wait for transition
 curl -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}'
 
 # Bad: Immediate capture (may catch mid-animation)
-curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{...}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}'
 curl -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}'
 ```
 

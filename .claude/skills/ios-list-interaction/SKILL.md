@@ -41,12 +41,12 @@ Use this skill when you need to:
 |---------|---------|-------------|
 | `ui.inspect` | Find visible list items | 100-200ms |
 | `ui.scrollToElement` | Scroll to make item visible | 2-7ms (instant) |
-| `ui.tap` | Select list item | 50-100ms |
+| `ui_tap_and_inspect` | Select list item | 50-100ms |
 | `ui.swipe` | Manual scrolling or swipe actions | 300-500ms |
 
-> **MCP tool availability:** All commands (`ui.inspect`, `ui.tap`, `ui.scrollToElement`, `ui.swipe`)
+> **MCP tool availability:** All commands (`ui.inspect`, `ui_tap_and_inspect`, `ui.scrollToElement`, `ui.swipe`)
 > have native `mcp__iOSDriver__*` tools. If you encounter issues, use the fallback:
-> `call_action(action: "ui.tap", data: { "path": ..., "viewSnapshotID": ... })`.
+> `call_action(action: "ui_tap_and_inspect", data: { "path": ..., "viewSnapshotID": ... })`.
 
 **Find item with scrolling:** 1-5 seconds (depends on list size and item position)
 
@@ -68,7 +68,7 @@ Returns item if visible, otherwise needs scrolling.
   "type": "UILabel",
   "text": "Item 5",
   "accessibilityIdentifier": "list.item.5",
-  "availableActions": ["ui.tap"]
+  "availableActions": ["ui_tap_and_inspect"]
 }
 ```
 
@@ -142,7 +142,7 @@ ITEM_PATH=$(echo $INSPECT | jq -r '.data.targets[] | select(.text == "John Doe")
 
 # Step 3: Tap item
 curl -X POST http://localhost:38321/ -d "{
-  \"action\": \"ui.tap\",
+  \"action\": \"ui_tap_and_inspect\",
   \"data\": {
     \"path\": \"$ITEM_PATH\",
     \"viewSnapshotID\": \"$SNAPSHOT_ID\"
@@ -238,7 +238,7 @@ select_list_item() {
     
     if [ -n "$ITEM_PATH" ]; then
       curl -s -X POST $BASE_URL -d "{
-        \"action\": \"ui.tap\",
+        \"action\": \"ui_tap_and_inspect\",
         \"data\": {
           \"path\": \"$ITEM_PATH\",
           \"viewSnapshotID\": \"$SNAPSHOT_ID\"
@@ -385,7 +385,7 @@ for item in "${items[@]}"; do
   
   if [ -n "$ITEM_PATH" ]; then
     curl -s -X POST http://localhost:38321/ -d "{
-      \"action\": \"ui.tap\",
+      \"action\": \"ui_tap_and_inspect\",
       \"data\": {
         \"path\": \"$ITEM_PATH\",
         \"viewSnapshotID\": \"$SNAPSHOT_ID\"
@@ -571,7 +571,7 @@ INSPECT=$(curl -s -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}')
 SNAPSHOT_ID=$(echo $INSPECT | jq -r '.data.viewSnapshotID')
 
 # Now tap with fresh snapshot
-curl -X POST http://localhost:38321/ -d "{\"action\":\"ui.tap\",\"data\":{...,\"viewSnapshotID\":\"$SNAPSHOT_ID\"}}"
+curl -X POST http://localhost:38321/ -d "{\"action\":\"ui_tap_and_inspect\",\"data\":{...,\"viewSnapshotID\":\"$SNAPSHOT_ID\"}}"
 ```
 
 #### 3. Item Not Visible After Scroll

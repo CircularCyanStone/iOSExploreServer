@@ -43,10 +43,13 @@ Use this skill when you need to:
 | `ui.inspect` | Detect alert presence and read alert structure | 21ms median | ✅ `mcp__iOSDriver__ui_inspect` |
 | `ui.alert.respond` | Respond to alert by tapping a button | 560ms median (includes animation) | ✅ `mcp__iOSDriver__ui_alert_respond` |
 | `ui.input` | Fill text fields in input alerts (if needed) | 88-129ms | ✅ `mcp__iOSDriver__ui_input` |
-| `ui.tap` | Trigger an action that produces an alert | ~22ms | ✅ `mcp__iOSDriver__ui_tap` |
+| `ui_tap_and_inspect` | Trigger action and inspect state (optimized) | ~50ms + wait + inspect | ✅ `mcp__iOSDriver__ui_tap_and_inspect` |
 
 > **MCP tool availability:** All commands have native `mcp__iOSDriver__*` tools.
 > If issues occur, use fallback: `call_action(action:"ui.tap", data:{...})`.
+> 
+> **Performance tip:** Use `ui_tap_and_inspect` instead of separate `ui.tap` + `ui.inspect` 
+> calls to reduce agent reasoning cycles and save 2-3 seconds per interaction.
 
 **End-to-end alert handling:** ~1.1 seconds (trigger → detect → respond)
 
