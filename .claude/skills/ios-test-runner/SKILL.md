@@ -92,7 +92,7 @@ description: |
    - "点「登录」" → 找 `text=="登录"` 或 `title=="登录"` 的 button。
    - "用户名留空" → **不输入**（或输入后清空），直接跳到点登录。
 3. 用 `ui_input`（`mode:"replace"`）逐字段填，`submit:true` 收键盘。
-4. 点提交按钮：**用 `ui_tap`（普通点击），不要用 `ui_tap_and_inspect`**——异步提交用 tap_and_inspect 的 `stableTimeMs` 会抓到 loading 中间态（详见 Step 4）。
+4. 点提交按钮：**用 `ui_tap`（普通点击），不要用 `ui_tap_and_inspect`**——异步提交用 tap_and_inspect 的 `stableTimeMs` 会抓到 loading 中间态（详见 Step 4）。（**例外**：若该 intent 的判据本来就是"抓 loading 中间态"——如 `login-button-disabled-during-loading`——则反过来要用 `ui_tap_and_inspect(waitForStable:false, stableTimeMs:0)` 故意抓中间态，见 Step 4b 机制 2。）
 
 > **为什么现场解析而不是预录 path**：path（`root/0/0/4`）会随 UI 重构变；可见文案（"登录"、"用户名"）是稳定契约。runner 只信任文案/角色，path 仅在单次 inspect 生命周期内有效。
 
@@ -123,6 +123,60 @@ description: |
   - 命中 `fail:*` → **fail**，`matched_criterion` 记该 id。
   - 超时无命中 → **fail**（判据没满足），`matched_criterion: "timeout"`，notes 说明等了什么没来。
   - 命中的是 alert（靠 Step 4 的 inspect 兜底）→ 按该 alert 属 pass 还是 fail 定。
+
+### Step 4b — 三类进阶判据机制（纯 textExists/targetGone 覆盖不到时用）
+
+以下三种判据在纯 `ui_waitAny` 文本/目标等待之外，处理"请求数""瞬时 loading 态""失败后字段是否保留"这类纯 UI 判据够不着的场景。intent 的 `notes` 提示需要这些机制时启用。
+
+#### 机制 1：app.log 计数判据（`logCount`）
+
+**适用场景**：intent 需要验证"仅触发 N 次请求"（如双击守卫 `login-double-tap-guard`）。UI 上看不到请求次数，只能靠日志。
+
+**操作步骤**：
+1. **打点**：操作前调 `app_logs_mark`，拿到 `cursor`（含 `id` 和 `captureSessionID`）。
+2. **执行操作**：如快速双击登录按钮。
+3. **读日志**：调 `app_logs_read(after: <上面拿到的 cursor>, sources: ["oslog"], limit: 50)`，只读 mark 之后的条目。
+4. **数关键词条数**：在返回的 `entries[]` 里找目标 category + message 片段（如 `category=="AuthService"` 且 `message` 含 "开始登录请求"），数匹配条数。
+5. **对照预期**：条数 == 预期值（如双击守卫预期 1）→ pass；多了一次 → fail（守卫失效）。
+
+**要点**：
+- `sources` 用 `["oslog"]`（Swift Logger 走 os_log）或 `["nslog"]`（NSLog），取决于 App 用的日志框架。SPMExample 的 AuthService/LoginViewModel 用 `Logger(subsystem:category:)` → oslog。
+- mark 返回的 `cursor.id` 是增量读取起点；`after` 参数传完整 cursor 对象。
+- 这是**判据层的补充信号**，与 UI 终态判据配合用。如双击守卫：logCount=1（主判据）+ 仅一次首页跳转（辅判据）。
+
+#### 机制 2：loading 窗口检查（瞬时态捕获）
+
+**适用场景**：intent 需要验证"提交期间按钮禁用/标题清空/spinner 可见"（如 `login-button-disabled-during-loading`）。loading 是 ~1.5s 时序窗口，`ui_waitAny` 轮询或分离的 `ui_tap`+`ui_inspect` 都会因为 **agent-loop 间隔**（tap 结果返回 → 推理 → 发 inspect，累计 2–4s）错过窗口。
+
+**解法：用 `ui_tap_and_inspect(waitForStable:false)` 把 tap + inspect 合并成一次 server-side 调用**：
+- `waitForStable:false` + `stableTimeMs:0` → tap 后**不等稳定**，立即 inspect。
+- server 在同一次 HTTP 请求内先执行 tap（触发 `loginButtonTapped` → 同步置 `isLoading=true` → Task 排队 `updateLoadingState(true)`），然后立即遍历视图树。
+- Task 的 `updateLoadingState(true)` 通常在 inspect 遍历前就已跑完（main actor 队列顺序），所以 inspect 能抓到 loading 中间态：按钮 `title==""`、`isEnabled==false`、`availableActions==[]`、`UIActivityIndicatorView` `isHidden==false`。
+- 实测 server-side 总耗时 ~27ms（tapMs=14 + inspectMs=13），远小于 1.5s 窗口。
+
+**要点**：
+- 如果 `waitForStable:true`（默认），inspect 会等 UI 稳定后才跑——loading 结束、终态出现，抓不到中间态。**必须 false**。
+- 这种 inspect 抓到的是 loading 态，不是终态。抓完后再单独 `ui_wait` 等终态（如 "欢迎回来！" 或 "用户名或密码错误"）验证最终结果。
+- 如果 Task 还没跑就 inspect 了（极端竞态），按钮 title 仍是 "登录"——重试一次即可（概率很低）。
+
+#### 机制 3：二次提交协议（password-retained 类反假设验证）
+
+**适用场景**：intent 需要验证"失败后密码框未被清空"（如 `login-password-retained-on-failure`）。密码框是 secure 字段，`ui_inspect` 不暴露 text，无法直接读取密码是否还在。
+
+**反假设协议**：
+1. **第一次提交**：输入 test/wrongpass → 点登录 → 等 ~1.5s → 出现"用户名或密码错误"（确认走 AuthService 失败）。
+2. **第二次提交（不重输密码）**：直接再点登录。
+3. **区分两条路径**：
+   - **密码还在**（符合源码）→ 通过客户端 guard（password 非空）→ 进 AuthService → ~1.5s 后再次报"用户名或密码错误"。
+   - **密码被清空**（与源码不符）→ 客户端 guard 拦截 → 立即报"请输入密码"。
+4. **判据**：第二次提交后 `ui_wait(mode:"textExists", text:"请输入密码", timeoutMs:3000)`：
+   - **超时**（"请输入密码" 没出现）→ 密码还在、走了 Service → **pass**。
+   - **命中**（"请输入密码" 出现）→ 密码被清空 → **fail**。
+5. **日志佐证**（强验证）：`app_logs_read` 数 "开始登录请求" 条数——预期 **2**（第一次 + 第二次都走了 AuthService）。如果只有 1 条，说明第二次被客户端 guard 拦截（密码为空）。
+
+**要点**：
+- "用户名或密码错误" 在第一次失败后已残留在 errorLabel 上，所以不能用 `textExists:"用户名或密码错误"` 判第二次——它会立即匹配残留。改用 **"请输入密码" 的缺席**（超时）作为反向判据。
+- 必须先按 Step 2b 重启 App 回干净登录页，否则上一条的 errorLabel 残留会干扰。
 
 ### Step 5 — 记录单条结果
 
@@ -170,8 +224,14 @@ description: |
 | login-empty-password | `textExists:"请输入密码"` | `textExists:"用户名或密码错误"` | 2000ms（立即） |
 | login-user-not-found | `textContains:"用户名或密码错误"` | `textExists:"请输入用户名"` | 5000ms（异步） |
 | login-wrong-password | `textContains:"用户名或密码错误"` | （无强 fail） | 5000ms（异步） |
+| login-no-back-after-success | `textExists:"欢迎回来！"` + `targetGone:导航返回按钮(backAvailable==false)` | `targetExists:导航返回按钮` | 5000ms（异步） |
+| login-password-retained-on-failure | **二次提交协议**：第二次提交后 `textExists:"请输入密码"` **超时**（缺席=密码还在=pass） | `textExists:"请输入密码"` 命中（密码被清=fail） | 3000ms（第二次提交后） |
+| login-button-disabled-during-loading | **loading 窗口检查**：`ui_tap_and_inspect(waitForStable:false)` 抓 button `title==""` + `isEnabled==false` + spinner visible | button `title=="登录"` + `isEnabled==true`（未禁用） | server-side ~27ms（合并调用） |
+| login-double-tap-guard | **logCount**：`app_logs_read` 数 AuthService "开始登录请求" == 1；UI 辅判据：仅一次 `textExists:"欢迎回来！"` | logCount > 1（守卫失效） | — |
+| login-simulate-failure-knob | `textContains:"网络连接失败"` | （无） | skipped（rate=0 默认不触发） |
 
 > alert 类 fail 条件不进 ui_waitAny，靠返回后 `ui_inspect.alert.available` 兜底。
+> 灰色行（password-retained / loading / double-tap）用 Step 4b 的进阶机制，不是纯 ui_waitAny 文本等待。
 
 ## Usage Examples
 
@@ -184,15 +244,18 @@ description: |
 1. **判据驱动，不要固定 sleep**。异步提交用 `wait_and_inspect` + 终态判据；固定 sleep 会抓 loading 中间态或误判成败（继承自 ios-form-filling 的核心范式）。
 2. **现场解析，不要预录 path**。意图清单不含 path 是设计意图——runner 用 `ui_inspect` 按文案/角色当次解析，path 只在单次 inspect 生命周期内有效。
 3. **pass + fail 条件同塞 ui_waitAny**。先命中谁定结果，避免"先等 pass 再查 fail"的两次轮询。
-4. **诚实 skip**。判据落不了地的（双击守卫、loading 期间按钮禁用的时序窗口、需配合日志的请求次数）标 skipped + 原因，不要硬造 pass。这些正是要反馈给意图层的信号。
+4. **诚实 skip**。判据在当前工具栈下落不了地的（如 `login-simulate-failure-knob` 默认 rate=0 永不触发）标 skipped + 原因，不要硬造 pass。但先用 Step 4b 的三类进阶机制尝试——请求数用 logCount，瞬时态用 loading 窗口检查，secure 字段用二次提交协议——很多"看似纯 UI 判据够不着"的场景其实能落地。
 5. **共享状态注意顺序**。成功路径依赖种子数据，注册/重置会改单例——排序时把"依赖种子"的成功路径放前，或跑前重启 App 重置状态。
 6. **成功后回不去登录页就重启**。SPMExample 登录成功整栈替换 + hidesBackButton，下一条失败类 intent 必须 `stop_app_sim` + `launch_app_sim`（带 `--ios-explore-show-login`）回登录页，别浪费时间找返回按钮。
 
 7. **同文案失败类 intent 之间重启 App**（状态隔离）。连续的 `login-user-not-found` / `login-wrong-password` 显示同一句错误，errorLabel 残留会让下一条的 wait 在 loading 期间误匹配成 pass（`elapsedMs=0` 时序假象，见 Step 2b）。重启回干净登录页是最可靠的状态隔离；不重启时必须用 `app.logs.read` 佐证是新请求。
 
+8. **捕获瞬时 loading 态用合并调用，不要分两步**。`ui_tap` + `ui_inspect` 分离调用有 2–4s agent-loop 间隔，会错过 ~1.5s 的 loading 窗口。用 `ui_tap_and_inspect(waitForStable:false, stableTimeMs:0)` 把 tap + inspect 合并成一次 server-side 调用（~27ms），才能抓到 loading 中间态（button title="" + isEnabled=false + spinner visible）。
+
 ## Limitations
 
-- **纯 UI 判据覆盖不到的 intent**：如 `login-double-tap-guard`（要数 AuthService 请求次数）、`login-button-disabled-during-loading`（loading 是 ~1.5s 时序窗口，ui_waitAny 容易错过）——这类标 skipped，建议配合 `app.logs.read`（按 `explore`/`nslog` 来源读"开始登录请求"日志条数）做强验证，纯 UI 判据为辅。
+- **纯 UI 判据覆盖不到的 intent → 用 Step 4b 进阶机制补**：如 `login-double-tap-guard`（请求数）用 **logCount**（机制 1），`login-button-disabled-during-loading`（瞬时 loading 态）用 **loading 窗口检查**（机制 2：`ui_tap_and_inspect(waitForStable:false)`），`login-password-retained-on-failure`（secure 字段不暴露 text）用 **二次提交协议**（机制 3）。三者均已验证可落地。
+- **agent-loop 间隔 vs 时序窗口**：分离的 `ui_tap`→`ui_inspect` 两步调用之间有 2–4s agent-loop 间隔（结果返回→推理→发下一步），会错过 ~1.5s 的 loading/异步窗口。**必须用合并调用**（`ui_tap_and_inspect` server-side 27ms）来捕获瞬时态。同理，双击守卫的"并发"测试受限于 agent-loop 间隔——两次独立 fire 间隔 >1.5s，第二次到达时第一次请求已完成。logCount 仍能给出准确的请求总数。
 - **目标解析失败时该条件省略**：`targetExists('某描述')` 在当次 inspect 解析不到，该 condition 省略并在 notes 记"解析失败"，不阻塞其余条件。
 - **不验证视觉/动画质量**（颜色、过渡美感）——这是意图层的设计边界，runner 继承。
 - **模拟器/真机行为可能差异**：报告里记 `simulator` 字段，真机结果另出。
@@ -212,6 +275,6 @@ description: |
 
 ## Production Readiness
 
-✅ **MVP Ready** —— 已在 SPMExample 模拟器实跑 5 条登录 intent 验证判据可落地（见上述报告）。
+✅ **Full Coverage Ready** —— 已在 SPMExample 模拟器实跑**全 10 条**登录 intent 验证判据可落地（9 pass + 1 skipped，见 `docs/test-reports/spmexample-login-run.json`）。三类进阶判据机制（logCount / loading 窗口检查 / 二次提交协议）均已验证有效。
 
 runner skill 是执行型指导，无独立运行时副作用（不写代码、不改 App）；它驱动 iOSDriver MCP 工具操作 App 并产报告。意图清单是源码快照，App 源码/文案变更后需重跑。

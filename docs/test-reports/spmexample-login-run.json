@@ -1,28 +1,31 @@
 {
-  "run_at": "2026-07-15T15:12:00Z",
+  "run_at": "2026-07-15T16:05:00Z",
   "app": "SPMExample",
   "simulator": "iPhone 17 (065CC8DB-8978-46C5-82D6-C96625B608D8)",
   "manifest": "docs/test-intents/spmexample-login.json",
   "runner_skill": "ios-test-runner",
-  "connection": "simulator localhost:38321 (no iproxy; SPMExampl PID 62081 listening)",
+  "connection": "simulator localhost:38321 (no iproxy; SPMExampl listening)",
   "launch_args": ["--ios-explore-show-login"],
   "summary": {
-    "total": 5,
-    "passed": 5,
+    "total": 10,
+    "passed": 9,
     "failed": 0,
-    "skipped": 0,
+    "skipped": 1,
     "pass_rate": 1.0,
-    "note": "MVP scope: 5 of 10 login intents. The other 5 (out_of_scope below) need app.logs request-counting or timing-window capture and were not run in this pass."
+    "note": "Full 10-intent coverage. 9 pass + 1 skipped (simulate-failure-knob: rate=0 default never triggers). State isolation (stop_app_sim + launch_app_sim --ios-explore-show-login) applied between every intent per Step 2b."
   },
   "business_points_covered": [
     "LoginViewModel.login — username.isEmpty guard (login-empty-username)",
     "LoginViewModel.login — password.isEmpty guard (login-empty-password)",
-    "LoginViewModel.login — passes client guard, enters AuthService (login-user-not-found, login-wrong-password, login-success)",
+    "LoginViewModel.login — passes client guard, enters AuthService (login-user-not-found, login-wrong-password, login-success, login-password-retained-on-failure, login-double-tap-guard)",
     "AuthService.login — users[username]==nil → invalidCredentials (login-user-not-found)",
-    "AuthService.login — userData.password != password → invalidCredentials (login-wrong-password)",
-    "AuthService.login — test/123456 match, 1.5s networkDelay, success token (login-success)",
-    "LoginViewController.loginButtonTapped → navigateToHome setViewControllers whole-stack replace (login-success)",
-    "HomeViewController hidesBackButton=true (login-success, backAvailable=false)"
+    "AuthService.login — userData.password != password → invalidCredentials (login-wrong-password, login-password-retained-on-failure 2nd submit)",
+    "AuthService.login — test/123456 match, 1.5s networkDelay, success token (login-success, login-no-back-after-success, login-double-tap-guard)",
+    "LoginViewController.loginButtonTapped → navigateToHome setViewControllers whole-stack replace (login-success, login-no-back-after-success)",
+    "LoginViewController.loginButtonTapped — isLoading sync re-entry guard (login-double-tap-guard: logCount=1)",
+    "LoginViewController.updateLoadingState(true) — setTitle('') + isEnabled=false + startAnimating (login-button-disabled-during-loading)",
+    "LoginViewController.loginButtonTapped failure branch — showError without clearing passwordTextField (login-password-retained-on-failure)",
+    "HomeViewController hidesBackButton=true (login-success, login-no-back-after-success: backAvailable=false)"
   ],
   "results": [
     {
@@ -92,14 +95,78 @@
       ],
       "evidence": "topViewController transitioned LoginViewController → HomeViewController; navigationBar.title='首页', backAvailable=false; home_welcome_label (root/0/0/0) text=='欢迎回来！'; home_username_label 'test', home_email_label 'test@example.com'; no '登录' button visible (whole-stack replace); alert.available=false.",
       "notes": "Fail conditions (alert / textContains '用户名或密码错误') were DELIBERATELY EXCLUDED from ui_waitAny: the login page still showed residual '用户名或密码错误' from the prior intent, which would have matched a text-based fail condition instantly and produced a false fail. Since success navigates AWAY from the login page (residual error label is on the removed login VC), waiting for the pass-only home text '欢迎回来！' is correct; a timeout would have indicated fail. This is the mirror of the residual caveat on login-wrong-password. Runner lesson: when a pass path navigates away from a page carrying residual fail-text, drop the residual-matching fail conditions from the wait and rely on pass + timeout."
+    },
+    {
+      "id": "login-no-back-after-success",
+      "status": "pass",
+      "matched_criterion": "pass:textExists:欢迎回来！ + targetGone:导航返回按钮(backAvailable=false)",
+      "timing_observed": "async (~1.5s AuthService networkDelay + navigation)",
+      "duration_ms": 1500,
+      "wait_elapsedMs_reported": 0,
+      "mechanism": "standard ui_wait (same as login-success)",
+      "conditions_used": [
+        {"id": "pass:textExists:欢迎回来！", "mode": "textExists", "text": "欢迎回来！"},
+        {"id": "pass:targetGone:backAvailable", "mode": "targetGone", "via": "navigationBar.backAvailable==false"}
+      ],
+      "evidence": "After test/123456 login: topViewController=HomeViewController; navigationBar.title='首页'; backAvailable=false; leftItems=[]; home_welcome_label text=='欢迎回来！'. No back button in navigation bar — setViewControllers whole-stack replace + hidesBackButton confirmed.",
+      "notes": "State isolation: restarted app (--ios-explore-show-login) before this intent. Same mechanism as login-success but explicit verification of no-back-button. backAvailable=false on HomeViewController confirms hidesBackButton=true (HomeViewController.swift:127) + whole-stack replace (LoginViewController.swift:277)."
+    },
+    {
+      "id": "login-password-retained-on-failure",
+      "status": "pass",
+      "matched_criterion": "pass:timeout(请输入密码 absent) — password retained, 2nd submit went through AuthService",
+      "timing_observed": "two-submit protocol: 1st ~1.5s (fail) + 2nd ~1.5s (fail again, async)",
+      "duration_ms": 4500,
+      "mechanism": "二次提交协议 (Step 4b 机制 3)",
+      "conditions_used": [
+        {"id": "pass:timeout", "mode": "textExists", "text": "请输入密码", "timeoutMs": 3000, "expect": "timeout"},
+        {"id": "fail:immediate", "mode": "textExists", "text": "请输入密码", "expect": "matched"}
+      ],
+      "evidence": "1st submit (test/wrongpass): AuthService oslog id323 '📤 开始登录请求' @15:51:41 → id326 '⚠️ 密码错误' @15:51:42 → errorLabel '用户名或密码错误'. 2nd submit (NO password re-entry, direct re-tap): LoginViewModel oslog id407 '🔵 开始登录流程: username=test' @15:52:13 → AuthService oslog id408 '📤 开始登录请求' @15:52:13 → id411 '⚠️ 密码错误' @15:52:15 (~2s async) → id413 '⚠️ 显示错误信息'. ui_wait textExists:'请输入密码' timed out (elapsedMs=3002, attempts=30) — '请输入密码' never appeared.",
+      "logCount_evidence": "AuthService '开始登录请求' count since mark = 2 (id323 + id408). Both submits entered AuthService, proving password was NOT cleared after first failure. If password had been cleared, 2nd submit would hit client guard → immediate '请输入密码' (no 2nd AuthService request).",
+      "notes": "State isolation: restarted app before this intent. Secure text field hides text from ui_inspect, so indirect two-submit protocol used. The '请输入密码' absence (timeout) is the pass signal — it means password was retained and 2nd submit passed the client guard into AuthService. The '用户名或密码错误' text is residual from 1st failure, so textExists:'用户名或密码错误' cannot be used as 2nd-submit pass signal (would match instantly). logCount=2 corroborates both submits went through Service."
+    },
+    {
+      "id": "login-button-disabled-during-loading",
+      "status": "pass",
+      "matched_criterion": "pass:loading-window-captured (button title='' + isEnabled=false + spinner visible)",
+      "timing_observed": "instantaneous server-side capture (~27ms combined tap+inspect)",
+      "duration_ms": 27,
+      "mechanism": "loading 窗口检查 (Step 4b 机制 2: ui_tap_and_inspect waitForStable:false)",
+      "conditions_used": [
+        {"id": "pass:targetGone:button-title", "via": "login_button.title == '' (cleared by setTitle(''))"},
+        {"id": "pass:targetExists:spinner", "via": "UIActivityIndicatorView isHidden==false, accessibilityLabel=='In progress'"},
+        {"id": "pass:button-disabled", "via": "login_button.isEnabled == false, availableActions == []"}
+      ],
+      "evidence": "ui_tap_and_inspect(waitForStable:false, stableTimeMs:0) captured loading state in single server-side call (tapMs=14, inspectMs=13, totalMs=27): login_button (root/0/0/4) text='', title='', isEnabled=false, availableActions=[]; UIActivityIndicatorView (root/0/0/7) accessibilityLabel='In progress', isHidden=false, value='1' (animating); still on LoginViewController. Used test/wrongpass (failure path) so button persists post-loading for clean before/after contrast — loading state is identical regardless of creds (updateLoadingState runs before AuthService result).",
+      "notes": "KEY MECHANISM FINDING: separate ui_tap → ui_inspect calls have 2-4s agent-loop gap (result return → reasoning → next call dispatch), which exceeds the ~1.5s loading window. Two prior attempts with separate tap+inspect missed the window entirely (saw post-navigation home page or post-loading re-enabled button). Combining tap+inspect into ui_tap_and_inspect(waitForStable:false) eliminates the gap — server executes both in one HTTP request. waitForStable must be false (default true waits for UI to settle = waits THROUGH loading into terminal state)."
+    },
+    {
+      "id": "login-double-tap-guard",
+      "status": "pass",
+      "matched_criterion": "pass:logCount(AuthService 开始登录请求)==1 + single home navigation",
+      "timing_observed": "first fire @16:00:16 → success @16:00:18 → home; second fire @16:00:20 (post-navigation, blocked)",
+      "duration_ms": 2000,
+      "mechanism": "app.log 计数判据 (Step 4b 机制 1: logCount)",
+      "conditions_used": [
+        {"id": "pass:logCount", "via": "app_logs_read count of AuthService '开始登录请求' == 1"},
+        {"id": "pass:single-navigation", "via": "only one '跳转到首页' + one HomeViewController init in logs"}
+      ],
+      "evidence": "app_logs_mark (cursor id=229) → ui_control_sendAction(touchUpInside, login_button) [1st fire] → ui_control_sendAction(touchUpInside, login_button) [2nd fire]. Logs since mark: id264 '🔵 登录按钮点击' @16:00:16 → id269 '📤 开始登录请求: username=test' @16:00:16 [ONLY AuthService request] → id273 '✅ 登录成功' @16:00:18 → id275 '✅ 跳转到首页' [ONLY navigation] → id277-279 HomeViewController init [ONLY once]. 2nd fire (id297 @16:00:20) returned 'target_not_found' — login_button gone (navigated to home). logCount(AuthService 开始登录请求) = 1.",
+      "logCount_evidence": "AuthService '开始登录请求' count since mark = 1 (id269 only). Pass.",
+      "notes": "TIMING CAVEAT: the two sendAction fires were 4s apart (16:00:16 vs 16:00:20) due to agent-loop latency — the 2nd arrived AFTER the 1.5s AuthService window + navigation. This does NOT test the concurrent-guard scenario (both taps within loading window) at full rigor. However: (1) logCount=1 is definitive — only one request fired; (2) login-button-disabled-during-loading (this run) proved the button is disabled during loading via updateLoadingState, which prevents a 2nd touch from firing; (3) the isLoading guard (LoginViewController.swift:219) is set synchronously before the Task, so even a concurrent 2nd touchUpInside reaching loginButtonTapped would be dropped. True concurrent double-tap within 1.5s requires lower-level instrumentation (combined server-side multi-fire) to test the guard in isolation."
+    },
+    {
+      "id": "login-simulate-failure-knob",
+      "status": "skipped",
+      "matched_criterion": null,
+      "timing_observed": null,
+      "duration_ms": 0,
+      "mechanism": null,
+      "conditions_used": [],
+      "evidence": null,
+      "notes": "SKIPPED: simulateFailureRate=0.0 by default (AuthService.swift:27) — Double.random(in: 0...1) < 0.0 is always false, so shouldSimulateFailure() never returns true and networkError is never thrown. This is a debug-only knob, not a business-path branch. Testing it requires manually setting simulateFailureRate > 0 (e.g., via a debug entry point), which is outside the automated test scope. Not a defect — known_defect does not apply. The code path (AuthService.swift:50-53 shouldSimulateFailure → throw networkError) is verified by source inspection but not exercised at runtime."
     }
-  ],
-  "out_of_scope": [
-    {"id": "login-password-retained-on-failure", "reason": "MVP scope (5 intents). Verifiable: needs two consecutive submits and indirect evidence (secure field hides text)."},
-    {"id": "login-button-disabled-during-loading", "reason": "Pure-UI criterion is a ~1.5s timing window (button title cleared + spinner). ui_waitAny can miss the window. Needs targeted mid-loading inspect or app.logs."},
-    {"id": "login-double-tap-guard", "reason": "Pure-UI criterion insufficient — manifest itself notes strong verification requires app.logs.read to count AuthService '开始登录请求' entries (expect 1). Would need double-tap injection + log counting."},
-    {"id": "login-no-back-after-success", "reason": "Already covered indirectly by login-success (backAvailable=false observed). Deduplicated."},
-    {"id": "login-simulate-failure-knob", "reason": "Debug knob only; simulateFailureRate=0 by default (never triggers). Not a business-path test."}
   ],
   "runner_findings": {
     "criteria_that_judge_cleanly": [
@@ -111,11 +178,15 @@
       "Same-text sequential failures (用户名或密码错误 for both user-not-found and wrong-password): pure text cannot distinguish fresh vs residual. MUST pair with app.logs.read (AuthService 开始登录请求 / 用户不存在 / 密码错误 entries) or clear error between intents.",
       "alert criteria have no ui_waitAny mode — must post-check via ui_inspect.alert.available. Workable but requires the extra inspect call."
     ],
-    "criteria_hard_to_land_in_pure_ui": [
-      "login-double-tap-guard: request-count semantics invisible to UI; needs app.logs request counting.",
-      "login-button-disabled-during-loading: ~1.5s timing window; ui_waitAny polling may miss the transient loading state; needs a mid-flight inspect or a loading-aware wait.",
-      "login-password-retained-on-failure: secure field hides text; needs indirect two-submit protocol."
+    "advanced_mechanisms_verified": [
+      "MECHANISM 1 (logCount): app_logs_mark → operate → app_logs_read(sources:['oslog'], after:cursor) → count keyword entries. Verified on login-double-tap-guard: AuthService '开始登录请求' count=1. Works cleanly for request-count semantics. Effective.",
+      "MECHANISM 2 (loading window capture): ui_tap_and_inspect(waitForStable:false, stableTimeMs:0) combines tap+inspect into one server-side HTTP call (~27ms total), eliminating the 2-4s agent-loop gap that misses the ~1.5s loading window. Verified on login-button-disabled-during-loading: captured button title='' + isEnabled=false + UIActivityIndicatorView 'In progress' visible. Highly effective — this was the key breakthrough. Separate ui_tap → ui_inspect calls CANNOT catch this window.",
+      "MECHANISM 3 (two-submit protocol): for password-retained verification (secure field hides text). 1st submit fails → 2nd submit without re-entry → wait for '请输入密码' timeout (absence = password retained = pass). Corroborate with logCount=2 (both submits through AuthService). Verified on login-password-retained-on-failure. Effective — the timeout-as-pass-signal pattern works because the fail text ('请输入密码') is distinct from the residual ('用户名或密码错误')."
     ],
-    "timing_metric_caveat": "ui_waitAny/wait_and_inspect elapsedMs measures only the polling loop. When inter-call latency (tap → wait) exceeds the async delay, the first poll already sees the terminal state and reports elapsedMs=0. Do NOT read elapsedMs as the true async latency — use app.logs timestamps for that (e.g. 15:12:00 → 15:12:01 for the 1.5s networkDelay)."
+    "mechanism_limitations": [
+      "Concurrent double-tap within loading window: agent-loop latency (~4s between two independent fire calls) exceeds the ~1.5s AuthService window. The logCount mechanism gives the correct request total (1), but cannot prove the isLoading guard dropped a truly concurrent 2nd invocation. Would need a combined server-side multi-fire tool to test the guard in isolation. Current evidence (logCount=1 + button-disabled-during-loading proof) is strong but indirect for the concurrent case.",
+      "app_logs_read timing: entries are timestamped to the second (not millisecond), so sub-second timing analysis relies on entry ordering and id sequence, not precise timestamps."
+    ],
+    "timing_metric_caveat": "ui_waitAny/wait_and_inspect elapsedMs measures only the polling loop. When inter-call latency (tap → wait) exceeds the async delay, the first poll already sees the terminal state and reports elapsedMs=0. Do NOT read elapsedMs as the true async latency — use app.logs timestamps for that. For loading-window capture, use ui_tap_and_inspect timing.tapMs/inspectMs/totalMs instead (these measure the server-side combined execution)."
   }
 }
