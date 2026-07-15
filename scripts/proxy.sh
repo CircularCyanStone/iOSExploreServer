@@ -28,7 +28,54 @@ show_help() {
 EOF
 }
 
-check_port_usage() {
+# 兜底：直接 kill 占用端口的 SPMExampl 残留进程
+# 用于 simctl terminate 够不着的场景（模拟器已关闭但 Mac 进程未退出）
+kill_residual_process() {
+  local pids pid
+  pids=$(lsof -iTCP:"${PORT}" -sTCP:LISTEN -n -P 2>/dev/null | grep "SPMExampl" | awk '{print $2}' || true)
+  for pid in $pids; do
+    echo "   → 终止残留进程 PID ${pid}" >&2
+    kill "$pid" 2>/dev/null || true
+  done
+}
+
+# 清理模拟器 SPMExample 残留：terminate booted 模拟器中的 App，必要时兜底 kill 进程
+# 返回 0 = 端口已释放；1 = 仍被占用
+clean_simulator_residual() {
+  local booted_udids udid i
+  booted_udids=$(xcrun simctl list devices 2>/dev/null | grep "(Booted)" | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/' || true)
+
+  if [[ -n "$booted_udids" ]]; then
+    while IFS= read -r udid; do
+      [[ -z "$udid" ]] && continue
+      echo "   → simctl terminate ${udid}" >&2
+      xcrun simctl terminate "$udid" com.coo.SPMExample 2>/dev/null || true
+    done <<< "$booted_udids"
+  fi
+
+  # 轮询等待端口释放（最多约 4.5s）
+  for i in $(seq 1 15); do
+    if ! lsof -iTCP:"${PORT}" -sTCP:LISTEN -n -P >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.3
+  done
+
+  # simctl terminate 未生效（模拟器已关但进程残留），兜底 kill 后再等
+  echo "   → simctl 未释放端口，兜底 kill 残留进程" >&2
+  kill_residual_process
+  for i in $(seq 1 10); do
+    if ! lsof -iTCP:"${PORT}" -sTCP:LISTEN -n -P >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.3
+  done
+  return 1
+}
+
+# 确保端口可用于启动 iproxy
+# 返回 0 = 空闲可启动；非 0 = 不可启动（iproxy 已运行 / 清理失败 / 未知占用）
+ensure_port_free() {
   local listeners
   listeners=$(lsof -iTCP:"${PORT}" -sTCP:LISTEN -n -P 2>/dev/null | tail -n +2 || true)
 
@@ -37,24 +84,26 @@ check_port_usage() {
     return 0
   fi
 
-  echo "⚠️  端口 ${PORT} 已被占用:" >&2
-  echo "$listeners" | awk '{print "  " $1 " (PID " $2 ")"}' >&2
-
-  # 检查是否是 iproxy
   if echo "$listeners" | grep -q "iproxy"; then
-    echo "  → iproxy 已在运行" >&2
+    echo "ℹ️  iproxy 已在运行 (端口 ${PORT})，如需重启请先执行: $0 --stop" >&2
     return 1
   fi
 
-  # 检查是否是模拟器 App 残留
   if echo "$listeners" | grep -q "SPMExampl"; then
-    echo "  → 检测到模拟器 App 残留，建议执行:" >&2
-    echo "     xcrun simctl list devices | grep Booted" >&2
-    echo "     xcrun simctl terminate <UDID> com.coo.SPMExample" >&2
-    return 2
+    echo "⚠️  检测到模拟器 SPMExample 残留占用 ${PORT}，自动清理..." >&2
+    if clean_simulator_residual; then
+      echo "✅ 残留已清理，端口已释放" >&2
+      return 0
+    else
+      echo "❌ 自动清理后端口仍被占用" >&2
+      echo "   请手动处理: xcrun simctl terminate <UDID> com.coo.SPMExample" >&2
+      return 1
+    fi
   fi
 
-  return 3
+  echo "❌ 端口 ${PORT} 被未知进程占用:" >&2
+  echo "$listeners" | awk '{print "   " $1 " (PID " $2 ")"}' >&2
+  return 1
 }
 
 check_iproxy_installed() {
@@ -203,7 +252,7 @@ stop_iproxy() {
 start_foreground() {
   check_iproxy_installed
 
-  if ! check_port_usage; then
+  if ! ensure_port_free; then
     exit 1
   fi
 
@@ -223,9 +272,7 @@ start_foreground() {
 start_daemon() {
   check_iproxy_installed
 
-  local port_status
-  if ! port_status=$(check_port_usage 2>&1); then
-    echo "$port_status"
+  if ! ensure_port_free; then
     exit 1
   fi
 
