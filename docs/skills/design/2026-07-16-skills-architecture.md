@@ -40,7 +40,13 @@
 
 ## 3. 三层职责架构
 
-调用关系单向:`L0 把 App 跑起来 → L1 操作 App UI / 读进程日志 → L2 编排 L1 跑测试闭环`。三层工具体系不同,职责互不重叠。
+调用关系单向:`L0 把 App 跑起来 → L1 操作 App UI / 读进程日志 → L2 编排 L1 跑测试闭环`。三层**工具体系**互不重叠(L0 用 XcodeBuildMCP,L1/L2 用 iOSDriver)。
+
+> **注意 UI 能力交集**:L0 的 `ios-debugger-agent` 正文也含 UI 操作(`describe_ui`/`tap`/`type_text`/`screenshot`,基于 XcodeBuildMCP 的 accessibility snapshot),与 L1 的 `ios-ui-*`(基于 iOSDriver 的 `ui.*` HTTP 命令)在 UI 能力上有交集,只是工具体系不同。因此需要一条选择规则(见下),不能简单认为"职责互不重叠"。
+
+**L0 vs L1 选择规则**:
+- 目标 App **已集成 iOSExploreServer**(能 `curl http://localhost:38321/` 成功)→ 优先 L1 的 `ios-ui-*` + `ios-logs`(更精准、可按 source/level 过滤、可做日志断言)。
+- 需要**构建/安装/调试进程**、抓系统级日志,或 App**未集成** iOSExploreServer → 用 L0 的 `ios-debugger-agent`。
 
 | 层 | 工具体系 | 职责(一句话) | 包含 skill |
 |---|---|---|---|
@@ -61,7 +67,7 @@
 | 当前 skill | 处理 | 重构后名称 | 所属层 |
 |---|---|---|---|
 | ios-navigation(745行) | 留,精简,吸收 controller-nav | `ios-ui-nav` | L1 |
-| ios-controller-navigation(133行) | **合并进 navigation**(被完全覆盖,自标 EXPERIMENTAL) | —(并入 `ios-ui-nav`) | — |
+| ios-controller-navigation(133行) | **并入 `ios-ui-nav` 的"controller 层级检查"小节**(能力单一,核心是 `ui.controllers` 读层级树;与 navigation 的屏幕导航操作**不重叠**,但因自标 EXPERIMENTAL、能力单一,不单独成 skill) | —(并入 `ios-ui-nav`) | — |
 | ios-list-interaction(719行) | 留,精简 | `ios-ui-list` | L1 |
 | ios-form-filling(703行) | 留,精简 | `ios-ui-form` | L1 |
 | ios-screenshot(613行) | 留,精简 | `ios-ui-shot` | L1 |
@@ -85,7 +91,7 @@
 
 **L1 操作层(9 个,iOSDriver)**
 - `ios-automation` — 总入口:连接管理、iproxy、路由到子 skill、快速诊断。
-- `ios-ui-nav` — 屏幕导航、返回、导航栏按钮、controller 层级(吸收原 controller-navigation)。
+- `ios-ui-nav` — 屏幕导航、返回、导航栏按钮;含 controller 层级树读取(`ui.controllers`,吸收原 controller-navigation)。
 - `ios-ui-list` — 列表/集合视图查找、滚动、选中。
 - `ios-ui-form` — 文本输入、开关、滑块、步进器、分段、提交。
 - `ios-ui-alert` — alert/action sheet/dialog 检测与响应。
@@ -109,7 +115,7 @@
 - **L2**:`ios-test-*`。
 - **L0**:`ios-debugger-agent`(保留原名;它是全局 skill,改名影响其他项目,本次不动)。
 - **过渡**:改名后旧名触发短期失效,通过在新 description 里保留旧名关键词(如 `"原 ios-form-filling"`)缓解,过渡期一个迭代后移除。
-- Claude Code skill 以目录名为 skill 名,**不支持子目录分组**,因此分组靠命名前缀 + `docs/skills/inventory.md`,不靠目录嵌套。
+- Claude Code skill 以目录名为 skill 名,子目录(除 `evals/` 等约定子目录)不会被识别为独立 skill,**不支持用子目录分组**;因此分组靠命名前缀 + `docs/skills/inventory.md`,不靠目录嵌套。
 
 ---
 
@@ -127,6 +133,11 @@
 - 正文用精炼结构(目标 ~150–250 行/skill):Purpose → When to use → How it works → 关键参数 → 常见错误与判别 → Related skills。删除当前膨胀的重复参数表与冗长示例。
 - 保留并解耦每个 skill 的 `evals/evals.json`。
 - 用 skill-creator 生成/重写,不手搓。
+
+### evals 策略(skill 本体解耦 ≠ evals 不能用 SPMExample)
+- **静态结构 evals**(每个 skill 必须有,不依赖运行 App):检查 frontmatter 含 `allowed-tools`、正文无 SPMExample 硬编码(§8 硬规则全过)、引用的 action 在 iOSDriver 真实存在。
+- **动态回归 evals**(需要真实运行的 App):仓库内唯一可用的是 SPMExample,作为**参考 fixture** 由 `docs/skills/examples/spmexample-login/` 提供;evals 引用 examples 里的案例**不算 skill 本体耦合**。
+- 即:`ios-ui-form` 的 `SKILL.md` 正文不许出现 `test/123456`,但它的动态 evals 可以驱动 SPMExample 表单验证输入流程——前者管 skill 通用性,后者是测试夹具。本次**不新建"占位 App"**(仓库内无其他集成 App,成本不值)。
 
 ---
 
@@ -155,8 +166,10 @@
 |---|---|---|---|
 | `explore` / `bridge` | ✅ 可用 | ✅ 可用 | 纯内存,不依赖系统 |
 | `stdout` / `stderr` | ✅ 可用 | ✅ 可用 | fd 接管(dup2),进程级 |
-| `nslog` | ⚠️ 不稳定 | ✅ 通常可用 | 依赖 stderr 路径或 OSLogStore,模拟器行为不一 |
-| `oslog` | ❌ 常 `unavailable` | ✅ 通常可用 | 依赖系统允许当前进程读 `OSLogStore`(需 iOS 15+/macOS 12+),模拟器常拒绝 |
+| `nslog` | ⚠️ 依赖系统实现 | ⚠️ 依赖系统实现 | 依赖 `NSLog` 是否落到 stderr 或可被 `OSLogStore` 读取,由系统实现决定;以 `capture.state` 为准 |
+| `oslog` | ⚠️ 依赖系统权限 | ⚠️ 依赖系统权限 | 依赖系统是否允许当前进程读 `OSLogStore`(需 iOS 15+/macOS 12+);**源码无模拟器特殊分支**,以 `capture.state` 为准 |
+
+> **⚠️ 不要把"模拟器/真机"写成确定的平台断言**。`UnifiedLogCapture.swift` 的 oslog 逻辑只判断"系统是否允许当前进程读 `OSLogStore` + iOS 15+/macOS 12+",**没有模拟器特殊分支**;模拟器跑的是真实 iOS 内核,`OSLogStore(.currentProcessIdentifier)` 能否读取取决于系统权限而非"模拟器一定不行"。实施前必须在模拟器与真机各实测一次 `app.logs.read`(sources:`["oslog"]`、`["nslog"]`)填入实际观察;skill 正文统一教 agent 读 `capture.state` 判断,不按平台假设。
 
 ### `unavailable` 语义(必须强调)
 `app.logs.mark`/`read` 返回的 `capture` 字段有三态:
@@ -190,16 +203,18 @@
 | `ios-test-runner` | 正文报告样例改占位(`<your-simulator-udid>`、`<your.app.bundleid>`);SPMExample 登录完整真实案例移到 `docs/skills/examples/spmexample-login/` |
 | `ios-test-intent` | 方法论保留(读 Service/VM/VC 产出判据),通用示例改占位 App;SPMExample 登录作为案例移到 examples |
 | `ios-automation` | 诊断清理命令改占位 bundle id;登录示例改通用占位 |
-| 其余 9 个 | 无耦合,无需动 |
+| 其余 10 个 | 无耦合,无需动 |
 
 ### SPMExample 案例的归属
 SPMExample 登录流程(意图清单 + 实跑报告)作为"如何对真实 App 套用 test-intent/runner"的**完整参考案例**,放在 `docs/skills/examples/spmexample-login/`,不进 skill 本体。这样既保留来之不易的实测数据,又不污染 skill 通用性。
+
+同时,现存的 `docs/test-intents/spmexample-login.json` 与 `docs/test-reports/spmexample-login-run.json` 随案例迁入 `docs/skills/examples/spmexample-login/`;`docs/test-intents/`、`docs/test-reports/` 原目录保留为通用目录(后续非 SPMExample 的意图清单/报告也写这里)。
 
 ---
 
 ## 9. `docs/skills/` 管理目录结构
 
-新建 `docs/skills/` 作为 skill 体系**唯一**管理入口。
+`docs/skills/` 作为 skill 体系**唯一**管理入口(本设计已建 `design/`、`conventions/`、`examples/` 骨架,实施时补齐其余文件)。
 
 ```
 docs/skills/
@@ -219,19 +234,23 @@ docs/skills/
 
 ### docs 顶层清理
 将以下一次性产物从 docs 顶层移入 `docs/skills/archive/`:
-`alert-test-complete-report.*`、`input-alert-control-test-*`、`final-two-commands-test-report.*`、`skills-test-report.*`、`skill-design-final.md`、`skills-improvement-recommendations.md`、`skills-improvements-applied.md`、`renaming-report.md`、`ALL-TESTS-COMPLETE-SUMMARY.md`、`100-PERCENT-COVERAGE-FINAL.md`、`final-command-coverage.md`、`TASK-COMPLETION-SUMMARY.md`、`testing-summary.md`、旧 `ios-automation-skills-index.md`、`QUICK_START.md`(评估后定)。
+`alert-test-complete-report.*`、`input-alert-control-test-*`、`final-two-commands-test-report.*`、`skills-test-report.*`、`skill-design-final.md`、`skills-improvement-recommendations.md`、`skills-improvements-applied.md`、`renaming-report.md`、`ALL-TESTS-COMPLETE-SUMMARY.md`、`100-PERCENT-COVERAGE-FINAL.md`、`final-command-coverage.md`、`TASK-COMPLETION-SUMMARY.md`、`testing-summary.md`、`command-gap-analysis.md`、旧 `ios-automation-skills-index.md`、`QUICK_START.md`(评估后定)。
 
-> 注意:`reports/2026-07-13-14-skills-creation-project/` 是这些文件的另一份权威副本。归档时只归 docs 顶层副本,不动 reports/。在 `archive/README.md` 注明权威源位置。
+**保留在 docs 顶层**(非一次性产物,不归档):`agent_instructions.md`(Agent 指令与 docs 组织规则,长期有效)。
+
+> 注意:仓库根 `reports/`(**不是** `docs/reports/`,后者不存在)下有 `2026-07-13-14-skills-creation-project/` 和 `2026-07-14-skills-creation/` 两个历史目录,是 docs 顶层这些文件的另一份副本。归档时只归 docs 顶层副本,**不动仓库根 `reports/`**。在 `archive/README.md` 注明两处副本关系,避免后人困惑。
 
 ---
 
 ## 10. 迁移阶段(实施计划展开时的骨架)
 
 1. **基建**:建 `docs/skills/` 全部子目录与占位文件;写 conventions(skill-template/naming/decoupling/lifecycle)与 README/inventory。
-2. **删合**:删 `ios-date-picker`、`ios-table-actions`;`ios-controller-navigation` 并入 navigation;从 gestures 删 drag 与重复小节。
-3. **L1 操作层重写**(7 个 `ios-ui-*` + 入口 + `ios-logs`):skill-creator 规范化、正文中文、中英 description、补 allowed-tools、精简到 ~150–250 行、解耦 SPMExample;`ios-logs` 新建(含 §7 矩阵)。
+2. **删合**:删 `ios-date-picker`、`ios-table-actions`;`ios-controller-navigation` 并入 `ios-ui-nav`(**必须迁移 `ui.controllers` 的使用场景与示例**,验证 `grep 'ui.controllers' .claude/skills/ios-ui-nav/SKILL.md` 非空,避免能力丢失);从 gestures 删 drag 与重复小节。
+3. **L1 操作层重构**——拆两步,每个 skill 独立提交、独立过 evals:
+   - **3a 改名 + 删空壳动作**(机械):目录改名(navigation→`ios-ui-nav` 等)、删 date-picker/table-actions、统一主文件名为 `SKILL.md`(`ios-automation` 现为小写 `skill.md`,改名)、从 gestures 删 drag 与重复小节。
+   - **3b 逐个 skill 重写**(主体工作量):7 个 `ios-ui-*` + `ios-automation` + 新建 `ios-logs`,按 skill-creator 规范、正文中文、中英 description、补 allowed-tools、精简到 ~150–250 行、解耦 SPMExample;`ios-logs` 含 §7 矩阵。**`ios-automation` 现无 evals,此步补一个轻量 evals**(连接诊断/路由类 case)。
 4. **L2 通用化**:`ios-test-intent`/`ios-test-runner` 样例占位化,日志判据加 capture 前置检查,SPMExample 案例移到 examples。
-5. **L0 定位**:在 docs 里明确 `ios-debugger-agent` 的 XcodeBuildMCP 职责与边界(不改 skill 本体除非必要)。
+5. **L0 定位**:在 `docs/skills/` 里写清 `ios-debugger-agent` 的 XcodeBuildMCP 职责、与 L1 的 UI 能力交集、以及 §3 的 L0/L1 选择规则。skill 本体仅在发现具体错误时改,否则只补文档定位。
 6. **收尾**:归档 docs 顶层散报告;废弃旧 `ios-automation-skills-index.md`,以 `docs/skills/README.md`+`inventory.md` 替代;更新 `AGENTS.md`/`CLAUDE.md` 中 skill 索引段落指向新位置。
 
 每阶段独立可验证:阶段产物 = 可加载的 skill + 通过的 evals + 更新的 inventory 状态。
@@ -241,20 +260,25 @@ docs/skills/
 ## 11. 验收标准
 
 - `.claude/skills/` 下每个 skill:frontmatter 含 `name`/`description`/`allowed-tools`;正文中文;无 SPMExample 硬编码(§8 硬规则全过 grep);引用的 action 全部在 iOSDriver MCP 真实存在。
-- 不存在 `ios-date-picker`/`ios-table-actions`/`ios-controller-navigation` 目录。
-- `ios-logs` 存在且含来源×平台矩阵与 `unavailable` 语义。
+- 不存在 `ios-date-picker`/`ios-table-actions` 目录;`ios-controller-navigation` 目录不存在且 `ui.controllers` 能力已迁入 `ios-ui-nav`。
+- 所有 skill 主文件名统一为 `SKILL.md`(`ios-automation` 现为小写 `skill.md`,改名)。
+- `ios-logs` 存在且含来源×平台矩阵与 `unavailable` 语义(矩阵不写死平台断言)。
 - `docs/skills/README.md` + `inventory.md` 列出全部 12 个 skill 及状态;docs 顶层无一次性测试报告散落。
 - 旧 `ios-automation-skills-index.md` 已废弃或删除。
-- 每个保留 skill 的 `evals/` 存在且不耦合 SPMExample(测试数据用占位 App)。
+- 每个保留 skill 有 `evals/`:静态结构 evals 必过(含 `allowed-tools`、无 §8 硬编码、action 真实);动态回归 evals 可引用 `docs/skills/examples/spmexample-login/` 作 fixture,不算 skill 本体耦合;`ios-automation` 补 evals。
 
 验证命令(实施后):
 ```bash
-# 无空壳残留
-ls .claude/skills/ | grep -E 'date-picker|table-actions|controller-navigation' && echo "FAIL: 空壳未删" || echo "OK"
-# 无 SPMExample 硬编码
-grep -rn -E 'com\.coo\.SPMExample|065CC8DB|00008030|123456' .claude/skills/ && echo "FAIL: 仍有耦合" || echo "OK"
-# allowed-tools 齐全
-for f in .claude/skills/*/SKILL.md .claude/skills/*/skill.md; do grep -L 'allowed-tools' "$f" 2>/dev/null; done
+# 无空壳/已合并目录残留
+ls .claude/skills/ | grep -E 'date-picker|table-actions|controller-navigation' && echo "FAIL: 应删目录仍在" || echo "OK"
+# controller-nav 合并未丢 ui.controllers 能力
+grep -r 'ui.controllers' .claude/skills/ios-ui-nav/SKILL.md && echo "OK" || echo "FAIL: ui.controllers 未迁移"
+# 无 SPMExample 硬编码(只扫 SKILL.md 正文,不扫 evals;不扫 123456 因动态 fixture 允许)
+grep -rn -E 'com\.coo\.SPMExample|065CC8DB|00008030' .claude/skills/*/SKILL.md && echo "FAIL: 仍有耦合" || echo "OK"
+# allowed-tools 齐全(find -iname 避免 SKILL.md/skill.md 大小写重复匹配)
+find .claude/skills -iname SKILL.md | while read f; do grep -L 'allowed-tools' "$f"; done
+# 文件名统一(应无输出)
+find .claude/skills -iname 'skill.md' -not -name 'SKILL.md'
 ```
 
 ---
@@ -262,7 +286,7 @@ for f in .claude/skills/*/SKILL.md .claude/skills/*/skill.md; do grep -L 'allowe
 ## 12. 风险与回退
 
 - **改名导致旧触发失效**:靠 description 保留旧名关键词过渡;过渡期一个迭代后移除。回退:git 恢复旧目录名。
-- **evals 解耦后失去真实数据**:SPMExample 案例保留在 examples/,真实回归仍可跑;skill evals 改用占位 App 覆盖通用路径。
+- **evals 解耦**:动态回归仍用 SPMExample 作参考 fixture(放 examples/),不新建"占位 App"(仓库内无其他集成 App,新建成本不值);skill 本体通用性由静态结构 evals 保证。
 - **`ios-logs` 在模拟器 oslog 不可用被误判为 skill 缺陷**:skill 正文显式声明模拟器限制,`unavailable` 语义单列,避免误判。
 - **删空壳后若有用户依赖**:date-picker/table-actions 自标 NOT TESTED/EXPERIMENTAL 且命令不存在,实际无人能成功调用,删除无功能损失。
 
