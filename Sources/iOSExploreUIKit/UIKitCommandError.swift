@@ -43,7 +43,7 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// - Returns: `stale_locator` 失败描述。
     static func staleLocator(action: String, viewSnapshotID: String) -> UIKitCommandError {
         UIKitCommandError(code: .staleLocator,
-                          message: "view snapshot expired (TTL \(Int(UIKitSnapshotStore.ttlSeconds))s) or target changed; call ui.inspect first, then retry with the new viewSnapshotID. Note: snapshots do not track label/text content changes — if your decision depends on displayed text, re-inspect before acting",
+                          message: "view snapshot expired (TTL \(Int(UIKitSnapshotStore.ttlSeconds))s) or target changed. To fix: 1) Call ui.inspect (or use MCP tool call_action with action='ui.inspect') to get a fresh viewSnapshotID. 2) Retry \(action) with the new viewSnapshotID. Note: snapshots do not track label/text content changes — if your decision depends on displayed text, re-inspect before acting",
                           logMessage: "uikit locator stale action=\(action) viewSnapshot=\(viewSnapshotID)")
     }
 

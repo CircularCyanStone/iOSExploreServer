@@ -45,12 +45,14 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
   return {
     health_check: {
       name: "health_check",
-      description: "检查 Mac MCP server 是否能连到 iOSExplore App 的 ping/help。",
+      description: "检查 Mac MCP server 是否能连到 iOSExplore App 的 ping/help。自动加载动态工具。",
       inputSchema: { type: "object", properties: {} },
       handler: async () => {
         try {
           const ping = await client.call("ping");
           await client.call("help");
+          // 自动刷新动态工具，避免初次调用时 dynamicToolCount 为 0
+          await registry.refresh();
           return jsonResult({ ok: true, ping, dynamicToolCount: registry.tools().length, conflicts: registry.conflicts() });
         } catch (error) {
           return jsonResult({ ok: false, error: normalizeError(error), dynamicToolCount: registry.tools().length }, false);

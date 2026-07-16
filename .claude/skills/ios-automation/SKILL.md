@@ -46,6 +46,53 @@ allowed-tools:
 
 两套日志能力**互补,非冲突**:L0 抓系统/模拟器级(模拟器友好、覆盖整个控制台),L1 抓进程内精准(可按 `stdout`/`stderr`/`nslog`/`oslog`/`explore`/`bridge` 过滤、可做断言、真机 `oslog` 更全)。需要时同一会话可混用。
 
+## MCP 工具调用机制
+
+iOSDriver MCP Server 提供两类工具:**固定工具**与**动态工具**。理解两者区别能避免"工具不存在"困惑。
+
+### 固定工具(总是可用)
+
+这些工具在 MCP server 启动时已注册,无需 `refresh_tools`:
+
+- `health_check` — 检查连接并**自动加载动态工具**(初次调用时 `dynamicToolCount` 会从 0 变成 32+)
+- `refresh_tools` — 手动刷新动态工具(通常不需要,`health_check` 会自动调用)
+- `call_action` — 兜底工具,可调用任意 iOSExplore action(如 `{"action":"ui.inspect"}`)
+- `wait_and_inspect` — 组合 `ui.waitAny` + `ui.inspect`
+- `ui_wait` — 等待 UI 稳定或条件满足
+- `ui_tap_and_inspect` — 点击 + 等稳定 + inspect 一次完成
+
+### 动态工具(需先加载)
+
+从 App 的 `/help` 端点读取 action 列表并自动注册为 MCP 工具(action 名 `ui.tap` → 工具名 `ui_tap`)。首次使用前需调用 `health_check`(会自动触发加载)或显式调用 `refresh_tools`。
+
+常见动态工具:`ui_inspect`、`ui_tap`、`ui_input`、`ui_alert_respond`、`ui_scroll`、`ui_screenshot` 等。
+
+### call_action vs 动态工具:何时用哪个
+
+| 场景 | 推荐方式 | 原因 |
+|---|---|---|
+| 正常 UI 操作(已连接、工具已加载) | 动态工具(`ui_tap`、`ui_input` 等) | 类型安全、参数校验、更好的错误提示 |
+| 初次连接验证 | `health_check`(会自动加载动态工具) | 一步到位:ping + 加载工具 |
+| 动态工具"不存在"报错 | 先 `call_action`(如 `{"action":"ui.inspect"}`) | 绕过工具注册,直接调 HTTP 端点 |
+| 排障或调用未映射的 action | `call_action` | 兜底工具,不依赖 MCP 工具注册 |
+| App 新增 action 但 MCP 未同步 | `refresh_tools` 然后用动态工具 | 重新同步工具列表 |
+
+**推荐流程**:首次使用先调 `health_check` → 后续用动态工具(如 `ui_inspect`) → 遇到"工具不存在"时用 `call_action` 应急。
+
+### 常见错误:"ui_inspect tool not found"
+
+**现象**:调用 `mcp__iOSDriver__ui_inspect` 提示工具不存在
+
+**原因**:动态工具未加载(MCP server 启动时 `dynamicToolCount: 0`)
+
+**修复**:
+1. 先调用 `health_check`(会自动加载动态工具)
+2. 或临时用 `call_action`:
+   ```json
+   {"action": "ui.inspect", "data": {"maxDepth": 2}}
+   ```
+3. 验证工具已加载:`health_check` 的 `dynamicToolCount` 应为 32+
+
 ## 连接管理
 
 iOSExploreServer 的唯一 HTTP 端点:`POST http://localhost:38321/`(body 是 `{"action": "..."}` JSON)。所有 iOSDriver MCP 工具最终都走这个端点。连接方式取决于 App 跑在模拟器还是真机。
