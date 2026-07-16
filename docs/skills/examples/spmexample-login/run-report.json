@@ -2,7 +2,7 @@
   "run_at": "2026-07-15T16:05:00Z",
   "app": "SPMExample",
   "simulator": "iPhone 17 (065CC8DB-8978-46C5-82D6-C96625B608D8)",
-  "manifest": "docs/test-intents/spmexample-login.json",
+  "manifest": "docs/skills/examples/spmexample-login/intent.json",
   "runner_skill": "ios-test-runner",
   "connection": "simulator localhost:38321 (no iproxy; SPMExampl listening)",
   "launch_args": ["--ios-explore-show-login"],

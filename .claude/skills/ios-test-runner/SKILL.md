@@ -296,7 +296,7 @@ L2 执行型 skill:把 `ios-test-intent` 产出的"测试意图清单"(`docs/tes
 - `ios-ui-wait` — `ui_waitAny` 的 mode/字段语义来源;`textExists`/`targetExists`/`targetGone`/`idle` 词汇语义。
 - `ios-ui-alert` — alert 响应(`ui_alert_respond`)走该 skill;本 skill 只能靠 `ui_inspect` 的 `alert.available` 判 alert 是否出现。
 
-> **完整真实 App 套用案例**:SPMExample 登录流程的完整意图清单 + 实跑报告作为"如何对真实 App 套用 test-intent / runner"的参考案例,位于 `docs/skills/examples/spmexample-login/`(由 plan Task 15 迁移后;迁移前临时位于 `docs/test-intents/spmexample-login.json` 与 `docs/test-reports/spmexample-login-run.json`)。这是本仓库内唯一的真实 App 例子,skill 本体不依赖它。
+> **完整真实 App 套用案例**:SPMExample 登录流程的完整意图清单 + 实跑报告作为"如何对真实 App 套用 test-intent / runner"的参考案例,位于 `docs/skills/examples/spmexample-login/`(含 `intent.json` / `run-report.json` / `README.md`)。这是本仓库内唯一的真实 App 例子,skill 本体不依赖它。
 
 ## 限制
 
