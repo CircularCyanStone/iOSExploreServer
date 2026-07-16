@@ -12,10 +12,10 @@
 |---|---|---|---|---|---|---|
 | `ios-debugger-agent` | **L0 构建调试** | XcodeBuildMCP | `build_run_sim` / `build_run_device` / `launch_app_*` / `start_sim_log_cap` / `describe_ui` | healthy | active | 全局 skill(`~/.claude/skills/`);完整定位与 L0/L1 选择规则见 `l0-build-debug.md`(规则原文抄自 `README.md` §2);本体仅在发现具体错误时改(Task 16 已只读检查,结论见 `l0-build-debug.md` §7) |
 | `ios-automation` | **L1 入口** | iOSDriver | `ui_inspect` / `ui_tap_and_inspect` / `app_logs_read`(诊断用) | healthy | active | L1 总入口;Task 11 补 evals + 解耦 SPMExample |
-| `ios-ui-nav` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_tap` / `ui_tap_and_inspect` / `ui_navigation_back` / `ui_navigation_tapBarButton` / `ui_controllers` / `ui_screenshot` | healthy | active | 原 `ios-navigation`,吸收原 `ios-controller-navigation` 的 `ui.controllers` 能力(plan Task 3 Step 4 + Task 4) |
-| `ios-ui-list` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_scroll` / `ui_scrollToElement` / `ui_swipe` / `ui_tap` / `ui_tap_and_inspect` | healthy | active | 原 `ios-list-interaction` |
-| `ios-ui-form` | **L1 操作层** | iOSDriver | `ui_input` / `ui_tap` / `ui_tap_and_inspect` / `ui_control_sendAction` / `ui_keyboard_dismiss` / `ui_inspect` / `ui_scrollToElement` | healthy | active | 原 `ios-form-filling`;已删正文对 SPMExample deployment target 的提法 |
-| `ios-ui-alert` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_alert_respond` / `ui_input` / `ui_tap_and_inspect` | healthy | active | 原 `ios-alert-handling` |
+| `ios-ui-nav` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_tap` / `ui_tap_and_inspect` / `ui_navigation_back` / `ui_navigation_tapBarButton` / `ui_controllers` / `ui_screenshot` / `ui_wait` | healthy | active | 原 `ios-navigation`,吸收原 `ios-controller-navigation` 的 `ui.controllers` 能力(plan Task 3 Step 4 + Task 4) |
+| `ios-ui-list` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_scroll` / `ui_scrollToElement` / `ui_swipe` / `ui_tap` / `ui_tap_and_inspect` / `ui_wait` | healthy | active | 原 `ios-list-interaction` |
+| `ios-ui-form` | **L1 操作层** | iOSDriver | `ui_input` / `ui_tap` / `ui_tap_and_inspect` / `ui_control_sendAction` / `ui_keyboard_dismiss` / `ui_inspect` / `ui_scrollToElement` / `ui_screenshot` | healthy | active | 原 `ios-form-filling`;已删正文对 SPMExample deployment target 的提法 |
+| `ios-ui-alert` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_alert_respond` / `ui_input` / `ui_tap_and_inspect` / `ui_wait` / `ui_screenshot` | healthy | active | 原 `ios-alert-handling` |
 | `ios-ui-shot` | **L1 操作层** | iOSDriver | `ui_screenshot` / `ui_inspect` / `ui_wait` | healthy | active | 原 `ios-screenshot` |
 | `ios-ui-gesture` | **L1 操作层** | iOSDriver | `ui_swipe` / `ui_longPress` / `ui_inspect` / `ui_wait` | healthy | active | 原 `ios-gestures`;**不含 drag**(`ui.drag` 不存在,Task 3 Step 5 删除) |
 | `ios-ui-wait` | **L1 操作层** | iOSDriver | `ui_wait` / `ui_waitAny` / `wait_and_inspect` / `ui_inspect` | healthy | active | 原 `ios-dynamic-content`;补 wait/waitAny 真实用法(原 skill 标 not fully tested) |

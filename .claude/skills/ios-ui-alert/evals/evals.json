@@ -23,7 +23,7 @@
     {
       "id": 4,
       "prompt": "An iOS app shows a bottom action sheet for choosing a photo source: '拍照' (take photo), '从相册选择' (photo library), '取消' (cancel). Tap '从相册选择'.",
-      "expected_output": "Should successfully:\n1. Call ui_inspect; verify alert.available==true — action sheets (UIAlertController.Style.actionSheet) are reported in the SAME alert block as regular alerts, no special handling\n2. Read alert.buttons to find '从相库选择' index/title\n3. Call ui_alert_respond with buttonTitle='从相册选择' (or its index, or role='cancel' if choosing cancel)\n4. Response performed=true, dismissed=true\n5. Action sheets use identical API to alerts — no separate preferredStyle parameter is exposed or needed",
+      "expected_output": "Should successfully:\n1. Call ui_inspect; verify alert.available==true — action sheets (UIAlertController.Style.actionSheet) are reported in the SAME alert block as regular alerts, no special handling\n2. Read alert.buttons to find '从相册选择' index/title\n3. Call ui_alert_respond with buttonTitle='从相册选择' (or its index, or role='cancel' if choosing cancel)\n4. Response performed=true, dismissed=true\n5. Action sheets use identical API to alerts — no separate preferredStyle parameter is exposed or needed",
       "files": []
     },
     {
