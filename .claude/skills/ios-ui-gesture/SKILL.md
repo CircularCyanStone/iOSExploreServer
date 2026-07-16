@@ -3,8 +3,8 @@ name: ios-gestures
 description: |
   iOS App automation for advanced gesture interactions.
   
-  Use this skill when the user needs to perform swipe gestures, long press actions,
-  or drag operations in iOS applications beyond simple taps.
+  Use this skill when the user needs to perform swipe gestures or long press actions
+  in iOS applications beyond simple taps.
   
   Must explicitly mention iOS, iPhone, iPad, swipe, long press, or gestures to trigger.
   
@@ -15,7 +15,7 @@ description: |
 
 ## Purpose
 
-Perform advanced touch gestures including swipes (directional scrolling), long press (context menus, drag initiation), and drag operations for iOS app automation.
+Perform advanced touch gestures including swipes (directional scrolling) and long press (context menus) for iOS app automation.
 
 ## When to Use
 
@@ -23,7 +23,6 @@ Use this skill when you need to:
 - Swipe within scroll views or list cells
 - Perform directional swipes (up, down, left, right)
 - Long press to trigger context menus
-- Long press to initiate drag-and-drop
 - Swipe to reveal cell actions (delete, edit)
 - Custom gesture interactions
 
@@ -39,7 +38,6 @@ Use this skill when you need to:
 |---------|---------|-------------|
 | `ui.swipe` | Directional swipe within element | 300-500ms |
 | `ui.longPress` | Long press on element | Depends on duration |
-| `ui.drag` | Drag element in direction | Not fully tested |
 
 ## Capabilities
 
@@ -189,7 +187,6 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}'
 
 ## Limitations
 
-- **ui.drag** not fully tested yet (use with caution)
 - Swipe only works within identified scroll containers
 - Long press timing may vary by app (test different durations)
 
@@ -313,30 +310,6 @@ if [ -n "$MENU_REF" ]; then
   }" > /dev/null
   echo "✅ Menu dismissed"
 fi
-```
-
-## Parameters Reference
-
-### ui.swipe
-
-```json
-{
-  "withinElementRef": "e7",     // Required: element reference from ui.inspect
-  "direction": "up",             // Required: "up", "down", "left", "right"
-  "distance": 0.8,               // Optional: 0.0-1.0 (default 0.8)
-  "duration": 0.3,               // Optional: seconds (default varies)
-  "preDelay": 0.0,               // Optional: seconds before swipe
-  "postDelay": 0.0               // Optional: seconds after swipe
-}
-```
-
-### ui.longPress
-
-```json
-{
-  "elementRef": "e5",            // Required: element reference
-  "duration": 1000               // Required: milliseconds (500-2000 typical)
-}
 ```
 
 ## Error Handling
@@ -518,32 +491,8 @@ for i in {1..10}; do
 done
 ```
 
-## Best Practices
-
-1. **Wait After Swipe:** Always wait 300ms for scroll/animation to settle
-2. **Use Distance Carefully:** 0.8 is good default, adjust for precision
-3. **Long Press Duration:** 1000ms (1 second) works for most context menus
-4. **Get Fresh References:** Always call ui.inspect first to get current elementRef
-5. **Verify Gesture Success:** Inspect UI after gesture to confirm expected state change
-6. **Handle Animation Timing:** Wait appropriate time for animations to complete
-7. **Re-inspect After Gestures:** UI state changes, get fresh element references
-
-## Limitations
-
-- **ui.drag** not fully tested yet (use with caution)
-- Swipe only works within identified scroll containers
-- Long press timing may vary by app (test different durations)
-- Cannot detect end of scroll programmatically
-- No automatic wait for animations - must manually delay
-
-## Related Skills
-
-- **ios-list-interaction** - Use swipe for scrolling lists
-- **ios-form-filling** - Combine gestures with form input
-- **ios-navigation** - Swipe gestures for page navigation
-
 ## Production Readiness
 
 ✅ **Partially Production Ready**
 
-`ui.swipe` and `ui.longPress` are tested and functional. `ui.drag` requires additional testing. Safe for production use for swipe and long press gestures with proper error handling.
+`ui.swipe` and `ui.longPress` are tested and functional. Safe for production use for swipe and long press gestures with proper error handling.

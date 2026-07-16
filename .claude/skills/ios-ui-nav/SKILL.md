@@ -743,3 +743,109 @@ navigate_back() {
 ✅ **Production Ready**
 
 All navigation commands are fully tested with 100% success rate. Navigation bar button tapping verified across multiple selection methods (index, identifier, title verification). Safe for production use in automated testing and app navigation workflows.
+
+## controller 层级检查(`ui.controllers`)
+
+> **⚠️ EXPERIMENTAL STATUS**
+> The `ui.controllers` command is NOT fully tested. This section is migrated verbatim
+> from the deleted `ios-controller-navigation` skill. For practical navigation needs,
+> prefer the navigation commands above (`ui.navigation.back`, `ui.navigation.tapBarButton`,
+> `ui.inspect` for navigation bar state). Only use `ui.controllers` when you specifically
+> need view controller hierarchy inspection and are willing to test thoroughly.
+
+### Purpose
+
+Inspect and understand iOS app's view controller hierarchy, including navigation controllers, tab bar controllers, and modal presentations.
+
+### When to Use
+
+Use this section when you need to:
+- Understand app's controller structure
+- Identify current view controller
+- Debug navigation issues
+- Find controller by class name
+- Inspect navigation stack depth
+- Detect modal presentations
+
+### Command
+
+| Command | Purpose | Status |
+|---------|---------|--------|
+| `ui.controllers` | Get controller hierarchy tree | ⚠️ Not fully tested |
+| `ui.inspect` | Get navigation bar info (indirect) | ✅ Tested |
+
+**Get Controller Tree (NOT FULLY TESTED):**
+```bash
+curl -X POST http://localhost:38321/ -d '{"action":"ui.controllers"}'
+```
+
+Expected response format:
+```json
+{
+  "code": "ok",
+  "data": {
+    "root": "UINavigationController",
+    "topmost": "DetailViewController",
+    "stack": [
+      "ListViewController",
+      "DetailViewController"
+    ]
+  }
+}
+```
+
+### Parameters
+
+```json
+{
+  "maxDepth": 0    // Optional: maximum recursion depth; 0 means root node only
+}
+```
+
+### Indirect Controller Detection
+
+**Via Navigation Bar:**
+```bash
+curl -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}' | jq '.data.navigationBar'
+```
+
+Navigation bar title often corresponds to current view controller.
+
+**Detect Current Screen:**
+```bash
+# Get navigation bar title as proxy for controller
+TITLE=$(curl -s -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}' | jq -r '.data.navigationBar.title')
+echo "Current screen: $TITLE"
+```
+
+**Check Navigation Depth:**
+```bash
+# Back button available = not at root
+BACK_AVAILABLE=$(curl -s -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}' | jq -r '.data.navigationBar.backAvailable')
+
+if [ "$BACK_AVAILABLE" = "true" ]; then
+  echo "In navigation stack (depth > 1)"
+else
+  echo "At root controller"
+fi
+```
+
+### Limitations
+
+⚠️ **Very Low Test Coverage**
+
+- `ui.controllers` command is NOT fully tested
+- No direct controller hierarchy inspection available yet
+- Must rely on navigation bar state for indirect detection
+- Cannot programmatically identify controller class names
+
+### Workaround
+
+Use `ui.inspect` to infer controller state:
+- Navigation bar title → current screen
+- Back button availability → navigation depth
+- Alert presence → modal state
+- Tab bar → tab-based navigation
+
+> Source: migrated from `.claude/skills/ios-controller-navigation/SKILL.md` (deleted in this commit).
+> `ui.controllers` MCP tool: `mcp__iOSDriver__ui_controllers` (optional `maxDepth` parameter).
