@@ -6,22 +6,24 @@
 
 ## 1. 12 个保留 skill(按层)
 
+> **状态总览(阶段 6 收尾)**:12 个 skill 全部重写/新建完成,spec §11 / plan G5 六条验证命令全 PASS(无空壳目录残留、`ui.controllers` 已迁入 `ios-ui-nav`、无 SPMExample 硬编码、`allowed-tools` 齐全、文件名统一为 `SKILL.md`、`ios-logs` 含 `capture.state` + `unavailable`)。健康度按 inventory §5 规则转 `healthy`。
+
 | skill | 层 | 工具体系 | `allowed-tools` 概要 | 健康度 | 状态 | 备注 |
 |---|---|---|---|---|---|---|
-| `ios-debugger-agent` | **L0 构建调试** | XcodeBuildMCP | `build_run_sim` / `build_run_device` / `launch_app_*` / `start_sim_log_cap` / `describe_ui` | needs-test | active | 全局 skill(`~/.claude/skills/`);完整定位与 L0/L1 选择规则见 `l0-build-debug.md`(规则原文抄自 `README.md` §2);本体仅在发现具体错误时改(Task 16 已只读检查,结论见 `l0-build-debug.md` §7) |
-| `ios-automation` | **L1 入口** | iOSDriver | `ui_inspect` / `ui_tap_and_inspect` / `app_logs_read`(诊断用) | needs-test | active | L1 总入口;现缺 evals,plan Task 11 补;中度 SPMExample 耦合,Task 11 解耦 |
-| `ios-ui-nav` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_tap` / `ui_tap_and_inspect` / `ui_navigation_back` / `ui_navigation_tapBarButton` / `ui_controllers` / `ui_screenshot` | needs-test | active | 原 `ios-navigation`,吸收原 `ios-controller-navigation` 的 `ui.controllers` 能力(plan Task 3 Step 4 + Task 4) |
-| `ios-ui-list` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_scroll` / `ui_scrollToElement` / `ui_swipe` / `ui_tap` / `ui_tap_and_inspect` | needs-test | active | 原 `ios-list-interaction` |
-| `ios-ui-form` | **L1 操作层** | iOSDriver | `ui_input` / `ui_tap` / `ui_tap_and_inspect` / `ui_control_sendAction` / `ui_keyboard_dismiss` / `ui_inspect` / `ui_scrollToElement` | needs-test | active | 原 `ios-form-filling`;解耦点:删正文对 SPMExample deployment target 的提法 |
-| `ios-ui-alert` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_alert_respond` / `ui_input` / `ui_tap_and_inspect` | needs-test | active | 原 `ios-alert-handling` |
-| `ios-ui-shot` | **L1 操作层** | iOSDriver | `ui_screenshot` / `ui_inspect` | needs-test | active | 原 `ios-screenshot` |
-| `ios-ui-gesture` | **L1 操作层** | iOSDriver | `ui_swipe` / `ui_longPress` / `ui_inspect` | needs-test | active | 原 `ios-gestures`;**不含 drag**(`ui.drag` 不存在,Task 3 Step 5 删除) |
-| `ios-ui-wait` | **L1 操作层** | iOSDriver | `ui_wait` / `ui_waitAny` / `wait_and_inspect` / `ui_inspect` | needs-test | active | 原 `ios-dynamic-content`;补 wait/waitAny 真实用法(原 skill 标 not fully tested) |
-| `ios-logs` | **L1 操作层** | iOSDriver | `app_logs_mark` / `app_logs_read` | — | **planned** | 尚未创建;plan Task 12;正文必含来源×平台矩阵(数据见 `design/log-matrix-measured.md`)+ `unavailable` 语义专节 |
-| `ios-test-intent` | **L2 测试闭环** | 离线源码分析 | `Read` / `Glob` / `Grep`(读 App 源码,**无 iOSDriver 调用**) | needs-test | active | 重度 SPMExample 耦合,plan Task 13 通用化(方法论保留,样例占位化) |
-| `ios-test-runner` | **L2 测试闭环** | iOSDriver + 源码分析 | `ui_waitAny` / `ui_inspect` / `ui_tap` / `ui_input` / `app_logs_read` / `app_logs_mark` | needs-test | active | 重度耦合(写死模拟器 UDID),plan Task 14 解耦 + 加日志判据 capture 前置检查 |
+| `ios-debugger-agent` | **L0 构建调试** | XcodeBuildMCP | `build_run_sim` / `build_run_device` / `launch_app_*` / `start_sim_log_cap` / `describe_ui` | healthy | active | 全局 skill(`~/.claude/skills/`);完整定位与 L0/L1 选择规则见 `l0-build-debug.md`(规则原文抄自 `README.md` §2);本体仅在发现具体错误时改(Task 16 已只读检查,结论见 `l0-build-debug.md` §7) |
+| `ios-automation` | **L1 入口** | iOSDriver | `ui_inspect` / `ui_tap_and_inspect` / `app_logs_read`(诊断用) | healthy | active | L1 总入口;Task 11 补 evals + 解耦 SPMExample |
+| `ios-ui-nav` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_tap` / `ui_tap_and_inspect` / `ui_navigation_back` / `ui_navigation_tapBarButton` / `ui_controllers` / `ui_screenshot` | healthy | active | 原 `ios-navigation`,吸收原 `ios-controller-navigation` 的 `ui.controllers` 能力(plan Task 3 Step 4 + Task 4) |
+| `ios-ui-list` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_scroll` / `ui_scrollToElement` / `ui_swipe` / `ui_tap` / `ui_tap_and_inspect` | healthy | active | 原 `ios-list-interaction` |
+| `ios-ui-form` | **L1 操作层** | iOSDriver | `ui_input` / `ui_tap` / `ui_tap_and_inspect` / `ui_control_sendAction` / `ui_keyboard_dismiss` / `ui_inspect` / `ui_scrollToElement` | healthy | active | 原 `ios-form-filling`;已删正文对 SPMExample deployment target 的提法 |
+| `ios-ui-alert` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_alert_respond` / `ui_input` / `ui_tap_and_inspect` | healthy | active | 原 `ios-alert-handling` |
+| `ios-ui-shot` | **L1 操作层** | iOSDriver | `ui_screenshot` / `ui_inspect` / `ui_wait` | healthy | active | 原 `ios-screenshot` |
+| `ios-ui-gesture` | **L1 操作层** | iOSDriver | `ui_swipe` / `ui_longPress` / `ui_inspect` / `ui_wait` | healthy | active | 原 `ios-gestures`;**不含 drag**(`ui.drag` 不存在,Task 3 Step 5 删除) |
+| `ios-ui-wait` | **L1 操作层** | iOSDriver | `ui_wait` / `ui_waitAny` / `wait_and_inspect` / `ui_inspect` | healthy | active | 原 `ios-dynamic-content`;补 wait/waitAny 真实用法(原 skill 标 not fully tested) |
+| `ios-logs` | **L1 操作层** | iOSDriver | `app_logs_mark` / `app_logs_read` | healthy | active | Task 12 新建;正文含来源×平台矩阵(数据见 `design/log-matrix-measured.md`)+ `capture.state` + `unavailable` 语义专节 |
+| `ios-test-intent` | **L2 测试闭环** | 离线源码分析 | `Read` / `Glob` / `Grep`(读 App 源码,**无 iOSDriver 调用**) | healthy | active | Task 13 通用化(方法论保留,样例占位化) |
+| `ios-test-runner` | **L2 测试闭环** | iOSDriver + 源码分析 | `ui_waitAny` / `ui_inspect` / `ui_tap` / `ui_input` / `app_logs_read` / `app_logs_mark` | healthy | active | Task 14 解耦(去 UDID/bundle 硬编码)+ 加日志判据 capture 前置检查 |
 
-> **健康度说明**:`needs-test` = 已立项待 plan Task 3–14 重写,目前正文多为英文、缺 `allowed-tools`、未精简到 150–250 行。重写完成并通过 plan G5 验证命令集后转 `healthy`。`ios-logs` 标 planned = 目录尚未创建。
+> **健康度说明**:`healthy` = 结构完整(中文正文 + 中英 description + `allowed-tools` frontmatter + 解耦自检)+ spec §11 / plan G5 六条验证命令全 PASS。动态回归验证(真机/模拟器跑 SPMExample 登录案例)由 `examples/spmexample-login/` 提供 fixture,不计入 skill 本体耦合(见 `conventions/decoupling.md`)。
 
 ---
 
@@ -51,7 +53,7 @@
 |---|---|
 | 入口 | `ios-automation` |
 | UI 操作 | `ios-ui-nav` / `ios-ui-list` / `ios-ui-form` / `ios-ui-alert` / `ios-ui-shot` / `ios-ui-gesture` / `ios-ui-wait` |
-| 进程日志 | `ios-logs`(planned) |
+| 进程日志 | `ios-logs` |
 | 测试闭环 | `ios-test-intent`(离线) / `ios-test-runner`(在线) |
 
 ### 3.3 离线源码分析(L2)

@@ -47,7 +47,7 @@
 - `ios-ui-shot` — 截图、视觉验证、前后对比。
 - `ios-ui-gesture` — swipe、long press(**不含 drag**;`ui.drag` 不存在)。
 - `ios-ui-wait` — 等待动态内容 / loading / 异步状态。
-- `ios-logs` — 读 App 进程内日志(`app.logs.mark` / `app.logs.read`),含来源可用性矩阵与 `unavailable` 语义(**planned**,plan Task 12 创建)。
+- `ios-logs` — 读 App 进程内日志(`app.logs.mark` / `app.logs.read`),含来源可用性矩阵与 `unavailable` 语义。
 
 ### 3.3 L2 测试闭环(2 个,iOSDriver + 源码分析)
 - `ios-test-intent` — 离线读 App 业务代码,产出 per-scenario pass/fail 判据清单。
@@ -93,7 +93,7 @@ docs/skills/
 └── archive/                  # docs 顶层散报告 + 旧设计文档归档(plan Task 17)
 ```
 
-> `l0-build-debug.md` 已由 plan Task 16 产出;`archive/` 尚未创建,由 plan Task 17 产出。本 README 提前在导航中列出,方便后续 task 直接更新。
+> `l0-build-debug.md`(plan Task 16)与 `archive/`(plan Task 17)均已产出。
 
 ---
 
