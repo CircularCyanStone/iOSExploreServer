@@ -9,6 +9,7 @@ allowed-tools:
   - mcp__iOSDriver__ui_keyboard_dismiss
   - mcp__iOSDriver__ui_inspect
   - mcp__iOSDriver__ui_scrollToElement
+  - mcp__iOSDriver__ui_screenshot
 ---
 
 # iOS 表单填写与控件操作
