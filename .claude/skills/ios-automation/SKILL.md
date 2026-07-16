@@ -142,11 +142,17 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 | 截图、前后对比、视觉取证 | `ios-ui-shot` | 不含图像 diff(需外部工具) |
 | swipe 方向滑动、long press 长按 | `ios-ui-gesture` | 不含 `ui.drag`(不存在) |
 | 等待 loading / 动画 / 异步状态稳定 | `ios-ui-wait` | 推荐先 `ui_waitAny` 多条件并发 |
+| **异步表单提交后等待成功/失败** | `ios-ui-form` 提交 + `ios-ui-wait` 等待 | 登录/注册/保存场景,先 `ui_tap` 按钮,再用 `wait_and_inspect` 等多判据(targetExists / textExists) |
 | 读 App 进程内日志(stdout / stderr / nslog / oslog) | `ios-logs` | 含来源 × 平台可用性矩阵 |
 | 读业务源码产出测试意图清单 | `ios-test-intent`(L2) | 离线分析,不操作 App |
 | 执行测试意图、跑覆盖报告 | `ios-test-runner`(L2) | 消费 `ios-test-intent` 的产出 |
 
 **路由反模式**:把所有 UI 操作都串在 `ios-automation` 里直接调 `ui_tap` / `ui_input`。正确做法是路由到对应 `ios-ui-*`,让子 skill 处理顺序依赖、稳定等待、业务码判别。
+
+**异步提交场景路由规则**:
+- 用户要"登录"、"注册"、"保存"等有网络请求的表单 → 先路由到 `ios-ui-form` 填写表单并点击提交按钮
+- 提交后需要判断成功/失败 → 再路由到 `ios-ui-wait`,用 `wait_and_inspect` 或 `ui_waitAny` 等待明确判据(成功: `targetExists:"home_welcome_label"`;失败: `textExists:"错误"`)
+- **不要**用 `ui_tap_and_inspect` + 固定 `stableTimeMs` 等异步操作(会读到 loading 中间态、浪费时间、无法区分成功/失败)
 
 ## 快速诊断
 

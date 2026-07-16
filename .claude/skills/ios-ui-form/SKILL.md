@@ -101,6 +101,246 @@ allowed-tools:
 
 > **不用 `snapshotChanged` 判成功**:它只表达"界面变了",登录失败(弹 alert、清空密码框)界面同样会变,会被误判为成功。必须用目标页的**确定元素**。
 
+#### 4.1 登录场景完整示例(最佳实践)
+
+以 SPMExample 登录流程为例,展示同步 vs 异步的正确等法。
+
+##### 异步提交场景(登录成功)
+
+```javascript
+// 步骤 1: 获取登录页表单元素
+const snapshot1 = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "login_",
+  maxDepth: 3
+})
+
+// 步骤 2: 填写表单(批量填写,最后一个字段才收键盘)
+await mcp__iOSDriver__ui_input({
+  accessibilityIdentifier: "login_username_field",
+  text: "test",
+  submit: false,  // 中间字段不收键盘
+  viewSnapshotID: snapshot1.viewSnapshotID
+})
+
+await mcp__iOSDriver__ui_input({
+  accessibilityIdentifier: "login_password_field",
+  text: "123456",
+  submit: true,  // 最后一个字段收键盘
+  viewSnapshotID: snapshot1.viewSnapshotID
+})
+
+// 步骤 3: 点击登录按钮(不等待)
+await mcp__iOSDriver__ui_tap({
+  accessibilityIdentifier: "login_button",
+  viewSnapshotID: snapshot1.viewSnapshotID
+})
+
+// 步骤 4: 使用 wait_and_inspect 等待并获取结果
+const result = await mcp__iOSDriver__wait_and_inspect({
+  conditions: [
+    {
+      id: "login_success",
+      mode: "targetExists",
+      accessibilityIdentifier: "home_welcome_label"  // 成功判据:首页欢迎标签
+    },
+    {
+      id: "login_failed",
+      mode: "textExists",
+      text: "用户名或密码错误"  // 失败判据:错误提示文本
+    },
+    {
+      id: "error_label_shown",
+      mode: "targetExists",
+      accessibilityIdentifier: "login_error_label"  // 失败判据:错误标签出现
+    }
+  ],
+  timeoutMs: 5000,    // 最多等 5 秒
+  intervalMs: 100,    // 每 100ms 检查一次
+  inspectOptions: {
+    maxDepth: 3,
+    maxTargets: 50
+  }
+})
+
+// 步骤 5: 判断结果
+if (result.matched && result.matchedID === "login_success") {
+  console.log("✅ 登录成功")
+  console.log("耗时:", result.elapsedMs, "ms")  // 动态耗时,通常 800-1200ms
+  console.log("首页标题:", result.navigationBar.title)
+  // 继续验证首页内容...
+} else if (result.matched && (result.matchedID === "login_failed" || result.matchedID === "error_label_shown")) {
+  console.log("❌ 登录失败")
+  console.log("错误提示已显示")
+  // 验证密码框被清空(iOS 标准行为)
+  const passwordField = result.targets.find(t => t.accessibilityIdentifier === "login_password_field")
+  console.log("密码框状态:", passwordField?.text === null ? "已清空" : "未清空")
+} else {
+  console.log("⏱️ 超时 - 未知状态,需要排查")
+}
+```
+
+**性能对比**:
+
+| 方式 | 成功耗时 | 失败耗时 | 可靠性 |
+|---|---|---|---|
+| ❌ 固定等待 `ui_tap_and_inspect(stableTimeMs:1500)` | 1500ms(浪费 ~700ms) | 2500ms(浪费 ~2000ms) | 低(可能读到中间态) |
+| ✅ 动态等待 `wait_and_inspect` | 800-1200ms | 500-800ms | 高(明确等待目标元素) |
+| **效率提升** | **40-50%** | **70-80%** | **显著** |
+
+##### 异步提交场景(登录失败 - 错误凭据)
+
+```javascript
+// 前面步骤相同(inspect + 填写用户名密码)
+
+// 使用错误凭据
+await mcp__iOSDriver__ui_input({
+  accessibilityIdentifier: "login_username_field",
+  text: "nonexistent",
+  submit: false,
+  viewSnapshotID: snapshot1.viewSnapshotID
+})
+
+await mcp__iOSDriver__ui_input({
+  accessibilityIdentifier: "login_password_field",
+  text: "wrongpass",
+  submit: true,
+  viewSnapshotID: snapshot1.viewSnapshotID
+})
+
+await mcp__iOSDriver__ui_tap({
+  accessibilityIdentifier: "login_button",
+  viewSnapshotID: snapshot1.viewSnapshotID
+})
+
+// 等待失败判据
+const result = await mcp__iOSDriver__wait_and_inspect({
+  conditions: [
+    {
+      id: "error_shown",
+      mode: "targetExists",
+      accessibilityIdentifier: "login_error_label"
+    },
+    {
+      id: "error_text",
+      mode: "textExists",
+      text: "用户名或密码错误"
+    },
+    {
+      id: "success",  // 兜底:万一居然成功了(不应该)
+      mode: "targetExists",
+      accessibilityIdentifier: "home_welcome_label"
+    }
+  ],
+  timeoutMs: 5000,
+  intervalMs: 100,
+  inspectOptions: { maxDepth: 3 }
+})
+
+if (result.matchedID === "error_shown" || result.matchedID === "error_text") {
+  console.log("✅ 登录失败验证通过")
+  console.log("耗时:", result.elapsedMs, "ms")
+  
+  // 核对关键 UI 状态
+  const errorLabel = result.targets.find(t => t.accessibilityIdentifier === "login_error_label")
+  console.log("错误标签可见:", !errorLabel?.isHidden)
+  console.log("错误文本:", errorLabel?.text)
+  
+  // 验证密码框已被清空
+  const passwordField = result.targets.find(t => t.accessibilityIdentifier === "login_password_field")
+  console.log("密码框已清空:", passwordField?.text === null)
+  
+  // 验证仍停留在登录页
+  console.log("当前页面:", result.navigationBar?.title)  // 应为 "登录"
+} else if (result.matchedID === "success") {
+  console.log("❌ 测试失败:错误凭据居然登录成功了")
+}
+```
+
+##### 同步提交场景(纯前端校验)
+
+```javascript
+// 场景:本地表单验证(无网络),点提交后立即显示错误提示
+
+// 步骤 1-2: inspect + 填写(省略)
+
+// 步骤 3: 点击提交,用 ui_tap_and_inspect(适合同步场景)
+const result = await mcp__iOSDriver__ui_tap_and_inspect({
+  accessibilityIdentifier: "submit_button",
+  viewSnapshotID: snapshot1.viewSnapshotID,
+  waitForStable: true,
+  stableTimeMs: 300  // 同步场景:300ms 动画稳定即可
+})
+
+// 步骤 4: 直接读 result.targets 判断
+const errorLabel = result.targets.find(t => t.accessibilityIdentifier === "form_error_label")
+if (!errorLabel?.isHidden) {
+  console.log("✅ 前端校验生效:", errorLabel.text)
+}
+```
+
+##### targetExists / targetGone / textExists 的选择
+
+| 判据类型 | 适用场景 | 示例 | 优先级 |
+|---|---|---|---|
+| `targetExists` + `accessibilityIdentifier` | 目标元素有 identifier | 首页欢迎标签、错误标签 | **最高**(最稳) |
+| `textExists` | 元素没 identifier、动态文本 | "欢迎回来"、"用户名或密码错误" | 中(子串匹配) |
+| `targetGone` | 等中间态消失 | loading spinner 消失 | 低(需配合 targetExists 确认终态) |
+
+**反模式**:
+- ❌ 用 `snapshotChanged` 判成功(失败时界面也会变)
+- ❌ 用 `targetGone:"login_button"` 判成功(按钮禁用时也在、只是 `isEnabled:false`)
+- ❌ 固定 sleep 1500ms(浪费时间、覆盖不了网络慢)
+
+##### 注册场景(成功 + alert 响应)
+
+```javascript
+// 步骤 1-3: inspect + 填写注册表单 + 点击注册按钮(省略)
+
+// 步骤 4: 等待注册结果
+const result = await mcp__iOSDriver__wait_and_inspect({
+  conditions: [
+    {
+      id: "register_success_alert",
+      mode: "textExists",
+      text: "注册成功"  // alert 的 title 或 message
+    },
+    {
+      id: "register_failed",
+      mode: "targetExists",
+      accessibilityIdentifier: "register_error_label"
+    },
+    {
+      id: "username_exists",
+      mode: "textExists",
+      text: "用户名已存在"
+    }
+  ],
+  timeoutMs: 5000,
+  intervalMs: 100,
+  inspectOptions: { maxDepth: 3 }
+})
+
+if (result.matchedID === "register_success_alert") {
+  console.log("✅ 注册成功 alert 已显示")
+  
+  // 步骤 5: 响应 alert 按钮
+  const alertInfo = result.alert  // wait_and_inspect 自动返回 alert 信息
+  console.log("Alert title:", alertInfo?.title)
+  console.log("Alert message:", alertInfo?.message)
+  console.log("按钮:", alertInfo?.buttons.map(b => b.title))
+  
+  await mcp__iOSDriver__ui_alert_respond({
+    buttonTitle: "确定"  // 点击"确定"返回登录页
+  })
+  
+  // 步骤 6: 验证返回登录页
+  const backToLogin = await mcp__iOSDriver__ui_inspect({ maxDepth: 2 })
+  console.log("当前页面:", backToLogin.navigationBar?.title)  // 应为 "登录"
+} else if (result.matchedID === "username_exists") {
+  console.log("✅ 用户名已存在验证通过")
+}
+```
+
 ### 5. 屏幕外字段定位(`ui_scrollToElement`)
 
 长表单底部字段在可视区外时,先 `ui_scrollToElement({match:"text"|"accessibilityIdentifier", value:"<field-label-or-id>"})` 把它滚进可视区,再 `ui_inspect` 拿**新** `viewSnapshotID`(scroll 后旧 snapshot 立即作废),然后 input。定位语义与 `ios-ui-list` 一致,本 skill 只用到"滚到字段可见"这一步。

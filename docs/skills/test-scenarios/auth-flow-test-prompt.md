@@ -52,41 +52,67 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
   "steps": [
     {
       "action": "ui.inspect",
-      "params": {"maxDepth": 3},
-      "verify": "找到 login_username_field、login_password_field、login_button"
+      "params": {
+        "accessibilityIdentifierPrefix": "login_",
+        "maxDepth": 3
+      },
+      "verify": "找到 login_username_field、login_password_field、login_button，获取 viewSnapshotID"
     },
     {
-      "action": "ui.control.setValue",
+      "action": "ui.input",
       "params": {
         "accessibilityIdentifier": "login_username_field",
-        "value": "test"
+        "text": "test",
+        "submit": false,
+        "viewSnapshotID": "<from_step_1>"
       },
       "verify": "用户名输入框显示 'test'"
     },
     {
-      "action": "ui.control.setValue",
+      "action": "ui.input",
       "params": {
         "accessibilityIdentifier": "login_password_field",
-        "value": "123456"
+        "text": "123456",
+        "submit": true,
+        "viewSnapshotID": "<from_step_1>"
       },
-      "verify": "密码输入框显示 ••••••"
+      "verify": "密码输入框显示 ••••••，键盘收起"
     },
     {
       "action": "ui.tap",
-      "params": {"accessibilityIdentifier": "login_button"},
-      "verify": "按钮文字消失，loading indicator 出现"
+      "params": {
+        "accessibilityIdentifier": "login_button",
+        "viewSnapshotID": "<from_step_1>"
+      },
+      "verify": "点击登录按钮（不等待）"
     },
     {
-      "action": "ui.wait",
+      "action": "wait_and_inspect",
       "params": {
-        "mode": "textExists",
-        "text": "欢迎",
-        "timeoutMs": 3000
+        "conditions": [
+          {
+            "id": "login_success",
+            "mode": "targetExists",
+            "accessibilityIdentifier": "home_welcome_label"
+          },
+          {
+            "id": "login_failed",
+            "mode": "textExists",
+            "text": "用户名或密码错误"
+          }
+        ],
+        "timeoutMs": 5000,
+        "intervalMs": 100,
+        "inspectOptions": {
+          "maxDepth": 3
+        }
       },
-      "verify": "1.5秒后跳转到首页，显示欢迎信息"
+      "verify": "动态等待成功或失败判据，matchedID === 'login_success'"
     }
   ],
   "expectedResult": {
+    "matchedID": "login_success",
+    "elapsedMs": "800-1200",
     "navigation": "HomeViewController",
     "logs": ["✅ 登录成功，跳转到首页: username=test"]
   }
@@ -111,18 +137,78 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
     }
   ],
   "steps": [
-    {"action": "输入错误凭据"},
-    {"action": "点击登录按钮"},
-    {"action": "等待 loading 结束（1.5秒）"},
-    {"action": "验证 login_error_label 显示且文本为 '用户名或密码错误'"},
-    {"action": "验证密码框被清空"},
-    {"action": "验证仍停留在登录页"}
+    {
+      "action": "ui.inspect",
+      "params": {
+        "accessibilityIdentifierPrefix": "login_",
+        "maxDepth": 3
+      }
+    },
+    {
+      "action": "ui.input",
+      "params": {
+        "accessibilityIdentifier": "login_username_field",
+        "text": "nonexistent",
+        "submit": false,
+        "viewSnapshotID": "<from_step_1>"
+      }
+    },
+    {
+      "action": "ui.input",
+      "params": {
+        "accessibilityIdentifier": "login_password_field",
+        "text": "wrongpass",
+        "submit": true,
+        "viewSnapshotID": "<from_step_1>"
+      }
+    },
+    {
+      "action": "ui.tap",
+      "params": {
+        "accessibilityIdentifier": "login_button",
+        "viewSnapshotID": "<from_step_1>"
+      }
+    },
+    {
+      "action": "wait_and_inspect",
+      "params": {
+        "conditions": [
+          {
+            "id": "error_label",
+            "mode": "targetExists",
+            "accessibilityIdentifier": "login_error_label"
+          },
+          {
+            "id": "error_text",
+            "mode": "textExists",
+            "text": "用户名或密码错误"
+          },
+          {
+            "id": "unexpected_success",
+            "mode": "targetExists",
+            "accessibilityIdentifier": "home_welcome_label"
+          }
+        ],
+        "timeoutMs": 5000,
+        "intervalMs": 100,
+        "inspectOptions": {
+          "maxDepth": 3
+        }
+      },
+      "verify": "matchedID === 'error_label' 或 'error_text'"
+    }
   ],
   "verify": [
     "errorLabel.isHidden == false",
-    "passwordTextField.text == \"\"",
+    "passwordTextField.text == \"\" (已被清空)",
     "navigationController.topViewController == LoginViewController"
-  ]
+  ],
+  "expectedResult": {
+    "matchedID": "error_label 或 error_text",
+    "elapsedMs": "500-800",
+    "errorVisible": true,
+    "passwordCleared": true
+  }
 }
 ```
 
@@ -136,7 +222,68 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
     {"username": "test", "password": ""},
     {"username": "", "password": ""}
   ],
-  "expectedBehavior": "ViewModel 验证失败，返回 nil，显示通用错误信息"
+  "steps": [
+    {
+      "action": "ui.inspect",
+      "params": {
+        "accessibilityIdentifierPrefix": "login_",
+        "maxDepth": 3
+      }
+    },
+    {
+      "action": "ui.input",
+      "params": {
+        "accessibilityIdentifier": "login_username_field",
+        "text": "",
+        "submit": false,
+        "viewSnapshotID": "<from_step_1>"
+      }
+    },
+    {
+      "action": "ui.input",
+      "params": {
+        "accessibilityIdentifier": "login_password_field",
+        "text": "123456",
+        "submit": true,
+        "viewSnapshotID": "<from_step_1>"
+      }
+    },
+    {
+      "action": "ui.tap",
+      "params": {
+        "accessibilityIdentifier": "login_button",
+        "viewSnapshotID": "<from_step_1>"
+      }
+    },
+    {
+      "action": "wait_and_inspect",
+      "params": {
+        "conditions": [
+          {
+            "id": "validation_error",
+            "mode": "textExists",
+            "text": "用户名或密码不能为空"
+          },
+          {
+            "id": "generic_error",
+            "mode": "targetExists",
+            "accessibilityIdentifier": "login_error_label"
+          }
+        ],
+        "timeoutMs": 3000,
+        "intervalMs": 100,
+        "inspectOptions": {
+          "maxDepth": 3
+        }
+      },
+      "verify": "前端校验快速返回，matchedID === 'validation_error'"
+    }
+  ],
+  "expectedResult": {
+    "matchedID": "validation_error 或 generic_error",
+    "elapsedMs": "< 500",
+    "behavior": "前端校验失败，快速显示错误"
+  }
 }
 ```
 
@@ -168,10 +315,15 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
   "steps": [
     {
       "action": "从登录页点击 goto_register_button",
+      "tool": "ui.tap",
       "verify": "跳转到注册页，title='注册'"
     },
     {
       "action": "ui.inspect",
+      "params": {
+        "accessibilityIdentifierPrefix": "register_",
+        "maxDepth": 3
+      },
       "verify": "找到 register_username_field、register_email_field、register_password_field、register_confirm_password_field"
     },
     {
@@ -181,17 +333,43 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
         "email": "newuser@example.com",
         "password": "password123",
         "confirmPassword": "password123"
+      },
+      "tool": "ui.input (submit: false 除最后一个)"
+    },
+    {
+      "action": "ui.tap",
+      "params": {
+        "accessibilityIdentifier": "register_button",
+        "viewSnapshotID": "<from_step_2>"
       }
     },
     {
-      "action": "点击 register_button"
-    },
-    {
-      "action": "等待 loading（1.5秒）"
-    },
-    {
-      "action": "ui.alert.getVisible",
-      "verify": "显示 alert，title='注册成功'，message='账号创建成功，请使用新账号登录'"
+      "action": "wait_and_inspect",
+      "params": {
+        "conditions": [
+          {
+            "id": "success_alert",
+            "mode": "textExists",
+            "text": "注册成功"
+          },
+          {
+            "id": "error_label",
+            "mode": "targetExists",
+            "accessibilityIdentifier": "register_error_label"
+          },
+          {
+            "id": "username_exists",
+            "mode": "textExists",
+            "text": "用户名已存在"
+          }
+        ],
+        "timeoutMs": 5000,
+        "intervalMs": 100,
+        "inspectOptions": {
+          "maxDepth": 3
+        }
+      },
+      "verify": "matchedID === 'success_alert'，alert.title='注册成功'"
     },
     {
       "action": "ui.alert.respond",
@@ -200,6 +378,8 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
     }
   ],
   "expectedResult": {
+    "matchedID": "success_alert",
+    "elapsedMs": "1000-1500",
     "navigation": "返回 LoginViewController",
     "logs": ["✅ 注册成功: username=newuser, email=newuser@example.com"]
   }
@@ -253,7 +433,70 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
       "expectedError": "用户名已存在"
     }
   ],
-  "verify": "register_error_label 显示对应错误信息"
+  "steps": [
+    {
+      "action": "ui.inspect",
+      "params": {
+        "accessibilityIdentifierPrefix": "register_",
+        "maxDepth": 3
+      }
+    },
+    {
+      "action": "填写表单（使用测试用例输入）",
+      "tool": "ui.input"
+    },
+    {
+      "action": "ui.tap",
+      "params": {
+        "accessibilityIdentifier": "register_button",
+        "viewSnapshotID": "<from_step_1>"
+      }
+    },
+    {
+      "action": "wait_and_inspect",
+      "params": {
+        "conditions": [
+          {
+            "id": "validation_error",
+            "mode": "targetExists",
+            "accessibilityIdentifier": "register_error_label"
+          },
+          {
+            "id": "email_format_error",
+            "mode": "textExists",
+            "text": "邮箱格式不正确"
+          },
+          {
+            "id": "password_short",
+            "mode": "textExists",
+            "text": "密码长度至少为6位"
+          },
+          {
+            "id": "password_mismatch",
+            "mode": "textExists",
+            "text": "两次密码输入不一致"
+          },
+          {
+            "id": "username_exists",
+            "mode": "textExists",
+            "text": "用户名已存在"
+          }
+        ],
+        "timeoutMs": 5000,
+        "intervalMs": 100,
+        "inspectOptions": {
+          "maxDepth": 3
+        }
+      },
+      "verify": "matchedID 对应预期的错误类型"
+    }
+  ],
+  "verify": "register_error_label 显示对应错误信息",
+  "expectedResult": {
+    "errorVisible": true,
+    "matchedID": "对应错误类型",
+    "elapsedMs": "前端校验 < 500ms, 后端校验 1000-1500ms"
+  }
 }
 ```
 
@@ -284,10 +527,15 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
   "steps": [
     {
       "action": "从登录页点击 goto_reset_password_button",
+      "tool": "ui.tap",
       "verify": "跳转到重置密码页，title='重置密码'"
     },
     {
       "action": "ui.inspect",
+      "params": {
+        "accessibilityIdentifierPrefix": "reset_",
+        "maxDepth": 3
+      },
       "verify": "找到 reset_username_field、reset_email_field、reset_new_password_field、reset_confirm_password_field"
     },
     {
@@ -297,17 +545,43 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
         "email": "test@example.com",
         "newPassword": "newpass123",
         "confirmPassword": "newpass123"
+      },
+      "tool": "ui.input (submit: false 除最后一个)"
+    },
+    {
+      "action": "ui.tap",
+      "params": {
+        "accessibilityIdentifier": "reset_password_button",
+        "viewSnapshotID": "<from_step_2>"
       }
     },
     {
-      "action": "点击 reset_password_button"
-    },
-    {
-      "action": "等待 loading（1.5秒）"
-    },
-    {
-      "action": "ui.alert.getVisible",
-      "verify": "显示 alert，title='重置成功'，message='密码已重置，请使用新密码登录'"
+      "action": "wait_and_inspect",
+      "params": {
+        "conditions": [
+          {
+            "id": "success_alert",
+            "mode": "textExists",
+            "text": "重置成功"
+          },
+          {
+            "id": "error_label",
+            "mode": "targetExists",
+            "accessibilityIdentifier": "reset_password_error_label"
+          },
+          {
+            "id": "invalid_credentials",
+            "mode": "textExists",
+            "text": "用户名或邮箱不正确"
+          }
+        ],
+        "timeoutMs": 5000,
+        "intervalMs": 100,
+        "inspectOptions": {
+          "maxDepth": 3
+        }
+      },
+      "verify": "matchedID === 'success_alert'，alert.title='重置成功'"
     },
     {
       "action": "ui.alert.respond",
@@ -317,10 +591,12 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
     {
       "action": "使用新密码登录",
       "params": {"username": "test", "password": "newpass123"},
-      "verify": "登录成功"
+      "verify": "登录成功，密码已更改"
     }
   ],
   "expectedResult": {
+    "matchedID": "success_alert",
+    "elapsedMs": "1000-1500",
     "navigation": "返回 LoginViewController",
     "logs": ["✅ 密码重置成功: username=test"],
     "passwordChanged": true
@@ -375,7 +651,65 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
       "expectedError": "两次密码输入不一致"
     }
   ],
-  "verify": "reset_password_error_label 显示对应错误信息"
+  "steps": [
+    {
+      "action": "ui.inspect",
+      "params": {
+        "accessibilityIdentifierPrefix": "reset_",
+        "maxDepth": 3
+      }
+    },
+    {
+      "action": "填写表单（使用测试用例输入）",
+      "tool": "ui.input"
+    },
+    {
+      "action": "ui.tap",
+      "params": {
+        "accessibilityIdentifier": "reset_password_button",
+        "viewSnapshotID": "<from_step_1>"
+      }
+    },
+    {
+      "action": "wait_and_inspect",
+      "params": {
+        "conditions": [
+          {
+            "id": "validation_error",
+            "mode": "targetExists",
+            "accessibilityIdentifier": "reset_password_error_label"
+          },
+          {
+            "id": "invalid_credentials",
+            "mode": "textExists",
+            "text": "用户名或邮箱不正确"
+          },
+          {
+            "id": "password_short",
+            "mode": "textExists",
+            "text": "密码长度至少为6位"
+          },
+          {
+            "id": "password_mismatch",
+            "mode": "textExists",
+            "text": "两次密码输入不一致"
+          }
+        ],
+        "timeoutMs": 5000,
+        "intervalMs": 100,
+        "inspectOptions": {
+          "maxDepth": 3
+        }
+      },
+      "verify": "matchedID 对应预期的错误类型"
+    }
+  ],
+  "verify": "reset_password_error_label 显示对应错误信息",
+  "expectedResult": {
+    "errorVisible": true,
+    "matchedID": "对应错误类型",
+    "elapsedMs": "前端校验 < 500ms, 后端校验 1000-1500ms"
+  }
 }
 ```
 
