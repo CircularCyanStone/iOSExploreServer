@@ -40,7 +40,7 @@ L0 也含 UI 操作,但**工具体系不同**:
 | 维度 | L0 `ios-debugger-agent` | L1 `ios-ui-*` |
 |---|---|---|
 | 工具体系 | XcodeBuildMCP | iOSDriver(封装 iOSExploreServer HTTP) |
-| UI 快照 | `describe_ui` / `snapshot_ui`(accessibility snapshot,给 elementRef) | `ui_inspect`(给 `viewSnapshotID` 指纹,带 availableActions/cell indexPath) |
+| UI 快照 | `snapshot_ui`(accessibility snapshot,给 elementRef;旧名 `describe_ui` 已改名) | `ui_inspect`(给 `viewSnapshotID` 指纹,带 availableActions/cell indexPath) |
 | 点击/输入 | `tap` / `type_text` | `ui_tap` / `ui_input` / `ui_tap_and_inspect` |
 | 手势/截图 | `gesture` / `screenshot` / `swipe` / `long_press` | `ui_swipe` / `ui_longPress` / `ui_screenshot` |
 | 弹窗/导航 | 无专项命令(靠 `tap` 通用) | `ui_alert_respond` / `ui_navigation_back` / `ui_navigation_tapBarButton` |
@@ -80,8 +80,8 @@ L0 也含 UI 操作,但**工具体系不同**:
 | 仅启动(可带 env/launchArgs) | `launch_app_sim` | `launch_app_device` |
 | 仅安装 | `install_app_sim` | `install_app_device` |
 | 仅构建 | `build_sim` | `build_device` |
-| 系统级日志 | `start_sim_log_cap` / `stop_sim_log_cap` | (真机日志另走 `iproxy` + L1 `app.logs.*`) |
-| UI 快照(交集能力) | `describe_ui` / `snapshot_ui` | 同模拟器 |
+| 系统级日志 | `start_sim_log_cap` / `stop_sim_log_cap`(⚠️ 需 `enabledWorkflows` 含 `logging`,本仓库当前未启用) | (真机日志另走 `iproxy` + L1 `app.logs.*`) |
+| UI 快照(交集能力) | `snapshot_ui`(旧名 `describe_ui` 已改名) | 同模拟器 |
 | UI 交互(交集能力) | `tap` / `type_text` / `gesture` / `screenshot` | 同模拟器 |
 | LLDB 调试 | `debug_attach_sim` / `debug_breakpoint_add` / `debug_stack` / `debug_variables` / `debug_lldb_command` | (真机调试见 XcodeBuildMCP device 配置) |
 | 发现/配置 | `list_sims` / `list_devices` / `discover_projs` / `list_schemes` / `session_set_defaults` / `session_show_defaults` | 同 |
@@ -109,13 +109,13 @@ L0 和 L1 各有一套日志能力,定位不同,不冲突:
 
 1. **所有引用的工具都对应真实 XcodeBuildMCP 能力**:`build_run_sim` / `launch_app_sim` / `list_sims` / `get_sim_app_path` / `get_app_bundle_id` / `tap` / `type_text` / `gesture` / `screenshot` / `start_sim_log_cap` / `stop_sim_log_cap` 均为真实命令,职责描述与工具实际行为一致。**未发现** 类似已删空壳 skill(`ios-date-picker` 引用 `ui.datePicker.*`)那样的「承诺不存在的能力」。
 
-2. **(需复核)UI 快照工具名 `describe_ui`**:全局 skill 用 `mcp__XcodeBuildMCP__describe_ui`。在当前安装的 XcodeBuildMCP 版本中,UI 语义快照工具注册名是 **`snapshot_ui`**(返回带 elementRef 的 rs/1 运行快照),工具列表里未见 `describe_ui`。这可能是(a)版本差异——旧版叫 `describe_ui`、新版改名 `snapshot_ui`,或(b)工作流配置差异。**建议**:在动全局 skill 前,先用 `mcp__XcodeBuildMCP__` 工具列表实测确认当前版本的真实工具名,再决定是否把 `describe_ui` 改成 `snapshot_ui`。本定位文档在 §3/§5 两个名字并列,以兼容两种版本。
+2. **(已确认并修复)UI 快照工具名 `describe_ui`→`snapshot_ui`**:当前 XcodeBuildMCP 版本的 UI 语义快照工具注册名是 **`snapshot_ui`**(返回带 elementRef 的 rs/1 运行快照),`describe_ui` 已不存在(版本改名,经当前会话工具集确认)。本次 followup 已把全局 skill 的 `describe_ui` 全部改为 `snapshot_ui`;本文档 §3/§5 也已统一为 `snapshot_ui`(注明旧名)。
 
 3. **(命名精度,非硬错误)`session-set-defaults` 连字符**:全局 skill 写 `mcp__XcodeBuildMCP__session-set-defaults`(连字符),实际注册名是下划线 `session_set_defaults`。Claude Code 对 MCP 工具名解析较宽松,实战可用,但与注册名不一致。若日后统一精度,改成下划线更准确。
 
 4. **(范围缺口,非错误)全局 skill 只覆盖模拟器**:全局 skill 正文只讲 `build_run_sim` / `launch_app_sim` / `list_sims`,**未覆盖真机**(`build_run_device` / `launch_app_device` / `iproxy` USB 转发)与 **LLDB 调试**(`debug_attach_sim` 等)。这是范围比本定位文档窄,不是「错误」——全局 skill 面向所有项目,保持精简合理;真机与调试在本仓库由 `AGENTS.md`「XcodeBuildMCP 运行配置」补齐。无需改全局 skill。
 
-**结论**:全局 `ios-debugger-agent/SKILL.md` 可继续使用,**本次不改**。唯一值得后续单独跟进的是 §7.2 的 `describe_ui` ↔ `snapshot_ui` 工具名复核(取决于 XcodeBuildMCP 版本),可在确认版本后开独立 task 决定。本仓库的 L0 定位以本文档为准。
+**结论(本次 followup 已修)**:全局 `ios-debugger-agent/SKILL.md` 的过时工具名已修——`describe_ui`→`snapshot_ui`(已确认版本改名)、`session-set-defaults`→`session_set_defaults`(下划线);另发现 `start_sim_log_cap`/`stop_sim_log_cap` 在当前配置未暴露(`enabledWorkflows` 未含 `logging`),已在全局 skill 加标注提示改用 L1 `ios-logs`。本仓库的 L0 定位以本文档为准。
 
 ---
 

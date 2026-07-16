@@ -41,7 +41,7 @@
 | **L1 操作层(总入口)** | `ios-automation`(不带 `-ui-`,因为统领 UI + 日志) | iOSDriver | 连接管理、iproxy、路由到子 skill、快速诊断 |
 | **L2 测试闭环** | `ios-test-*` | iOSDriver + 离线源码分析 | 读业务源码产出测试判据 → 自动驱动 UI 跑 → 出覆盖报告 |
 
-### 2.1 L1 用两个子前缀区分能力类型
+### 2.1 L1 操作层的三种命名模式
 
 - **`ios-ui-*`**(7 个):纯 UI 操作。命名模式 `ios-ui-<能力简称>`(如 `ios-ui-nav`、`ios-ui-form`、`ios-ui-shot`)。
 - **`ios-logs`**(1 个):进程日志读取,非 UI,**不带 `-ui-`**。
