@@ -1,6 +1,6 @@
 {
-  "skill_name": "ios-navigation",
-  "description": "Test cases for iOS screen navigation and traversal automation",
+  "skill_name": "ios-ui-nav",
+  "description": "Test cases for iOS screen navigation, back/modal dismissal, nav bar button tap, and controller hierarchy checks (formerly ios-navigation + ios-controller-navigation)",
   "evals": [
     {
       "id": 1,
