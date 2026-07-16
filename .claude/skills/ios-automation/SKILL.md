@@ -1,400 +1,203 @@
 ---
 name: ios-automation
-description: |
-  Unified entry point for iOS app automation. Provides connection management, 
-  automatic routing to specialized skills, and quick diagnostics.
-  
-  Use this skill when you need to:
-  - Test iOS apps (simulator or physical device)
-  - Handle alerts, forms, navigation, lists, or gestures
-  - Check connection status or troubleshoot iproxy
-  - Take screenshots or inspect UI state
-  
-  Automatically manages iproxy for physical devices and routes to the right sub-skill.
+description: iOS App 自动化测试 L1 总入口(连接管理 + 路由到 ios-ui-* / ios-logs 子 skill + 快速诊断)/ unified L1 entry, iproxy, connection check, skill routing, diagnostics, simulator, physical device, ping 38321
+allowed-tools:
+  - mcp__iOSDriver__ui_inspect
+  - mcp__iOSDriver__ui_tap_and_inspect
+  - mcp__iOSDriver__app_logs_read
 ---
 
-# iOS Automation - Unified Entry Point
+# iOS 自动化总入口(L1)
 
-## 功能概述
+基于 iOSDriver MCP Server(`mcp__iOSDriver__*`,封装 iOSExploreServer HTTP)与宿主 iOS App 的 HTTP 端点(`POST http://localhost:38321/`),作为 L1 操作层的统一入口。本 skill **本身不做复杂 UI 操作**,只负责三件事:**连接管理**(模拟器 localhost 直连 / 真机 iproxy USB 转发)、**任务路由**(把请求分发给 `ios-ui-*` 与 `ios-logs` 子 skill)、**快速诊断**(ping、UI 快照、进程日志、端口冲突排查)。
 
-这是 iOS 自动化的统一入口 skill，提供：
+## 目标
 
-1. **自动连接管理** — 自动启动/停止 iproxy，检测端口状态
-2. **智能任务路由** — 根据任务类型自动调用对应的专业 skill
-3. **快速诊断** — 连接检查、截图、UI 检查等常用操作
+解决"开发者要测一个已集成 iOSExploreServer 的 iOS App,但不确定从哪里开始"这一入口问题。具体回答三个问题:
+
+- **怎么连上 App** — 模拟器与真机连接方式不同(localhost vs iproxy),且真机有四个易踩的坑(端口残留、设备 ID 两套体系、env 注入限制、版本判定),本 skill 给一份精简清单。
+- **该用哪个子 skill** — 一张路由表把"用户说什么话 → 走哪个子 skill"对清楚,避免 agent 在 `ios-ui-*` 之间反复试。
+- **连不上 / 行为异常时怎么查** — 先 ping、再看端口占用、最后读进程日志,给出三段式诊断流程。
+
+**不做**:不构建 / 安装 / 调试 App 进程(走 L0 `ios-debugger-agent`);不直接驱动表单 / 列表 / 手势(走对应 `ios-ui-*` 子 skill)。
 
 ## 何时使用
 
-当你需要：
-- 测试 iOS App（模拟器或真机）
-- 不确定该用哪个 skill 时，作为通用入口
-- 检查连接状态或排查 iproxy 问题
-- 快速截图或查看当前 UI 状态
+- ✅ 用户说"测一下这个 iOS App"但没指定具体场景(先连上、再问要做什么)
+- ✅ 用户要排查 iproxy / 端口 38321 / 连接问题(`curl: (7) Failed to connect`、`Address already in use`、真机返回模拟器旧数据)
+- ✅ 用户不确定该用 `ios-ui-*` 还是 L0 `ios-debugger-agent`,需要先判 L0/L1
+- ✅ 用户要快速看一眼当前 UI / 截图 / 弹窗状态(诊断,不是任务主体)
+- ✅ 用户说"自动化"、"自动化测试"、"连上 App"、"iproxy"、"38321"、"ping App"
+- ❌ 不要用于具体的表单填写 / 列表滚动 / 手势(直接走对应 `ios-ui-*`,本 skill 只在最前期不确定时介入)
+- ❌ 不要用于构建 / 安装 / 启动模拟器 / LLDB 调试(L0 `ios-debugger-agent`,见"L0 vs L1 选择规则")
+- ❌ 不要用于读源码出测试判据(`ios-test-intent`)或执行测试意图闭环(`ios-test-runner`)
 
-## 前置条件
+## L0 vs L1 选择规则
 
-- **XcodeBuildMCP** 已连接（用于构建和运行 App）
-- **iOSDriver MCP Server** 已配置在 `.mcp.json`
-- iOS App 已安装（模拟器或真机）
+这是入口最关键的决策:**目标 App 是否已集成 iOSExploreServer**(能 `curl http://localhost:38321/` 成功)。
 
-## 核心能力
+| 条件 | 用哪一层 | 工具体系 |
+|---|---|---|
+| App 已集成 iOSExploreServer,`ping` 通 | **L1**(本 skill + `ios-ui-*` + `ios-logs`) | iOSDriver(`mcp__iOSDriver__*`) |
+| 需要 build / install / launch / LLDB 调试 | **L0**(`ios-debugger-agent`) | XcodeBuildMCP(`mcp__XcodeBuildMCP__*`) |
+| 需要**系统级**日志(整个 App 控制台、其他进程) | **L0**(`start_sim_log_cap` 等) | XcodeBuildMCP |
+| 需要**进程内精准**日志(按 source/level 过滤、可断言) | **L1**(`ios-logs` 的 `app.logs.*`) | iOSDriver |
+| App**未集成** iOSExploreServer(`curl` 连不上) | **L0**(先构建运行,或退回系统级 UI 自动化) | XcodeBuildMCP |
 
-### 1. 连接管理
+两套日志能力**互补,非冲突**:L0 抓系统/模拟器级(模拟器友好、覆盖整个控制台),L1 抓进程内精准(可按 `stdout`/`stderr`/`nslog`/`oslog`/`explore`/`bridge` 过滤、可做断言、真机 `oslog` 更全)。需要时同一会话可混用。
 
-#### 检查连接状态
+## 连接管理
+
+iOSExploreServer 的唯一 HTTP 端点:`POST http://localhost:38321/`(body 是 `{"action": "..."}` JSON)。所有 iOSDriver MCP 工具最终都走这个端点。连接方式取决于 App 跑在模拟器还是真机。
+
+### 模拟器:localhost 直连
+
+模拟器与 Mac 共享 localhost,App 监听 38321 后 Mac 侧直接 `curl` 即可,**不需要 iproxy**。
+
 ```bash
-# 我会自动执行以下检查：
-# 1. 检测端口 38321 是否被监听
-# 2. 识别监听进程（iproxy / SPMExample / 其他）
-# 3. 尝试 ping 命令验证服务可用性
-# 4. 给出连接诊断建议
-```
-
-**自动诊断场景：**
-- ✅ 模拟器：App 直接监听 localhost:38321
-- ✅ 真机（正确）：iproxy 监听 38321，转发到设备
-- ❌ 真机（错误）：残留的模拟器 App 占用 38321
-- ❌ 无服务：端口未监听，需要启动 App
-
-#### 启动 iproxy（真机）
-```bash
-# 我会自动：
-# 1. 检测当前端口状态
-# 2. 如果有冲突进程，提示清理方案
-# 3. 启动 iproxy 后台守护进程
-# 4. 验证转发是否成功
-```
-
-#### 停止 iproxy
-```bash
-# 我会自动：
-# 1. 查找 iproxy 进程
-# 2. 安全停止进程
-# 3. 确认端口已释放
-```
-
-### 2. 任务路由
-
-我会根据你的需求自动调用对应的专业 skill：
-
-| 任务类型 | 自动路由到 | 可信度 |
-|---------|-----------|-------|
-| 表单填写、文本输入、开关控制 | `/ios-form-filling` | ⭐⭐⭐⭐⭐ |
-| 弹窗处理、确认对话框 | `/ios-alert-handling` | ⭐⭐⭐⭐⭐ |
-| 页面导航、返回、导航栏按钮 | `/ios-navigation` | ⭐⭐⭐⭐⭐ |
-| 列表滚动、查找项目 | `/ios-list-interaction` | ⭐⭐⭐⭐⭐ |
-| 截图、视觉验证 | `/ios-screenshot` | ⭐⭐⭐⭐⭐ |
-| 滑动、长按手势 | `/ios-gestures` | ⭐⭐⭐ |
-| 等待加载、动态内容 | `/ios-dynamic-content` | ⭐⭐⭐ |
-
-**示例对话：**
-- "帮我点击登录按钮" → 自动调用 `/ios-form-filling` 或 `/ios-navigation`
-- "处理这个确认弹窗" → 自动调用 `/ios-alert-handling`
-- "滚动到联系人列表的第 50 项" → 自动调用 `/ios-list-interaction`
-
-### 3. 快速诊断
-
-#### 健康检查（ping）
-```bash
-# 发送 ping 命令验证服务可用性
+# 验证连接(预期 {"code":"ok","data":{"pong":true}})
 curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
-# 预期响应: {"code":"ok","data":{"pong":true}}
 ```
 
-#### UI 状态检查（inspect）
+宿主 App 的 `iOSExploreServer` 实例在 DEBUG 环境下,由宿主在 `viewDidLoad` / `viewDidAppear` / `applicationDidFinishLaunching` 中调用 `server.start()` 自动启动(具体入口由宿主决定;不需要 autostart 环境变量)。
+
+### 真机:iproxy USB 转发
+
+真机的 38321 端口不暴露给 Mac,必须经 `iproxy` USB 隧道转发:
+
 ```bash
-# 获取当前 UI 层次结构
-# - 视图树
-# - 可交互元素
-# - 文本内容
-# - 弹窗状态
-```
-
-#### 截图（screenshot）
-```bash
-# 捕获当前屏幕 PNG 截图
-# - 默认最大尺寸 1280px
-# - Base64 编码传输
-# - 包含尺寸元数据
-```
-
-## 工作流程
-
-### 模拟器测试流程
-
-```
-1. 用户：帮我测试模拟器上的 SPMExample
-2. 我：检查连接状态...
-   → lsof -iTCP:38321 检测到 SPMExample 监听
-   → curl ping 验证服务正常
-   ✅ 连接正常，模拟器模式
-3. 我：需要我做什么测试？（表单/弹窗/导航...）
-4. 用户：测试表单填写
-5. 我：调用 /ios-form-filling skill...
-```
-
-### 真机测试流程
-
-```
-1. 用户：帮我测试真机上的 App
-2. 我：检查连接状态...
-   → lsof -iTCP:38321 检测到残留 SPMExample（模拟器）
-   ❌ 端口被占用，需要清理
-3. 我：清理残留进程...
-   → xcrun simctl terminate <UDID> com.coo.SPMExample
-   ✅ 端口已释放
-4. 我：启动 iproxy 转发...
-   → 获取真机 USB UDID
-   → ./scripts/proxy.sh --daemon
-   ✅ iproxy 已启动并转发到真机
-5. 我：curl ping 验证连接...
-   ✅ 真机服务正常
-6. 用户：测试弹窗处理
-7. 我：调用 /ios-alert-handling skill...
-```
-
-## 常见问题排查
-
-### 问题 1: `curl: (7) Failed to connect to localhost:38321`
-
-**原因：** App 未启动或端口未监听
-
-**解决方案：**
-```bash
-# 模拟器：
-session_use_defaults_profile("sim-app")
-build_run_sim()
-launch_app_sim()  # Server 会在 DEBUG 环境自动启动
-
-# 真机：
-session_use_defaults_profile("device-app")
-build_run_device()
-launch_app_device()  # Server 会在 DEBUG 环境自动启动
-```
-
-### 问题 2: 真机 `curl` 返回的是旧数据/模拟器数据
-
-**原因：** 残留的模拟器 App 占用了 38321 端口
-
-**解决方案：**
-```bash
-# 1. 检查监听进程
-lsof -iTCP:38321
-# COMMAND 列显示 SPMExampl → 模拟器残留
-
-# 2. 终止残留进程
-xcrun simctl terminate <模拟器UDID> com.coo.SPMExample
-
-# 3. 启动 iproxy
+# 启动 iproxy 后台守护进程(仓库脚本封装,自动用 lsusb 取 USB UDID)
 ./scripts/proxy.sh --daemon
 
-# 4. 验证
-lsof -iTCP:38321
-# COMMAND 列显示 iproxy → 正确
+# 或手动:iproxy 38321 38321 -u <your-device-udid>
+# <your-device-udid> 是 USB UDID(连字符分隔的十六进制串),不是 CoreDevice identifier
 ```
 
-### 问题 3: `iproxy: Address already in use: 38321`
+启动后 `curl http://localhost:38321/` 与模拟器一致。
 
-**原因：** 端口被其他进程占用
+### 四个必须记住的差异(真机 / 模拟器易踩坑)
 
-**解决方案：**
+1. **设备 ID 两套体系** — XcodeBuildMCP 的 `deviceId`(`list_devices` 返回)用 **CoreDevice identifier**(8-4-4-4-12 形式的 UUID);`iproxy -u` 用 **USB UDID**(连字符分隔的十六进制串)。同一台设备不能混用。
+2. **iOS 版本别信 devicectl 的机型字段** — 会缓存串号(iOS 26.5 真机可能显示成 iPhone 11)。判版本只看 `list_devices` 的 `osVersion`。
+3. **`build_run_*` 不注入 session env** — 要传启动参数(如回到流程起点),必须用 `launch_app_*(env/launchArgs)`,且先 `stop_app_*` 再 `launch_app_*`(已运行的 App 不会重启、参数不生效)。
+4. **`curl` 真机前先确认 38321 是 `iproxy` 在监听** — 模拟器跑过的 App 可能残留成 Mac 进程占住 38321,`curl localhost:38321` 打到的是这个**模拟器残留**(旧 binary、env 也没设),导致真机预期对不上。`lsof -iTCP:38321` 的 COMMAND 列应为 `iproxy`,否则按"端口冲突排查"清残留。
+
+## 路由到子 skill
+
+把请求分发给对应专业 skill。本 skill **不直接调用** 子 skill 里的 UI 工具(如 `ui_input` / `ui_alert_respond` / `ui_scroll`),而是路由 agent 到该 skill,由它执行。
+
+| 用户说什么 / 做什么 | 路由到 | 备注 |
+|---|---|---|
+| 表单填写、文本输入、开关 / 滑块 / 步进器 / 分段控件、提交 | `ios-ui-form` | 输入走 `ui_input`,控件事件走 `ui_control_sendAction` |
+| 弹窗、确认框、action sheet、带输入框的 alert | `ios-ui-alert` | 走 `ui_alert_respond`,不要用 `ui_tap` 点 alert 按钮 |
+| 屏幕导航、返回、导航栏左右按钮、controller 层级树 | `ios-ui-nav` | 含 `ui_controllers` 只读取层级 |
+| 列表 / 集合视图查找、滚动定位、cell 选中、cell 滑动操作 | `ios-ui-list` | 长列表优先 `ui_scrollToElement` |
+| 截图、前后对比、视觉取证 | `ios-ui-shot` | 不含图像 diff(需外部工具) |
+| swipe 方向滑动、long press 长按 | `ios-ui-gesture` | 不含 `ui.drag`(不存在) |
+| 等待 loading / 动画 / 异步状态稳定 | `ios-ui-wait` | 推荐先 `ui_waitAny` 多条件并发 |
+| 读 App 进程内日志(stdout / stderr / nslog / oslog) | `ios-logs` | 含来源 × 平台可用性矩阵 |
+| 读业务源码产出测试意图清单 | `ios-test-intent`(L2) | 离线分析,不操作 App |
+| 执行测试意图、跑覆盖报告 | `ios-test-runner`(L2) | 消费 `ios-test-intent` 的产出 |
+
+**路由反模式**:把所有 UI 操作都串在 `ios-automation` 里直接调 `ui_tap` / `ui_input`。正确做法是路由到对应 `ios-ui-*`,让子 skill 处理顺序依赖、稳定等待、业务码判别。
+
+## 快速诊断
+
+连接或行为异常时按下列顺序排查。
+
+### 1. ping 验证(最优先)
+
+90% 的"连不上"场景 App 其实已运行,先直接 ping:
+
 ```bash
-# 查看占用进程
-lsof -iTCP:38321
+curl -s -X POST http://localhost:38321/ -d '{"action":"ping"}'
+# 预期:{"code":"ok","data":{"pong":true}}
+```
 
-# 如果是旧 iproxy，停止它
+- ✅ 通 → 连接没问题,问题在 UI 层(路由到对应 `ios-ui-*`)
+- ❌ 不通 → 进入步骤 2
+
+**反模式**:每次任务前都跑完整端口 / 进程 / health check 诊断流程,浪费 2-3 秒。**正确**:先 ping,失败了再深度查。
+
+### 2. UI 状态快照(`ui_inspect`)
+
+ping 通但行为异常时,用 `mcp__iOSDriver__ui_inspect` 取当前视图结构(targets / alert / navigationBar),签发 `viewSnapshotID` 给后续 `ui_tap_and_inspect` 用。本 skill 的诊断范围只到"读状态",看到具体 UI 问题后路由给对应 `ios-ui-*`。
+
+### 3. 进程日志(`app_logs_read`)
+
+`mcp__iOSDriver__app_logs_read` 读进程内日志,可按 `sources`(`explore`/`bridge`/`stdout`/`stderr`/`nslog`/`oslog`)和 `minimumLevel` 过滤。读不到某 source 时先看响应里的 `capture.state`(`unavailable` 是"系统不让读",不是"日志没发生";详见 `ios-logs`)。诊断场景典型用法:先 `app_logs_mark` 建检查点,触发问题,再 `app_logs_read`(after=cursor) 看增量。
+
+### 4. 端口冲突排查(lsof / 残留清理)
+
+ping 不通或真机返回模拟器数据时:
+
+```bash
+# 1. 看谁占着 38321
+lsof -iTCP:38321
+# COMMAND 列含义:
+#   iproxy     → 真机转发正常
+#   <App 进程名> → 模拟器 App 直连(模拟器场景正常;真机场景是残留)
+#   (空)       → 没人监听,App 没起或 server 没注册
+
+# 2. 模拟器 App 残留清理(真机场景误占时)
+xcrun simctl terminate <your-simulator-udid> <your.app.bundleid>
+
+# 3. 旧 iproxy 停止
 ./scripts/proxy.sh --stop
 
-# 如果是模拟器 App，终止它
-xcrun simctl terminate <UDID> com.coo.SPMExample
+# 4. 重启 iproxy(真机场景)
+./scripts/proxy.sh --daemon
+
+# 5. 再次 ping 验证
+curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 ```
 
-## MCP 工具映射
+## 常见错误与判别
 
-| 操作 | 使用的 MCP 工具 |
-|------|---------------|
-| 连接检查 | `mcp__iOSDriver__ping` |
-| UI 检查 | `mcp__iOSDriver__ui_inspect` |
-| 截图 | `mcp__iOSDriver__ui_screenshot` |
-| 点击并检查状态 | `mcp__iOSDriver__ui_tap_and_inspect` |
-| 弹窗响应 | `mcp__iOSDriver__ui_alert_respond` |
-| 文本输入 | `mcp__iOSDriver__ui_input` |
-| 控件事件（开关/滑块） | `mcp__iOSDriver__ui_control_sendAction` |
-| 滚动 | `mcp__iOSDriver__ui_scroll` |
-| 导航返回 | `mcp__iOSDriver__ui_navigation_back` |
+### `curl: (7) Failed to connect to localhost port 38321`
 
-> **性能优化**：优先使用 `ui_tap_and_inspect` 而非单独调用 `ui.tap` 后再 `ui.inspect`。
-> 组合工具将点击、等待稳定、状态检查整合为一次调用，减少 Agent 推理次数，耗时从 4-6 秒优化到 2-3 秒。
-> 
-> **排障兜底**：所有 UI 命令都有对应的专用 MCP 工具（如 `ui_tap_and_inspect`、`ui_input`）。
-> 如遇参数问题或工具调用失败，可使用通用工具 `mcp__iOSDriver__call_action(action:"ui.tap", data:{...})` 绕过。
-> 正常情况下优先使用专用工具。
+- **现象**:curl 报连接拒绝
+- **原因**:App 未启动、App 起了但 `server.start()` 没调、或 38321 未监听
+- **判别**:`lsof -iTCP:38321` 输出为空 → 没人监听
+- **处理**:模拟器 `launch_app_sim`;真机确认 `iproxy` 运行(`./scripts/proxy.sh --status`)且 App 已 `launch_app_device`;宿主 App 的 `server.start()` 调用点正确
 
-## 性能指标
+### 真机 `curl` 返回模拟器旧数据
 
-| 操作 | 预期耗时 |
-|------|---------|
-| 连接检查（ping） | < 50ms |
-| 端口状态检查 | < 100ms |
-| 启动 iproxy | ~1-2 秒 |
-| UI 检查（inspect） | 20-50ms |
-| 截图（screenshot） | 200-500ms |
+- **现象**:真机 `curl` 的响应与真机预期不符(旧 binary、env 未设、返回的是另一个 App 的状态)
+- **原因**:模拟器跑过的 App 残留成 Mac 进程占住 38321,真机 `curl` 打到了这个残留
+- **判别**:`lsof -iTCP:38321` 的 COMMAND 是 App 进程名而不是 `iproxy`
+- **处理**:`xcrun simctl terminate <your-simulator-udid> <your.app.bundleid>` 清残留 → `./scripts/proxy.sh --stop` 停旧 iproxy → `./scripts/proxy.sh --daemon` 重启 → 再 ping
 
-## 专业 Skills 索引
+### `iproxy: Address already in use: 38321`
 
-完整 skills 文档：`docs/ios-automation-skills-index.md`
+- **现象**:启动 iproxy 立即报端口占用
+- **原因**:旧 iproxy 未停,或模拟器 App 残留占用(同上)
+- **判别**:`lsof -iTCP:38321` 的 COMMAND 区分(iproxy / App 进程名)
+- **处理**:按"端口冲突排查"步骤 3-4
 
-**生产就绪（⭐⭐⭐⭐⭐）：**
-- `/ios-form-filling` — 表单填写、控件操作
-- `/ios-alert-handling` — 弹窗、对话框处理
-- `/ios-navigation` — 页面导航、返回
-- `/ios-list-interaction` — 列表滚动、查找
-- `/ios-screenshot` — 截图、视觉验证
+### 启动参数没生效
 
-**部分就绪（⭐⭐⭐）：**
-- `/ios-gestures` — 滑动、长按手势
-- `/ios-dynamic-content` — 动态内容等待
+- **现象**:传了 `--ios-explore-show-login` 等 launchArgs,App 行为不变
+- **原因**:`build_run_sim` / `build_run_device` 不注入 session env;已运行的 App 不会重启
+- **判别**:看 App 进程是否在 `build_run_*` 前已存在
+- **处理**:先 `stop_app_*` 再 `launch_app_*(launchArgs=[...])`(启动参数是 App 专属,本 skill 不写死参数名,由调用方提供)
 
-**实验性（⭐）：**
-- `/ios-controller-navigation` — 控制器层次检查
-- `/ios-table-actions` — 表格高级操作
-- `/ios-date-picker` — 日期选择器
+## 关键参数
 
-**离线分析型（不操作 App、不进上面的任务路由表）：**
-- `/ios-test-intent` — 读业务源代码产出测试意图 + 成败判据清单（pass/fail criteria），判据用 `textExists` 等等待词汇，供执行型 skill 消费；运行时执行前可先来这拿判据
+本 skill 直接调用的 MCP 工具(allowed-tools):
 
-## 技术架构
+| 工具 | 含义 | 注意 |
+|---|---|---|
+| `mcp__iOSDriver__ui_inspect` | 读当前 UI 结构,签发 `viewSnapshotID` | 诊断入口;复杂 UI 调查路由给 `ios-ui-*` |
+| `mcp__iOSDriver__ui_tap_and_inspect` | 点击 + 等稳定 + inspect 一次完成 | 用于"点一下看看发生什么"的快速诊断 |
+| `mcp__iOSDriver__app_logs_read` | 读进程内日志 | `capture.state` 三态(`enabled` / `notCaptured` / `unavailable`)必看 |
 
-```
-用户请求
-    ↓
-ios-automation (入口 skill)
-    ↓
-    ├─ 连接管理 (iproxy 启动/停止/检查)
-    │   ├─ lsof 端口检测
-    │   ├─ scripts/proxy.sh 守护进程
-    │   └─ curl ping 验证
-    ↓
-    ├─ 任务路由 (根据需求调用专业 skill)
-    │   ├─ /ios-form-filling
-    │   ├─ /ios-alert-handling
-    │   ├─ /ios-navigation
-    │   └─ ...其他 skills
-    ↓
-    └─ MCP 工具调用 (iOSDriver)
-        ├─ ui.inspect
-        ├─ ui.tap
-        ├─ ui.alert.respond
-        └─ ...30+ 命令
-```
+诊断流程涉及的 Bash 命令(curl / lsof / iproxy / xcrun simctl)由 agent 在 Bash 工具里执行,不进 allowed-tools(那是 MCP 工具字段)。
 
-## 执行原则
+## 相关 skill
 
-### 1. 惰性检测（Lazy Detection）
-
-连接检查遵循"先假设正常、失败才诊断"的原则：
-
-```
-优先级 1: 直接 ping
-  ✅ 成功 → 继续任务
-  ❌ 失败 → 进入优先级 2
-
-优先级 2: 启动 App（模拟器/真机）
-  - 模拟器：launch_app_sim
-  - 真机：确保 iproxy 运行 + launch_app_device
-  ✅ 启动后 ping 成功 → 继续任务
-  ❌ 仍失败 → 进入优先级 3
-
-优先级 3: 深度诊断
-  - 端口占用检查（lsof -iTCP:38321）
-  - 进程冲突排查（残留模拟器 App）
-  - iproxy 状态检查（真机）
-  - 给出修复建议
-```
-
-**反模式：** 每次任务前都执行完整诊断流程（端口检查、进程扫描、health check），浪费 2-3 秒。
-
-**正确做法：** 先 ping，失败了再诊断。90% 的场景下 App 已运行，ping 直接成功。
-
-### 2. 工具调用规则
-
-#### 必须顺序调用的场景
-
-1. **ui.inspect → ui_tap_and_inspect**
-   - `ui.inspect` 签发 `viewSnapshotID`（陈旧校验指纹）
-   - `ui_tap_and_inspect` 需要 `viewSnapshotID` 验证 UI 未变化
-   - 推荐使用 `ui_tap_and_inspect` 一次性完成点击和状态检查，避免额外的 Agent 推理周期
-
-2. **ui.wait → 后续操作**
-   - 等待加载完成、动画结束、目标出现后再操作
-   - 避免在过渡状态下操作元素
-
-3. **ui.alert.respond → 后续操作**
-   - 弹窗响应是阻塞性的，必须处理完才能继续
-   - 处理弹窗后需重新 `ui.inspect` 获取新状态
-
-#### 可并发调用的场景
-
-1. **多个独立查询**
-   - 同时查询多个页面的 UI 状态（不同 controller）
-   - 并发截图多个测试场景
-
-2. **批量诊断**
-   - 同时检查端口状态、进程状态、连接状态
-   - 并发执行多个健康检查
-
-**反模式：** 把所有工具调用串行化，即使它们之间没有依赖关系。
-
-**正确做法：** 识别数据依赖关系，无依赖的并发执行，有依赖的顺序执行。
-
-### 3. 常见 UI 行为
-
-了解 iOS 标准 UI 行为，避免误判为 Bug：
-
-| 场景 | 标准行为 | 自动化影响 |
-|------|---------|-----------|
-| 登录失败 | 密码框被清空 | 重试需重新输入密码，不能复用旧值 |
-| 键盘弹出 | 输入框自动滚动到可见区域 | 操作前需等待键盘动画完成 |
-| Alert 响应 | 弹窗关闭后才返回响应 | 后续操作需在 alert.respond 完成后 |
-| 页面跳转 | 导航动画 0.3-0.5 秒 | 跳转后需 `ui.wait` idle 等待动画完成 |
-| Pull to Refresh | 刷新指示器显示 1-2 秒 | 刷新后需等待内容重新加载 |
-| 网络请求 | 加载指示器（loading spinner） | 需等待 loading 消失再验证结果 |
-
-**登录失败重试示例：**
-```
-1. ui.input(username="test", password="wrong")
-2. ui.tap(登录按钮)
-3. ui.wait(textExists="用户名或密码错误")
-4. ui.input(username="test", password="123456")  ← 密码已被清空，需重新输入完整密码
-5. ui.tap(登录按钮)
-```
-
-**反模式：** 登录失败后只清空密码框再输入新密码，导致用户名也丢失。
-
-**正确做法：** 失败后重新输入完整的用户名和密码。
-
-## 最佳实践
-
-1. **优先使用此 skill 作为入口**，让我自动路由到专业 skill
-2. **真机测试前先检查连接状态**，确保 iproxy 正确运行
-3. **模拟器残留问题**：定期检查 `lsof -iTCP:38321`，清理残留进程
-4. **DEBUG 自动启动服务**：SPMExample 在 DEBUG 环境下于 `viewDidAppear` 自动调用 `server.start()`，无需 `IOS_EXPLORE_AUTOSTART` 等环境变量（该旧变量已废弃，不再被读取）
-5. **保留截图证据**：关键操作前后截图，便于排查问题
-6. **使用 ui.wait 等待动态内容**：页面跳转、加载、动画后需等待 UI 稳定
-7. **理解 iOS 标准行为**：登录失败清空密码、键盘弹出滚动等是正常行为，不是 Bug
-
-## 相关文档
-
-- **完整 Skills 索引**：`docs/ios-automation-skills-index.md`
-- **架构设计**：`docs/architecture/index.md`
-- **构建与测试**：`docs/runbooks/build-and-test.md`
-- **排障指南**：`docs/runbooks/debugging.md`
-- **UIKit 命令**：`docs/uikit/README.md`
-- **项目规则**：`AGENTS.md`、`CLAUDE.md`
-
----
-
-**版本**：1.0
-**创建日期**：2026-07-14
-**测试覆盖率**：库整体覆盖率见 `swift test --enable-code-coverage`（当前约 86.6%）；本 skill 自身的端到端场景数以仓库根 `docs/skills-test-report.json` 为准（待核实，勿沿用旧文的"96.3%/200+"等无源数字）
-**MCP 服务**：XcodeBuildMCP + iOSDriver
+- `ios-debugger-agent`(L0) — 需要 build / install / LLDB 调试 / 系统级日志时改用它,见"L0 vs L1 选择规则"
+- `ios-ui-*`(L1) — 具体场景路由目标,见"路由到子 skill"
+- `ios-logs`(L1) — 进程内日志的完整能力(`app_logs_mark` / 来源 × 平台矩阵 / `unavailable` 语义),本 skill 只用最基础的 `app_logs_read`
+- `ios-test-intent`(L2) — 读源码产出测试意图清单(离线分析)
+- `ios-test-runner`(L2) — 执行测试意图闭环
