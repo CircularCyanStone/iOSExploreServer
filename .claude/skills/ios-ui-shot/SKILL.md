@@ -1,613 +1,190 @@
 ---
-name: ios-screenshot
-description: |
-  iOS App automation for capturing screenshots and visual verification.
-  
-  Use this skill when the user needs to capture app screenshots, verify visual states,
-  compare before/after UI changes, or document test results in iOS applications.
-  
-  Must explicitly mention iOS, iPhone, iPad, screenshots, or visual verification to trigger.
-  
-  Based on iOSDriver MCP Server with full screenshot capability testing.
+name: ios-ui-shot
+description: iOS App 截图与视觉取证(原 ios-screenshot)/ screenshot, png, base64, visual verification, before/after, regression, maxDimension, ui_screenshot
+allowed-tools:
+  - mcp__iOSDriver__ui_screenshot
+  - mcp__iOSDriver__ui_inspect
+  - mcp__iOSDriver__ui_wait
 ---
 
-# iOS Screenshot & Visual Verification
+# iOS 截图与视觉取证
 
-## Purpose
+基于 iOSDriver MCP Server(`mcp__iOSDriver__*`),对当前前台 `UIWindow` 做 PNG 截图,支持降采样、base64 编码、前后对比、导航流程文档、alert 外观取证。合并自原 `ios-screenshot`。
 
-Capture screenshots of iOS app screens in PNG format for visual verification, test documentation, debugging, and UI state comparison.
+## 目标
 
-## When to Use
+解决"把当前屏幕状态以 PNG 形式拍下来,用于人工排障、测试报告、视觉回归对比、bug 证据"这一场景。关键不是单条命令,而是:
 
-Use this skill when you need to:
-- Capture current app screen state
-- Document test execution steps visually
-- Compare before/after states of UI changes
-- Verify visual regressions
-- Debug UI layout issues
-- Generate visual reports
-- Capture evidence of bugs or unexpected states
+- **截图只是视觉证据,不参与结构化定位**:`ui_screenshot` 不签发、不刷新、不返回 `viewSnapshotID`;控件树 / path / 按钮文案 / alert 结构这些结构化信息走 `ui_inspect`。截图 + inspect 并用才能既看画面又定位。
+- **`maxDimension` 是像素长边上限,不是 point**:Retina 屏若按 point 设上限会导致像素体积失控,执行器按 `cgImage.width/height` 的最长边降采样;默认 1280,范围 1-4096。
+- **截图时机决定成败**:顶层 `UIViewController` 转场中截图会抓到不可靠中间帧(`transitionInProgress`);tap 后立即截图会抓到动作前状态。必须等稳定窗口后再截。
+- **体积超限有明确业务码**:base64 ≈ `pngData × 4/3`,超过响应 body 上限时返回 `responseTooLarge`,降 `maxDimension` 即可,不会因巨大字符串分配造成内存峰值。
 
-## Prerequisites
+## 何时使用
 
-- **iOSDriver MCP Server** connected and active
-- **iOS App** running on simulator or physical device
-- **Port 38321** accessible
-- Sufficient disk space for PNG images (50-200KB per screenshot)
+- ✅ 用户要"截一张当前屏幕"
+- ✅ 用户要"对比操作前 / 操作后的界面"(开关切换、表单提交、登录前后)
+- ✅ 用户要"把多步导航流程截图存档"(每步一张 PNG)
+- ✅ 用户要"截下 alert / action sheet 的外观"做证据
+- ✅ 用户要"为 bug 报告配图" / "为测试报告收集证据"
+- ✅ 用户说 "截图" / "screenshot" / "截屏" / "画面" / "视觉验证" / "视觉回归"
+- ❌ 不要用于"读控件树 / 定位元素 / 读按钮文案"(走 `ios-ui-form` / `ios-ui-alert` / `ios-ui-list` 的 `ui_inspect`,截图不带结构化字段)
+- ❌ 不要用于"等动画 / loading 结束"(走 `ios-ui-wait`,截图是瞬时快照不等任何东西)
+- ❌ 不要用于"连续截图自动判 diff"的回归自动化(本 skill 只取单张 / 序列张;像素 diff 需外部工具如 ImageMagick / Pillow)
 
-## Commands Used
+## 工作原理
 
-| Command | Purpose | Performance |
-|---------|---------|-------------|
-| `ui.screenshot` | Capture PNG screenshot with base64 encoding | 200-500ms |
-| `ui.inspect` | Get UI metadata for context | 100-200ms |
+截图时序:**(可选)等稳定窗口 → `ui_screenshot` → 解 base64 存 PNG → (可选)`ui_inspect` 存结构化元数据**。
 
-## Capabilities
+### 1. 基础调用
 
-### 1. Screenshot Capture
-
-**Capture Current Screen:**
-```bash
-curl -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}'
 ```
-
-**Response:**
-```json
-{
-  "code": "ok",
-  "data": {
-    "image": "iVBORw0KGgoAAAANSUhEUgAA...",
-    "format": "png",
-    "width": 390,
-    "height": 844
+ui_screenshot(maxDimension: 1280)   // 默认值,可省
+→ {
+    code: "ok",
+    data: {
+      image: "<base64 PNG>",
+      format: "png",
+      width: 1280,           // 缩放后像素宽
+      height: 2778,          // 缩放后像素高
+      scale: 3.0,            // window.screen.scale(Retina 倍数)
+      pixelScale: 0.6667     // 原始像素 → 输出像素的比例(< 1.0 说明已降采样)
+    }
   }
-}
 ```
 
-**Save to File:**
-```bash
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | jq -r '.data.image' | base64 -d > screenshot.png
+存文件(流式,避免 base64 串占内存):
+
+```
+curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' \
+  | jq -r '.data.image' | base64 -d > screen.png
 ```
 
-### 2. Visual Verification
+### 2. 渲染管线(三级回退)
 
-Capture screenshots at key points:
-- Before navigation
-- After form submission
-- After alert dismissal
-- During animation (mid-state)
-- Error states
-- Success confirmations
+执行器按顺序尝试,全部失败才返回 `renderingFailed`:
 
-### 3. Screenshot Metadata
+1. `drawHierarchy(afterScreenUpdates: false)` — 生产环境 keyWindow 已上屏,false 既能截当前帧又避免额外布局 pass
+2. `drawHierarchy(afterScreenUpdates: true)` — 第一次失败时(未渲染过的 window)强制一次渲染循环
+3. `layer.render` — CPU 侧逐层合成,不依赖 render server,覆盖无 scene 的极端场景
 
-Each screenshot includes:
-- **Format:** Always PNG (lossless)
-- **Width:** Device screen width in pixels
-- **Height:** Device screen height in pixels
-- **Encoding:** Base64 string for easy transmission
+### 3. 降采样逻辑
 
-## Usage Examples
+- 渲染出的 `UIImage` 取 `cgImage.width / height` 的最长边
+- 若超过 `maxDimension`,按 `pixelScale = maxDimension / longestPx` 等比缩小
+- `pixelScale == 1.0` 说明没降采样;`< 1.0` 说明已缩
+- **范围 1-4096**:越界返回 `invalid_data`;不传时默认 1280
 
-### Example 1: Single Screenshot
+### 4. 前后对比(操作前后各一张)
 
-```bash
-#!/bin/bash
-# Capture and save screenshot
-
-echo "Capturing screenshot..."
-RESULT=$(curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}')
-
-# Extract image data
-IMAGE=$(echo $RESULT | jq -r '.data.image')
-WIDTH=$(echo $RESULT | jq -r '.data.width')
-HEIGHT=$(echo $RESULT | jq -r '.data.height')
-
-# Save to file
-echo $IMAGE | base64 -d > screenshot.png
-
-echo "✅ Saved screenshot.png (${WIDTH}x${HEIGHT})"
+```
+1. ui_screenshot               → before.png
+2. (操作:tap / sendAction / input)
+3. 等稳定(ui_wait mode:"idle" stableMs:300,或由 ui_tap_and_inspect 的稳定窗口承接)
+4. ui_screenshot               → after.png
+5. 外部对比:compare before.png after.png diff.png  (ImageMagick)
 ```
 
-### Example 2: Before/After Comparison
+要点:操作后不要立刻截,会抓到动作前帧;`ui_waitAny` 判稳定后再截。
 
-```bash
-#!/bin/bash
-# Capture screenshots before and after an action
+### 5. 导航流程文档
 
-# Capture before state
-echo "Capturing BEFORE state..."
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | \
-  jq -r '.data.image' | base64 -d > before.png
+每步截一张 + 存一份 inspect 元数据,文件名按序编号:
 
-# Perform action (e.g., toggle switch)
-echo "Performing action..."
-curl -s -X POST http://localhost:38321/ -d '{
-  "action": "ui.control.sendAction",
-  "data": {
-    "path": "root/0/2/1/0",
-    "viewSnapshotID": "snap-123",
-    "event": "valueChanged"
-  }
-}' > /dev/null
-
-# Small delay for UI update
-sleep 0.2
-
-# Capture after state
-echo "Capturing AFTER state..."
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | \
-  jq -r '.data.image' | base64 -d > after.png
-
-echo "✅ Saved before.png and after.png"
-echo "Compare with: open before.png after.png"
+```
+01_home.png       / 01_home.json
+02_settings.png   / 02_settings.json
+03_account.png    / 03_account.json
 ```
 
-### Example 3: Navigation Flow Documentation
+### 6. alert 截图
 
-```bash
-#!/bin/bash
-# Capture each step of navigation flow
+alert 弹出后(`ui_tap_and_inspect` 返回 `alert.available == true` 之后),直接 `ui_screenshot`。alert 是同进程渲染,会被 keyWindow 的 `drawHierarchy` 一并截下,不需要特殊参数。系统级权限弹窗(位置 / 通知 / 相机)不在 App 进程内,截不到。
 
-capture_step() {
-  local step_name=$1
-  local filename="${step_name}.png"
-  
-  echo "📸 Capturing: $step_name"
-  curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | \
-    jq -r '.data.image' | base64 -d > "$filename"
-  echo "✅ Saved: $filename"
-}
+### 7. 配合 ui_inspect(可选,推荐)
 
-# Document complete flow
-capture_step "01_home"
+截图能看画面但读不到结构化字段(控件类型、按钮文案、path、`viewSnapshotID`)。做测试证据时建议成对保存:
 
-# Navigate to settings
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
-sleep 0.5
-capture_step "02_settings"
-
-# Navigate to account
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
-sleep 0.5
-capture_step "03_account"
-
-# Navigate to privacy
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
-sleep 0.5
-capture_step "04_privacy"
-
-echo "✅ Flow documented with 4 screenshots"
+```
+ui_screenshot → step.png
+ui_inspect    → step.json   // 带 targets[] / alert / navigationBar
 ```
 
-### Example 4: Alert Screenshot
-
-```bash
-#!/bin/bash
-# Capture alert appearance
-
-# Trigger alert
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
-sleep 0.3
-
-# Capture alert
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | \
-  jq -r '.data.image' | base64 -d > alert_screenshot.png
-
-echo "✅ Alert captured: alert_screenshot.png"
-```
-
-### Example 5: Test Evidence Collection
-
-```bash
-#!/bin/bash
-# Collect screenshots for test report
-
-TEST_NAME="login_flow"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="test_evidence/${TEST_NAME}_${TIMESTAMP}"
-
-mkdir -p "$OUTPUT_DIR"
-
-capture_evidence() {
-  local step=$1
-  local filename="${OUTPUT_DIR}/step_${step}.png"
-  
-  curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | \
-    jq -r '.data.image' | base64 -d > "$filename"
-  
-  # Also capture UI metadata
-  curl -s -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}' > "${OUTPUT_DIR}/step_${step}_metadata.json"
-  
-  echo "✅ Evidence collected: step $step"
-}
-
-# Test steps
-capture_evidence "01_initial_state"
-# ... perform test actions ...
-capture_evidence "02_username_filled"
-# ... perform test actions ...
-capture_evidence "03_password_filled"
-# ... perform test actions ...
-capture_evidence "04_login_success"
-
-echo "✅ Test evidence saved to: $OUTPUT_DIR"
-```
-
-### Example 6: Screenshot with Metadata
-
-```bash
-#!/bin/bash
-# Capture screenshot with UI metadata for context
-
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-# Capture screenshot
-SCREENSHOT=$(curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}')
-echo $SCREENSHOT | jq -r '.data.image' | base64 -d > "screen_${TIMESTAMP}.png"
-
-# Capture metadata
-METADATA=$(curl -s -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}')
-
-# Extract key info
-TITLE=$(echo $METADATA | jq -r '.data.navigationBar.title')
-ALERT=$(echo $METADATA | jq -r '.data.alert.available')
-ELEMENTS=$(echo $METADATA | jq '.data.targets | length')
-
-# Create metadata file
-cat > "screen_${TIMESTAMP}_info.json" <<EOF
-{
-  "timestamp": "$TIMESTAMP",
-  "navigation_title": "$TITLE",
-  "alert_visible": $ALERT,
-  "interactive_elements": $ELEMENTS
-}
-EOF
-
-echo "✅ Screenshot and metadata saved with timestamp: $TIMESTAMP"
-```
-
-### Example 7: Visual Regression Testing Workflow
-
-```bash
-#!/bin/bash
-# Automated visual regression testing workflow
-
-TEST_NAME="settings_screen"
-BASELINE_DIR="test_baselines"
-CURRENT_DIR="test_current"
-DIFF_DIR="test_diffs"
-
-mkdir -p "$BASELINE_DIR" "$CURRENT_DIR" "$DIFF_DIR"
-
-# Capture current screenshot
-capture_and_compare() {
-  local screen_name=$1
-  local baseline_file="${BASELINE_DIR}/${screen_name}.png"
-  local current_file="${CURRENT_DIR}/${screen_name}.png"
-  local diff_file="${DIFF_DIR}/${screen_name}_diff.png"
-  
-  echo "📸 Capturing: $screen_name"
-  
-  # Capture current state
-  curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | \
-    jq -r '.data.image' | base64 -d > "$current_file"
-  
-  # Check if baseline exists
-  if [ -f "$baseline_file" ]; then
-    echo "🔍 Comparing with baseline..."
-    
-    # Compare using ImageMagick (if available)
-    if command -v compare &> /dev/null; then
-      # Generate diff image
-      compare -metric RMSE "$baseline_file" "$current_file" "$diff_file" 2>&1 | \
-        tee "${DIFF_DIR}/${screen_name}_metric.txt"
-      
-      # Check if images are identical
-      DIFF_METRIC=$(cat "${DIFF_DIR}/${screen_name}_metric.txt" | cut -d' ' -f1)
-      
-      if [ "$DIFF_METRIC" = "0" ]; then
-        echo "✅ No visual changes detected"
-        rm "$diff_file"  # Clean up identical diff
-      else
-        echo "⚠️ Visual differences detected: $DIFF_METRIC"
-        echo "   Diff saved to: $diff_file"
-      fi
-    else
-      echo "⚠️ ImageMagick not installed - manual comparison needed"
-    fi
-  else
-    echo "📌 Creating baseline (first run)"
-    cp "$current_file" "$baseline_file"
-  fi
-}
-
-# Test flow: capture multiple screens
-echo "Starting visual regression test: $TEST_NAME"
-
-# Home screen
-capture_and_compare "home"
-
-# Navigate to settings
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
-sleep 0.5
-
-# Settings screen
-capture_and_compare "settings"
-
-# Navigate to account
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}' > /dev/null
-sleep 0.5
-
-# Account screen
-capture_and_compare "account"
-
-echo "✅ Visual regression test complete"
-echo "   Baselines: $BASELINE_DIR"
-echo "   Current: $CURRENT_DIR"
-echo "   Diffs: $DIFF_DIR"
-```
-
-### Example 8: CI/CD Screenshot Storage
-
-```bash
-#!/bin/bash
-# CI/CD-friendly screenshot capture and upload
-
-CI_BUILD_ID="${CI_BUILD_ID:-local}"
-CI_BRANCH="${CI_BRANCH:-main}"
-ARTIFACT_DIR="artifacts/screenshots/${CI_BRANCH}/${CI_BUILD_ID}"
-
-mkdir -p "$ARTIFACT_DIR"
-
-capture_for_ci() {
-  local step_name=$1
-  local description=$2
-  local timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  
-  # Capture screenshot
-  local filename="${ARTIFACT_DIR}/${step_name}.png"
-  curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | \
-    jq -r '.data.image' | base64 -d > "$filename"
-  
-  # Capture metadata
-  METADATA=$(curl -s -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}')
-  
-  # Generate manifest entry
-  cat >> "${ARTIFACT_DIR}/manifest.json" <<EOF
-{
-  "step": "$step_name",
-  "description": "$description",
-  "timestamp": "$timestamp",
-  "file": "${step_name}.png",
-  "navigation_title": $(echo $METADATA | jq '.data.navigationBar.title'),
-  "alert_visible": $(echo $METADATA | jq '.data.alert.available'),
-  "build_id": "$CI_BUILD_ID",
-  "branch": "$CI_BRANCH"
-},
-EOF
-  
-  echo "✅ Captured CI artifact: $step_name"
-}
-
-# Initialize manifest
-echo "[" > "${ARTIFACT_DIR}/manifest.json"
-
-# Capture test steps
-capture_for_ci "01_launch" "App launch state"
-# ... perform test actions ...
-capture_for_ci "02_login" "Login screen"
-# ... perform test actions ...
-capture_for_ci "03_success" "Successful login"
-
-# Close manifest array (remove trailing comma)
-sed -i '' '$ s/,$//' "${ARTIFACT_DIR}/manifest.json"
-echo "]" >> "${ARTIFACT_DIR}/manifest.json"
-
-echo "✅ CI artifacts saved to: $ARTIFACT_DIR"
-echo "   Upload command: aws s3 cp $ARTIFACT_DIR s3://bucket/screenshots/ --recursive"
-```
-
-## Parameters Reference
-
-### ui.screenshot
-
-**No parameters required.**
-
-**Response:**
-```json
-{
-  "code": "ok",
-  "data": {
-    "image": "iVBORw0KGgoAAAANSUhEUgAA...",  // Base64-encoded PNG
-    "format": "png",                          // Always "png"
-    "width": 390,                             // Screen width in pixels
-    "height": 844                             // Screen height in pixels
-  }
-}
-```
-
-**Common Device Resolutions:**
-- iPhone 17 Pro Max: 430×932
-- iPhone 17 Pro: 393×852
-- iPhone 17: 390×844
-- iPad Pro 12.9": 1024×1366
-
-## Error Handling
-
-### Common Issues
-
-#### 1. Large Image Data
-**Issue:** Base64 strings can be large (50-200KB)
-
-**Solution:**
-- Stream directly to file instead of storing in variable
-- Use `jq -r` to extract raw base64 string
-- Decode immediately with `base64 -d`
-
-**Example:**
-```bash
-# Good: Stream directly
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | jq -r '.data.image' | base64 -d > file.png
-
-# Bad: Store in variable (memory intensive)
-IMAGE=$(curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | jq -r '.data.image')
-echo $IMAGE | base64 -d > file.png
-```
-
-#### 2. Screenshot Timing
-**Issue:** Screenshot captured during animation or transition
-
-**Solution:**
-- Wait 500ms after navigation/actions
-- Ensure animations complete
-- Capture at stable state
-
-**Example:**
-```bash
-curl -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}'
-sleep 0.5  # Wait for transition
-curl -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}'
-```
-
-#### 3. Disk Space
-**Issue:** Many screenshots fill disk quickly
-
-**Solution:**
-- Clean up old screenshots regularly
-- Compress images if needed (PNG → JPG)
-- Store only essential screenshots
-
-## Performance Characteristics
-
-| Operation | Duration | Image Size |
-|-----------|----------|------------|
-| **ui.screenshot** | 200-500ms | 50-200KB typical |
-| **Save to file** | 10-50ms | Depends on disk speed |
-| **Base64 decode** | 5-10ms | Minimal overhead |
-
-**Total capture + save:** ~250-550ms
-
-**Factors affecting speed:**
-- Screen complexity (more UI elements = larger file)
-- Device resolution (higher resolution = larger file)
-- Disk I/O speed
-
-## Best Practices
-
-### 1. Use Descriptive Filenames
-
-```bash
-# Good: Descriptive with timestamp
-screenshot_login_success_20260714_091234.png
-
-# OK: Sequential numbering
-test_step_01.png
-
-# Bad: Generic names (will be overwritten)
-screenshot.png
-```
-
-### 2. Capture at Stable States
-
-```bash
-# Good: Wait for stability
-curl -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}'
-sleep 0.5  # Wait for transition
-curl -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}'
-
-# Bad: Immediate capture (may catch mid-animation)
-curl -X POST http://localhost:38321/ -d '{"action":"ui_tap_and_inspect","data":{...}}'
-curl -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}'
-```
-
-### 3. Organize Screenshots
-
-```bash
-# Create organized directory structure
-mkdir -p screenshots/{login,settings,alerts}
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | \
-  jq -r '.data.image' | base64 -d > screenshots/login/step1.png
-```
-
-### 4. Include Metadata
-
-```bash
-# Save metadata alongside screenshot
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' | jq -r '.data.image' | base64 -d > screen.png
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}' > screen_metadata.json
-```
-
-### 5. Automate Cleanup
-
-```bash
-# Clean screenshots older than 7 days
-find screenshots/ -name "*.png" -mtime +7 -delete
-```
-
-## Limitations
-
-### Known Limitations
-
-1. **Format:** Only PNG format supported (no JPG, WebP, etc.)
-
-2. **Resolution:** Captures at device's native resolution (no scaling options)
-
-3. **Transparency:** Status bar and system UI included (no masking options)
-
-4. **Timing:** No automatic wait for animations - must manually delay
-
-5. **Comparison:** No built-in image comparison (requires external tools like ImageMagick)
-
-6. **Performance:** Screenshot capture is relatively slow (200-500ms) compared to other commands
-
-## Image Comparison Tools
-
-For comparing screenshots, use external tools:
-
-**ImageMagick:**
-```bash
-# Compare two images
-compare before.png after.png diff.png
-
-# Get similarity metric
-compare -metric RMSE before.png after.png null: 2>&1
-```
-
-**Python with Pillow:**
-```python
-from PIL import Image
-import numpy as np
-
-img1 = np.array(Image.open('before.png'))
-img2 = np.array(Image.open('after.png'))
-
-# Calculate difference
-diff = np.sum(np.abs(img1 - img2))
-print(f"Difference: {diff}")
-```
-
-## Related Skills
-
-- **ios-navigation** - Capture screenshots during navigation flows
-- **ios-alert-handling** - Capture alert appearances
-- **ios-form-filling** - Document form states
-- **ios-dynamic-content** - Capture loading states
-
-## Test Coverage
-
-**Command Tested:** ✅ ui.screenshot (tested in multiple scenarios)
-
-**Test Scenarios:**
-- ✅ Capture normal screen
-- ✅ Capture with alerts visible
-- ✅ Capture during navigation
-- ✅ Base64 encoding/decoding
-- ✅ PNG file saving
-- ✅ Metadata extraction (width, height)
-
-## Production Readiness
-
-✅ **Production Ready**
-
-Screenshot capability is fully functional and tested across various scenarios. PNG format ensures lossless quality. Base64 encoding provides reliable transmission over HTTP. Safe for production use in test automation, debugging, and documentation workflows.
+## 关键参数
+
+### `ui_screenshot`
+
+| 参数 | 含义 | 注意 |
+|---|---|---|
+| `maxDimension` | 长边像素上限 | 默认 1280,范围 1-4096;**像素非 point**;越小文件越小 |
+
+### 响应字段
+
+| 字段 | 含义 |
+|---|---|
+| `image` | base64 编码的 PNG(可直接 `base64 -d` 解文件) |
+| `format` | 固定 `"png"`(无损) |
+| `width` / `height` | **缩放后**的像素尺寸,非屏幕原始分辨率 |
+| `scale` | `window.screen.scale`(Retina 倍数,如 2.0 / 3.0) |
+| `pixelScale` | 原始像素 → 输出像素的比例(`< 1.0` 已降采样,`1.0` 未缩) |
+
+### 性能基线
+
+| 操作 | 典型耗时 | 大小 |
+|---|---|---|
+| `ui_screenshot`(默认 1280) | 200-500ms | 50-200KB |
+| 单次命令超时上限 | 30 秒(自声明,覆盖全局 commandTimeout) | — |
+
+## 常见错误与判别
+
+### `transitionInProgress`
+
+- **现象**:截图失败,业务码 `transitionInProgress`
+- **原因**:顶层 `UIViewController` 正在转场(present / dismiss / push 中),`transitionCoordinator != nil`,当前帧不可靠
+- **判别**:看响应 code 字段
+- **处理**:等转场动画结束(`ui_wait mode:"idle" stableMs:300-500`)再截图;**已知限制:键盘开合动画不在此检测范围**,键盘动画期间截到的画面可能含半开键盘
+
+### `responseTooLarge`(截图太大)
+
+- **现象**:截图失败,业务码 `responseTooLarge`,message `"screenshot too large; reduce maxDimension"`
+- **原因**:PNG base64 估算(`pngData × 4/3`)超过响应 body 上限
+- **判别**:message 明确提示 reduce maxDimension
+- **处理**:降 `maxDimension`(如 1280 → 800 或 640)再试;体积检查在 base64 编码之前,不会因巨大字符串分配导致峰值内存
+
+### `renderingFailed`
+
+- **现象**:截图失败,业务码 `renderingFailed`
+- **原因**:三级渲染管线全部失败,典型于 window 未挂到真实 render server 的极端场景(如无 `UIWindowScene` 的 logic test)
+- **判别**:message 的 reason 标注失败环节(`drawHierarchy and layer render both failed` / `png encode failed` / `no cgImage`)
+- **处理**:确认 App 有真实前台 window;App 刚启动 window 还没上屏时等几百毫秒再试
+
+### `invalid_data`(maxDimension 越界)
+
+- **现象**:截图失败,业务码 `invalid_data`
+- **原因**:`maxDimension` 不在 1-4096 范围
+- **判别**:看 message 提示字段
+- **处理**:把 `maxDimension` 调到 1-4096,或省略走默认 1280
+
+### 截到操作前状态(tap 后立即截图)
+
+- **现象**:截完发现画面还是 tap 之前
+- **原因**:tap / input 后 UI 还没刷新就截图,抓到旧帧
+- **判别**:对比截图与预期,没变化通常是太快
+- **处理**:用 `ui_tap_and_inspect` 让 tap 后等稳定窗口;或 tap 后 `ui_wait mode:"idle" stableMs:300-500` 再截图
+
+### 误以为截图带 viewSnapshotID
+
+- **现象**:截图后想用响应里的字段定位控件,找不到
+- **原因**:`ui_screenshot` 不签发、不返回 `viewSnapshotID`,响应里只有 `image / format / width / height / scale / pixelScale`
+- **判别**:看响应字段,没有 `viewSnapshotID` / `targets` / `alert`
+- **处理**:定位控件走 `ui_inspect`,截图只用于视觉证据;两者成对调用即可
+
+## 相关 skill
+
+- `ios-ui-wait` — 截图前等 UI 稳定(idle)、等 loading / 异步结束归它;本 skill 内联 `ui_wait` 只做短稳定窗口
+- `ios-ui-nav` — 导航流程截图的"导航"部分走它(返回、nav bar 按钮、controller 层级);本 skill 只负责把每步截下来
+- `ios-ui-alert` — alert 的检测与按钮触发走它;本 skill 只负责把 alert 外观截下来
+- `ios-ui-form` / `ios-ui-list` — 操作(填表 / 点 cell / 触发 swipe action)本身走它们;本 skill 只负责操作前后取证
+- `ios-automation` — L1 总入口;不确定走哪个子 skill 时先问它
+
+**平台约束**:iOSExploreServer 要求 iOS 15+,部署目标视宿主 App 而定。仅 Debug 集成(渲染依赖 iOSExploreServer 注入路径,Release 下整套 ui.* 不可用)。命令在主线程执行,单次截图必须在 30 秒内完成(自声明超时)。`width` / `height` 是缩放后尺寸,非屏幕原始分辨率;默认 `maxDimension=1280` 对应大多数 iOS 设备的屏幕长边会被缩到 1280 像素以内。
