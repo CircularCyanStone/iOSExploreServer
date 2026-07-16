@@ -8,7 +8,7 @@
 
 | skill | 层 | 工具体系 | `allowed-tools` 概要 | 健康度 | 状态 | 备注 |
 |---|---|---|---|---|---|---|
-| `ios-debugger-agent` | **L0 构建调试** | XcodeBuildMCP | `build_run_sim` / `build_run_device` / `launch_app_*` / `start_sim_log_cap` / `describe_ui` | needs-test | active | 全局 skill(`~/.claude/skills/`),L0/L1 选择规则见 `README.md` §3;本体仅在发现具体错误时改(plan Task 16) |
+| `ios-debugger-agent` | **L0 构建调试** | XcodeBuildMCP | `build_run_sim` / `build_run_device` / `launch_app_*` / `start_sim_log_cap` / `describe_ui` | needs-test | active | 全局 skill(`~/.claude/skills/`);完整定位与 L0/L1 选择规则见 `l0-build-debug.md`(规则原文抄自 `README.md` §2);本体仅在发现具体错误时改(Task 16 已只读检查,结论见 `l0-build-debug.md` §7) |
 | `ios-automation` | **L1 入口** | iOSDriver | `ui_inspect` / `ui_tap_and_inspect` / `app_logs_read`(诊断用) | needs-test | active | L1 总入口;现缺 evals,plan Task 11 补;中度 SPMExample 耦合,Task 11 解耦 |
 | `ios-ui-nav` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_tap` / `ui_tap_and_inspect` / `ui_navigation_back` / `ui_navigation_tapBarButton` / `ui_controllers` / `ui_screenshot` | needs-test | active | 原 `ios-navigation`,吸收原 `ios-controller-navigation` 的 `ui.controllers` 能力(plan Task 3 Step 4 + Task 4) |
 | `ios-ui-list` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_scroll` / `ui_scrollToElement` / `ui_swipe` / `ui_tap` / `ui_tap_and_inspect` | needs-test | active | 原 `ios-list-interaction` |

@@ -93,7 +93,7 @@ docs/skills/
 └── archive/                  # docs 顶层散报告 + 旧设计文档归档(plan Task 17)
 ```
 
-> `l0-build-debug.md` 与 `archive/` 在本 task 时点尚未创建,由 plan 对应 task 产出。本 README 提前在导航中列出,方便后续 task 直接更新。
+> `l0-build-debug.md` 已由 plan Task 16 产出;`archive/` 尚未创建,由 plan Task 17 产出。本 README 提前在导航中列出,方便后续 task 直接更新。
 
 ---
 
