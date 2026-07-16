@@ -19,6 +19,12 @@
       "prompt": "Navigate through a deep hierarchy: Home → Settings → Account → Privacy, then navigate back to Home one screen at a time.",
       "expected_output": "Should successfully:\n1. Start at Home, verify navigationBar.backAvailable is false\n2. Navigate to Settings: ui.tap → wait 500ms → verify title='Settings'\n3. Navigate to Account: ui.tap → wait 500ms → verify title='Account'\n4. Navigate to Privacy: ui.tap → wait 500ms → verify title='Privacy'\n5. Go back: ui.navigation.back → wait 500ms → verify title='Account'\n6. Go back: ui.navigation.back → wait 500ms → verify title='Settings'\n7. Go back: ui.navigation.back → wait 500ms → verify title='Home'\n8. Total ~4.5 seconds for full cycle\n9. All navigation actions return performed=true",
       "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Check the static structure of the ios-ui-nav SKILL.md (offline, no app run): frontmatter must have name / description / allowed-tools fields present; every tool listed in allowed-tools must be a real iOSDriver MCP tool; the body must not hardcode SPMExample-specific values (com.coo.SPMExample bundle id, or specific UDIDs like 065CC8DB / 00008030).",
+      "expected_output": "Should verify offline (no app run required):\n1. Frontmatter has all three fields present — grep -E '^(name|description|allowed-tools):' returns 3\n2. allowed-tools lists exactly these 8 real iOSDriver tools: mcp__iOSDriver__ui_inspect, mcp__iOSDriver__ui_tap, mcp__iOSDriver__ui_tap_and_inspect, mcp__iOSDriver__ui_navigation_back, mcp__iOSDriver__ui_navigation_tapBarButton, mcp__iOSDriver__ui_controllers, mcp__iOSDriver__ui_screenshot, mcp__iOSDriver__ui_wait\n3. No SPMExample hardcoding in body — grep -nE 'com\\.coo\\.SPMExample|065CC8DB|00008030' returns empty (OK)\n4. name field value matches directory name (ios-ui-nav)\n5. description contains transition keywords '原 ios-navigation' and '原 ios-controller-navigation' for old-prompt routing",
+      "files": []
     }
   ]
 }
