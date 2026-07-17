@@ -150,6 +150,17 @@ action: "ui.tabBar.selectTab"
 
 #### 3.1.2 UIDatePicker / UIPickerView
 
+> ✅ **已实现(2026-07-17)** —— 用公开 UIKit API(`UIDatePicker.date` / `UIPickerView.selectRow(_:inComponent:animated:)`),无需私有 API。
+>
+> - **命令**:`ui.datePicker.setDate` 与 `ui.picker.selectRow`(注册于 `iOSExploreUIKit`,经 iOSDriver `call_action` 调用)
+> - **datePicker.setDate 参数**:`accessibilityIdentifier`/`path` 定位;日期用 `date`(ISO 8601,如 `1990-01-01T00:00:00Z` 或 `1990-01-01`)或分量(`year`/`month`/`day`/`hour`/`minute`,未给的分量沿用 picker 当前值),二选一;设值后 `sendActions(.valueChanged)`
+> - **picker.selectRow 参数**:`component`(列索引,必填)+ `row`(索引)或 `title`(读 delegate `titleForRow` 首个匹配),二选一;选行后补调 `didSelectRow` delegate
+> - **为何需要专用命令(印证"命令兜底"原则)**:`UIDatePicker` 虽是 UIControl 但 `ui.control.sendAction` 的 value 不支持设 date;`UIPickerView` 根本不是 UIControl。两者都不在 `ui.inspect` 能力表,skill+MCP 组合覆盖不了精确设值,必须下沉专用命令
+> - **端到端验证**:SPMExample 模拟器实测,datePicker `1990-01-01` → `2000-02-29` 设值生效(previousDate/date 对应);picker 按 title 选"上海" → `selectedRow=1 selectedTitle=上海`
+> - **代码**:`Sources/iOSExploreUIKit/Commands/DatePickerSetDate/` + `PickerSelectRow/`(各 Input/Executor/Command);注册于 `UIKitCommandRegistrar`(count 18→20)
+> - **skill**:`.claude/skills/ios-ui-picker/SKILL.md`(原 `ios-date-picker` 因 action 不存在已删,现 action 已实现,以 `ios-ui-picker` 重建)
+> - **测试**:`Tests/iOSExploreServerTests/UIDatePickerSetDateTests.swift` + `UIPickerSelectRowTests.swift`(注:项目 UIKit 单测从未在 iOS 真跑过 —— macOS `#if canImport(Kit)` 跳过、iOS SPM test 被 pre-existing 障碍阻断,见下文"限制";运行时正确性靠端到端验证)
+
 **问题描述**：
 - 80%+ App 有日期/选项选择场景（生日、预约时间、地区选择等）
 - ios-date-picker skill 已删除，原因：ui.datePicker.* 和 ui.picker.* 命令根本不存在
@@ -654,11 +665,11 @@ data: {
    - [x] 扩展 ios-ui-nav skill 文档 → `ios-ui-nav` SKILL.md §4 + `inventory.md` 已更新
    - [x] 编写 SPMExample 测试案例 → `Tests/iOSExploreServerTests/UITabBarSelectTests.swift`(16 个)+ 端到端实测通过
 
-2. **UIDatePicker / UIPickerView**：
-   - [ ] 实现 ui.datePicker.setDate 命令
-   - [ ] 实现 ui.picker.selectRow 命令
-   - [ ] 新建 ios-ui-picker skill
-   - [ ] 编写 SPMExample 测试案例
+2. **UIDatePicker / UIPickerView**：✅ 已完成(2026-07-17)
+   - [x] 实现 ui.datePicker.setDate 命令 → `Sources/iOSExploreUIKit/Commands/DatePickerSetDate/`
+   - [x] 实现 ui.picker.selectRow 命令 → `Sources/iOSExploreUIKit/Commands/PickerSelectRow/`
+   - [x] 新建 ios-ui-picker skill → `.claude/skills/ios-ui-picker/SKILL.md`
+   - [x] 编写 SPMExample 测试案例 → `DatePickerPickerTestViewController` + 端到端实测通过(datePicker 日期设值生效、picker 按 title 选行生效)
 
 ### 7.2 短期规划（1-2 个月）
 

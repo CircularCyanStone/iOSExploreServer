@@ -4,7 +4,7 @@
 
 ---
 
-## 1. 12 个保留 skill(按层)
+## 1. 13 个保留 skill(按层)
 
 > **状态总览(阶段 6 收尾)**:12 个 skill 全部重写/新建完成,spec §11 / plan G5 六条验证命令全 PASS(无空壳目录残留、`ui.controllers` 已迁入 `ios-ui-nav`、无 SPMExample 硬编码、`allowed-tools` 齐全、文件名统一为 `SKILL.md`、`ios-logs` 含 `capture.state` + `unavailable`)。健康度按 inventory §5 规则转 `healthy`。
 
@@ -15,6 +15,7 @@
 | `ios-ui-nav` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_tap` / `ui_tap_and_inspect` / `ui_navigation_back` / `ui_navigation_tapBarButton` / `ui_controllers` / `ui_screenshot` / `ui_wait` / `call_action`(`ui.tabBar.selectTab`) | healthy | active | 原 `ios-navigation`,吸收原 `ios-controller-navigation` 的 `ui.controllers` 能力(plan Task 3 Step 4 + Task 4);**TabBar 切换**走 controller 层命令 `ui.tabBar.selectTab`(按 index/title 定位 + 可选触发 delegate,经 `call_action` 调用),用法见 `ios-ui-nav` SKILL.md §4 |
 | `ios-ui-list` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_scroll` / `ui_scrollToElement` / `ui_swipe` / `ui_tap` / `ui_tap_and_inspect` / `ui_wait` | healthy | active | 原 `ios-list-interaction` |
 | `ios-ui-form` | **L1 操作层** | iOSDriver | `ui_input` / `ui_tap` / `ui_tap_and_inspect` / `ui_control_sendAction` / `ui_keyboard_dismiss` / `ui_inspect` / `ui_scrollToElement` / `ui_screenshot` | healthy | active | 原 `ios-form-filling`;已删正文对 SPMExample deployment target 的提法 |
+| `ios-ui-picker` | **L1 操作层** | iOSDriver | `call_action`(`ui.datePicker.setDate` / `ui.picker.selectRow`) / `ui_inspect` / `ui_tap_and_inspect` / `ui_screenshot` | healthy | active | 2026-07-17 新建;`UIDatePicker` / `UIPickerView` 不在 `ui.inspect` 能力表(`ui.control.sendAction` 不支持设值),走专用命令设 date / selectRow 并触发 valueChanged / didSelectRow delegate;用法见 `ios-ui-picker` SKILL.md |
 | `ios-ui-alert` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_alert_respond` / `ui_input` / `ui_tap_and_inspect` / `ui_wait` / `ui_screenshot` | healthy | active | 原 `ios-alert-handling` |
 | `ios-ui-shot` | **L1 操作层** | iOSDriver | `ui_screenshot` / `ui_inspect` / `ui_wait` | healthy | active | 原 `ios-screenshot` |
 | `ios-ui-gesture` | **L1 操作层** | iOSDriver | `ui_swipe` / `ui_longPress` / `ui_inspect` / `ui_wait` | healthy | active | 原 `ios-gestures`;**不含 drag**(`ui.drag` 不存在,Task 3 Step 5 删除) |
@@ -33,7 +34,7 @@
 
 | skill | 原层 | 删除原因 | 决策依据 |
 |---|---|---|---|
-| `ios-date-picker` | (原 L1) | 承诺的 `ui.datePicker.*` / `ui.picker.*` action 在 iOSDriver MCP 根本不存在,skill 自标 NOT TESTED,实际无法成功调用 | spec §1 问题 2、§4.1、plan Task 3 Step 3 |
+| `ios-date-picker` | (原 L1) | 承诺的 `ui.datePicker.*` / `ui.picker.*` action 在 iOSDriver MCP 根本不存在,skill 自标 NOT TESTED,实际无法成功调用 | spec §1 问题 2、§4.1、plan Task 3 Step 3。**2026-07-17 更新**:`ui.datePicker.setDate` / `ui.picker.selectRow` 已在 iOSExploreServer 实现,作为 `ios-ui-picker` 重建(见 §1);本行保留为历史删除记录,`ios-date-picker` 旧名不再使用 |
 | `ios-table-actions` | (原 L1) | 承诺的 `ui.table.*` / `ui.collection.*` action 在 iOSDriver MCP 不存在,同上空壳 | spec §1 问题 2、§4.1、plan Task 3 Step 3 |
 | `ios-controller-navigation` | (原 L1) | 能力单一(核心是 `ui.controllers` 读层级树),自标 EXPERIMENTAL 长期未补测试;`ui.controllers` 能力已并入 `ios-ui-nav`(plan Task 3 Step 4,Task 4 Step R1 整合) | spec §4.1、plan Task 3 Step 4 |
 
@@ -52,7 +53,7 @@
 | 类型 | skill |
 |---|---|
 | 入口 | `ios-automation` |
-| UI 操作 | `ios-ui-nav` / `ios-ui-list` / `ios-ui-form` / `ios-ui-alert` / `ios-ui-shot` / `ios-ui-gesture` / `ios-ui-wait` |
+| UI 操作 | `ios-ui-nav` / `ios-ui-list` / `ios-ui-form` / `ios-ui-picker` / `ios-ui-alert` / `ios-ui-shot` / `ios-ui-gesture` / `ios-ui-wait` |
 | 进程日志 | `ios-logs` |
 | 测试闭环 | `ios-test-intent`(离线) / `ios-test-runner`(在线) |
 
@@ -64,9 +65,9 @@
 
 ## 4. 计数核对
 
-- **保留**:`1 (L0) + 9 (L1,含入口) + 2 (L2) = 12` 个(spec §4.2)
+- **保留**:`1 (L0) + 10 (L1,含入口) + 2 (L2) = 13` 个(spec §4.2;2026-07-17 新增 `ios-ui-picker`)
 - **删除**:`ios-date-picker` + `ios-table-actions` + `ios-controller-navigation` = 3 个
-- **净结果**:`14 → 12`(删 2 空壳 + 合并 1 + 新增 `ios-logs`,spec §4.1 末段)
+- **净结果**:`14 → 12`(删 2 空壳 + 合并 1 + 新增 `ios-logs`,spec §4.1 末段);2026-07-17 新增 `ios-ui-picker`(`ui.datePicker.setDate` / `ui.picker.selectRow` 已实现),`12 → 13`
 
 ---
 

@@ -3,7 +3,7 @@ import ObjectiveC
 import Testing
 import UIKit
 
-private var spikeCapturedHandlerKey: UInt8 = 0
+nonisolated(unsafe) private var spikeCapturedHandlerKey: UInt8 = 0
 
 /// `UIAlertAction` handler 触发路线的临时 spike。
 ///
@@ -158,7 +158,7 @@ private enum UIAlertActionPrivateProbe {
     }
 }
 
-private enum UIAlertActionSpikeSwizzler {
+@MainActor private enum UIAlertActionSpikeSwizzler {
     private static var installed = false
     private static var replacementIMP: IMP?
 
@@ -198,7 +198,7 @@ private struct SpikeFailure: Error, CustomStringConvertible {
     }
 }
 
-private enum SpikeAlertFactory {
+@MainActor private enum SpikeAlertFactory {
     typealias HandlerBlock = @convention(block) (UIAlertAction) -> Void
 
     struct SpikeCase {

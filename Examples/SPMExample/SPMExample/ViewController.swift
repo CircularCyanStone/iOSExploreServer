@@ -51,6 +51,7 @@ final class ViewController: UIViewController {
         MenuItem(title: "文本输入测试", subtitle: "UITextField / UITextView / UISearchTextField 等多种文本控件，供 ui.input 和 ui.keyboard.dismiss 验证", icon: "⌨️", viewControllerType: InputTestViewController.self),
         MenuItem(title: "Swipe 测试", subtitle: "UITableView swipe actions、UISwipeGestureRecognizer、UIPanGestureRecognizer，供 ui.swipe 验证", icon: "👆", viewControllerType: SwipeTestViewController.self),
         MenuItem(title: "LongPress 测试", subtitle: "UILongPressGestureRecognizer、Cell long press selection，供 ui.longPress 验证", icon: "✋", viewControllerType: LongPressTestViewController.self),
+        MenuItem(title: "DatePicker/Picker 测试", subtitle: "UIDatePicker + UIPickerView，供 ui.datePicker.setDate 和 ui.picker.selectRow 验证", icon: "📅", viewControllerType: DatePickerPickerTestViewController.self),
     ]
 
     override func viewDidLoad() {
@@ -122,7 +123,8 @@ final class ViewController: UIViewController {
         menuTableView.dataSource = self
         menuTableView.register(UITableViewCell.self, forCellReuseIdentifier: "menuCell")
         menuTableView.translatesAutoresizingMaskIntoConstraints = false
-        menuTableView.isScrollEnabled = false
+        // 菜单项已超过单屏可视数量（11 项），必须允许滚动才能到达末尾的测试入口。
+        menuTableView.isScrollEnabled = true
         menuTableView.layer.cornerRadius = 12
         menuTableView.layer.borderWidth = 1
         menuTableView.layer.borderColor = UIColor.separator.cgColor
