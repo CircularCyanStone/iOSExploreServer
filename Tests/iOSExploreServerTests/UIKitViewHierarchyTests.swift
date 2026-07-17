@@ -350,6 +350,76 @@ func collectStepperValueExposed() throws {
     #expect(value == "5.0", "UIStepper value 应为 \"5.0\"，实际 \(value ?? "nil")")
 }
 
+/// 递归在层级 JSON 中查找 type 包含 `substring` 的首个节点（私有 tab 按钮类名随 iOS 变化，
+/// 用 contains 比 `findNode` 的精确匹配更稳）。
+private func findNodeByTypeContaining(in json: JSONValue?, substring: String) -> JSONValue? {
+    guard let node = json?.objectValue else { return nil }
+    if let type = node["type"]?.stringValue, type.contains(substring) { return json }
+    for child in node["subviews"]?.arrayValue ?? [] {
+        if let found = findNodeByTypeContaining(in: child, substring: substring) { return found }
+    }
+    return nil
+}
+
+@Test("modal TabBar 场景采集根为容器 VC.view，UITabBar 不再丢失（修复采集根盲区）") @MainActor
+func collectTopViewHierarchyIncludesTabBarChrome() throws {
+    // 复现 modal 容器采集根盲区（docs/superpowers/specs/2026-07-17-resolver-modal-blindspot.md §3）：
+    // UITabBarController.view 含 [内容区(selectedVC.view), UITabBar]，UITabBar 与 selectedVC.view 平级。
+    // 采集根若选 topViewController.view（selectedVC 叶子），UITabBar 不在子树里 → nodeCount 极小。
+    // 修复后采集根用最外层容器 VC.view（= UITabBarController.view），UITabBar 落入子树。
+    let tab1 = UIViewController()
+    tab1.tabBarItem = UITabBarItem(title: "Tab 1", image: nil, tag: 0)
+    let tab2 = UIViewController()
+    tab2.tabBarItem = UITabBarItem(title: "Tab 2", image: nil, tag: 1)
+    let tab3 = UIViewController()
+    tab3.tabBarItem = UITabBarItem(title: "Tab 3", image: nil, tag: 2)
+    let tabBarController = UITabBarController()
+    tabBarController.viewControllers = [tab1, tab2, tab3]
+    tabBarController.selectedIndex = 0
+
+    // UITabBar 是 UITabBarController.view 的私有布局子视图，需要 view load + 布局后才生成。
+    let ctx = makeHierarchyContext(rootViewController: tabBarController,
+                                   topViewController: tab1,
+                                   rootView: tabBarController.view)
+    tabBarController.loadViewIfNeeded()
+    tabBarController.view.layoutIfNeeded()
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+
+    let data = try UIViewHierarchyCollector.collectTopViewHierarchy(query: .default, context: ctx)
+
+    // 修复前：采集根 = topViewController.view = tab1.view（叶子），UITabBar 与之平级不在子树，
+    // nodeCount 极小（modal 场景实测为 2）。
+    // 修复后：采集根 = context.rootView = 容器 VC.view，nodeCount 应含 UITabBar 子树。
+    let nodeCount = data["nodeCount"]?.doubleValue ?? 0
+    #expect(nodeCount > 5, "采集根应是容器 VC.view，nodeCount 应含 UITabBar 子树，实际 \(nodeCount)")
+
+    // UITabBar 应出现在采集到的层级里（修复前完全丢失）。
+    let tabBarNode = findNodeByTypeContaining(in: data["root"], substring: "TabBar")
+    #expect(tabBarNode != nil, "应采集到 UITabBar 节点（修复前采集根盲区丢失它）")
+}
+
+@Test("普通 VC（无容器）采集根行为不变：rootView 仍是该 VC.view（回归）") @MainActor
+func collectTopViewHierarchyPlainRootUnchanged() throws {
+    // 修复后默认分支改用 context.rootView。注入式 Context 里 rootView 由调用方指定，
+    // 普通 VC 场景 rootView == topViewController.view，行为应与修复前一致（path 从 root 起）。
+    let host = UIViewController()
+    let label = UILabel(frame: CGRect(x: 10, y: 10, width: 100, height: 30))
+    label.text = "Plain"
+    host.view.addSubview(label)
+    let ctx = makeHierarchyContext(rootViewController: host,
+                                   topViewController: host,
+                                   rootView: host.view)
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+
+    let data = try UIViewHierarchyCollector.collectTopViewHierarchy(query: .default, context: ctx)
+
+    #expect(data["nodeCount"]?.doubleValue ?? 0 > 1, "普通 VC 应采集到子视图")
+    let rootType = data["root"]?.objectValue?["type"]?.stringValue
+    #expect(rootType == "UIView", "普通 VC 的采集根应是 UIView(VC.view)，实际 \(rootType ?? "nil")")
+    let labelNode = findNode(in: data["root"], typeName: "UILabel")
+    #expect(labelNode != nil, "应采集到 UILabel 子视图")
+}
+
 #endif
 
 private struct TestViewElement: UIViewHierarchyElement {

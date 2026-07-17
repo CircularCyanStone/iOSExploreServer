@@ -152,6 +152,7 @@ framework 工程三个 target（`iOSExploreServer.xcodeproj`）：`iOSExploreSer
 - **全节点输出 + full/minimal 两档**：full 节点含完整 `availableActions`/文本/状态并进入指纹签发集合；minimal 节点只给 `path`+`type`，强制 `availableActions=[]`，不签发指纹
 - **对 minimal 节点调 `ui.tap`/`ui.control.sendAction` 返回业务码 `not_actionable`**（与 `invalid_data` 区分）
 - **cell 内子 view 通过 `cellAncestor` 自动进 full**，agent 可直接按 cell 标题文本定位并 tap 子 label path
+- **采集根是最外层容器 VC.view（含 chrome）**：`ui.inspect`/`ui.topViewHierarchy` 从 `hierarchyRootController.view`（沿 `presentedViewController` 走到最外层，**不**钻 nav/tab/split）采集，故容器 chrome（`UITabBar`/`UITabBarButton`/`UINavigationBar`）落在子树里；`ui.tap`/`ui.input`/`ui.control.sendAction` 的 path 与 inspect 同根（都用 `context.rootView`），定位一致。修复前采集根是 `topViewController.view`（叶子 VC），chrome 与之平级、不在子树里会丢失（modal 容器采集根盲区，详见 `docs/superpowers/specs/2026-07-17-resolver-modal-blindspot.md`）。`topViewController`（钻叶子）仍用于 navBar/alert/fingerprint 摘要，操作语义不变
 
 ## 日志与注释要求
 

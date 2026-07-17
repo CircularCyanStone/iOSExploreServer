@@ -48,7 +48,7 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 | `UIKitCommandRegistrar.swift` | 显式注册入口 | `public extension ExploreServer`；注册前后打 `uikit.registrar` 日志（started/completed count） |
 | `UIKitCommandLogging.swift` | 日志入口 | 复用 core public 缝 `ExploreLogging.emitExtension`，category 统一 `command`；不暴露 core internal logger |
 | `UIKitCommandError.swift` | UIKit 错误工厂 | 生成 `invalid_data`/`internal_error`，单一来源 |
-| `Support/Context/UIKitContextProvider.swift` | `@MainActor` 上下文 | 取当前前台 window / 顶部控制器 / 根 view；`currentContext(action:) throws` 失败抛 `hierarchyUnavailable` |
+| `Support/Context/UIKitContextProvider.swift` | `@MainActor` 上下文 | 取当前前台 window / 根控制器，并产出两种根：`topViewController`（`topViewController(from:)` 钻到叶子 VC，操作类命令 `ui.tap`/`ui.input`/`ui.control.sendAction` 用）与 `rootView`（最外层容器 VC.view = `hierarchyRootController(from:)` 的 view，采集类命令 `ui.inspect`/`ui.topViewHierarchy` 用，含 `UITabBar`/`UINavigationBar` 等 chrome）；`currentContext(action:) throws` 失败抛 `hierarchyUnavailable` |
 | `Support/Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` + `UIKitViewLookupModels.swift` | 目标定位 | `UIKitLocator` 是 Foundation-only 值类型（`identifier` / `path` 两种定位语义），resolver 仅 iOS 编译把 locator 解析为真实 `UIView`（`locate(...) throws`，失败由调用方工厂构造错误） |
 | `Support/Action/UIKitActionExecutor.swift` | 动作执行 | `@MainActor`；`execute throws -> JSON`，按能力（tap/control）路由到具体执行；失败 throw `UIKitCommandError`，handler 顶层 catch 转 envelope |
 | `Support/Action/UIKitActionCapabilityResolver.swift` | 能力解析 | 判断目标 view 支持哪种动作（collector 与 executor 共用） |
@@ -100,9 +100,9 @@ Diagnostics 不依赖 UIKit，宿主通过 `server.registerDiagnosticsCommands()
 
 ## UIKit 层级快照
 
-`ui.topViewHierarchy` 是首个 UIKit 内置命令，用于返回当前 foreground window 顶部控制器 view 及其子视图信息。命令在 `MainActor` 上读取 UIKit 状态，输出结构化节点：
+`ui.topViewHierarchy` 是首个 UIKit 内置命令，用于返回当前 foreground window **最外层容器 VC 的 view**（采集根 = `hierarchyRootController.view`，含 `UITabBar`/`UINavigationBar` 等容器 chrome）及其子视图信息。命令在 `MainActor` 上读取 UIKit 状态，输出结构化节点：
 
-- 定位：`path`，例如 `root/0/2/1`，只读且不写回业务 UI。
+- 定位：`path`，例如 `root/0/2/1`，只读且不写回业务 UI。`root` 是最外层容器 VC.view（采集根），故容器 chrome 落在子树里；`ui.tap`/`ui.input`/`ui.control.sendAction` 的 path 与本命令同根（都用 `context.rootView`），定位一致。
 - 语义：`accessibilityIdentifier`、`accessibilityLabel`、`accessibilityValue`、`accessibilityHint`。
 - 布局：`frame`、`bounds`。
 - 状态：hidden、alpha、opaque、userInteractionEnabled。

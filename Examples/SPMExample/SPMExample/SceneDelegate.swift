@@ -29,15 +29,64 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             || ProcessInfo.processInfo.arguments.contains("--ios-explore-show-login")
 
         if shouldShowLoginFlow {
-            // 显示登录流程
+            // 显示登录流程（保持原有逻辑）
             let loginVC = LoginViewController()
             let navController = UINavigationController(rootViewController: loginVC)
             window.rootViewController = navController
         } else {
-            // 显示原有的测试界面，包装在 UINavigationController 中以支持菜单导航
-            let viewController = ViewController()
-            let navController = UINavigationController(rootViewController: viewController)
-            window.rootViewController = navController
+            // 手动创建 UITabBarController 作为 root（验证采集根修复 + 为新增的 TabBar 诊断按钮提供实际容器）
+            let tabBarController = UITabBarController()
+
+            // Tab 1: 主页（ViewController），包装在 UINavigationController 中以支持菜单导航
+            let mainViewController = ViewController()
+            let mainNavController = UINavigationController(rootViewController: mainViewController)
+            mainNavController.tabBarItem = UITabBarItem(
+                title: "主页",
+                image: UIImage(systemName: "house"),
+                selectedImage: UIImage(systemName: "house.fill")
+            )
+
+            // Tab 2: 简单测试页（验证 tab 切换）
+            let tab2VC = UIViewController()
+            tab2VC.view.backgroundColor = .systemBackground
+            let tab2Label = UILabel()
+            tab2Label.text = "Tab 2 内容区"
+            tab2Label.textAlignment = .center
+            tab2Label.translatesAutoresizingMaskIntoConstraints = false
+            tab2VC.view.addSubview(tab2Label)
+            NSLayoutConstraint.activate([
+                tab2Label.centerXAnchor.constraint(equalTo: tab2VC.view.centerXAnchor),
+                tab2Label.centerYAnchor.constraint(equalTo: tab2VC.view.centerYAnchor)
+            ])
+            tab2VC.tabBarItem = UITabBarItem(
+                title: "Tab 2",
+                image: UIImage(systemName: "2.circle"),
+                selectedImage: UIImage(systemName: "2.circle.fill")
+            )
+
+            // Tab 3: 简单测试页（验证 3 个 tab）
+            let tab3VC = UIViewController()
+            tab3VC.view.backgroundColor = .systemBackground
+            let tab3Label = UILabel()
+            tab3Label.text = "Tab 3 内容区"
+            tab3Label.textAlignment = .center
+            tab3Label.translatesAutoresizingMaskIntoConstraints = false
+            tab3VC.view.addSubview(tab3Label)
+            NSLayoutConstraint.activate([
+                tab3Label.centerXAnchor.constraint(equalTo: tab3VC.view.centerXAnchor),
+                tab3Label.centerYAnchor.constraint(equalTo: tab3VC.view.centerYAnchor)
+            ])
+            tab3VC.tabBarItem = UITabBarItem(
+                title: "Tab 3",
+                image: UIImage(systemName: "3.circle"),
+                selectedImage: UIImage(systemName: "3.circle.fill")
+            )
+
+            // 组装 TabBarController
+            tabBarController.viewControllers = [mainNavController, tab2VC, tab3VC]
+            tabBarController.selectedIndex = 0
+
+            window.rootViewController = tabBarController
         }
 
         self.window = window

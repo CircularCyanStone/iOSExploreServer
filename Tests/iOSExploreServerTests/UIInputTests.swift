@@ -184,7 +184,7 @@ func executorStaleViewSnapshotThrows() {
         let staleMessage = error.failure.message
         #expect(staleMessage.contains("view snapshot expired"))
         #expect(staleMessage.contains("or target changed"))
-        #expect(staleMessage.contains("call ui.inspect first"))
+        #expect(staleMessage.contains("Call ui.inspect"))
         #expect(error.failure.logMessage == "uikit locator stale action=ui.input viewSnapshot=snap-nonexistent")
     } catch {
         Issue.record("unexpected error: \(error)")
@@ -213,7 +213,7 @@ func executorIdentifierWithStaleViewSnapshotThrows() {
         let staleMessage = error.failure.message
         #expect(staleMessage.contains("view snapshot expired"))
         #expect(staleMessage.contains("or target changed"))
-        #expect(staleMessage.contains("call ui.inspect first"))
+        #expect(staleMessage.contains("Call ui.inspect"))
         #expect(error.failure.logMessage == "uikit locator stale action=ui.input viewSnapshot=snap-nonexistent")
     } catch {
         Issue.record("unexpected error: \(error)")

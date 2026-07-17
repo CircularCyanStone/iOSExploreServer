@@ -30,7 +30,7 @@ enum UIViewHierarchyCollector {
     ///   - context: 当前 UIKit 查询上下文。
     /// - Returns: 层级 JSON。
     static func collectTopViewHierarchy(query: UIViewHierarchyInput, context: UIKitContextProvider.Context) throws -> JSON {
-        let targetController: UIViewController
+        let rootView: UIView
         let controllerLog: String
         let isControllerOverride: Bool
         if let controllerPath = query.controller {
@@ -42,11 +42,19 @@ enum UIViewHierarchyCollector {
                 )
             }
             do {
-                targetController = try UIControllerResolver.resolve(from: context.rootViewController, path: parsed)
+                let targetController = try UIControllerResolver.resolve(from: context.rootViewController, path: parsed)
                 if !targetController.isViewLoaded {
                     UIKitCommandLogging.info("command", "ui hierarchy collect controller view not loaded, calling loadViewIfNeeded() path=\(controllerPath)")
                     targetController.loadViewIfNeeded()
                 }
+                guard let overrideRoot = targetController.view else {
+                    UIKitCommandLogging.error("command", "ui hierarchy collect controller view is nil path=\(controllerPath)")
+                    throw UIKitCommandError.hierarchyUnavailable(
+                        action: TopViewHierarchyCommand.actionName,
+                        reason: "controller view is nil (path=\(controllerPath))"
+                    )
+                }
+                rootView = overrideRoot
                 controllerLog = controllerPath
                 isControllerOverride = true
             } catch let resolveError as UIKitCommandError {
@@ -61,16 +69,14 @@ enum UIViewHierarchyCollector {
                 )
             }
         } else {
-            targetController = context.topViewController
+            // 默认分支采集根用 context.rootView（currentContext 算的「最外层容器 VC」的 view），
+            // 与 ui.inspect 同口径。这覆盖容器 chrome（UITabBar / UINavigationBar 等），修复
+            // 「采集根钻到叶子 VC 致 chrome 丢失」的盲区：topViewController 钻到叶子 VC，其 view
+            // 与容器 chrome 平级、chrome 不在子树里。操作命令（ui.tap / ui.input /
+            // ui.control.sendAction）仍用 topViewController 语义，不受本修复影响。
+            rootView = context.rootView
             controllerLog = "default"
             isControllerOverride = false
-        }
-        guard let rootView = targetController.view else {
-            UIKitCommandLogging.error("command", "ui hierarchy collect controller view is nil path=\(controllerLog)")
-            throw UIKitCommandError.hierarchyUnavailable(
-                action: TopViewHierarchyCommand.actionName,
-                reason: "controller view is nil (path=\(controllerLog))"
-            )
         }
         UIKitCommandLogging.info("command", "ui hierarchy collect start controller=\(controllerLog) detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
 

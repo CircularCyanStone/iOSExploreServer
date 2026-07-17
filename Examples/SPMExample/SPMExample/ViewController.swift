@@ -29,6 +29,7 @@ final class ViewController: UIViewController {
     private let statusLabel = UILabel()
     private let startButton = UIButton(type: .system)
     private let stopButton = UIButton(type: .system)
+    private let diagTabBarButton = UIButton(type: .system)
     private let menuTableView = UITableView()
     private let logTableView = UITableView()
     private let gestureDemoLabel = UILabel()
@@ -110,6 +111,12 @@ final class ViewController: UIViewController {
         startButton.translatesAutoresizingMaskIntoConstraints = false
         stopButton.translatesAutoresizingMaskIntoConstraints = false
 
+        // 诊断 TabBar 按钮
+        diagTabBarButton.setTitle("🔍 TabBar", for: .normal)
+        diagTabBarButton.titleLabel?.font = .systemFont(ofSize: 13, weight: .medium)
+        diagTabBarButton.addTarget(self, action: #selector(diagnoseTabBarTapped), for: .touchUpInside)
+        diagTabBarButton.translatesAutoresizingMaskIntoConstraints = false
+
         // 菜单列表 — 主体区域
         menuTableView.delegate = self
         menuTableView.dataSource = self
@@ -148,6 +155,7 @@ final class ViewController: UIViewController {
         view.addSubview(gestureDemoLabel)
         view.addSubview(startButton)
         view.addSubview(stopButton)
+        view.addSubview(diagTabBarButton)
         view.addSubview(menuTitle)
         view.addSubview(menuTableView)
         view.addSubview(logTitle)
@@ -167,7 +175,7 @@ final class ViewController: UIViewController {
             gestureDemoLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             gestureDemoLabel.heightAnchor.constraint(equalToConstant: 32),
 
-            // 启动/停止按钮行
+            // 启动/停止按钮行 + 诊断按钮
             startButton.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 12),
             startButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             startButton.heightAnchor.constraint(equalToConstant: 36),
@@ -175,6 +183,10 @@ final class ViewController: UIViewController {
             stopButton.centerYAnchor.constraint(equalTo: startButton.centerYAnchor),
             stopButton.leadingAnchor.constraint(equalTo: startButton.trailingAnchor, constant: 16),
             stopButton.heightAnchor.constraint(equalToConstant: 36),
+
+            diagTabBarButton.centerYAnchor.constraint(equalTo: startButton.centerYAnchor),
+            diagTabBarButton.leadingAnchor.constraint(equalTo: stopButton.trailingAnchor, constant: 12),
+            diagTabBarButton.heightAnchor.constraint(equalToConstant: 36),
 
             // 菜单标题
             menuTitle.topAnchor.constraint(equalTo: startButton.bottomAnchor, constant: 20),
@@ -224,6 +236,154 @@ extension ViewController {
 
     @objc private func stopTapped() {
         server.stop()
+    }
+
+    @objc private func diagnoseTabBarTapped() {
+        print("\n" + String(repeating: "=", count: 60))
+        print("=== 🔍 TabBar 诊断开始 ===")
+        print(String(repeating: "=", count: 60))
+
+        // 遍历所有 window 查找 UITabBarController
+        var foundTabBarControllers: [(UITabBarController, String)] = []
+        for (idx, window) in UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .enumerated() {
+            findTabBarControllers(in: window.rootViewController, path: "window[\(idx)].root", found: &foundTabBarControllers)
+        }
+
+        if foundTabBarControllers.isEmpty {
+            print("❌ 未找到任何 UITabBarController")
+            print(String(repeating: "=", count: 60))
+            print("=== 🔍 TabBar 诊断结束 ===")
+            print(String(repeating: "=", count: 60) + "\n")
+            return
+        }
+
+        print("✅ 找到 \(foundTabBarControllers.count) 个 UITabBarController\n")
+
+        for (tabBarController, path) in foundTabBarControllers {
+            print("┌─ TabBarController @ \(path)")
+            print("│  selectedIndex: \(tabBarController.selectedIndex)")
+            print("│  viewControllers.count: \(tabBarController.viewControllers?.count ?? 0)")
+
+            // 输出 UITabBar 自身信息
+            let tabBar = tabBarController.tabBar
+            print("│")
+            print("├─ UITabBar 自身信息:")
+            print("│  ├─ type: \(type(of: tabBar))")
+            print("│  ├─ frame: \(tabBar.frame)")
+            print("│  ├─ isHidden: \(tabBar.isHidden)")
+            print("│  ├─ alpha: \(tabBar.alpha)")
+            print("│  ├─ isUserInteractionEnabled: \(tabBar.isUserInteractionEnabled)")
+            print("│  ├─ window: \(tabBar.window != nil ? "✓ attached" : "✗ detached")")
+            print("│  ├─ superview: \(tabBar.superview != nil ? String(describing: type(of: tabBar.superview!)) : "nil")")
+            print("│  └─ subviews.count: \(tabBar.subviews.count)")
+
+            // 输出 tab button 信息（递归遍历 tabBar 整个子树找 _UITabButton）
+            print("│")
+            print("├─ TabButton 详细信息（递归遍历 tabBar 子树）:")
+            var allButtons: [(UIView, String)] = []
+            collectTabButtons(in: tabBar, path: "tabBar", buttons: &allButtons)
+
+            if allButtons.isEmpty {
+                print("│  └─ ⚠️ 未找到任何 TabButton（可能类名不匹配或未生成）")
+            } else {
+                for (idx, (button, buttonPath)) in allButtons.enumerated() {
+                    let typeName = String(describing: type(of: button))
+                    print("│  ├─ TabButton[\(idx)] (\(typeName)) @ \(buttonPath):")
+                    print("│  │  ├─ frame: \(button.frame)")
+                    print("│  │  ├─ isHidden: \(button.isHidden)")
+                    print("│  │  ├─ alpha: \(button.alpha)")
+                    print("│  │  ├─ window: \(button.window != nil ? "✓" : "✗")")
+                    print("│  │  ├─ superview: \(button.superview != nil ? String(describing: type(of: button.superview!)) : "nil")")
+                    print("│  │  ├─ accessibilityLabel: \(button.accessibilityLabel ?? "nil")")
+
+                    // 输出继承链（从当前类往上到 NSObject）
+                    var inheritanceChain: [String] = []
+                    var currentClass: AnyClass? = type(of: button)
+                    while let cls = currentClass {
+                        inheritanceChain.append(String(describing: cls))
+                        currentClass = class_getSuperclass(cls)
+                        if inheritanceChain.count > 20 { break } // 防止无限循环
+                    }
+                    print("│  │  ├─ 继承链: \(inheritanceChain.joined(separator: " → "))")
+
+                    if let control = button as? UIControl {
+                        print("│  │  ├─ [UIControl] isEnabled: \(control.isEnabled)")
+                        print("│  │  ├─ [UIControl] isSelected: \(control.isSelected)")
+                        print("│  │  ├─ [UIControl] allTargets.count: \(control.allTargets.count)")
+                        print("│  │  └─ [UIControl] allControlEvents: \(control.allControlEvents.rawValue)")
+                    } else {
+                        print("│  │  └─ (不是 UIControl 子类)")
+                    }
+                }
+            }
+
+            // 输出每个 tab 的 viewController 与对应 item
+            print("│")
+            print("└─ 各 Tab 的 ViewController 与 UITabBarItem:")
+            if let viewControllers = tabBarController.viewControllers {
+                for (idx, vc) in viewControllers.enumerated() {
+                    let item = vc.tabBarItem
+                    print("   ├─ Tab[\(idx)]:")
+                    print("   │  ├─ VC type: \(type(of: vc))")
+                    print("   │  ├─ VC.title: \(vc.title ?? "nil")")
+                    print("   │  ├─ item.title: \(item?.title ?? "nil")")
+                    print("   │  ├─ item.tag: \(item?.tag ?? -1)")
+                    print("   │  ├─ item.image: \(item?.image != nil ? "✓ (size \(item!.image!.size))" : "nil")")
+                    print("   │  ├─ item.selectedImage: \(item?.selectedImage != nil ? "✓" : "nil")")
+                    print("   │  ├─ VC.view.frame: \(vc.view.frame)")
+                    print("   │  ├─ VC.view.window: \(vc.view.window != nil ? "✓ attached" : "✗ detached")")
+                    print("   │  ├─ VC.view.superview: \(vc.view.superview != nil ? String(describing: type(of: vc.view.superview!)) : "nil")")
+                    print("   │  └─ VC.view.subviews.count: \(vc.view.subviews.count)")
+                }
+            }
+            print("")
+        }
+
+        print(String(repeating: "=", count: 60))
+        print("=== 🔍 TabBar 诊断结束 ===")
+        print(String(repeating: "=", count: 60) + "\n")
+    }
+
+    /// 递归查找 controller 树中的所有 UITabBarController
+    private func findTabBarControllers(in controller: UIViewController?, path: String, found: inout [(UITabBarController, String)]) {
+        guard let controller else { return }
+
+        if let tabBarController = controller as? UITabBarController {
+            found.append((tabBarController, path))
+            // 继续递归 selected VC
+            if let selected = tabBarController.selectedViewController {
+                findTabBarControllers(in: selected, path: "\(path).selected", found: &found)
+            }
+        } else if let navController = controller as? UINavigationController {
+            // nav 栈顶
+            if let top = navController.topViewController {
+                findTabBarControllers(in: top, path: "\(path).nav.top", found: &found)
+            }
+        }
+
+        // presented modal
+        if let presented = controller.presentedViewController {
+            findTabBarControllers(in: presented, path: "\(path).presented", found: &found)
+        }
+
+        // child controllers
+        for (idx, child) in controller.children.enumerated() {
+            findTabBarControllers(in: child, path: "\(path).child[\(idx)]", found: &found)
+        }
+    }
+
+    /// 递归收集 view 子树中所有的 TabButton（类名包含 "TabButton"）
+    private func collectTabButtons(in view: UIView, path: String, buttons: inout [(UIView, String)]) {
+        let typeName = String(describing: type(of: view))
+        if typeName.contains("TabButton") || typeName.contains("TabBarButton") {
+            buttons.append((view, path))
+        }
+        for (idx, subview) in view.subviews.enumerated() {
+            collectTabButtons(in: subview, path: "\(path)/\(idx)", buttons: &buttons)
+        }
     }
 
     @MainActor
