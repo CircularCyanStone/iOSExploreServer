@@ -168,6 +168,7 @@ func syntheticTapHitTestCorrectButDispatchFailsOnIOS26() throws {
 }
 
 @Test("iOS 26 合成 tap 无法触发 UIButton touchUpInside（spike 存档）") @MainActor
+@available(iOS 14, *)
 func syntheticTapDoesNotTriggerUIButtonOnIOS26() throws {
     // spike 结论：UIControl touch tracking 依赖收到真实 touch，合成 touch 没进入 event，
     // tracking 不启动（见文件头报告链接）。若本测试失败，说明 tracking 已可被合成 touch 驱动 → 重新评估。

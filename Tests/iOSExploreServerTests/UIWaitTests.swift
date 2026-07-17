@@ -191,8 +191,8 @@ func waitCancellationConvergesToWaitTimeout() async {
         try await UIWaitExecutor.execute(input: input) { context }
     }
     // 让 executor 进入轮询后 cancel，验证收敛到 waitTimeout（不泄漏 CancellationError）。
-    let clock = ContinuousClock()
-    let start = clock.now
+    // 用 systemUptime(monotonic, iOS 2+)替代 ContinuousClock(iOS 16+),保持部署目标 iOS 13 可编译
+    let start = ProcessInfo.processInfo.systemUptime
     try? await Task.sleep(nanoseconds: 150_000_000)
     task.cancel()
     do {
@@ -204,8 +204,8 @@ func waitCancellationConvergesToWaitTimeout() async {
         // deadline。iOS 模拟器全量测试时 MainActor 负载会带来秒级抖动，因此阈值保留到
         // 6s：若有人删掉 UIWaitExecutor 的 Task.isCancelled 检查，cancel 被忽略、`try?`
         // 吞掉 CancellationError 后命令会跑满 10s 才靠自然 deadline 抛 waitTimeout，仍会失败。
-        let elapsed = start.duration(to: clock.now)
-        #expect(elapsed < .seconds(6), "cancel should short-circuit well before 10s, took \(elapsed)")
+        let elapsed = ProcessInfo.processInfo.systemUptime - start
+        #expect(elapsed < 6, "cancel should short-circuit well before 10s, took \(elapsed)s")
     } catch {
         Issue.record("unexpected error (expected waitTimeout): \(error)")
     }

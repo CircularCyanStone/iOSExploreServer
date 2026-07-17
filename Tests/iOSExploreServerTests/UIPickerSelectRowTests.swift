@@ -7,6 +7,8 @@ import iOSExploreServer
 import UIKit
 
 // MARK: - UIPickerSelectRowInput 解析测试
+// 注:Input 经 UIKitLocatorInput.parse,accessibilityIdentifier/path 至少一个。下列每个 parse(from:)
+// 都带 identifier,确保测的是 component/row/title 的解析与互斥校验,而非误撞 identifier 缺失。
 
 @Test("解析 row 选行")
 func pickerInputParsesRow() throws {
@@ -25,6 +27,7 @@ func pickerInputParsesRow() throws {
 @Test("解析 title 选行")
 func pickerInputParsesTitle() throws {
     let input = try UIPickerSelectRowInput.parse(from: [
+        "accessibilityIdentifier": .string("city"),
         "component": .double(0),
         "title": .string("上海")
     ])
@@ -34,28 +37,44 @@ func pickerInputParsesTitle() throws {
 
 @Test("解析 animated=true")
 func pickerInputParsesAnimated() throws {
-    let input = try UIPickerSelectRowInput.parse(from: ["component": .double(0), "row": .double(1), "animated": .bool(true)])
+    let input = try UIPickerSelectRowInput.parse(from: [
+        "accessibilityIdentifier": .string("city"),
+        "component": .double(0),
+        "row": .double(1),
+        "animated": .bool(true)
+    ])
     #expect(input.animated == true)
 }
 
 @Test("拒绝 component 缺失")
 func pickerInputRejectsMissingComponent() {
     #expect(throws: CommandInputParseError.self) {
-        _ = try UIPickerSelectRowInput.parse(from: ["row": .double(0)])
+        _ = try UIPickerSelectRowInput.parse(from: [
+            "accessibilityIdentifier": .string("city"),
+            "row": .double(0)
+        ])
     }
 }
 
 @Test("拒绝 row 与 title 同时提供")
 func pickerInputRejectsBoth() {
     #expect(throws: CommandInputParseError.self) {
-        _ = try UIPickerSelectRowInput.parse(from: ["component": .double(0), "row": .double(0), "title": .string("x")])
+        _ = try UIPickerSelectRowInput.parse(from: [
+            "accessibilityIdentifier": .string("city"),
+            "component": .double(0),
+            "row": .double(0),
+            "title": .string("x")
+        ])
     }
 }
 
 @Test("拒绝 row 与 title 都不提供")
 func pickerInputRejectsNeither() {
     #expect(throws: CommandInputParseError.self) {
-        _ = try UIPickerSelectRowInput.parse(from: ["component": .double(0)])
+        _ = try UIPickerSelectRowInput.parse(from: [
+            "accessibilityIdentifier": .string("city"),
+            "component": .double(0)
+        ])
     }
 }
 

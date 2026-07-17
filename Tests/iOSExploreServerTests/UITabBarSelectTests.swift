@@ -234,10 +234,11 @@ func selectTabAutoFindModalTabBar() throws {
     tbc.viewControllers = [tab1, tab2]
     tbc.selectedIndex = 0
 
-    // 模拟 present:手动设置 presentedViewController
-    nav.setValue(tbc, forKey: "presentedViewController")
-
     let ctx = makeContext(rootViewController: nav, topViewController: tab1, rootView: tab1.view)
+    // 真实 present 替代 KVC setValue(forKey:"presentedViewController") —— 后者在 iOS 触发
+    // NSUnknownKeyException(readonly key 不可 KVC 设);present(animated:false) 同步设置
+    // nav.presentedViewController == tbc,Executor.findTabBarController 沿 presented 链可找到
+    nav.present(tbc, animated: false)
     let input = UITabBarSelectInput(tabBarControllerPath: nil, index: 1, title: nil, triggerDelegate: false)
     let result = try UITabBarSelectExecutor.execute(input: input, context: ctx)
 
@@ -259,9 +260,8 @@ func selectTabWithExplicitPath() throws {
     tbc.viewControllers = [tab1, tab2]
     tbc.selectedIndex = 0
 
-    nav.setValue(tbc, forKey: "presentedViewController")
-
     let ctx = makeContext(rootViewController: nav, topViewController: tab1, rootView: tab1.view)
+    nav.present(tbc, animated: false)
     let input = UITabBarSelectInput(tabBarControllerPath: "root.presented", index: 1, title: nil, triggerDelegate: false)
     let result = try UITabBarSelectExecutor.execute(input: input, context: ctx)
 
