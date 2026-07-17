@@ -1,6 +1,6 @@
 ---
 name: ios-ui-nav
-description: iOS App 屏幕导航、返回、导航栏按钮与 controller 层级检查(原 ios-navigation、原 ios-controller-navigation)/ navigation, back, dismiss, modal, nav bar button, controller hierarchy, ui.controllers, ui_navigation_back, ui_navigation_tapBarButton
+description: iOS App 屏幕导航、返回、导航栏按钮、tab bar 切换与 controller 层级检查(原 ios-navigation、原 ios-controller-navigation)/ navigation, back, dismiss, modal, nav bar button, tab bar, tabBar switch, 切换tab, ui.tabBar.selectTab, controller hierarchy, ui.controllers, ui_navigation_back, ui_navigation_tapBarButton
 allowed-tools:
   - mcp__iOSDriver__ui_inspect
   - mcp__iOSDriver__ui_tap
@@ -10,6 +10,7 @@ allowed-tools:
   - mcp__iOSDriver__ui_controllers
   - mcp__iOSDriver__ui_screenshot
   - mcp__iOSDriver__ui_wait
+  - mcp__iOSDriver__call_action
 ---
 
 # iOS 屏幕导航与 controller 层级检查
@@ -34,7 +35,8 @@ allowed-tools:
 - ❌ 不要用于点击列表项以外的列表交互(滚动、查找项目 → `ios-ui-list`)
 - ❌ 不要用于"等屏幕加载完再继续"(动态等待 → `ios-ui-wait`)
 - ❌ 不要用于 `UIAlertController` 弹窗的按钮响应(走 `ui_alert_respond`,即 `ios-ui-alert`)
-- ❌ 不要用于 tab bar 切换 —— tab bar 不是 navigation stack,需用 `ui_tap` 直接点 tab(见 `工作原理 §4`)
+- ✅ 用户要"切到某个 tab" / "切换到第 N 个 tab" / "切到'我的'"(走 `ui.tabBar.selectTab`,见 `工作原理 §4`)
+- ✅ 用户说 "tab" / "切换tab" / "切到发现页" / "tab bar"
 
 ## 工作原理
 
@@ -66,9 +68,28 @@ allowed-tools:
 
 响应给 `performed:true` + 按钮描述 + `topBefore` / `topAfter`。若 `topBefore == topAfter` 不代表失败 —— 编辑 / 分享按钮可能只切换 mode,不 push 新屏。
 
-### 4. Tab bar 切换(走 `ui_tap`,不用 navigation 命令)
+### 4. Tab bar 切换(`ui.tabBar.selectTab`,走 controller 层)
 
-Tab bar 是平级切换,不是 navigation stack。用 `ui_inspect` 找到 tab 的 `path`(通常 type 为 `UITabBarButton` 或类似),用 `ui_tap` 点,然后 inspect 验证。
+Tab bar 是平级切换,不是 navigation stack。**优先用 `ui.tabBar.selectTab`**(经 `call_action` 调用,action 名 `"ui.tabBar.selectTab"`):走 controller 层直接设 `selectedIndex`,1 步完成、返回切换前后完整状态、跨 iOS 版本稳定,**不依赖 view 子树遍历**(不受 modal 容器场景 inspect 盲区影响)。
+
+- **按索引**:`call_action(action:"ui.tabBar.selectTab", data:{index:1})` —— 已知 tab 顺序时用
+- **按标题**:`call_action(action:"ui.tabBar.selectTab", data:{title:"我的"})` —— 按名称定位,顺序变了也稳;要求 `tabBarItem.title` 已设置
+- **返回**:`previousIndex` / `selectedIndex` / `previousTitle` / `selectedTitle` / `tabCount` —— 自带确认信息,无需再 inspect 验证
+
+可选参数:
+
+| 参数 | 含义 |
+|---|---|
+| `tabBarControllerPath` | 多 TabBar 共存时显式指定 controller path(如 `"root.presented"`),省略自动查找;先用 `ui_controllers` 查 path |
+| `triggerDelegate` | 默认 `true`,补调 `tabBarController(_:didSelect:)` delegate(覆盖挂在 delegate 的埋点/刷新/选中态同步);只设状态不触发业务时设 `false` |
+
+错误码判别:
+
+- `invalid_data` + "tab index N out of range (total: M)":index 越界,返回的 total 即 tab 总数,据此修正
+- `target_not_found` + "tab with title '...' not found":title 不匹配(读 `tabBarItem.title`,不是 VC 的 title)
+- `target_not_found` + "no UITabBarController found":当前无系统 UITabBarController,**自定义 tab bar 场景**,降级见下
+
+**降级:自定义 tab bar**。App 自己画 tab bar(非 `UITabBarController` 子类)时命令找不到容器,退回 `ui_inspect` 找 tab 按钮 `path`(type 多为 `UITabBarButton` 或自定义 view) + `ui_tap` 点 + inspect 验证。步骤多、信息少,仅作降级。
 
 ### 5. controller 层级树(`ui_controllers`,整合自原 ios-controller-navigation)
 
