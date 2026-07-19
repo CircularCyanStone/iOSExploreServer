@@ -154,7 +154,7 @@ enum UIWebViewEvalExecutor {
                 return serializeJSResult(jsResult)
             case .failure:
                 UIKitCommandLogging.error("command", "\(action) JS execution timed out after \(timeout)s")
-                throw UIKitCommandError.invalidData(action: action, message: "JS execution timed out after \(Int(timeout))s (elapsed \(String(format: "%.2f", timeout))s)")
+                throw UIKitCommandError.invalidData(action: action, message: "JS execution timed out after \(Int(timeout))s")
             }
         }
     }
@@ -210,7 +210,7 @@ enum UIWebViewEvalExecutor {
                 return serializeJSResult(jsResult)
             case .failure:
                 UIKitCommandLogging.error("command", "\(action) async JS execution timed out after \(timeout)s")
-                throw UIKitCommandError.invalidData(action: action, message: "JS execution timed out after \(Int(timeout))s (elapsed \(String(format: "%.2f", timeout))s)")
+                throw UIKitCommandError.invalidData(action: action, message: "JS execution timed out after \(Int(timeout))s")
             }
         }
     }
