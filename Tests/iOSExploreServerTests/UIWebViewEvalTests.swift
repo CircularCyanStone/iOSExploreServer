@@ -36,6 +36,9 @@ func webViewEvalLocatesWebView() async throws {
     window.rootViewController = vc
     window.makeKeyAndVisible()
 
+    vc.webView.loadHTMLString("<html></html>", baseURL: nil)
+    try await Task.sleep(nanoseconds: 1_000_000_000)
+
     let input = try UIWebViewEvalInput.parse(from: [
         "accessibilityIdentifier": .string("test_web"),
         "script": .string("1 + 1")
@@ -49,8 +52,15 @@ func webViewEvalLocatesWebView() async throws {
     )
     let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
 
-    // 暂时只验证不抛错
-    #expect(result["placeholder"] == .bool(true))
+    // 验证返回正确的 sync 结果结构
+    guard case .object(let obj) = result else {
+        Issue.record("Expected object result")
+        return
+    }
+
+    #expect(obj["result"] == .double(2))
+    #expect(obj["resultType"] == .string("number"))
+    #expect(obj["mode"] == .string("sync"))
 }
 
 @Test("定位失败返回 target_not_found")
@@ -82,6 +92,168 @@ func webViewEvalNonWebViewReturnsError() async throws {
         "accessibilityIdentifier": .string("not_webview"),
         "script": .string("true")
     ])
+
+    await #expect(throws: UIKitCommandError.self) {
+        try await UIWebViewEvalExecutor.execute(input: input, context: context)
+    }
+}
+
+@Test("同步执行返回 string")
+@MainActor
+func webViewEvalSyncReturnsString() async throws {
+    let vc = TestWebViewController(identifier: "test_web")
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    window.rootViewController = vc
+    window.makeKeyAndVisible()
+
+    // 加载简单 HTML
+    vc.webView.loadHTMLString("<html><head><title>Test</title></head></html>", baseURL: nil)
+    try await Task.sleep(nanoseconds: 1_000_000_000) // 等待加载
+
+    let input = try UIWebViewEvalInput.parse(from: [
+        "accessibilityIdentifier": .string("test_web"),
+        "script": .string("'Test'")
+    ])
+
+    let context = UIKitContextProvider.Context(
+        window: window,
+        rootViewController: vc,
+        topViewController: vc,
+        rootView: vc.view
+    )
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
+
+    guard case .object(let obj) = result else {
+        Issue.record("Expected object result")
+        return
+    }
+
+    #expect(obj["result"] == .string("Test"))
+    #expect(obj["resultType"] == .string("string"))
+    #expect(obj["mode"] == .string("sync"))
+}
+
+@Test("同步执行返回 number")
+@MainActor
+func webViewEvalSyncReturnsNumber() async throws {
+    let vc = TestWebViewController(identifier: "test_web")
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    window.rootViewController = vc
+    window.makeKeyAndVisible()
+
+    vc.webView.loadHTMLString("<html></html>", baseURL: nil)
+    try await Task.sleep(nanoseconds: 1_000_000_000)
+
+    let input = try UIWebViewEvalInput.parse(from: [
+        "accessibilityIdentifier": .string("test_web"),
+        "script": .string("1 + 1")
+    ])
+
+    let context = UIKitContextProvider.Context(
+        window: window,
+        rootViewController: vc,
+        topViewController: vc,
+        rootView: vc.view
+    )
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
+
+    guard case .object(let obj) = result else {
+        Issue.record("Expected object result")
+        return
+    }
+
+    #expect(obj["result"] == .double(2))
+    #expect(obj["resultType"] == .string("number"))
+}
+
+@Test("同步执行返回 boolean")
+@MainActor
+func webViewEvalSyncReturnsBoolean() async throws {
+    let vc = TestWebViewController(identifier: "test_web")
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    window.rootViewController = vc
+    window.makeKeyAndVisible()
+
+    vc.webView.loadHTMLString("<html></html>", baseURL: nil)
+    try await Task.sleep(nanoseconds: 1_000_000_000)
+
+    let input = try UIWebViewEvalInput.parse(from: [
+        "accessibilityIdentifier": .string("test_web"),
+        "script": .string("true")
+    ])
+
+    let context = UIKitContextProvider.Context(
+        window: window,
+        rootViewController: vc,
+        topViewController: vc,
+        rootView: vc.view
+    )
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
+
+    guard case .object(let obj) = result else {
+        Issue.record("Expected object result")
+        return
+    }
+
+    #expect(obj["result"] == .bool(true))
+    #expect(obj["resultType"] == .string("boolean"))
+}
+
+@Test("同步执行返回 null")
+@MainActor
+func webViewEvalSyncReturnsNull() async throws {
+    let vc = TestWebViewController(identifier: "test_web")
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    window.rootViewController = vc
+    window.makeKeyAndVisible()
+
+    vc.webView.loadHTMLString("<html></html>", baseURL: nil)
+    try await Task.sleep(nanoseconds: 1_000_000_000)
+
+    let input = try UIWebViewEvalInput.parse(from: [
+        "accessibilityIdentifier": .string("test_web"),
+        "script": .string("null")
+    ])
+
+    let context = UIKitContextProvider.Context(
+        window: window,
+        rootViewController: vc,
+        topViewController: vc,
+        rootView: vc.view
+    )
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
+
+    guard case .object(let obj) = result else {
+        Issue.record("Expected object result")
+        return
+    }
+
+    #expect(obj["result"] == .null)
+    #expect(obj["resultType"] == .string("null"))
+}
+
+@Test("同步执行 JS 错误返回 invalid_data")
+@MainActor
+func webViewEvalSyncJSErrorReturnsError() async throws {
+    let vc = TestWebViewController(identifier: "test_web")
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    window.rootViewController = vc
+    window.makeKeyAndVisible()
+
+    vc.webView.loadHTMLString("<html></html>", baseURL: nil)
+    try await Task.sleep(nanoseconds: 1_000_000_000)
+
+    let input = try UIWebViewEvalInput.parse(from: [
+        "accessibilityIdentifier": .string("test_web"),
+        "script": .string("nonexistentFunction()")
+    ])
+
+    let context = UIKitContextProvider.Context(
+        window: window,
+        rootViewController: vc,
+        topViewController: vc,
+        rootView: vc.view
+    )
 
     await #expect(throws: UIKitCommandError.self) {
         try await UIWebViewEvalExecutor.execute(input: input, context: context)
