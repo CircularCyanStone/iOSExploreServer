@@ -185,19 +185,31 @@ enum UIWebViewEvalExecutor {
     ) async throws -> (value: JSONValue, type: String) {
         return try await withThrowingTaskGroup(of: Result<JSExecutionResult, Error>.self) { group in
             // JS 执行任务
+            // 使用 nonisolated(unsafe) 绕过 Swift 6.2 的 region-based isolation checker 限制
+            // 这是安全的，因为：
+            // 1. webView 和 arguments 在整个执行期间不会被修改
+            // 2. callAsyncJavaScript 的回调在 MainActor 上执行
+            // 3. JSExecutionResult 使用 @unchecked Sendable（只包含 JSON 类型）
+            nonisolated(unsafe) let webViewRef = webView
+            nonisolated(unsafe) let argsRef = arguments
             group.addTask {
-                let args = arguments ?? [:]
-                let result: Result<Any, Error> = await withCheckedContinuation { continuation in
-                    webView.callAsyncJavaScript(function, arguments: args, in: nil, in: .page) { jsResult in
-                        continuation.resume(returning: jsResult)
+                nonisolated(unsafe) let args = argsRef ?? [:]
+                let result: Result<JSExecutionResult, Error> = await withCheckedContinuation { continuation in
+                    webViewRef.callAsyncJavaScript(function, arguments: args, in: nil, in: .page) { jsResult in
+                        // 立即包装成 Sendable 类型，避免跨 actor 边界传递原始 Result
+                        let wrapped: Result<JSExecutionResult, Error>
+                        switch jsResult {
+                        case .success(let value):
+                            wrapped = .success(JSExecutionResult(result: value, error: nil))
+                        case .failure(let error):
+                            wrapped = .success(JSExecutionResult(result: nil, error: error))
+                        }
+                        // 返回包装好的结果
+                        continuation.resume(returning: wrapped)
                     }
                 }
-                switch result {
-                case .success(let value):
-                    return .success(JSExecutionResult(result: value, error: nil))
-                case .failure(let error):
-                    return .success(JSExecutionResult(result: nil, error: error))
-                }
+                // result 现在是 Result<JSExecutionResult, Error>
+                return result
             }
 
             // 超时任务
