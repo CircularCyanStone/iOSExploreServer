@@ -35,8 +35,7 @@ func webViewEvalInputParsesArguments() throws {
         "function": .string("return arguments[0].userId"),
         "arguments": .object(["userId": .double(123)])
     ])
-    let args = input.arguments as? [String: Double]
-    #expect(args?["userId"] == 123)
+    #expect(input.arguments?["userId"] as? Double == 123)
 }
 
 @Test("解析自定义 timeout")
