@@ -11,7 +11,11 @@ import iOSExploreServer
 ///
 /// `arguments` 只能与 `function` 一起使用，作为函数的第一个参数传入。
 /// `timeout` 范围 1-30 秒，默认 5 秒。
-public struct UIWebViewEvalInput: CommandInput, Sendable {
+///
+/// `@unchecked Sendable`：`arguments` 包含 `[String: Any]`，`Any` 在 Swift 6 不符合 `Sendable`，
+/// 但实际上只包含 JSON 可序列化类型（String/Double/Bool/NSNull/Array/Dictionary），
+/// 且所有属性不可变，跨 actor 传递安全。
+public struct UIWebViewEvalInput: CommandInput, @unchecked Sendable {
     private enum Fields {
         static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
         static let path = UIKitLocatorFields.path

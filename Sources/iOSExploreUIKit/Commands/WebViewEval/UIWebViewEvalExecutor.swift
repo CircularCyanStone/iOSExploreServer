@@ -119,14 +119,28 @@ enum UIWebViewEvalExecutor {
         }
     }
 
+    /// JS 执行结果包装（用于跨 Task 传递，`@unchecked Sendable` 因为只包含 JSON 可序列化类型）。
+    private struct JSExecutionResult: @unchecked Sendable {
+        let result: Any?
+        let error: Error?
+    }
+
+    /// 参数包装（用于跨 Task 传递，`@unchecked Sendable` 因为只包含 JSON 可序列化类型）。
+    private struct JSArguments: @unchecked Sendable {
+        let dict: [String: Any]
+    }
+
+    /// 超时错误。
+    private struct TimeoutError: Error {}
+
     /// 同步执行 JS（使用 async/await 避免阻塞主线程）。
     private static func executeSync(webView: WKWebView, script: String, timeout: TimeInterval, action: String) async throws -> (value: JSONValue, type: String) {
-        return try await withThrowingTaskGroup(of: Result<(Any?, Error?), Error>.self) { group in
+        return try await withThrowingTaskGroup(of: Result<JSExecutionResult, Error>.self) { group in
             // JS 执行任务
             group.addTask {
-                let result = await withCheckedContinuation { (continuation: CheckedContinuation<(Any?, Error?), Never>) in
+                let result = await withCheckedContinuation { (continuation: CheckedContinuation<JSExecutionResult, Never>) in
                     webView.evaluateJavaScript(script) { result, error in
-                        continuation.resume(returning: (result, error))
+                        continuation.resume(returning: JSExecutionResult(result: result, error: error))
                     }
                 }
                 return .success(result)
@@ -146,12 +160,12 @@ enum UIWebViewEvalExecutor {
             group.cancelAll()
 
             switch firstResult {
-            case .success(let (jsResult, jsError)):
-                if let error = jsError {
+            case .success(let jsResult):
+                if let error = jsResult.error {
                     UIKitCommandLogging.error("command", "\(action) JS execution failed error=\(error)")
                     throw UIKitCommandError.invalidData(action: action, message: "JS execution failed: \(error.localizedDescription)")
                 }
-                return serializeJSResult(jsResult)
+                return serializeJSResult(jsResult.result)
             case .failure:
                 UIKitCommandLogging.error("command", "\(action) JS execution timed out after \(timeout)s")
                 throw UIKitCommandError.invalidData(action: action, message: "JS execution timed out after \(Int(timeout))s")
@@ -159,11 +173,9 @@ enum UIWebViewEvalExecutor {
         }
     }
 
-    /// 超时错误。
-    private struct TimeoutError: Error {}
-
     /// 异步执行 JS（iOS 14+，使用 async/await 避免阻塞主线程）。
     @available(iOS 14.0, *)
+    @MainActor
     private static func executeAsync(
         webView: WKWebView,
         function: String,
@@ -171,20 +183,20 @@ enum UIWebViewEvalExecutor {
         timeout: TimeInterval,
         action: String
     ) async throws -> (value: JSONValue, type: String) {
-        return try await withThrowingTaskGroup(of: Result<(Any?, Error?), Error>.self) { group in
+        return try await withThrowingTaskGroup(of: Result<JSExecutionResult, Error>.self) { group in
             // JS 执行任务
-            group.addTask { @MainActor in
+            group.addTask {
                 let args = arguments ?? [:]
-                let result = await withCheckedContinuation { (continuation: CheckedContinuation<Result<Any, Error>, Never>) in
+                let result: Result<Any, Error> = await withCheckedContinuation { continuation in
                     webView.callAsyncJavaScript(function, arguments: args, in: nil, in: .page) { jsResult in
                         continuation.resume(returning: jsResult)
                     }
                 }
                 switch result {
                 case .success(let value):
-                    return .success((value, nil))
+                    return .success(JSExecutionResult(result: value, error: nil))
                 case .failure(let error):
-                    return .success((nil, error))
+                    return .success(JSExecutionResult(result: nil, error: error))
                 }
             }
 
@@ -202,12 +214,12 @@ enum UIWebViewEvalExecutor {
             group.cancelAll()
 
             switch firstResult {
-            case .success(let (jsResult, jsError)):
-                if let error = jsError {
+            case .success(let jsResult):
+                if let error = jsResult.error {
                     UIKitCommandLogging.error("command", "\(action) async JS execution failed error=\(error)")
                     throw UIKitCommandError.invalidData(action: action, message: "JS execution failed: \(error.localizedDescription)")
                 }
-                return serializeJSResult(jsResult)
+                return serializeJSResult(jsResult.result)
             case .failure:
                 UIKitCommandLogging.error("command", "\(action) async JS execution timed out after \(timeout)s")
                 throw UIKitCommandError.invalidData(action: action, message: "JS execution timed out after \(Int(timeout))s")
