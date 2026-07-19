@@ -70,16 +70,21 @@
 | 类别 | 缺失项 | 频率 | 影响范围 | 优先级 |
 |-----|-------|------|---------|--------|
 | 极高频控件 | TabBar 导航 ✅已实现 | 🔴 | 几乎所有主流 App 的主导航 | P0 |
-| 高频控件 | UIDatePicker | 🟡 | 生日、预约、日程（80%+ App） | P0 |
-| 高频控件 | UIPickerView | 🟡 | 地区、分类、选项（80%+ App） | P0 |
+| 高频控件 | UIDatePicker ✅已实现 | 🟡 | 生日、预约、日程（80%+ App） | P0 |
+| 高频控件 | UIPickerView ✅已实现 | 🟡 | 地区、分类、选项（80%+ App） | P0 |
 | 高频控件 | UISearchBar | 🟡 | 搜索功能（70%+ App） | P1 |
-| 高频控件 | UIRefreshControl | 🟡 | 下拉刷新（90%+ 列表页） | P1 |
-| 手势 | Drag & Drop | 🟢 | 列表编辑、文件管理、日历 | P1 |
-| 混合场景 | WKWebView | 🟡 | H5 活动页、协议页（50%+ App） | P1 |
+| 高频控件 | UIRefreshControl | 🟡 | 下拉刷新（90%+ 列表页） | **P3（降级）** |
+| 手势 | Drag & Drop | 🟢 | 列表编辑、文件管理、日历 | P1（最低） |
+| 混合场景 | WKWebView | 🟡 | H5 活动页、协议页（50%+ App） | **P1（首推）** |
 | 系统级 | 系统权限弹窗 | 🔴 | 相机/位置/通知授权（几乎所有 App） | P2 |
 | 系统级 | App 生命周期 | 🟡 | 前后台切换、深度链接 | P2 |
 | 手势 | Pinch / Rotate | 🟢 | 地图、图片查看（40%+ App） | P3 |
 | 验证 | 视觉回归对比 | 🟢 | 自动化质量保障 | P3 |
+
+> **2026-07-18 优先级重排**（详见 §3.2.1 / §3.2.2 / §3.2.3 / §4）：
+> - **UIRefreshControl 从 P1 降级到 P3**：下拉刷新和首次加载共用同一个数据获取方法（主流 MVVM 架构），验证业务逻辑正确性已被首次加载覆盖；「重新触发加载逻辑」可用现有 `ui.navigation.back` / `ui.tabBar.selectTab` / 重启 App 间接实现。仅「刷新控件自身交互测试」（防抖、刷新态 UI）才不可替代，属低频。
+> - **WKWebView 保持 P1，成为 Phase 2 首推**：实现方案从原方案的一组细粒度命令（`tap`/`input`/`waitForElement`）**砍成单一 `ui.webView.eval` 命令**，DOM 操作交给 JS 生态，不自己写一套 Web DSL。Playwright 经评估无法接入（架构错位）。
+> - **Drag & Drop 保持 P1 但优先级最低**：多数 App 列表编辑提供「编辑」按钮入口，拖拽非唯一路径。
 
 
 ---
@@ -272,6 +277,8 @@ data: {
 
 #### 3.2.1 Drag & Drop
 
+> ⚠️ **2026-07-18 优先级调整**：本项在 Phase 2 内优先级最低。多数 App 的列表编辑模式提供「编辑」按钮入口（进入后用上下箭头或拖拽手柄重排），拖拽手势不是到达该功能的唯一路径。技术风险也最高（🔴，触摸注入复杂；iOS 26 上 App 内 UITouch 合成撞 `_setGSEvent`/`_setTouches` 私有 API 障碍，处于 spike 阶段，见 `Sources/iOSExploreUIKit/Support/Runtime/UITouch+Synthetic.swift`）。以下原方案保留作参考。
+
 **问题描述**：
 - 列表编辑模式（重排序）、日历拖拽事件、文件管理
 - 文档明确 ui.drag 不存在，ios-ui-gesture 只有 swipe/longPress
@@ -312,6 +319,35 @@ data: {
 ---
 
 #### 3.2.2 WKWebView 操作
+
+> ❌ **2026-07-18 架构决策：不实现 `ui.webView.eval` 及任何 WebView 自动化命令**
+>
+> **决策理由**：
+> 1. **职责边界混乱**：iOSExploreServer 的职责是 iOS native UI 自动化（UIKit/SwiftUI 层），WebView 内容属于前端测试工具（Puppeteer/Playwright/Selenium）的职责范围。把 Web 内容测试塞进 native 自动化工具 = 跨越了清晰的技术边界。
+>
+> 2. **重复造轮子**：Web 测试工具已经非常成熟（Puppeteer/Playwright 提供完整的浏览器自动化、调试协议、截图、网络拦截；Selenium 是跨浏览器测试标准；Chrome DevTools Protocol 是行业标准）。为每个平台（iOS/Android/鸿蒙）都实现一套 WebView 自动化 = 用低质量的实现替代成熟工具。
+>
+> 3. **维护成本爆炸**：iOS 的 WKWebView、Android 的 WebView、鸿蒙的 Web 组件各有不同的 API，每个平台的实现、bug、边界情况都不同。需要为每个平台维护一套完整的 Web 自动化能力。
+>
+> 4. **技术方案差**：通过 USB → HTTP → native bridge → JavaScript eval 这条链路既慢又脆弱，性能和可靠性都不如直接使用 Chrome DevTools Protocol 连接 WebView 的调试端口。
+>
+> **正确的混合 App 测试架构**：
+> ```
+> Native 层（UIKit/SwiftUI）         ← iOSExploreServer 负责
+>         ↓ 渲染
+> WebView 层（H5/JS）                ← Puppeteer/CDP 直接连接测试
+> ```
+>
+> **如果需要测试 Native 和 WebView 的交互**：
+> - Native 部分：用 iOSExploreServer 的 `ui.tap` 点击"打开 WebView"按钮
+> - WebView 内容：用前端测试工具通过 Chrome DevTools Protocol 连接 WKWebView
+> - 不需要在 iOSExploreServer 里实现 JavaScript 执行
+>
+> **结论**：WKWebView 自动化不属于 iOSExploreServer 的能力范围，建议用户使用正确的工具分层测试（Native 用 iOSExploreServer，WebView 用前端测试工具）。
+>
+> ---
+>
+> 下方原方案保留作历史记录，已废弃。
 
 **问题描述**：
 - 50%+ App 有 H5 混合页面（活动页、帮助文档、用户协议）
@@ -365,6 +401,19 @@ data: {
 ---
 
 #### 3.2.3 UIRefreshControl
+
+> ⚠️ **2026-07-18 降级：P1 → P3，不实现专用命令**。需要「重新触发页面加载」时改用现有导航类命令。下方原方案（扩展 `ui.scroll` 加 `trigger: "refresh"`）经评估**行不通**，保留作存档。
+>
+> **降级理由**：
+> 1. **业务逻辑被首次加载覆盖**：主流 MVVM 架构里，下拉刷新和首次加载共用同一个数据获取方法（`loadData()`）。验证「数据正确性、列表渲染、空态/错误态」这些最常见测试目的，首次进入页面已完整覆盖，不需要单独触发刷新。
+> 2. **「重新触发加载」现有命令已能做**：`ui.navigation.back` + 重新 push、`ui.tabBar.selectTab` 切走再切回、`launch_app_*` 重启 App，都会重新触发 `viewDidLoad`/`viewWillAppear` → 重跑加载逻辑。
+> 3. **不可替代场景极少**：只有「刷新控件自身交互」（防抖、刷新态 UI、与滚动状态交互）或「刷新逻辑与首次加载不一致」（强制清缓存参数）才需要独立测下拉刷新，属低频。
+>
+> **已评估路径 A「用 `ui.scroll` 模拟上下拉」——放弃**：`UIScrollGeometry.step` 把 `contentOffset.y` clamp 在 `minY = -inset.top`（`Sources/iOSExploreUIKit/Support/Action/UIScrollGeometry.swift:88`），连 MJRefresh 的 pulling 临界区都拉不到；且所有刷新库（原生 `UIRefreshControl`、MJRefresh）状态机从 `pulling` → `refreshing` 依赖 `scrollView.panGestureRecognizer.state == .ended`，`setContentOffset` 不产生 pan 事件，触发不了。`ui.swipe` executor 对 `UIScrollView` 显式跳过（系统 pan 单次 invoke 不滚动）。模拟器 HID 注入（`iOSDriver` 的 `NativeHid.touch` 三态）能通杀所有库但**只对模拟器有效，真机无 HID 通道**；App 内合成 UITouch 序列（`UITouch+Synthetic.swift`）只实现了 tap 两点、无连续 move，且 iOS 26 撞 `_setGSEvent`/`_setTouches` 私有 API 障碍，处于 spike 阶段。
+>
+> **已评估路径 B「直接调刷新方法」——放弃（放弃通杀）**：原生 `UIRefreshControl` 是 `UIControl`，现有 `ui.control.sendAction` 发 `.valueChanged` 即可（零新代码）；MJRefresh 走 ObjC runtime `perform(NSSelectorFromString("mj_header"))` + `beginRefreshing`（~50 行，不需 import 库），一次调用同时进 refreshing 态 + 调业务 block。但**每家库入口不同，只能按库分档**，而降级理由 1（首次加载覆盖）已满足核心测试需求，不值得为低频场景维护多档调用。
+>
+> 下方原方案保留作历史记录。
 
 **问题描述**：
 - 90%+ 列表页面有下拉刷新功能
@@ -553,21 +602,27 @@ data: {
 
 | 阶段 | 功能 | 影响 App 比例 | 实现复杂度 | 优先级 | 预计工作量 |
 |-----|------|-------------|-----------|--------|-----------|
-| **Phase 1** | TabBar 导航 | 90%+ | 🟢 低 | P0 | 2-3 天 |
-| | UIDatePicker | 80%+ | 🟡 中 | P0 | 3-5 天 |
-| | UIPickerView | 80%+ | 🟡 中 | P0 | 3-5 天 |
+| **Phase 1** | TabBar 导航 ✅ | 90%+ | 🟢 低 | P0 | 2-3 天 |
+| | UIDatePicker ✅ | 80%+ | 🟡 中 | P0 | 3-5 天 |
+| | UIPickerView ✅ | 80%+ | 🟡 中 | P0 | 3-5 天 |
 | | UISearchBar | 70%+ | 🟢 低 | P1 | 1-2 天 |
-| **Phase 2** | Drag & Drop | 40%+ | 🔴 高 | P1 | 5-7 天 |
-| | WKWebView | 50%+ | 🟡 中 | P1 | 5-7 天 |
-| | UIRefreshControl | 90%+ | 🟢 低 | P1 | 1-2 天 |
+| **Phase 2** | **WKWebView（单一 `ui.webView.eval`）** | 50%+ | 🟢 低（降） | **P1（首推）** | 1-2 天 |
+| | Drag & Drop | 40%+ | 🔴 高 | P1（最低） | 5-7 天 |
+| | ~~UIRefreshControl~~ | 90%+ | — | **P3（降级，不实现）** | 0 |
 | **Phase 3** | 系统权限弹窗 | 95%+ | 🔴 高 | P2 | 7-10 天 |
 | | App 生命周期 | 60%+ | 🟡 中 | P2 | 5-7 天 |
 | **Phase 4** | Pinch / Rotate | 40%+ | 🟡 中 | P3 | 3-5 天 |
 | | 视觉回归对比 | 30%+ | 🔴 高 | P3 | 7-10 天 |
 
-**总计**：
-- Phase 1: ~10-15 天（3 个 P0 + 1 个 P1）
-- Phase 2: ~11-16 天（3 个 P1）
+> **2026-07-18 矩阵更新**：
+> - Phase 1 三个 P0 已全部完成（TabBar/DatePicker/Picker，2026-07-17）。
+> - WKWebView 复杂度从 🟡 中降到 🟢 低（方案砍成单一 `ui.webView.eval`，工作量 5-7 天 → 1-2 天），成为 Phase 2 首推。
+> - UIRefreshControl 移出 Phase 2，降级到 P3 且不实现（理由见 §3.2.3）。
+> - Drag & Drop 保持 Phase 2 但优先级最低（多数 App 有「编辑」按钮替代入口）。
+
+**总计（更新后）**：
+- Phase 1: ✅ 完成（3 个 P0）
+- Phase 2: ~6-9 天（WKWebView 1-2 天首推 + Drag & Drop 5-7 天最低 + UISearchBar 1-2 天）
 - Phase 3: ~12-17 天（2 个 P2）
 - Phase 4: ~10-15 天（2 个 P3）
 
@@ -584,7 +639,7 @@ data: {
 
 2. **命令命名规范**：
    - 格式：`ui.<控件>.<动作>`
-   - 示例：`ui.tabBar.selectTab`、`ui.datePicker.setDate`、`ui.webView.tap`
+   - 示例：`ui.tabBar.selectTab`、`ui.datePicker.setDate`、`ui.webView.eval`
 
 3. **Skill 命名规范**：
    - 格式：`ios-<层级>-<场景>`
@@ -673,8 +728,10 @@ data: {
 
 ### 7.2 短期规划（1-2 个月）
 
-- 完成 Phase 1 全部 P0 功能
-- 完成 Phase 2 部分 P1 功能（WebView、RefreshControl）
+- ✅ Phase 1 全部 P0 功能已完成（2026-07-17）
+- 完成 Phase 2 首推：**WKWebView 单一 `ui.webView.eval` 命令**（方案见 §3.2.2，1-2 天）
+- UISearchBar 扩展 `ios-ui-form` skill 文档（方案 A，不新增命令）
+- RefreshControl 已降级 P3 不实现（见 §3.2.3）
 - 更新文档和示例
 
 ### 7.3 中期规划（3-6 个月）
