@@ -80,9 +80,42 @@ enum UIWebViewEvalExecutor {
                 "executionTime": .double(elapsed),
                 "iosVersion": .string(UIDevice.current.systemVersion)
             ]))
+        } else if let function = input.function {
+            // 异步模式
+            if #available(iOS 14.0, *) {
+                UIKitCommandLogging.info("command", "\(action) executing async function")
+                let result = try await executeAsync(
+                    webView: webView,
+                    function: function,
+                    arguments: input.arguments,
+                    timeout: input.timeout,
+                    action: action
+                )
+                let elapsed = Date().timeIntervalSince(startTime)
+
+                return .object([
+                    "result": result.value,
+                    "resultType": .string(result.type),
+                    "mode": .string("async"),
+                    "executionTime": .double(elapsed),
+                    "iosVersion": .string(UIDevice.current.systemVersion)
+                ])
+            } else {
+                // iOS 14 以下降级到同步模式
+                UIKitCommandLogging.info("command", "\(action) iOS < 14.0, downgrade to sync mode")
+                let result = try await executeSync(webView: webView, script: function, timeout: input.timeout, action: action)
+                let elapsed = Date().timeIntervalSince(startTime)
+
+                return .object([
+                    "result": result.value,
+                    "resultType": .string(result.type),
+                    "mode": .string("sync"),  // 降级标记
+                    "executionTime": .double(elapsed),
+                    "iosVersion": .string(UIDevice.current.systemVersion)
+                ])
+            }
         } else {
-            // TODO: 异步模式（后续任务）
-            throw UIKitCommandError.invalidData(action: action, message: "async mode not implemented yet")
+            throw UIKitCommandError.invalidData(action: action, message: "neither script nor function provided")
         }
     }
 
@@ -128,6 +161,59 @@ enum UIWebViewEvalExecutor {
 
     /// 超时错误。
     private struct TimeoutError: Error {}
+
+    /// 异步执行 JS（iOS 14+，使用 async/await 避免阻塞主线程）。
+    @available(iOS 14.0, *)
+    private static func executeAsync(
+        webView: WKWebView,
+        function: String,
+        arguments: [String: Any]?,
+        timeout: TimeInterval,
+        action: String
+    ) async throws -> (value: JSONValue, type: String) {
+        return try await withThrowingTaskGroup(of: Result<(Any?, Error?), Error>.self) { group in
+            // JS 执行任务
+            group.addTask { @MainActor in
+                let args = arguments ?? [:]
+                let result = await withCheckedContinuation { (continuation: CheckedContinuation<Result<Any, Error>, Never>) in
+                    webView.callAsyncJavaScript(function, arguments: args, in: nil, in: .page) { jsResult in
+                        continuation.resume(returning: jsResult)
+                    }
+                }
+                switch result {
+                case .success(let value):
+                    return .success((value, nil))
+                case .failure(let error):
+                    return .success((nil, error))
+                }
+            }
+
+            // 超时任务
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                return .failure(TimeoutError())
+            }
+
+            // 等待第一个完成的任务
+            guard let firstResult = try await group.next() else {
+                throw UIKitCommandError.invalidData(action: action, message: "unexpected group completion")
+            }
+
+            group.cancelAll()
+
+            switch firstResult {
+            case .success(let (jsResult, jsError)):
+                if let error = jsError {
+                    UIKitCommandLogging.error("command", "\(action) async JS execution failed error=\(error)")
+                    throw UIKitCommandError.invalidData(action: action, message: "JS execution failed: \(error.localizedDescription)")
+                }
+                return serializeJSResult(jsResult)
+            case .failure:
+                UIKitCommandLogging.error("command", "\(action) async JS execution timed out after \(timeout)s")
+                throw UIKitCommandError.invalidData(action: action, message: "JS execution timed out after \(Int(timeout))s (elapsed \(String(format: "%.2f", timeout))s)")
+            }
+        }
+    }
 
     /// 序列化 JS 结果。
     private static func serializeJSResult(_ result: Any?) -> (value: JSONValue, type: String) {

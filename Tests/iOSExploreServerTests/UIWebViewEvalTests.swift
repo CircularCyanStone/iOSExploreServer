@@ -260,4 +260,102 @@ func webViewEvalSyncJSErrorReturnsError() async throws {
     }
 }
 
+@Test("异步执行返回 Promise 结果")
+@MainActor
+@available(iOS 14.0, *)
+func webViewEvalAsyncReturnsPromise() async throws {
+    let vc = TestWebViewController(identifier: "test_web")
+    let window = UIWindow()
+    window.rootViewController = vc
+    window.makeKeyAndVisible()
+
+    vc.webView.loadHTMLString("<html></html>", baseURL: nil)
+    try await Task.sleep(nanoseconds: 500_000_000)
+
+    let input = try UIWebViewEvalInput.parse(from: [
+        "accessibilityIdentifier": .string("test_web"),
+        "function": .string("return await Promise.resolve(42)")
+    ])
+
+    let context = UIKitContextProvider.Context(
+        window: window,
+        rootViewController: vc,
+        topViewController: vc,
+        rootView: vc.view
+    )
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
+
+    guard case .object(let obj) = result else {
+        Issue.record("Expected object result")
+        return
+    }
+
+    #expect(obj["result"] == .double(42))
+    #expect(obj["mode"] == .string("async"))
+}
+
+@Test("异步执行带参数")
+@MainActor
+@available(iOS 14.0, *)
+func webViewEvalAsyncWithArguments() async throws {
+    let vc = TestWebViewController(identifier: "test_web")
+    let window = UIWindow()
+    window.rootViewController = vc
+    window.makeKeyAndVisible()
+
+    vc.webView.loadHTMLString("<html></html>", baseURL: nil)
+    try await Task.sleep(nanoseconds: 500_000_000)
+
+    let input = try UIWebViewEvalInput.parse(from: [
+        "accessibilityIdentifier": .string("test_web"),
+        "function": .string("return userId * 2"),
+        "arguments": .object(["userId": .double(10)])
+    ])
+
+    let context = UIKitContextProvider.Context(
+        window: window,
+        rootViewController: vc,
+        topViewController: vc,
+        rootView: vc.view
+    )
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
+
+    guard case .object(let obj) = result else {
+        Issue.record("Expected object result")
+        return
+    }
+
+    #expect(obj["result"] == .double(20))
+}
+
+@Test("异步执行超时返回 invalid_data")
+@MainActor
+@available(iOS 14.0, *)
+func webViewEvalAsyncTimeoutReturnsError() async throws {
+    let vc = TestWebViewController(identifier: "test_web")
+    let window = UIWindow()
+    window.rootViewController = vc
+    window.makeKeyAndVisible()
+
+    vc.webView.loadHTMLString("<html></html>", baseURL: nil)
+    try await Task.sleep(nanoseconds: 500_000_000)
+
+    let input = try UIWebViewEvalInput.parse(from: [
+        "accessibilityIdentifier": .string("test_web"),
+        "function": .string("await new Promise(resolve => setTimeout(resolve, 5000))"),
+        "timeout": .double(1)
+    ])
+
+    let context = UIKitContextProvider.Context(
+        window: window,
+        rootViewController: vc,
+        topViewController: vc,
+        rootView: vc.view
+    )
+
+    await #expect(throws: UIKitCommandError.self) {
+        _ = try await UIWebViewEvalExecutor.execute(input: input, context: context)
+    }
+}
+
 #endif
