@@ -9,7 +9,7 @@ import UIKit
 /// `ui.control.sendAction`、`ui.tap`、`ui.screenshot`、`ui.input`、`ui.keyboard.dismiss`、
 /// `ui.scroll`、`ui.navigation.back`、`ui.navigation.tapBarButton`、`ui.wait`、`ui.waitAny`、
 /// `ui.scrollToElement`、`ui.alert.respond`、`ui.controllers`、`ui.swipe`、`ui.longPress`、
-/// `ui.tabBar.selectTab`、`ui.datePicker.setDate`、`ui.picker.selectRow` 二十个命令显式挂到 router 上。
+/// `ui.tabBar.selectTab`、`ui.datePicker.setDate`、`ui.picker.selectRow`、`ui.webView.eval` 二十一个命令显式挂到 router 上。
 ///
 /// 该扩展整体位于 `#if canImport(UIKit)` 内：macOS 下不参与编译，iOS 下提供注册
 /// 实现。注册前会在 Debug 构建中安装 alert action handler 捕获；注册前后通过
@@ -52,7 +52,8 @@ public extension ExploreServer {
         register(UITabBarSelectCommand(), logCategory: .extensionCommand(category: "command"))
         register(UIDatePickerSetDateCommand(), logCategory: .extensionCommand(category: "command"))
         register(UIPickerSelectRowCommand(), logCategory: .extensionCommand(category: "command"))
-        UIKitCommandLogging.info("uikit.registrar", "registration completed count=20")
+        register(UIWebViewEvalCommand(), logCategory: .extensionCommand(category: "command"))
+        UIKitCommandLogging.info("uikit.registrar", "registration completed count=21")
     }
 }
 #endif
