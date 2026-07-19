@@ -52,6 +52,7 @@ final class ViewController: UIViewController {
         MenuItem(title: "Swipe 测试", subtitle: "UITableView swipe actions、UISwipeGestureRecognizer、UIPanGestureRecognizer，供 ui.swipe 验证", icon: "👆", viewControllerType: SwipeTestViewController.self),
         MenuItem(title: "LongPress 测试", subtitle: "UILongPressGestureRecognizer、Cell long press selection，供 ui.longPress 验证", icon: "✋", viewControllerType: LongPressTestViewController.self),
         MenuItem(title: "DatePicker/Picker 测试", subtitle: "UIDatePicker + UIPickerView，供 ui.datePicker.setDate 和 ui.picker.selectRow 验证", icon: "📅", viewControllerType: DatePickerPickerTestViewController.self),
+        MenuItem(title: "WebView 测试", subtitle: "WKWebView + JSBridge 模拟，供 ui.webView.eval 验证", icon: "🌐", viewControllerType: WebViewTestViewController.self),
     ]
 
     override func viewDidLoad() {
