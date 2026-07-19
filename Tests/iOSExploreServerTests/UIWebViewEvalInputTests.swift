@@ -23,7 +23,7 @@ func webViewEvalInputParsesFunction() throws {
         "path": .string("root/0/1"),
         "function": .string("return await fetch('/api/user')")
     ])
-    #expect(input.target == .path("root/0/1"))
+    #expect(input.target == .path([0, 1]))
     #expect(input.function == "return await fetch('/api/user')")
     #expect(input.script == nil)
 }

@@ -24,36 +24,19 @@ public struct UIWebViewEvalInput: CommandInput, Sendable {
             "function", description: "JS 函数体（异步模式），与 script 互斥"
         )
 
-        /// 可选 JSON object 字段：传递给 function 的参数。
-        static let arguments = CommandField<[String: Any]?>(
+        /// arguments 是 JSON object，无法用标量 `CommandField<Value>` 表达，故只用 `AnyCommandField`
+        /// 声明 schema；实际解析在 `parse(from:)` 手写。
+        static let arguments = AnyCommandField(
             name: "arguments",
             schema: CommandFieldSchema(type: .object,
                                        required: false,
-                                       description: "传递给 function 的参数，只能与 function 一起",
+                                       description: "传递给 function 的参数，只能与 function 一起使用",
                                        allowsNull: true)
-        ) { raw in
-            guard let raw = raw, raw != .null else { return nil }
-            guard case .object(let dict) = raw else {
-                throw CommandInputParseError("arguments must be an object")
-            }
-            // Convert JSON to [String: Any]
-            return dict.storage.mapValues { Self.convertJSONValueToAny($0) }
-        }
+        )
 
-        /// 超时时间字段，默认 5.0 秒。
-        static let timeout = CommandField<TimeInterval>(
-            name: "timeout",
-            schema: CommandFieldSchema(type: .number,
-                                       required: false,
-                                       description: "超时时间（秒），范围 1-30",
-                                       defaultValue: .double(5.0))
-        ) { raw in
-            guard let raw = raw, raw != .null else { return 5.0 }
-            guard let value = raw.doubleValue, value.isFinite else {
-                throw CommandInputParseError("timeout must be a finite number")
-            }
-            return value
-        }
+        static let timeout = CommandFields.optionalFiniteNumber(
+            "timeout", description: "超时时间（秒），范围 1-30，默认 5.0"
+        )
 
         static let all: [AnyCommandField] = [
             accessibilityIdentifier.erased,
@@ -61,7 +44,7 @@ public struct UIWebViewEvalInput: CommandInput, Sendable {
             viewSnapshotID.erased,
             script.erased,
             function.erased,
-            arguments.erased,
+            arguments,
             timeout.erased,
         ]
     }
@@ -100,31 +83,36 @@ public struct UIWebViewEvalInput: CommandInput, Sendable {
         constraints: []
     )
 
-    /// 将 JSONValue 转换为 Any（用于 arguments 字段）。
-    private static func convertJSONValueToAny(_ value: JSONValue) -> Any {
-        switch value {
-        case .string(let s): return s
-        case .double(let d): return d
-        case .bool(let b): return b
-        case .null: return NSNull()
-        case .array(let arr): return arr.map { convertJSONValueToAny($0) }
-        case .object(let obj): return obj.storage.mapValues { convertJSONValueToAny($0) }
-        }
-    }
-
-    /// 从声明式 decoder 解析输入。
+    /// 从原始 JSON data 解析输入。
     ///
-    /// 读取定位字段、script/function 模式、arguments 与 timeout，执行互斥校验后产出 typed 输入。
+    /// arguments 是 JSON object，无法走 `CommandField<Value>` + `decoder.read` 的标量机制，故在此手写：
+    /// 先用 decoder 拒绝未知顶层字段并读取标量字段，再从 data 手写解析 arguments。
+    ///
+    /// - Parameter data: `ExploreRequest.data` 中的原始参数对象。
+    /// - Returns: 已解析的 webView.eval 输入。
     /// - Throws: 字段类型/互斥/范围校验失败时抛 `CommandInputParseError`。
-    public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIWebViewEvalInput {
+    public static func parse(from data: JSON) throws -> UIWebViewEvalInput {
+        var decoder = CommandInputDecoder(data, schema: inputSchema)
+        try decoder.validateNoUnknownFields()
         let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
         let script = try decoder.read(Fields.script)
         let function = try decoder.read(Fields.function)
-        let arguments = try decoder.read(Fields.arguments)
-        let timeout = try decoder.read(Fields.timeout)
+        let timeout = try decoder.read(Fields.timeout) ?? 5.0
         let target = try UIKitLocatorInput.parse(decoder: &decoder,
                                                   identifierField: Fields.accessibilityIdentifier,
                                                   pathField: Fields.path)
+
+        // 手动解析 arguments（object 类型无法用 CommandField<Value> 表达）
+        let argumentsRaw = data["arguments"]
+        let arguments: [String: Any]?
+        if let raw = argumentsRaw, raw != JSONValue.null {
+            guard case .object(let dict) = raw else {
+                throw CommandInputParseError("arguments must be an object")
+            }
+            arguments = dict.storage.mapValues { convertJSONValueToAny($0) }
+        } else {
+            arguments = nil
+        }
 
         // 约束：script 与 function 互斥
         guard (script != nil) != (function != nil) else {
@@ -155,6 +143,31 @@ public struct UIWebViewEvalInput: CommandInput, Sendable {
             arguments: arguments,
             timeout: timeout
         )
+    }
+
+    /// 协议要求的 decoder 入口。
+    ///
+    /// webView.eval 的 arguments object 只能整体从原始 data 解析，而 `CommandInputDecoder` 不向
+    /// 扩展模块暴露原始 data，故真实解析在 `parse(from:)`。`AnyCommand` 始终走 `parse(from:)`，
+    /// 本方法不会被调用，仅满足协议签名；若被调用则明确报错而非静默。
+    ///
+    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Returns: 已解析的 webView.eval 输入。
+    /// - Throws: 始终抛出 `CommandInputParseError`，提示改用 `parse(from:)`。
+    public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIWebViewEvalInput {
+        throw CommandInputParseError("UIWebViewEvalInput must be parsed via parse(from:)")
+    }
+
+    /// 将 JSONValue 转换为 Any（用于 arguments 字段）。
+    private static func convertJSONValueToAny(_ value: JSONValue) -> Any {
+        switch value {
+        case .string(let s): return s
+        case .double(let d): return d
+        case .bool(let b): return b
+        case .null: return NSNull()
+        case .array(let arr): return arr.map { convertJSONValueToAny($0) }
+        case .object(let obj): return obj.storage.mapValues { convertJSONValueToAny($0) }
+        }
     }
 }
 
