@@ -84,11 +84,11 @@ action: "ui.webView.eval"
 |-----|------|------|------|------|
 | `accessibilityIdentifier` | String | 二选一 | 与 `path` 互斥 | WKWebView 的 accessibilityIdentifier |
 | `path` | String | 二选一 | 与 `accessibilityIdentifier` 互斥 | WKWebView 的路径（如 `root/0/1`） |
-| `script` | String | 二选一 | 与 `function` 互斥 | JS 代码字符串（同步模式） |
-| `function` | String | 二选一 | 与 `script` 互斥 | JS 函数字符串（异步模式，支持 async/await） |
-| `arguments` | Object | 否 | 只能与 `function` 一起 | 传递给 `function` 的参数（仅异步模式） |
-| `timeout` | Number | 否 | 范围 1-30 | 超时时间（秒），默认 5 |
-| `viewSnapshotID` | String | 否 | - | 陈旧校验快照 ID（来自 `ui.inspect`） |
+| `script` | String | 二选一 | 与 `function` 互斥 | JS 代码字符串（同步模式）；最后一个表达式的值自动作为返回值，无需显式 `return` |
+| `function` | String | 二选一 | 与 `script` 互斥 | JS 函数体（异步模式）；不含 `async` 包装器，会被自动包装为 `async function() { <functionBody> }` 执行 |
+| `arguments` | Object | 否 | 只能与 `function` 一起 | 传递给 `function` 的参数（`[String: Any]` 字典）；作为 JS 函数的第一个参数传入，在函数体内用 `arguments[0]` 访问 |
+| `timeout` | Number | 否 | 范围 1-30 | 超时时间（秒），默认 5；包含定位、校验、执行的总时长 |
+| `viewSnapshotID` | String | 否 | - | 陈旧校验快照 ID（来自 `ui.inspect`）；校验在定位成功后、执行 JS 之前进行 |
 
 **Schema 约束**：
 ```swift
@@ -167,7 +167,7 @@ if let function = input.function {
         return try await executeAsync(webView, function, input.arguments, input.timeout)
     } else {
         // 降级到同步模式：evaluateJavaScript
-        UIKitCommandLogging.info("command", "iOS < 14.0, downgrade to sync mode")
+        UIKitCommandLogging.debug("command", "iOS < 14.0, downgrade to sync mode (expected behavior)")
         return try await executeSync(webView, function, input.timeout)
     }
 } else if let script = input.script {
@@ -175,6 +175,8 @@ if let function = input.function {
     return try await executeSync(webView, script, input.timeout)
 }
 ```
+
+**陈旧校验时机**：在定位成功后、执行 JS 之前进行。如果 `viewSnapshotID` 不匹配，返回 `stale_locator` 且不执行 JS。
 
 ### 4.3 底层 API 选择
 
@@ -228,7 +230,11 @@ JS 返回值需要转换为 `JSONValue`：
 | `string` | `String` | `.string(String)` | `"string"` |
 | `Array` | `[Any]` | `.array([JSONValue])` | `"array"` |
 | `Object` | `[String: Any]` | `.object([String: JSONValue])` | `"object"` |
-| 其他 | - | `.null` | 类型描述字符串 |
+| 其他（DOM 节点、Function、Symbol 等） | - | `.null` | `"object"` |
+
+**说明**：
+- `resultType` 是固定的 6 种枚举值：`null`、`boolean`、`number`、`string`、`array`、`object`
+- 不可序列化的类型（DOM 节点、Function、Symbol 等）统一映射为 `result: null` + `resultType: "object"`，实际类型会在日志中记录
 
 **NSNumber 类型判断**：
 - 使用 `CFNumberGetType` 区分 Bool（`charType`）vs Int vs Double
@@ -289,7 +295,7 @@ curl -X POST http://localhost:38321/ -d '{
   "action": "ui.webView.eval",
   "data": {
     "path": "root/0/1",
-    "script": "return document.title;",
+    "script": "document.title",
     "viewSnapshotID": "snap-1"
   }
 }'
@@ -307,6 +313,8 @@ curl -X POST http://localhost:38321/ -d '{
 }
 ```
 
+**说明**：`script` 执行后的最后一个表达式的值自动作为返回值，无需显式 `return`。
+
 ### 6.3 异步模式：等待 AJAX（iOS 14+）
 
 ```bash
@@ -314,7 +322,7 @@ curl -X POST http://localhost:38321/ -d '{
   "action": "ui.webView.eval",
   "data": {
     "accessibilityIdentifier": "web_container",
-    "function": "async () => { const res = await fetch(\"/api/user\"); return await res.json(); }",
+    "function": "const res = await fetch(\"/api/user\"); return await res.json();",
     "timeout": 10
   }
 }'
@@ -332,6 +340,8 @@ curl -X POST http://localhost:38321/ -d '{
 }
 ```
 
+**说明**：`function` 字段是函数体（不含 `async` 包装器），会被自动包装为 `async function() { <functionBody> }` 执行。
+
 ### 6.4 异步模式：带参数（iOS 14+）
 
 ```bash
@@ -339,12 +349,17 @@ curl -X POST http://localhost:38321/ -d '{
   "action": "ui.webView.eval",
   "data": {
     "accessibilityIdentifier": "web_container",
-    "function": "async (userId) => { return document.querySelector(`#user-${userId}`).textContent; }",
+    "function": "const {userId} = arguments[0]; return document.querySelector(`#user-${userId}`).textContent;",
     "arguments": {"userId": 123},
     "timeout": 5
   }
 }'
 ```
+
+**说明**：
+- `arguments` 是 `[String: Any]` 字典，会作为 JS 函数的第一个参数传入
+- 在函数体内用 `arguments[0]` 访问，然后解构：`const {userId} = arguments[0]`
+- 或者直接访问：`arguments[0].userId`
 
 ### 6.5 错误场景：超时
 
@@ -390,10 +405,12 @@ curl -X POST http://localhost:38321/ -d '{
 - ✅ 同步模式：执行 JS 错误，返回 `invalid_data`
 - ✅ 同步模式：超时，返回 `invalid_data`
 - ✅ 异步模式（iOS 14+）：执行 async function，返回 object
-- ✅ 异步模式降级（iOS 13）：自动降级到 sync
+- ✅ 异步模式降级（iOS 13 或更低）：在 iOS 13 环境下自动降级到 sync，`mode` 字段返回 `"sync"`
 - ✅ 定位失败：返回 `target_not_found`
 - ✅ 目标非 WKWebView：返回 `invalid_data`
 - ✅ 陈旧校验：带 `viewSnapshotID` 且陈旧，返回 `stale_locator`
+
+**说明**：iOS 13 或更低版本的降级测试需要额外的模拟器或真机环境。
 
 ### 7.3 端到端测试（SPMExample）
 
