@@ -270,7 +270,7 @@ curl -X POST http://localhost:38321/ -d '{
   "action": "ui.webView.eval",
   "data": {
     "accessibilityIdentifier": "web_container",
-    "script": "window.bridge.goPay(); return true;",
+    "script": "window.bridge.goPay(); true",
     "timeout": 5
   }
 }'
@@ -287,6 +287,8 @@ curl -X POST http://localhost:38321/ -d '{
   }
 }
 ```
+
+**说明**：最后一个表达式 `true` 自动作为返回值。如果只需要触发 JSBridge 调用而不关心返回值，可以只写 `"script": "window.bridge.goPay()"`。
 
 ### 6.2 同步模式：读取页面状态
 
