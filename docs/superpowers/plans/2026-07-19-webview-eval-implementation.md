@@ -388,7 +388,7 @@ func webViewEvalLocatesWebView() async throws {
     ])
     
     let context = try UIKitContextProvider.currentContext(action: "ui.webView.eval")
-    let result = try UIWebViewEvalExecutor.execute(input: input, context: context)
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
     
     // 暂时只验证不抛错
     #expect(result != nil)
@@ -409,7 +409,7 @@ func webViewEvalLocateFailsReturnsError() async throws {
     let context = try UIKitContextProvider.currentContext(action: "ui.webView.eval")
     
     #expect(throws: UIKitCommandError.self) {
-        _ = try UIWebViewEvalExecutor.execute(input: input, context: context)
+        _ = try await UIWebViewEvalExecutor.execute(input: input, context: context)
     }
 }
 
@@ -433,7 +433,7 @@ func webViewEvalNonWebViewReturnsError() async throws {
     let context = try UIKitContextProvider.currentContext(action: "ui.webView.eval")
     
     #expect(throws: UIKitCommandError.self) {
-        _ = try UIWebViewEvalExecutor.execute(input: input, context: context)
+        _ = try await UIWebViewEvalExecutor.execute(input: input, context: context)
     }
 }
 
@@ -474,7 +474,7 @@ enum UIWebViewEvalExecutor {
     ///   - context: 当前 UIKit 查询上下文。
     /// - Returns: 执行结果（result / resultType / mode / executionTime / iosVersion）。
     /// - Throws: `UIKitCommandError` — 定位失败 / 陈旧 / 目标非 WKWebView / 超时 / JS 错误。
-    static func execute(input: UIWebViewEvalInput, context: UIKitContextProvider.Context) throws -> JSON {
+    static func execute(input: UIWebViewEvalInput, context: UIKitContextProvider.Context) async throws -> JSON {
         let action = "ui.webView.eval"
         
         // 1. 定位 WKWebView
@@ -576,7 +576,7 @@ func webViewEvalSyncReturnsString() async throws {
     ])
     
     let context = try UIKitContextProvider.currentContext(action: "ui.webView.eval")
-    let result = try UIWebViewEvalExecutor.execute(input: input, context: context)
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
     
     guard case .object(let obj) = result else {
         Issue.record("Expected object result")
@@ -605,7 +605,7 @@ func webViewEvalSyncReturnsNumber() async throws {
     ])
     
     let context = try UIKitContextProvider.currentContext(action: "ui.webView.eval")
-    let result = try UIWebViewEvalExecutor.execute(input: input, context: context)
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
     
     guard case .object(let obj) = result else {
         Issue.record("Expected object result")
@@ -633,7 +633,7 @@ func webViewEvalSyncReturnsBoolean() async throws {
     ])
     
     let context = try UIKitContextProvider.currentContext(action: "ui.webView.eval")
-    let result = try UIWebViewEvalExecutor.execute(input: input, context: context)
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
     
     guard case .object(let obj) = result else {
         Issue.record("Expected object result")
@@ -661,7 +661,7 @@ func webViewEvalSyncReturnsNull() async throws {
     ])
     
     let context = try UIKitContextProvider.currentContext(action: "ui.webView.eval")
-    let result = try UIWebViewEvalExecutor.execute(input: input, context: context)
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
     
     guard case .object(let obj) = result else {
         Issue.record("Expected object result")
@@ -691,7 +691,7 @@ func webViewEvalSyncJSErrorReturnsError() async throws {
     let context = try UIKitContextProvider.currentContext(action: "ui.webView.eval")
     
     #expect(throws: UIKitCommandError.self) {
-        _ = try UIWebViewEvalExecutor.execute(input: input, context: context)
+        _ = try await UIWebViewEvalExecutor.execute(input: input, context: context)
     }
 }
 ```
@@ -732,38 +732,48 @@ if let script = input.script {
 
 // 在文件末尾添加辅助方法
 
-/// 同步执行 JS。
-private static func executeSync(webView: WKWebView, script: String, timeout: TimeInterval, action: String) throws -> (value: JSONValue, type: String) {
-    var jsResult: Any?
-    var jsError: Error?
-    let semaphore = DispatchSemaphore(value: 0)
-    
-    webView.evaluateJavaScript(script) { result, error in
-        jsResult = result
-        jsError = error
-        semaphore.signal()
+/// 同步执行 JS（使用 async/await 避免阻塞主线程）。
+private static func executeSync(webView: WKWebView, script: String, timeout: TimeInterval, action: String) async throws -> (value: JSONValue, type: String) {
+    return try await withThrowingTaskGroup(of: Result<(Any?, Error?), Error>.self) { group in
+        // JS 执行任务
+        group.addTask {
+            let result = await withCheckedContinuation { (continuation: CheckedContinuation<(Any?, Error?), Never>) in
+                webView.evaluateJavaScript(script) { result, error in
+                    continuation.resume(returning: (result, error))
+                }
+            }
+            return .success(result)
+        }
+        
+        // 超时任务
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            return .failure(TimeoutError())
+        }
+        
+        // 等待第一个完成的任务
+        guard let firstResult = try await group.next() else {
+            throw UIKitCommandError.invalidData(action: action, message: "unexpected group completion")
+        }
+        
+        group.cancelAll()
+        
+        switch firstResult {
+        case .success(let (jsResult, jsError)):
+            if let error = jsError {
+                UIKitCommandLogging.error("command", "\(action) JS execution failed error=\(error)")
+                throw UIKitCommandError.invalidData(action: action, message: "JS execution failed: \(error.localizedDescription)")
+            }
+            return serializeJSResult(jsResult)
+        case .failure:
+            UIKitCommandLogging.error("command", "\(action) JS execution timed out after \(timeout)s")
+            throw UIKitCommandError.invalidData(action: action, message: "JS execution timed out after \(Int(timeout))s (elapsed \(String(format: "%.2f", timeout))s)")
+        }
     }
-    
-    let timeoutResult = semaphore.wait(timeout: .now() + timeout)
-    
-    if timeoutResult == .timedOut {
-        UIKitCommandLogging.error("command", "\(action) JS execution timed out after \(timeout)s")
-        throw UIKitCommandError.invalidData(
-            action: action,
-            message: "JS execution timed out after \(Int(timeout))s (elapsed \(String(format: "%.2f", timeout))s)"
-        )
-    }
-    
-    if let error = jsError {
-        UIKitCommandLogging.error("command", "\(action) JS execution failed error=\(error)")
-        throw UIKitCommandError.invalidData(
-            action: action,
-            message: "JS execution failed: \(error.localizedDescription)"
-        )
-    }
-    
-    return serializeJSResult(jsResult)
 }
+
+/// 超时错误。
+private struct TimeoutError: Error {}
 
 /// 序列化 JS 结果。
 private static func serializeJSResult(_ result: Any?) -> (value: JSONValue, type: String) {
@@ -772,9 +782,9 @@ private static func serializeJSResult(_ result: Any?) -> (value: JSONValue, type
     }
     
     if let number = result as? NSNumber {
-        // 区分 Bool / Int / Double
-        let objCType = String(cString: number.objCType)
-        if objCType == "c" || objCType == "B" {
+        // 使用 CFNumberGetType 区分 Bool / Int / Double
+        let cfType = CFNumberGetType(number as CFNumber)
+        if cfType == .charType {
             // Bool
             return (.bool(number.boolValue), "boolean")
         } else {
@@ -853,7 +863,7 @@ func webViewEvalAsyncReturnsPromise() async throws {
     ])
     
     let context = try UIKitContextProvider.currentContext(action: "ui.webView.eval")
-    let result = try UIWebViewEvalExecutor.execute(input: input, context: context)
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
     
     guard case .object(let obj) = result else {
         Issue.record("Expected object result")
@@ -883,7 +893,7 @@ func webViewEvalAsyncWithArguments() async throws {
     ])
     
     let context = try UIKitContextProvider.currentContext(action: "ui.webView.eval")
-    let result = try UIWebViewEvalExecutor.execute(input: input, context: context)
+    let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
     
     guard case .object(let obj) = result else {
         Issue.record("Expected object result")
@@ -914,7 +924,7 @@ func webViewEvalAsyncTimeoutReturnsError() async throws {
     let context = try UIKitContextProvider.currentContext(action: "ui.webView.eval")
     
     #expect(throws: UIKitCommandError.self) {
-        _ = try UIWebViewEvalExecutor.execute(input: input, context: context)
+        _ = try await UIWebViewEvalExecutor.execute(input: input, context: context)
     }
 }
 ```
@@ -973,7 +983,7 @@ else if let function = input.function {
 
 // 在文件末尾添加异步执行方法
 
-/// 异步执行 JS（iOS 14+）。
+/// 异步执行 JS（iOS 14+，使用 async/await 避免阻塞主线程）。
 @available(iOS 14.0, *)
 private static func executeAsync(
     webView: WKWebView,
@@ -981,42 +991,49 @@ private static func executeAsync(
     arguments: [String: Any]?,
     timeout: TimeInterval,
     action: String
-) throws -> (value: JSONValue, type: String) {
-    var jsResult: Any?
-    var jsError: Error?
-    let semaphore = DispatchSemaphore(value: 0)
-    
-    let args = arguments.map { ["arguments": [$0]] } ?? [:]
-    
-    webView.callAsyncJavaScript(function, arguments: args, in: nil, in: .page) { result in
-        switch result {
-        case .success(let value):
-            jsResult = value
-        case .failure(let error):
-            jsError = error
+) async throws -> (value: JSONValue, type: String) {
+    return try await withThrowingTaskGroup(of: Result<(Any?, Error?), Error>.self) { group in
+        // JS 执行任务
+        group.addTask {
+            let args = arguments ?? [:]
+            let result = await withCheckedContinuation { (continuation: CheckedContinuation<Result<Any, Error>, Never>) in
+                webView.callAsyncJavaScript(function, arguments: args, in: nil, in: .page) { jsResult in
+                    continuation.resume(returning: jsResult)
+                }
+            }
+            switch result {
+            case .success(let value):
+                return .success((value, nil))
+            case .failure(let error):
+                return .success((nil, error))
+            }
         }
-        semaphore.signal()
+        
+        // 超时任务
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            return .failure(TimeoutError())
+        }
+        
+        // 等待第一个完成的任务
+        guard let firstResult = try await group.next() else {
+            throw UIKitCommandError.invalidData(action: action, message: "unexpected group completion")
+        }
+        
+        group.cancelAll()
+        
+        switch firstResult {
+        case .success(let (jsResult, jsError)):
+            if let error = jsError {
+                UIKitCommandLogging.error("command", "\(action) async JS execution failed error=\(error)")
+                throw UIKitCommandError.invalidData(action: action, message: "JS execution failed: \(error.localizedDescription)")
+            }
+            return serializeJSResult(jsResult)
+        case .failure:
+            UIKitCommandLogging.error("command", "\(action) async JS execution timed out after \(timeout)s")
+            throw UIKitCommandError.invalidData(action: action, message: "JS execution timed out after \(Int(timeout))s (elapsed \(String(format: "%.2f", timeout))s)")
+        }
     }
-    
-    let timeoutResult = semaphore.wait(timeout: .now() + timeout)
-    
-    if timeoutResult == .timedOut {
-        UIKitCommandLogging.error("command", "\(action) async JS execution timed out after \(timeout)s")
-        throw UIKitCommandError.invalidData(
-            action: action,
-            message: "JS execution timed out after \(Int(timeout))s (elapsed \(String(format: "%.2f", timeout))s)"
-        )
-    }
-    
-    if let error = jsError {
-        UIKitCommandLogging.error("command", "\(action) async JS execution failed error=\(error)")
-        throw UIKitCommandError.invalidData(
-            action: action,
-            message: "JS execution failed: \(error.localizedDescription)"
-        )
-    }
-    
-    return serializeJSResult(jsResult)
 }
 ```
 
