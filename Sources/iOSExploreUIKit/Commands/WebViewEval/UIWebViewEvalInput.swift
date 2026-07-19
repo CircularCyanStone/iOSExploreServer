@@ -11,7 +11,7 @@ import iOSExploreServer
 ///
 /// `arguments` 只能与 `function` 一起使用，作为函数的第一个参数传入。
 /// `timeout` 范围 1-30 秒，默认 5 秒。
-public struct UIWebViewEvalInput: CommandInput, Sendable, Equatable {
+public struct UIWebViewEvalInput: CommandInput, Sendable {
     private enum Fields {
         static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
         static let path = UIKitLocatorFields.path
