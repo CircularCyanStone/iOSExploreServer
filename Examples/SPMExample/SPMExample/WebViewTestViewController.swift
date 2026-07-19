@@ -72,68 +72,12 @@ final class WebViewTestViewController: UIViewController {
     }
 
     private func loadTestHTML() {
-        let html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>WebView 测试页</title>
-            <style>
-                body { font-family: -apple-system; padding: 20px; }
-                button {
-                    padding: 12px 24px;
-                    font-size: 16px;
-                    margin: 10px 0;
-                    display: block;
-                    width: 100%;
-                }
-                #status {
-                    margin-top: 20px;
-                    padding: 10px;
-                    background: #f0f0f0;
-                    border-radius: 5px;
-                }
-            </style>
-        </head>
-        <body>
-            <h1>WebView 测试页</h1>
-            <p>用于测试 <code>ui.webView.eval</code> 命令</p>
-
-            <button onclick="window.testBridge.showAlert('Alert from JS')">
-                触发 Native Alert
-            </button>
-
-            <button onclick="window.testBridge.navigate('detail')">
-                跳转到 Native 详情页
-            </button>
-
-            <div id="status">
-                <strong>当前状态：</strong><span id="status-text">就绪</span>
-            </div>
-
-            <script>
-                // 模拟 JSBridge
-                window.testBridge = {
-                    showAlert: function(message) {
-                        document.getElementById('status-text').textContent = 'showAlert called: ' + message;
-                        // 实际场景会调用 webkit.messageHandlers
-                    },
-                    navigate: function(page) {
-                        document.getElementById('status-text').textContent = 'navigate called: ' + page;
-                    }
-                };
-
-                // 测试用全局状态
-                window.testData = {
-                    userId: 12345,
-                    userName: 'Alice'
-                };
-            </script>
-        </body>
-        </html>
-        """
-
-        webView.loadHTMLString(html, baseURL: nil)
+        guard let htmlPath = Bundle.main.path(forResource: "webview_test", ofType: "html"),
+              let htmlString = try? String(contentsOfFile: htmlPath, encoding: .utf8) else {
+            resultLabel.text = "❌ 无法加载测试 HTML 文件"
+            resultLabel.textColor = .systemRed
+            return
+        }
+        webView.loadHTMLString(htmlString, baseURL: Bundle.main.bundleURL)
     }
 }

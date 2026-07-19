@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebView Eval Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .section {
+            background: white;
+            margin-bottom: 20px;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .section h2 {
+            color: #333;
+            font-size: 20px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .section p {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,122,255,0.3);
+        }
+
+        button:active {
+            transform: scale(0.95);
+            box-shadow: 0 1px 2px rgba(0,122,255,0.3);
+        }
+
+        button.secondary {
+            background: linear-gradient(135deg, #34C759 0%, #248A3D 100%);
+            box-shadow: 0 2px 4px rgba(52,199,89,0.3);
+        }
+
+        button.danger {
+            background: linear-gradient(135deg, #FF3B30 0%, #D70015 100%);
+            box-shadow: 0 2px 4px rgba(255,59,48,0.3);
+        }
+
+        input[type="text"] {
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            width: 100%;
+            max-width: 300px;
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #007AFF;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-left: 4px solid #007AFF;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            font-size: 13px;
+            color: #333;
+            line-height: 1.6;
+            word-break: break-all;
+            white-space: pre-wrap;
+            min-height: 40px;
+        }
+
+        .result.success {
+            border-left-color: #34C759;
+            background: #f0fdf4;
+        }
+
+        .result.error {
+            border-left-color: #FF3B30;
+            background: #fef2f2;
+            color: #dc2626;
+        }
+
+        .counter-display {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #007AFF;
+            color: white;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-left: 10px;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .alert-box {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            z-index: 1000;
+            min-width: 280px;
+            max-width: 90%;
+        }
+
+        .alert-box.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -60%);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, -50%);
+            }
+        }
+
+        .alert-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+
+        .alert-overlay.show {
+            display: block;
+        }
+
+        .alert-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .alert-message {
+            font-size: 15px;
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .alert-button {
+            width: 100%;
+            padding: 12px;
+            background: #007AFF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #007AFF;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 ui.webView.eval 测试页面</h1>
+
+        <!-- 1. 基础 JS 执行 -->
+        <section class="section">
+            <h2>1. 基础 JS 执行</h2>
+            <p>测试简单的 JavaScript 表达式计算和属性访问</p>
+            <div class="button-group">
+                <button onclick="testBasic1()">计算 2 + 2</button>
+                <button onclick="testBasic2()">获取 window.location.href</button>
+                <button onclick="testBasic3()">读取 document.title</button>
+                <button class="secondary" onclick="testBasic4()">获取 User Agent</button>
+            </div>
+            <div id="basic-result" class="result">等待执行...</div>
+        </section>
+
+        <!-- 2. DOM 操作 -->
+        <section class="section">
+            <h2>2. DOM 操作</h2>
+            <p>测试对页面 DOM 的读取和修改能力</p>
+            <div class="input-group">
+                <input type="text" id="dom-input" placeholder="输入一些文字..." value="Hello WebView!">
+                <button onclick="testDom1()">显示输入内容</button>
+            </div>
+            <div class="button-group">
+                <button onclick="testDom2()">修改页面标题</button>
+                <button onclick="testDom3()">添加新元素</button>
+                <button onclick="testDom4()">统计 button 数量</button>
+                <button class="secondary" onclick="testDom5()">获取所有 section 标题</button>
+            </div>
+            <div id="dom-result" class="result">等待执行...</div>
+            <div id="dom-dynamic-content"></div>
+        </section>
+
+        <!-- 3. 全局状态 -->
+        <section class="section">
+            <h2>3. 全局状态管理</h2>
+            <p>测试 window 对象上的全局变量存储和读取</p>
+            <div class="button-group">
+                <button onclick="testState1()">设置 testData</button>
+                <button onclick="testState2()">读取 testData</button>
+                <button onclick="testState3()">清除 testData</button>
+            </div>
+            <div class="button-group">
+                <button onclick="testCounter()">计数器 +1</button>
+                <span class="counter-display" id="counter-display">0</span>
+                <button class="danger" onclick="resetCounter()">重置</button>
+            </div>
+            <div id="state-result" class="result">等待执行...</div>
+        </section>
+
+        <!-- 4. JSBridge 模拟 -->
+        <section class="section">
+            <h2>4. JSBridge 模拟</h2>
+            <p>模拟原生与 WebView 交互的 bridge 对象</p>
+            <div class="button-group">
+                <button onclick="testBridge1()">showAlert("Hello")</button>
+                <button onclick="testBridge2()">navigate("/home")</button>
+                <button onclick="testBridge3()">获取 bridge 方法列表</button>
+                <button class="secondary" onclick="testBridge4()">调用 getData()</button>
+            </div>
+            <div id="bridge-result" class="result">等待执行...</div>
+        </section>
+
+        <!-- 5. 异步操作 -->
+        <section class="section">
+            <h2>5. 异步操作 (iOS 14+)</h2>
+            <p>测试 Promise 和异步函数的返回值处理</p>
+            <div class="button-group">
+                <button onclick="testAsync1()">3秒后 resolve</button>
+                <button onclick="testAsync2()">模拟异步加载</button>
+                <button onclick="testAsync3()">模拟 fetch 请求</button>
+                <button class="danger" onclick="testAsync4()">Promise reject</button>
+            </div>
+            <div id="async-result" class="result">等待执行...</div>
+        </section>
+
+        <!-- 6. 复杂对象返回 -->
+        <section class="section">
+            <h2>6. 复杂数据结构</h2>
+            <p>测试嵌套对象、数组等复杂数据的返回</p>
+            <div class="button-group">
+                <button onclick="testComplex1()">返回嵌套对象</button>
+                <button onclick="testComplex2()">返回对象数组</button>
+                <button onclick="testComplex3()">返回 null/undefined</button>
+                <button class="secondary" onclick="testComplex4()">返回混合类型数组</button>
+            </div>
+            <div id="complex-result" class="result">等待执行...</div>
+        </section>
+
+        <!-- 7. 错误场景 -->
+        <section class="section">
+            <h2>7. 错误处理</h2>
+            <p>测试各种 JavaScript 错误场景的处理</p>
+            <div class="button-group">
+                <button class="danger" onclick="testError1()">抛出 Error</button>
+                <button class="danger" onclick="testError2()">引用未定义变量</button>
+                <button class="danger" onclick="testError3()">语法错误函数</button>
+                <button class="danger" onclick="testError4()">类型错误</button>
+            </div>
+            <div id="error-result" class="result">等待执行...</div>
+        </section>
+    </div>
+
+    <!-- Alert Overlay -->
+    <div class="alert-overlay" id="alert-overlay" onclick="closeAlert()"></div>
+    <div class="alert-box" id="alert-box">
+        <div class="alert-title">系统消息</div>
+        <div class="alert-message" id="alert-message"></div>
+        <button class="alert-button" onclick="closeAlert()">确定</button>
+    </div>
+
+    <script>
+        // ========== 全局状态 ==========
+        window.testData = null;
+        window.counter = 0;
+
+        // ========== JSBridge 模拟 ==========
+        window.testBridge = {
+            showAlert: function(message) {
+                return {
+                    action: 'showAlert',
+                    message: message,
+                    timestamp: new Date().toISOString()
+                };
+            },
+            navigate: function(url) {
+                return {
+                    action: 'navigate',
+                    url: url,
+                    timestamp: new Date().toISOString()
+                };
+            },
+            getData: function() {
+                return {
+                    userId: 12345,
+                    userName: 'TestUser',
+                    permissions: ['read', 'write', 'admin'],
+                    settings: {
+                        theme: 'dark',
+                        language: 'zh-CN'
+                    }
+                };
+            }
+        };
+
+        // ========== 工具函数 ==========
+        function showResult(elementId, value, isError = false) {
+            const resultDiv = document.getElementById(elementId);
+            resultDiv.className = isError ? 'result error' : 'result success';
+
+            if (typeof value === 'object') {
+                resultDiv.textContent = JSON.stringify(value, null, 2);
+            } else {
+                resultDiv.textContent = String(value);
+            }
+        }
+
+        function showAlert(message) {
+            document.getElementById('alert-message').textContent = message;
+            document.getElementById('alert-overlay').classList.add('show');
+            document.getElementById('alert-box').classList.add('show');
+        }
+
+        function closeAlert() {
+            document.getElementById('alert-overlay').classList.remove('show');
+            document.getElementById('alert-box').classList.remove('show');
+        }
+
+        // ========== 1. 基础 JS 执行 ==========
+        function testBasic1() {
+            const result = 2 + 2;
+            showResult('basic-result', `2 + 2 = ${result}`);
+            return result;
+        }
+
+        function testBasic2() {
+            const url = window.location.href;
+            showResult('basic-result', `URL: ${url}`);
+            return url;
+        }
+
+        function testBasic3() {
+            const title = document.title;
+            showResult('basic-result', `Title: ${title}`);
+            return title;
+        }
+
+        function testBasic4() {
+            const ua = navigator.userAgent;
+            showResult('basic-result', `User Agent: ${ua}`);
+            return ua;
+        }
+
+        // ========== 2. DOM 操作 ==========
+        function testDom1() {
+            const input = document.getElementById('dom-input');
+            const value = input.value;
+            showResult('dom-result', `输入内容: "${value}"`);
+            return value;
+        }
+
+        function testDom2() {
+            const newTitle = 'Title Changed at ' + new Date().toLocaleTimeString();
+            document.title = newTitle;
+            showResult('dom-result', `页面标题已修改为: ${newTitle}`);
+            return newTitle;
+        }
+
+        function testDom3() {
+            const newDiv = document.createElement('div');
+            newDiv.style.cssText = 'padding: 10px; margin-top: 10px; background: #e3f2fd; border-radius: 6px; color: #1976d2;';
+            newDiv.textContent = `✅ 动态添加的元素 (${new Date().toLocaleTimeString()})`;
+
+            const container = document.getElementById('dom-dynamic-content');
+            container.appendChild(newDiv);
+
+            const count = container.children.length;
+            showResult('dom-result', `已添加新元素，当前共 ${count} 个动态元素`);
+            return count;
+        }
+
+        function testDom4() {
+            const buttons = document.querySelectorAll('button');
+            const count = buttons.length;
+            showResult('dom-result', `页面共有 ${count} 个按钮`);
+            return count;
+        }
+
+        function testDom5() {
+            const sections = document.querySelectorAll('.section h2');
+            const titles = Array.from(sections).map(h2 => h2.textContent);
+            showResult('dom-result', titles);
+            return titles;
+        }
+
+        // ========== 3. 全局状态 ==========
+        function testState1() {
+            window.testData = {
+                userId: 123,
+                userName: "Test User",
+                timestamp: new Date().toISOString(),
+                metadata: {
+                    version: "1.0",
+                    platform: "iOS"
+                }
+            };
+            showResult('state-result', 'testData 已设置: ' + JSON.stringify(window.testData, null, 2));
+            return window.testData;
+        }
+
+        function testState2() {
+            if (window.testData) {
+                showResult('state-result', 'testData 内容: ' + JSON.stringify(window.testData, null, 2));
+                return window.testData;
+            } else {
+                showResult('state-result', 'testData 未设置 (null)', true);
+                return null;
+            }
+        }
+
+        function testState3() {
+            window.testData = null;
+            showResult('state-result', 'testData 已清除');
+            return null;
+        }
+
+        function testCounter() {
+            window.counter++;
+            document.getElementById('counter-display').textContent = window.counter;
+            showResult('state-result', `计数器: ${window.counter}`);
+            return window.counter;
+        }
+
+        function resetCounter() {
+            window.counter = 0;
+            document.getElementById('counter-display').textContent = window.counter;
+            showResult('state-result', '计数器已重置');
+            return 0;
+        }
+
+        // ========== 4. JSBridge 模拟 ==========
+        function testBridge1() {
+            const result = window.testBridge.showAlert("Hello from WebView!");
+            showResult('bridge-result', result);
+            showAlert("Hello from WebView!");
+            return result;
+        }
+
+        function testBridge2() {
+            const result = window.testBridge.navigate("/home/dashboard");
+            showResult('bridge-result', result);
+            return result;
+        }
+
+        function testBridge3() {
+            const methods = Object.keys(window.testBridge);
+            showResult('bridge-result', `Bridge 方法: ${methods.join(', ')}`);
+            return methods;
+        }
+
+        function testBridge4() {
+            const data = window.testBridge.getData();
+            showResult('bridge-result', data);
+            return data;
+        }
+
+        // ========== 5. 异步操作 ==========
+        function testAsync1() {
+            showResult('async-result', '⏳ 等待 3 秒...');
+
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    const result = { success: true, message: 'Promise resolved after 3s', timestamp: new Date().toISOString() };
+                    showResult('async-result', result);
+                    resolve(result);
+                }, 3000);
+            });
+        }
+
+        function testAsync2() {
+            showResult('async-result', '⏳ 加载数据中...');
+
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    const result = {
+                        items: [
+                            { id: 1, name: 'Item 1' },
+                            { id: 2, name: 'Item 2' },
+                            { id: 3, name: 'Item 3' }
+                        ],
+                        total: 3,
+                        loadTime: '1.2s'
+                    };
+                    showResult('async-result', result);
+                    resolve(result);
+                }, 1200);
+            });
+        }
+
+        function testAsync3() {
+            showResult('async-result', '⏳ 模拟 fetch 请求...');
+
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    const result = {
+                        status: 200,
+                        data: {
+                            user: { id: 42, name: 'Alice' },
+                            posts: [
+                                { id: 101, title: 'First Post' },
+                                { id: 102, title: 'Second Post' }
+                            ]
+                        }
+                    };
+                    showResult('async-result', result);
+                    resolve(result);
+                }, 1500);
+            });
+        }
+
+        function testAsync4() {
+            showResult('async-result', '⏳ 测试 Promise reject...');
+
+            return new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    const error = new Error('Async operation failed');
+                    showResult('async-result', `❌ ${error.message}`, true);
+                    reject(error);
+                }, 1000);
+            });
+        }
+
+        // ========== 6. 复杂对象返回 ==========
+        function testComplex1() {
+            const result = {
+                user: {
+                    id: 42,
+                    name: "Alice",
+                    age: 30,
+                    profile: {
+                        bio: "Software Engineer",
+                        skills: ["JavaScript", "Swift", "Python"]
+                    }
+                },
+                items: [1, 2, 3, 4, 5],
+                metadata: {
+                    created: new Date().toISOString(),
+                    version: "2.0"
+                }
+            };
+            showResult('complex-result', result);
+            return result;
+        }
+
+        function testComplex2() {
+            const result = [
+                { id: 1, name: 'Apple', price: 1.2 },
+                { id: 2, name: 'Banana', price: 0.8 },
+                { id: 3, name: 'Cherry', price: 2.5 }
+            ];
+            showResult('complex-result', result);
+            return result;
+        }
+
+        function testComplex3() {
+            const result = {
+                nullValue: null,
+                undefinedValue: undefined,
+                emptyString: '',
+                emptyArray: [],
+                emptyObject: {}
+            };
+            showResult('complex-result', result);
+            return result;
+        }
+
+        function testComplex4() {
+            const result = [
+                42,
+                "string value",
+                true,
+                null,
+                { key: "object" },
+                [1, 2, 3],
+                3.14159
+            ];
+            showResult('complex-result', result);
+            return result;
+        }
+
+        // ========== 7. 错误场景 ==========
+        function testError1() {
+            try {
+                throw new Error("This is a test error");
+            } catch (e) {
+                showResult('error-result', `❌ ${e.name}: ${e.message}`, true);
+                throw e;
+            }
+        }
+
+        function testError2() {
+            try {
+                return undefinedVariable;
+            } catch (e) {
+                showResult('error-result', `❌ ${e.name}: ${e.message}`, true);
+                throw e;
+            }
+        }
+
+        function testError3() {
+            try {
+                eval('function broken() { return }}}');
+            } catch (e) {
+                showResult('error-result', `❌ ${e.name}: ${e.message}`, true);
+                throw e;
+            }
+        }
+
+        function testError4() {
+            try {
+                const obj = null;
+                return obj.property;
+            } catch (e) {
+                showResult('error-result', `❌ ${e.name}: ${e.message}`, true);
+                throw e;
+            }
+        }
+
+        // ========== 初始化 ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('✅ WebView Eval 测试页面已加载');
+            console.log('📊 测试场景:', {
+                basic: 4,
+                dom: 5,
+                state: 5,
+                bridge: 4,
+                async: 4,
+                complex: 4,
+                error: 4
+            });
+        });
+    </script>
+</body>
+</html>
