@@ -62,7 +62,7 @@ enum UIWebViewEvalExecutor {
             )
         }
 
-        UIKitCommandLogging.info("command", "\(action) located WKWebView")
+        UIKitCommandLogging.debug("command", "\(action) located WKWebView")
 
         // TODO: 执行 JS（后续任务实现）
         return ["placeholder": .bool(true)]

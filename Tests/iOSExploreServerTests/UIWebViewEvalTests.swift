@@ -50,7 +50,7 @@ func webViewEvalLocatesWebView() async throws {
     let result = try await UIWebViewEvalExecutor.execute(input: input, context: context)
 
     // 暂时只验证不抛错
-    #expect(result["placeholder"]?.boolValue == true)
+    #expect(result["placeholder"] == .bool(true))
 }
 
 @Test("定位失败返回 target_not_found")
