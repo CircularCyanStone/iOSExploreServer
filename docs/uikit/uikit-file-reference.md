@@ -23,6 +23,7 @@
 | `Commands/Wait/` | 4 | `ui.wait` + `ui.waitAny` 命令（各 adapter + models） |
 | `Commands/ScrollToElement/` | 2 | `ui.scrollToElement` 命令（adapter + models） |
 | `Commands/Alert/` | 2 | `ui.alert.respond` 命令（adapter + models） |
+| `Commands/WebViewEval/` | 3 | `ui.webView.eval` 命令（adapter + models + executor） |
 | `Support/Context/` | 1 | 前台 window / 顶部控制器 |
 | `Support/Locator/` | 3 | 定位语义 + 真实 view 解析 + view lookup 模型 |
 | `Support/Action/` | 16 | 动作执行引擎 + 默认激活路由 + scroll 原语 + 各命令 executor（含手势 target-action adapter） |
@@ -262,6 +263,14 @@
 
 - **`UIAlertRespondModels.swift`** ✅ — `AlertButtonRole`（default/cancel/destructive）+ `UIAlertRespondInput`（buttonTitle/buttonIndex/role 互斥；都不传时单按钮 alert 默认点唯一按钮，多按钮抛 alertButtonRequired）。查询 alert 结构走 `ui.inspect`。
 - **`UIAlertRespondCommand.swift`** 🍎 — 薄 adapter，`MainActor.run` 取 context → 同步 executor。
+
+### `Commands/WebViewEval/`（`ui.webView.eval`）
+
+| 文件 | 职责 | 行数 |
+|-----|------|------|
+| `UIWebViewEvalInput.swift` | 输入模型：参数定义、schema、parse 逻辑 | ~180 |
+| `UIWebViewEvalExecutor.swift` | 核心执行：定位、陈旧校验、同步/异步 JS 执行、超时处理、结果序列化 | ~280 |
+| `UIWebViewEvalCommand.swift` | 薄 adapter：日志、错误处理、调用 executor | ~50 |
 
 ### `Support/Wait/`
 

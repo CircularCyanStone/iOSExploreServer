@@ -318,36 +318,22 @@ data: {
 
 ---
 
-#### 3.2.2 WKWebView 操作
+#### 3.2.2 WebView 操作
 
-> ❌ **2026-07-18 架构决策：不实现 `ui.webView.eval` 及任何 WebView 自动化命令**
->
-> **决策理由**：
-> 1. **职责边界混乱**：iOSExploreServer 的职责是 iOS native UI 自动化（UIKit/SwiftUI 层），WebView 内容属于前端测试工具（Puppeteer/Playwright/Selenium）的职责范围。把 Web 内容测试塞进 native 自动化工具 = 跨越了清晰的技术边界。
->
-> 2. **重复造轮子**：Web 测试工具已经非常成熟（Puppeteer/Playwright 提供完整的浏览器自动化、调试协议、截图、网络拦截；Selenium 是跨浏览器测试标准；Chrome DevTools Protocol 是行业标准）。为每个平台（iOS/Android/鸿蒙）都实现一套 WebView 自动化 = 用低质量的实现替代成熟工具。
->
-> 3. **维护成本爆炸**：iOS 的 WKWebView、Android 的 WebView、鸿蒙的 Web 组件各有不同的 API，每个平台的实现、bug、边界情况都不同。需要为每个平台维护一套完整的 Web 自动化能力。
->
-> 4. **技术方案差**：通过 USB → HTTP → native bridge → JavaScript eval 这条链路既慢又脆弱，性能和可靠性都不如直接使用 Chrome DevTools Protocol 连接 WebView 的调试端口。
->
-> **正确的混合 App 测试架构**：
-> ```
-> Native 层（UIKit/SwiftUI）         ← iOSExploreServer 负责
->         ↓ 渲染
-> WebView 层（H5/JS）                ← Puppeteer/CDP 直接连接测试
-> ```
->
-> **如果需要测试 Native 和 WebView 的交互**：
-> - Native 部分：用 iOSExploreServer 的 `ui.tap` 点击"打开 WebView"按钮
-> - WebView 内容：用前端测试工具通过 Chrome DevTools Protocol 连接 WKWebView
-> - 不需要在 iOSExploreServer 里实现 JavaScript 执行
->
-> **结论**：WKWebView 自动化不属于 iOSExploreServer 的能力范围，建议用户使用正确的工具分层测试（Native 用 iOSExploreServer，WebView 用前端测试工具）。
->
-> ---
->
-> 下方原方案保留作历史记录，已废弃。
+**状态**：✅ **已实现**（2026-07-19）
+
+**能力**：
+- `ui.webView.eval`：在 WKWebView 中执行 JavaScript
+- 支持同步和异步两种模式
+- iOS 14+ 支持 Promise/async-await
+- 超时控制、结果序列化、错误处理
+
+**定位**：轻量级 Web 自动化，覆盖 JSBridge 触发、简单点击、表单填充、状态读取等场景。复杂 Web 自动化应使用专业工具（Puppeteer/CDP）。
+
+**实现文件**：
+- `Sources/iOSExploreUIKit/Commands/WebViewEval/UIWebViewEvalInput.swift`
+- `Sources/iOSExploreUIKit/Commands/WebViewEval/UIWebViewEvalExecutor.swift`
+- `Sources/iOSExploreUIKit/Commands/WebViewEval/UIWebViewEvalCommand.swift`
 
 **问题描述**：
 - 50%+ App 有 H5 混合页面（活动页、帮助文档、用户协议）
@@ -606,7 +592,7 @@ data: {
 | | UIDatePicker ✅ | 80%+ | 🟡 中 | P0 | 3-5 天 |
 | | UIPickerView ✅ | 80%+ | 🟡 中 | P0 | 3-5 天 |
 | | UISearchBar | 70%+ | 🟢 低 | P1 | 1-2 天 |
-| **Phase 2** | **WKWebView（单一 `ui.webView.eval`）** | 50%+ | 🟢 低（降） | **P1（首推）** | 1-2 天 |
+| **Phase 2** | **WKWebView ✅** | 50%+ | 🟢 低 | **P1** | 2-3 天 |
 | | Drag & Drop | 40%+ | 🔴 高 | P1（最低） | 5-7 天 |
 | | ~~UIRefreshControl~~ | 90%+ | — | **P3（降级，不实现）** | 0 |
 | **Phase 3** | 系统权限弹窗 | 95%+ | 🔴 高 | P2 | 7-10 天 |
@@ -729,7 +715,7 @@ data: {
 ### 7.2 短期规划（1-2 个月）
 
 - ✅ Phase 1 全部 P0 功能已完成（2026-07-17）
-- 完成 Phase 2 首推：**WKWebView 单一 `ui.webView.eval` 命令**（方案见 §3.2.2，1-2 天）
+- ✅ Phase 2 首推：WKWebView `ui.webView.eval` 命令已完成（2026-07-19）
 - UISearchBar 扩展 `ios-ui-form` skill 文档（方案 A，不新增命令）
 - RefreshControl 已降级 P3 不实现（见 §3.2.3）
 - 更新文档和示例
