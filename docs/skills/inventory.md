@@ -4,14 +4,16 @@
 
 ---
 
-## 1. 13 个保留 skill(按层)
+## 1. 15 个保留 skill(按层)
 
-> **状态总览(阶段 6 收尾)**:12 个 skill 全部重写/新建完成,spec §11 / plan G5 六条验证命令全 PASS(无空壳目录残留、`ui.controllers` 已迁入 `ios-ui-nav`、无 SPMExample 硬编码、`allowed-tools` 齐全、文件名统一为 `SKILL.md`、`ios-logs` 含 `capture.state` + `unavailable`)。健康度按 inventory §5 规则转 `healthy`。
+> **状态总览(阶段 6 收尾)**:15 个 skill 全部重写/新建完成,spec §11 / plan G5 六条验证命令全 PASS(无空壳目录残留、`ui.controllers` 已迁入 `ios-ui-nav`、无 SPMExample 硬编码、`allowed-tools` 齐全、文件名统一为 `SKILL.md`、`ios-logs` 含 `capture.state` + `unavailable`)。健康度按 inventory §5 规则转 `healthy`。
 
 | skill | 层 | 工具体系 | `allowed-tools` 概要 | 健康度 | 状态 | 备注 |
 |---|---|---|---|---|---|---|
 | `ios-debugger-agent` | **L0 构建调试** | XcodeBuildMCP | `build_run_sim` / `build_run_device` / `launch_app_*` / `start_sim_log_cap` / `describe_ui` | healthy | active | 全局 skill(`~/.claude/skills/`);完整定位与 L0/L1 选择规则见 `l0-build-debug.md`(规则原文抄自 `README.md` §2);本体仅在发现具体错误时改(Task 16 已只读检查,结论见 `l0-build-debug.md` §7) |
-| `ios-automation` | **L1 入口** | iOSDriver | `ui_inspect` / `ui_tap_and_inspect` / `app_logs_read`(诊断用) | healthy | active | L1 总入口;Task 11 补 evals + 解耦 SPMExample |
+| `ios-automation` | **L1 入口** | iOSDriver + XcodeBuildMCP | `health_check` / `ui_inspect` / `ui_tap_and_inspect` / `app_logs_read` / `list_devices` | healthy | active | L1 总入口;精简职责:MCP检测、快速连接验证、任务路由;连接问题路由到 ios-connection、MCP配置路由到 ios-mcp-setup(2026-07-20 拆分) |
+| `ios-mcp-setup` | **L1 入口** | 无(配置指引) | 无(纯文档 skill) | healthy | active | MCP 配置指引;从 ios-automation 拆分(2026-07-20);处理 iOSDriver MCP 与 XcodeBuildMCP 的安装、配置、验证;首次使用或工具不可用时路由到此 |
+| `ios-connection` | **L1 入口** | iOSDriver + XcodeBuildMCP | `health_check` / `ui_inspect` / `list_devices` / `launch_app_*` / `stop_app_*` / `build_run_*` | healthy | active | 连接管理与诊断;从 ios-automation 拆分(2026-07-20);处理模拟器/真机差异、iproxy、设备同步、端口冲突、5种常见错误判别 |
 | `ios-ui-nav` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_tap` / `ui_tap_and_inspect` / `ui_navigation_back` / `ui_navigation_tapBarButton` / `ui_controllers` / `ui_screenshot` / `ui_wait` / `call_action`(`ui.tabBar.selectTab`) | healthy | active | 原 `ios-navigation`,吸收原 `ios-controller-navigation` 的 `ui.controllers` 能力(plan Task 3 Step 4 + Task 4);**TabBar 切换**走 controller 层命令 `ui.tabBar.selectTab`(按 index/title 定位 + 可选触发 delegate,经 `call_action` 调用),用法见 `ios-ui-nav` SKILL.md §4 |
 | `ios-ui-list` | **L1 操作层** | iOSDriver | `ui_inspect` / `ui_scroll` / `ui_scrollToElement` / `ui_swipe` / `ui_tap` / `ui_tap_and_inspect` / `ui_wait` | healthy | active | 原 `ios-list-interaction` |
 | `ios-ui-form` | **L1 操作层** | iOSDriver | `ui_input` / `ui_tap` / `ui_tap_and_inspect` / `ui_control_sendAction` / `ui_keyboard_dismiss` / `ui_inspect` / `ui_scrollToElement` / `ui_screenshot` | healthy | active | 原 `ios-form-filling`;已删正文对 SPMExample deployment target 的提法;2026-07-19 新增 §7 UISearchBar 操作专节(输入/搜索/取消/清空完整流程 + 4 个场景示例 + 4 类常见错误处理 + SPMExample `SearchBarTestViewController` 测试页) |
@@ -52,7 +54,7 @@
 
 | 类型 | skill |
 |---|---|
-| 入口 | `ios-automation` |
+| 入口 | `ios-automation` / `ios-mcp-setup` / `ios-connection` |
 | UI 操作 | `ios-ui-nav` / `ios-ui-list` / `ios-ui-form` / `ios-ui-picker` / `ios-ui-alert` / `ios-ui-shot` / `ios-ui-gesture` / `ios-ui-wait` |
 | 进程日志 | `ios-logs` |
 | 测试闭环 | `ios-test-intent`(离线) / `ios-test-runner`(在线) |
@@ -65,9 +67,9 @@
 
 ## 4. 计数核对
 
-- **保留**:`1 (L0) + 10 (L1,含入口) + 2 (L2) = 13` 个(spec §4.2;2026-07-17 新增 `ios-ui-picker`)
+- **保留**:`1 (L0) + 12 (L1,含入口) + 2 (L2) = 15` 个(spec §4.2;2026-07-17 新增 `ios-ui-picker`;2026-07-20 新增 `ios-connection` + `ios-mcp-setup`)
 - **删除**:`ios-date-picker` + `ios-table-actions` + `ios-controller-navigation` = 3 个
-- **净结果**:`14 → 12`(删 2 空壳 + 合并 1 + 新增 `ios-logs`,spec §4.1 末段);2026-07-17 新增 `ios-ui-picker`(`ui.datePicker.setDate` / `ui.picker.selectRow` 已实现),`12 → 13`
+- **净结果**:`14 → 12`(删 2 空壳 + 合并 1 + 新增 `ios-logs`,spec §4.1 末段);2026-07-17 新增 `ios-ui-picker`(`ui.datePicker.setDate` / `ui.picker.selectRow` 已实现),`12 → 13`;2026-07-20 从 `ios-automation` 拆分 `ios-connection` + `ios-mcp-setup`(连接管理 + MCP配置),`13 → 15`
 
 ---
 

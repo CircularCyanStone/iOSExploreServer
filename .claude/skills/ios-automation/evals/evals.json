@@ -1,6 +1,7 @@
 {
   "skill_name": "ios-automation",
   "description": "L1 总入口的 evals:静态结构检查(frontmatter 三字段 / allowed-tools 一致性 / 无 SPMExample 硬编码 / 路由表正确 / L0-L1 选择规则)、动态连接诊断(ping 38321 / 真机 iproxy 残留排查)。",
+  "_readme": "IMPORTANT: The 'expected_output' field in each eval describes the diagnostic steps and terminal commands that the Agent should EXPLAIN TO THE USER, NOT commands the Agent itself executes. Agent uses MCP tools (mcp__iOSDriver__*, mcp__XcodeBuildMCP__*) for its own operations. When expected_output mentions bash commands (curl, lsof, scripts/proxy.sh, xcrun simctl), these are instructions the Agent gives to the user to run in their terminal, following the principle that Agent cannot execute bash/curl (only MCP tools are allowed).",
   "evals": [
     {
       "id": 1,

@@ -1,31 +1,40 @@
 schemaVersion: 1
+
+# 启用所有需要的工作流
 enabledWorkflows:
   - simulator
   - device
   - debugging
   - ui-automation
-sessionDefaultsProfiles:
+
+# 三个 profile：sim-app（模拟器跑 App）、sim-fw（模拟器跑 framework 测试）、device-app（真机跑 App）
+profiles:
   sim-app:
-    projectPath: /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/Examples/SPMExample/SPMExample.xcodeproj
+    projectPath: ./Examples/SPMExample/SPMExample.xcodeproj
     scheme: SPMExample
     configuration: Debug
-    simulatorName: iPhone 17
-    simulatorId: 065CC8DB-8978-46C5-82D6-C96625B608D8
-    simulatorPlatform: iOS Simulator
-    bundleId: com.coo.SPMExample
-    env: {}
+    simulatorName: iPhone 16 Pro
+    # 环境变量和启动参数通过 launch_app_sim 的 env/launchArgs 传递，不在此设置
+    description: "SPMExample App on simulator (server auto-starts in DEBUG)"
+
   sim-fw:
-    projectPath: /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSExploreServer/iOSExploreServer.xcodeproj
+    projectPath: ./iOSExploreServer/iOSExploreServer.xcodeproj
     scheme: iOSExploreServer
     configuration: Debug
-    simulatorName: iPhone 17
-    simulatorId: 065CC8DB-8978-46C5-82D6-C96625B608D8
-    simulatorPlatform: iOS Simulator
+    simulatorName: iPhone 16 Pro
+    description: "iOSExploreServer framework tests on simulator"
+
   device-app:
-    projectPath: /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/Examples/SPMExample/SPMExample.xcodeproj
+    projectPath: ./Examples/SPMExample/SPMExample.xcodeproj
     scheme: SPMExample
     configuration: Debug
-    deviceId: 3AC0C7D6-22F6-572B-8368-4047A14BAB52
-    platform: iOS
-    bundleId: com.coo.SPMExample
-activeSessionDefaultsProfile: sim-app
+    deviceName: "李奇奇的iPhone"
+    # 真机需要 iproxy USB 转发：./scripts/proxy.sh 或 iproxy 38321 38321 -u 00008030-001045C136D1402E
+    description: "SPMExample App on physical device (requires iproxy for curl)"
+
+# 默认 profile（可通过 session_use_defaults_profile 切换）
+sessionDefaults:
+  scheme: SPMExample
+  projectPath: ./Examples/SPMExample/SPMExample.xcodeproj
+  configuration: Debug
+  simulatorName: iPhone 16 Pro

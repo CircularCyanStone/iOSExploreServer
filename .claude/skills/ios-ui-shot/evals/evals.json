@@ -5,7 +5,7 @@
     {
       "id": 1,
       "prompt": "Capture a screenshot of the current iOS app screen and save it to a file named 'current_state.png'.",
-      "expected_output": "Should successfully:\n1. Call ui_screenshot with no parameters (maxDimension defaults to 1280)\n2. Response code 'ok' with data fields: image (base64 PNG), format='png', width, height, scale, pixelScale\n3. width/height are POST-DOWNSAMPLE pixel dimensions (not original screen resolution) — if original long edge > 1280, pixelScale < 1.0\n4. Stream to file to avoid memory peak: curl ... | jq -r '.data.image' | base64 -d > current_state.png\n5. File size typically 50-200KB for default maxDimension=1280\n6. Total capture time 200-500ms\n7. Do NOT expect a viewSnapshotID field — ui_screenshot does not sign one; for structural info call ui_inspect separately",
+      "expected_output": "Should successfully:\n1. Call ui_screenshot with no parameters (maxDimension defaults to 1280)\n2. Response code 'ok' with data fields: image (base64 PNG), format='png', width, height, scale, pixelScale\n3. width/height are POST-DOWNSAMPLE pixel dimensions (not original screen resolution) — if original long edge > 1280, pixelScale < 1.0\n4. Decode base64 image data and save to current_state.png\n5. File size typically 50-200KB for default maxDimension=1280\n6. Total capture time 200-500ms\n7. Do NOT expect a viewSnapshotID field — ui_screenshot does not sign one; for structural info call ui_inspect separately",
       "files": []
     },
     {

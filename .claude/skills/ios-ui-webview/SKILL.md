@@ -199,8 +199,8 @@ mcp__iOSDriver__ui_topViewHierarchy()
 
 ## 相关 skill
 
+- `ios-automation` — L1 总入口；不确定走哪个子 skill 时先问它；用户说"在 WebView 里执行 JavaScript"/"WebView DOM 操作"时路由到本 skill
 - `ios-ui-nav` — WKWebView 容器的导航与返回走它
 - `ios-ui-shot` — WebView 整体截图（不含内部 DOM 对比）
-- `ios-automation` — L1 总入口；不确定走哪个子 skill 时先问它
 
 **平台约束**：`ui.webView.eval` 基于 WKWebView 的 `evaluateJavaScript` API，仅支持可序列化的 JS 值。异步模式依赖 iOS 14+ 的 `callAsyncJavaScript`，低版本自动降级到同步。命令在主线程执行。
