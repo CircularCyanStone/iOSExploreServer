@@ -76,7 +76,7 @@ iOSExploreServer 的唯一 HTTP 端点:`POST http://localhost:38321/`(body 是 `
 
 ### 真机:iproxy USB 转发
 
-真机的 38321 端口不暴露给 Mac,必须经 `iproxy` USB 隧道转发。本 skill 提供一键管理脚本 `scripts/iproxy-manager.sh`,自动处理安装、启动、端口清理、设备检测。
+真机的 38321 端口不暴露给 Mac,必须经 `iproxy` USB 隧道转发。本 skill 提供一键管理脚本 `scripts/proxy.sh`,自动处理安装、启动、端口清理、设备检测。
 
 #### 真机测试标准流程(Agent 自动执行)
 
@@ -85,7 +85,7 @@ Agent 执行本 skill 时自动完成以下步骤:
 1. **启动 iproxy** — 检查安装状态、启动服务、清理端口冲突
 2. **同步设备配置** — 调用 `list_devices` 获取已连接设备,自动更新 `deviceId` 到 session defaults。多设备时提示用户选择。
 3. **智能启动 App** — `health_check` 检测 App 是否运行,未运行则调用 `launch_app_device`。启动失败时根据错误类型给出明确提示(未安装/证书未信任/其他错误)。
-4. **验证连接** — 多次 `health_check` 确认稳定,失败时自动诊断(`iproxy-manager.sh status`)。
+4. **验证连接** — 多次 `health_check` 确认稳定,失败时自动诊断(`scripts/proxy.sh --status`)。
 
 脚本自动处理: iproxy 安装、残留清理、UDID 获取、状态诊断。
 
@@ -94,7 +94,7 @@ Agent 执行本 skill 时自动完成以下步骤:
 1. **设备 ID 两套体系** — XcodeBuildMCP 的 `deviceId`(`list_devices` 返回)用 **CoreDevice identifier**(8-4-4-4-12 形式的 UUID);`iproxy -u` 用 **USB UDID**(连字符分隔的十六进制串)。同一台设备不能混用。脚本自动处理 UDID 获取,无需手动区分。
 2. **iOS 版本别信 devicectl 的机型字段** — 会缓存串号(iOS 26.5 真机可能显示成 iPhone 11)。判版本只看 `list_devices` 的 `osVersion`。
 3. **`build_run_*` 不注入 session env** — 要传启动参数(如回到流程起点),必须用 `launch_app_*(env/launchArgs)`,且先 `stop_app_*` 再 `launch_app_*`(已运行的 App 不会重启、参数不生效)。
-4. **`curl` 真机前先确认 38321 是 `iproxy` 在监听** — 模拟器跑过的 App 可能残留成 Mac 进程占住 38321,`curl localhost:38321` 打到的是这个**模拟器残留**(旧 binary、env 也没设),导致真机预期对不上。用 `iproxy-manager.sh status` 检查,会自动提示占用进程类型。
+4. **真机前先确认 38321 是 `iproxy` 在监听** — 模拟器跑过的 App 可能残留成 Mac 进程占住 38321,导致真机预期对不上。Agent 用 `health_check` 验证连接;开发者手动排查时用 `scripts/proxy.sh --status` 检查占用进程类型。
 
 ## 路由到子 skill
 
@@ -125,51 +125,67 @@ Agent 执行本 skill 时自动完成以下步骤:
 
 连接或行为异常时按下列顺序排查。
 
-### 1. ping 验证(最优先)
+### Agent 诊断路径(优先使用 MCP 工具)
 
-90% 的"连不上"场景 App 其实已运行,先直接 ping:
+#### 1. 验证连接(`health_check`)
+
+90% 的"连不上"场景 App 其实已运行,Agent 优先用 `mcp__iOSDriver__health_check` 验证:
+
+- ✅ 通 → 连接正常,问题在 UI 层(路由到对应 `ios-ui-*`)
+- ❌ 不通 → 进入步骤 2
+
+**反模式**:每次任务前都跑完整端口 / 进程诊断流程,浪费 2-3 秒。**正确**:先 `health_check`,失败了再深度查。
+
+#### 2. UI 状态快照(`ui_inspect`)
+
+连接通但行为异常时,用 `mcp__iOSDriver__ui_inspect` 取当前视图结构(targets / alert / navigationBar),签发 `viewSnapshotID` 给后续 `ui_tap_and_inspect` 用。本 skill 的诊断范围只到"读状态",看到具体 UI 问题后路由给对应 `ios-ui-*`。
+
+#### 3. 进程日志(`app_logs_read`)
+
+`mcp__iOSDriver__app_logs_read` 读进程内日志,可按 `sources`(`explore`/`bridge`/`stdout`/`stderr`/`nslog`/`oslog`)和 `minimumLevel` 过滤。读不到某 source 时先看响应里的 `capture.state`(`unavailable` 是"系统不让读",不是"日志没发生";详见 `ios-logs`)。诊断场景典型用法:先 `app_logs_mark` 建检查点,触发问题,再 `app_logs_read`(after=cursor) 看增量。
+
+### 开发者手动排查(Bash 命令)
+
+以下命令供开发者在终端手动验证连接和排查问题,**Agent 不应使用这些 Bash 命令,而应使用上述 MCP 工具**。
+
+#### 手动 ping 验证
 
 ```bash
 curl -s -X POST http://localhost:38321/ -d '{"action":"ping"}'
 # 预期:{"code":"ok","data":{"pong":true}}
 ```
 
-- ✅ 通 → 连接没问题,问题在 UI 层(路由到对应 `ios-ui-*`)
-- ❌ 不通 → 进入步骤 2
+#### 手动端口冲突排查
 
-**反模式**:每次任务前都跑完整端口 / 进程 / health check 诊断流程,浪费 2-3 秒。**正确**:先 ping,失败了再深度查。
+真机前检查 38321 是否被模拟器 App 残留占用:
 
-### 2. UI 状态快照(`ui_inspect`)
-
-ping 通但行为异常时,用 `mcp__iOSDriver__ui_inspect` 取当前视图结构(targets / alert / navigationBar),签发 `viewSnapshotID` 给后续 `ui_tap_and_inspect` 用。本 skill 的诊断范围只到"读状态",看到具体 UI 问题后路由给对应 `ios-ui-*`。
-
-### 3. 进程日志(`app_logs_read`)
-
-`mcp__iOSDriver__app_logs_read` 读进程内日志,可按 `sources`(`explore`/`bridge`/`stdout`/`stderr`/`nslog`/`oslog`)和 `minimumLevel` 过滤。读不到某 source 时先看响应里的 `capture.state`(`unavailable` 是"系统不让读",不是"日志没发生";详见 `ios-logs`)。诊断场景典型用法:先 `app_logs_mark` 建检查点,触发问题,再 `app_logs_read`(after=cursor) 看增量。
-
-### 4. 端口冲突排查
-
-ping 不通或真机返回模拟器数据时,使用管理脚本一键诊断:
-
-使用 `iproxy-manager.sh status` 检查端口占用情况、USB 设备状态、服务可用性,并获得修复建议。
+```bash
+scripts/proxy.sh --status
+# 自动检查端口占用情况、USB 设备状态、服务可用性,并给出修复建议
+```
 
 ## 常见错误与判别
 
-### `curl: (7) Failed to connect to localhost port 38321`
+### 连接失败(Failed to connect to localhost port 38321)
 
-- **原因**:App 未启动、App 起了但 `server.start()` 没调、或 38321 未监听
-- **一键诊断**: `iproxy-manager.sh status`
-- **处理**: 模拟器检查 App 是否已启动;真机先 `iproxy-manager.sh start`,再检查 App 是否已 `launch_app_device`
+- **现象**: `health_check` 失败,无法连接到 App
+- **原因**: App 未启动、App 起了但 `server.start()` 没调、或 38321 未监听
+- **Agent 处理**: 检查 App 是否已启动;真机场景确保 iproxy 已启动(通过 Bash 调用 `scripts/proxy.sh --status`)
+- **开发者手动排查**: `scripts/proxy.sh --status` 检查端口和服务状态
 
-### 真机 `curl` 返回模拟器旧数据
+### 真机返回模拟器旧数据
 
-- **原因**:模拟器跑过的 App 残留成 Mac 进程占住 38321(见"四个必须记住的差异"第 4 点)
-- **一键修复**: `iproxy-manager.sh restart`(自动清理残留 → 停止旧 iproxy → 启动新 iproxy → 验证)
+- **现象**: 真机测试时收到的数据明显是旧版本或错误环境
+- **原因**: 模拟器跑过的 App 残留成 Mac 进程占住 38321(见"四个必须记住的差异"第 4 点)
+- **Agent 处理**: 提示用户手动清理残留进程
+- **开发者手动修复**: `scripts/proxy.sh --restart`(自动清理残留 → 停止旧 iproxy → 启动新 iproxy → 验证)
 
-### `iproxy: Address already in use: 38321`
+### 端口已被占用(Address already in use: 38321)
 
-- **原因**:旧 iproxy 未停,或模拟器 App 残留占用
-- **一键修复**: `iproxy-manager.sh restart`
+- **现象**: iproxy 启动失败,提示端口被占用
+- **原因**: 旧 iproxy 未停,或模拟器 App 残留占用
+- **Agent 处理**: 提示用户手动重启 iproxy
+- **开发者手动修复**: `scripts/proxy.sh --restart`
 
 ### 启动参数没生效
 
@@ -186,7 +202,7 @@ ping 不通或真机返回模拟器数据时,使用管理脚本一键诊断:
 | `mcp__iOSDriver__ui_tap_and_inspect` | 点击 + 等稳定 + inspect 一次完成 | 用于"点一下看看发生什么"的快速诊断 |
 | `mcp__iOSDriver__app_logs_read` | 读进程内日志 | `capture.state` 三态(`enabled` / `notCaptured` / `unavailable`)必看 |
 
-诊断流程涉及的 Bash 命令(curl / lsof / iproxy / xcrun simctl)由 agent 在 Bash 工具里执行,不进 allowed-tools(那是 MCP 工具字段)。
+Agent 通过上述 MCP 工具执行诊断操作。开发者可使用 Bash 命令(curl / scripts/proxy.sh)手动验证连接和排查端口冲突。
 
 ## 相关 skill
 

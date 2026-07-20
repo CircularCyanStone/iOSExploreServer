@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { loadConfig } from "./config.js";
 import { IOSExploreClient } from "./iosExploreClient.js";
 import { startStdioServer } from "./server.js";

@@ -1,18 +1,42 @@
 {
   "name": "ios-explore-mcp-server",
-  "version": "0.1.0",
-  "private": true,
+  "version": "1.0.0",
+  "description": "MCP server for iOS app automation via iOSExploreServer",
+  "private": false,
   "type": "module",
   "bin": {
     "ios-explore-mcp-server": "./dist/index.js"
   },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build && npm test"
   },
+  "keywords": [
+    "mcp",
+    "ios",
+    "automation",
+    "testing",
+    "claude",
+    "ui-testing"
+  ],
+  "author": "iOS Explore Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/coocssweb/iOSExploreServer.git",
+    "directory": "iOSDriver"
+  },
+  "homepage": "https://github.com/coocssweb/iOSExploreServer/tree/main/iOSDriver",
+  "bugs": "https://github.com/coocssweb/iOSExploreServer/issues",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0"
   },
