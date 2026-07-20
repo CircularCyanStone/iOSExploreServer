@@ -24,10 +24,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // 后续每次 launch 都进登录流程，且源码只读不写、状态对审计者不可见（无法从 App 内得知
         // 当前值）。仅用于测试工程快速进入登录场景。集成到真实项目时删除此 UserDefaults 读取，
         // 仅保留下面的启动参数（--ios-explore-show-login）与环境变量（IOS_EXPLORE_SHOW_LOGIN）方式。
-        let shouldShowLoginFlow = UserDefaults.standard.bool(forKey: "ios_explore_show_login")
+        var shouldShowLoginFlow = UserDefaults.standard.bool(forKey: "ios_explore_show_login")
             || ProcessInfo.processInfo.environment["IOS_EXPLORE_SHOW_LOGIN"] == "1"
             || ProcessInfo.processInfo.arguments.contains("--ios-explore-show-login")
-
+        shouldShowLoginFlow = true
         if shouldShowLoginFlow {
             // 显示登录流程（保持原有逻辑）
             let loginVC = LoginViewController()

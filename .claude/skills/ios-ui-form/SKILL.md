@@ -349,6 +349,369 @@ if (result.matchedID === "register_success_alert") {
 
 需要记录填写过程或失败证据时,`ui_screenshot` 返回 PNG base64。建议填前 / 提交后各一张。复杂的视觉对比归 `ios-ui-shot`。
 
+### 7. UISearchBar 操作
+
+`UISearchBar` 是 iOS 标准搜索控件,包含文本输入框、搜索按钮、清空按钮(✕)、取消按钮等元素。虽然它在 UIKit 中是独立类型,但从 iOSExploreServer 的角度,**搜索框内的文本输入框本质是 `UISearchTextField`**,可直接用 `ui_input` 输入文本。其他按钮用 `ui_tap` 点击即可完成完整搜索流程。
+
+#### 7.1 UISearchBar 结构解析
+
+一个典型的 `UISearchBar` 包含以下交互元素:
+
+| 元素 | 类型 | 作用 | 定位方式 |
+|---|---|---|---|
+| 文本输入框 | `UISearchTextField` | 接收搜索关键词输入 | `ui.inspect` 返回 `type: "UISearchTextField"`,可用 `accessibilityIdentifier` 或 `path` 定位 |
+| 搜索按钮 | 键盘上的 Search 键 | 触发搜索(调用 `searchBarSearchButtonClicked` delegate) | 输入文本后收键盘(`ui_input(submit:true)`)或手动 `ui_keyboard_dismiss` 触发 |
+| 清空按钮 | 输入框内的 ✕ 按钮 | 清空当前输入文本 | `ui_tap` 点击(通常在 `ui.inspect` 中显示为 button 类型) |
+| 取消按钮 | 搜索框右侧的 Cancel 按钮 | 清空文本、退出编辑、隐藏取消按钮 | `ui_tap` 点击(按 `accessibilityIdentifier` 或 text 定位) |
+
+**关键设计约束**:
+- **没有专用的 `ui.searchBar.*` 命令**,因为 UISearchBar 的所有交互都可以通过 `ui_input` + `ui_tap` + `ui_keyboard_dismiss` 覆盖
+- **搜索框的 `accessibilityIdentifier` 设在 `UISearchBar` 本身**,但 `ui_input` 需要定位到内部的 `UISearchTextField`
+- **取消按钮的显示/隐藏由 `showsCancelButton` 属性控制**,通常在获得焦点时显示,取消后隐藏
+
+#### 7.2 完整搜索流程示例
+
+以下示例展示如何用现有命令完成 UISearchBar 的典型交互场景。
+
+##### 场景 1: 基础搜索(输入 → 提交 → 验证结果)
+
+```javascript
+// 步骤 1: 获取搜索页元素
+const snapshot1 = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "searchBar_",
+  maxDepth: 4  // UISearchBar 嵌套层级较深,需要 3-4 层
+})
+
+// 步骤 2: 定位 UISearchTextField(搜索框内的文本输入框)
+// 方式 A: 按类型过滤找到 UISearchTextField
+const searchField = snapshot1.targets.find(t => 
+  t.type === "UISearchTextField" && 
+  t.path.includes("searchBar_basic")  // 确保是目标搜索框内的
+)
+
+// 步骤 3: 输入搜索关键词
+await mcp__iOSDriver__ui_input({
+  path: searchField.path,  // 或用 accessibilityIdentifier(如果设置了)
+  text: "Apple",
+  mode: "replace",
+  submit: true,  // 自动收键盘,触发搜索
+  viewSnapshotID: snapshot1.viewSnapshotID
+})
+
+// 步骤 4: 等待搜索结果并验证
+const result = await mcp__iOSDriver__wait_and_inspect({
+  conditions: [
+    {
+      id: "result_shown",
+      mode: "textExists",
+      text: "找到"  // 结果标签文本
+    }
+  ],
+  timeoutMs: 3000,
+  intervalMs: 100,
+  inspectOptions: { maxDepth: 3 }
+})
+
+if (result.matched) {
+  console.log("✅ 搜索完成")
+  const resultLabel = result.targets.find(t => 
+    t.accessibilityIdentifier === "searchBar_basic_result"
+  )
+  console.log("搜索结果:", resultLabel?.text)
+}
+```
+
+**性能注意**:
+- `submit: true` 会自动收键盘,大多数 UISearchBar 实现会在键盘收起或点击搜索按钮时触发 `searchBarSearchButtonClicked` delegate
+- 如果 App 只在点击搜索按钮时触发(不在收键盘时触发),改用 `submit: false`,然后手动 `ui_keyboard_dismiss`
+
+##### 场景 2: 带取消按钮的搜索(输入 → 取消 → 验证清空)
+
+```javascript
+// 步骤 1: inspect 获取元素
+const snapshot1 = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "searchBar_cancelable",
+  maxDepth: 4
+})
+
+// 步骤 2: 点击搜索框(让取消按钮显示)
+const searchBar = snapshot1.targets.find(t => 
+  t.accessibilityIdentifier === "searchBar_cancelable"
+)
+await mcp__iOSDriver__ui_tap({
+  path: searchBar.path,
+  viewSnapshotID: snapshot1.viewSnapshotID
+})
+
+// 步骤 3: 等待取消按钮出现并重新 inspect
+await new Promise(resolve => setTimeout(resolve, 300))  // 等动画
+const snapshot2 = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "searchBar_cancelable",
+  maxDepth: 4
+})
+
+// 步骤 4: 输入文本
+const searchField = snapshot2.targets.find(t => 
+  t.type === "UISearchTextField" && 
+  t.path.includes("searchBar_cancelable")
+)
+await mcp__iOSDriver__ui_input({
+  path: searchField.path,
+  text: "test query",
+  mode: "replace",
+  submit: false,  // 不收键盘,保持编辑状态
+  viewSnapshotID: snapshot2.viewSnapshotID
+})
+
+// 步骤 5: 点击取消按钮
+const cancelButton = snapshot2.targets.find(t => 
+  t.type === "UIButton" && 
+  (t.text === "Cancel" || t.text === "取消")  // 根据系统语言
+)
+await mcp__iOSDriver__ui_tap({
+  path: cancelButton.path,
+  viewSnapshotID: snapshot2.viewSnapshotID
+})
+
+// 步骤 6: 验证取消效果
+const snapshot3 = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "searchBar_cancelable",
+  maxDepth: 4
+})
+const searchFieldAfter = snapshot3.targets.find(t => 
+  t.type === "UISearchTextField" && 
+  t.path.includes("searchBar_cancelable")
+)
+console.log("取消后文本:", searchFieldAfter?.text || "(空)")  // 应为空
+console.log("取消按钮可见:", snapshot3.targets.some(t => t.text === "Cancel"))  // 应为 false
+```
+
+**取消按钮行为**:
+- 点击取消按钮会清空文本、退出编辑状态、隐藏取消按钮、触发 `searchBarCancelButtonClicked` delegate
+- 不同 App 实现可能有差异,有些会保留文本但退出编辑,需根据实际行为调整
+
+##### 场景 3: 清空按钮(输入 → 清空 → 继续输入)
+
+```javascript
+// 步骤 1-2: inspect + 输入文本(省略,同场景 1)
+
+// 步骤 3: 点击清空按钮(搜索框内的 ✕)
+const snapshot2 = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "searchBar_",
+  maxDepth: 4
+})
+
+const clearButton = snapshot2.targets.find(t => 
+  t.type === "UIButton" && 
+  t.path.includes("searchBar_basic") &&
+  (t.accessibilityLabel?.includes("Clear") || t.text === "✕")
+)
+
+if (clearButton) {
+  await mcp__iOSDriver__ui_tap({
+    path: clearButton.path,
+    viewSnapshotID: snapshot2.viewSnapshotID
+  })
+  console.log("✅ 已点击清空按钮")
+}
+
+// 步骤 4: 验证清空后继续输入
+const snapshot3 = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "searchBar_basic",
+  maxDepth: 4
+})
+const searchFieldAfter = snapshot3.targets.find(t => 
+  t.type === "UISearchTextField" && 
+  t.path.includes("searchBar_basic")
+)
+console.log("清空后文本:", searchFieldAfter?.text || "(空)")
+
+// 继续输入新关键词
+await mcp__iOSDriver__ui_input({
+  path: searchFieldAfter.path,
+  text: "Banana",
+  mode: "replace",
+  submit: true,
+  viewSnapshotID: snapshot3.viewSnapshotID
+})
+```
+
+**清空按钮特点**:
+- 清空按钮只清空文本,不退出编辑状态,键盘仍显示
+- 清空后可立即继续输入,不需要重新 tap 搜索框
+- 清空按钮只在输入框有内容时显示
+
+##### 场景 4: 实时搜索(文本变化即过滤,无需点搜索按钮)
+
+```javascript
+// 某些 App 实现"实时搜索":每次文本变化就触发过滤,不需要点搜索按钮
+// 这种场景下,输入完成后直接验证结果即可,不需要额外提交动作
+
+// 步骤 1-2: inspect + 输入
+const snapshot1 = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "searchBar_list",
+  maxDepth: 4
+})
+const searchField = snapshot1.targets.find(t => 
+  t.type === "UISearchTextField" && 
+  t.path.includes("searchBar_list")
+)
+await mcp__iOSDriver__ui_input({
+  path: searchField.path,
+  text: "Apple",
+  mode: "replace",
+  submit: false,  // 不收键盘,保持实时搜索状态
+  viewSnapshotID: snapshot1.viewSnapshotID
+})
+
+// 步骤 3: 直接等待过滤结果
+const result = await mcp__iOSDriver__wait_and_inspect({
+  conditions: [
+    {
+      id: "filtered",
+      mode: "textExists",
+      text: "显示: 1 项"  // 状态标签文本
+    }
+  ],
+  timeoutMs: 2000,
+  intervalMs: 100,
+  inspectOptions: { maxDepth: 3 }
+})
+
+if (result.matched) {
+  console.log("✅ 实时过滤生效")
+  const statusLabel = result.targets.find(t => 
+    t.accessibilityIdentifier === "searchBar_list_status"
+  )
+  console.log("过滤状态:", statusLabel?.text)
+}
+```
+
+**实时搜索特点**:
+- `submit: false` 保持键盘显示,允许继续修改
+- 不需要点搜索按钮或收键盘,输入即触发
+- 适合高频交互场景(如联系人搜索、设置搜索)
+
+#### 7.3 常见错误与处理
+
+##### 错误 1: 找不到 UISearchTextField
+
+**现象**: `ui.inspect` 返回的 targets 中没有 `type: "UISearchTextField"`,或 path 不包含预期的搜索框
+
+**原因**: `maxDepth` 不够深,UISearchBar 的内部结构被截断
+
+**处理**: 将 `maxDepth` 增加到 4 或 5:
+```javascript
+const snapshot = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "searchBar_",
+  maxDepth: 5  // UISearchBar 嵌套层级较深
+})
+```
+
+##### 错误 2: 输入后没有触发搜索
+
+**现象**: `ui_input(submit: true)` 后,搜索结果没有更新,App 看起来"卡住"
+
+**原因**: App 的 `searchBarSearchButtonClicked` delegate 没有在 `resignFirstResponder` 时触发,只在用户点击键盘的 Search 键时触发
+
+**处理**: 用 `submit: false` + 手动 `ui_keyboard_dismiss`:
+```javascript
+await mcp__iOSDriver__ui_input({
+  path: searchField.path,
+  text: "Apple",
+  submit: false,  // 不自动收键盘
+  viewSnapshotID: snapshot.viewSnapshotID
+})
+
+// 手动收键盘,模拟点击 Search 键
+await mcp__iOSDriver__ui_keyboard_dismiss({
+  strategy: "resignFirstResponder"
+})
+```
+
+或者,如果 App 提供独立的搜索按钮(而不依赖键盘的 Search 键),改用 `ui_tap` 点击该按钮。
+
+##### 错误 3: 取消按钮点不到
+
+**现象**: `ui_tap` 取消按钮返回 `target_not_found` 或 `stale_locator`
+
+**原因**: 取消按钮是动态显示的,在 `ui_input` 之前的 snapshot 中不存在
+
+**处理**: 先点击搜索框让取消按钮显示,再重新 inspect:
+```javascript
+// 1. 点击搜索框
+await mcp__iOSDriver__ui_tap({
+  accessibilityIdentifier: "searchBar_cancelable",
+  viewSnapshotID: snapshot1.viewSnapshotID
+})
+
+// 2. 等动画 + 重新 inspect
+await new Promise(resolve => setTimeout(resolve, 300))
+const snapshot2 = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "searchBar_",
+  maxDepth: 4
+})
+
+// 3. 现在可以找到取消按钮了
+const cancelButton = snapshot2.targets.find(t => t.text === "Cancel")
+```
+
+##### 错误 4: 清空按钮找不到
+
+**现象**: `ui.inspect` 返回的 targets 中没有清空按钮(✕)
+
+**原因**: 清空按钮只在搜索框有内容时显示,空搜索框不显示
+
+**处理**: 先输入文本,再重新 inspect:
+```javascript
+// 1. 输入文本
+await mcp__iOSDriver__ui_input({
+  path: searchField.path,
+  text: "test",
+  submit: false,  // 保持编辑状态
+  viewSnapshotID: snapshot1.viewSnapshotID
+})
+
+// 2. 重新 inspect,现在清空按钮应该出现了
+const snapshot2 = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "searchBar_",
+  maxDepth: 4
+})
+const clearButton = snapshot2.targets.find(t => 
+  t.type === "UIButton" && 
+  t.accessibilityLabel?.includes("Clear")
+)
+```
+
+#### 7.4 UISearchBar vs UITextField vs UISearchTextField
+
+| 控件类型 | 用途 | `ui_input` 定位目标 | 特殊按钮 |
+|---|---|---|---|
+| `UITextField` | 通用单行文本输入 | 直接定位 `UITextField` | 无 |
+| `UISearchTextField` | 搜索专用输入框(iOS 13+) | 直接定位 `UISearchTextField` | 清空按钮(✕) |
+| `UISearchBar` | 完整搜索控件 | 定位内部的 `UISearchTextField` | 清空按钮(✕)+ 取消按钮(Cancel)+ 搜索按钮(键盘 Search) |
+
+**关键差异**:
+- `UISearchBar` 是容器,包含 `UISearchTextField` + 按钮;`ui_input` 需定位到内部的 `UISearchTextField`
+- `UISearchTextField` 可以单独使用(不在 UISearchBar 内),这种情况直接定位它即可
+- 如果 App 在 iOS 12 及以下运行,UISearchBar 内部可能是 `UITextField` 而非 `UISearchTextField`,inspect 时需兼容
+
+#### 7.5 推荐 accessibilityIdentifier 命名规范
+
+为方便自动化测试,建议给 UISearchBar 及相关元素设置清晰的 `accessibilityIdentifier`:
+
+```swift
+// Swift 代码示例
+searchBar.accessibilityIdentifier = "searchBar_main"
+// 搜索框内的 UISearchTextField 会自动继承父 identifier 前缀
+// 结果标签
+resultLabel.accessibilityIdentifier = "searchBar_main_result"
+// 状态标签
+statusLabel.accessibilityIdentifier = "searchBar_main_status"
+```
+
+这样 `ui.inspect` 可以用 `accessibilityIdentifierPrefix: "searchBar_main"` 一次性获取相关元素。
+
 ## 关键参数
 
 ### `ui_input`

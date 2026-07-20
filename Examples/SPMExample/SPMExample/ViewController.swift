@@ -49,6 +49,7 @@ final class ViewController: UIViewController {
         MenuItem(title: "滚动测试", subtitle: "UICollectionView + 30 个 cell，供 ui.scrollToElement 验证", icon: "📜", viewControllerType: ScrollTestViewController.self),
         MenuItem(title: "Wait 测试", subtitle: "5 种 waitMode 动态出现/消失/变化场景,供 ui.wait / ui.waitAny 验证", icon: "⏱️", viewControllerType: WaitTestViewController.self),
         MenuItem(title: "文本输入测试", subtitle: "UITextField / UITextView / UISearchTextField 等多种文本控件，供 ui.input 和 ui.keyboard.dismiss 验证", icon: "⌨️", viewControllerType: InputTestViewController.self),
+        MenuItem(title: "搜索框测试", subtitle: "UISearchBar 搜索流程、取消按钮、清空按钮、实时过滤结果，供 ui.input 和 ui.tap 验证", icon: "🔍", viewControllerType: SearchBarTestViewController.self),
         MenuItem(title: "Swipe 测试", subtitle: "UITableView swipe actions、UISwipeGestureRecognizer、UIPanGestureRecognizer，供 ui.swipe 验证", icon: "👆", viewControllerType: SwipeTestViewController.self),
         MenuItem(title: "LongPress 测试", subtitle: "UILongPressGestureRecognizer、Cell long press selection，供 ui.longPress 验证", icon: "✋", viewControllerType: LongPressTestViewController.self),
         MenuItem(title: "DatePicker/Picker 测试", subtitle: "UIDatePicker + UIPickerView，供 ui.datePicker.setDate 和 ui.picker.selectRow 验证", icon: "📅", viewControllerType: DatePickerPickerTestViewController.self),
