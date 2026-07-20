@@ -183,19 +183,24 @@ enum UIWebViewEvalExecutor {
         timeout: TimeInterval,
         action: String
     ) async throws -> (value: JSONValue, type: String) {
+        // 在 MainActor 上下文中提前包装所有需要传递的值
+        // 使用 @unchecked Sendable 包装器确保 Swift 6.2 并发检查器认可跨边界传递
+        let jsArgs = JSArguments(dict: arguments ?? [:])
+
         return try await withThrowingTaskGroup(of: Result<JSExecutionResult, Error>.self) { group in
             // JS 执行任务
             // 使用 nonisolated(unsafe) 绕过 Swift 6.2 的 region-based isolation checker 限制
             // 这是安全的，因为：
-            // 1. webView 和 arguments 在整个执行期间不会被修改
-            // 2. callAsyncJavaScript 的回调在 MainActor 上执行
-            // 3. JSExecutionResult 使用 @unchecked Sendable（只包含 JSON 类型）
+            // 1. webView 和 function 在整个执行期间不会被修改
+            // 2. jsArgs 已经是 @unchecked Sendable 类型
+            // 3. callAsyncJavaScript 的回调在 MainActor 上执行
+            // 4. JSExecutionResult 使用 @unchecked Sendable（只包含 JSON 类型）
             nonisolated(unsafe) let webViewRef = webView
-            nonisolated(unsafe) let argsRef = arguments
+            nonisolated(unsafe) let functionRef = function
+            nonisolated(unsafe) let argsRef = jsArgs
             group.addTask {
-                nonisolated(unsafe) let args = argsRef ?? [:]
                 let result: Result<JSExecutionResult, Error> = await withCheckedContinuation { continuation in
-                    webViewRef.callAsyncJavaScript(function, arguments: args, in: nil, in: .page) { jsResult in
+                    webViewRef.callAsyncJavaScript(functionRef, arguments: argsRef.dict, in: nil, in: .page) { jsResult in
                         // 立即包装成 Sendable 类型，避免跨 actor 边界传递原始 Result
                         let wrapped: Result<JSExecutionResult, Error>
                         switch jsResult {
