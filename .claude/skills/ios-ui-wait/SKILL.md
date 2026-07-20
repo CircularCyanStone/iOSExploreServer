@@ -1,6 +1,6 @@
 ---
 name: ios-ui-wait
-description: iOS App 异步等待与动态内容稳定(原 ios-dynamic-content)/ wait, loading, dynamic content, async, polling, idle, targetExists, targetGone, textExists, snapshotChanged, ui_wait, ui_waitAny, wait_and_inspect
+description: iOS App 异步等待与动态内容稳定(开发验证 + 自动化测试)/ wait, loading, dynamic content, async, polling, idle, targetExists, targetGone, textExists, snapshotChanged, ui_wait, ui_waitAny, wait_and_inspect
 allowed-tools:
   - mcp__iOSDriver__ui_wait
   - mcp__iOSDriver__ui_waitAny

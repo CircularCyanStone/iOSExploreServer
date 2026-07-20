@@ -1,6 +1,6 @@
 ---
 name: ios-ui-alert
-description: iOS App 弹窗检测与响应(原 ios-alert-handling)/ alert, action sheet, dialog, confirm, button, role, text field, ui.alert.respond, ui_alert_respond
+description: iOS App 弹窗查询与交互(开发验证 + 自动化测试)/ alert, action sheet, dialog, confirm, button, role, text field, ui.alert.respond, ui_alert_respond
 allowed-tools:
   - mcp__iOSDriver__ui_inspect
   - mcp__iOSDriver__ui_alert_respond

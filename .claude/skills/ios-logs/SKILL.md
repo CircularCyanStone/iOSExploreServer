@@ -1,6 +1,6 @@
 ---
 name: ios-logs
-description: 读取 iOS App 进程内日志 / app logs, stdout, stderr, nslog, oslog, debug, mark, read
+description: 读取 iOS App 进程内日志(开发调试 + 自动化测试)实时监控、排查、断言 / app logs, stdout, stderr, nslog, oslog, debug, mark, read, monitoring, troubleshooting
 allowed-tools:
   - mcp__iOSDriver__app_logs_mark
   - mcp__iOSDriver__app_logs_read
@@ -24,11 +24,20 @@ allowed-tools:
 
 ## 何时使用
 
-- ✅ 用户要"看 App 里刚才执行了什么日志"
-- ✅ 用户要"确认我的 print / NSLog / os_log 有没有真的输出"
-- ✅ 用户要"排查 HTTP 命令是否到达 App、命令执行成功还是失败"(读 `explore` source)
+### 开发调试场景
+- ✅ 用户说"实时监控 App 日志"/"看看有没有报错"(开发期排查)
+- ✅ 用户说"检查一下刚才的网络请求日志"(开发期验证)
+- ✅ 用户说"确认我的 print / NSLog / os_log 有没有真的输出"(开发期调试)
+
+### 自动化测试场景
+- ✅ 用户要"看 App 里刚才执行了什么日志"(测试验证)
 - ✅ 用户要"对 App 日志做断言"(如 L2 测试闭环里验证关键业务点是否打日志)
+- ✅ 用户要"排查 HTTP 命令是否到达 App、命令执行成功还是失败"(读 `explore` source)
+
+### 通用触发词
 - ✅ 用户说 "日志" / "log" / "stdout" / "stderr" / "NSLog" / "os_log" / "print 有没有输出" / "进程内日志"
+
+### 不适用场景
 - ❌ 不要用于抓系统级或整个模拟器控制台日志(走 L0 `ios-debugger-agent` 的系统级日志能力,本 skill 只读 App 当前进程)
 - ❌ 不要用于读别的 App 或别的进程的日志(`OSLogStore` 与 fd 接管都只覆盖当前 App 进程)
 - ❌ 不要用于线上 Release 日志收集(本 skill 是 Debug-only,Release 构建下 Diagnostics 整体 disabled)

@@ -1,6 +1,6 @@
 ---
 name: ios-ui-gesture
-description: iOS App 进阶手势(swipe 方向滑动 / long press 长按 / cell 滑动操作)(原 ios-gestures)/ swipe, scroll, long press, context menu, cell swipe action, delete, edit, ui_swipe, ui_longPress
+description: iOS App 进阶手势(swipe 方向滑动 / long press 长按 / cell 滑动操作)(开发验证 + 自动化测试)/ swipe, scroll, long press, context menu, cell swipe action, delete, edit, ui_swipe, ui_longPress
 allowed-tools:
   - mcp__iOSDriver__ui_swipe
   - mcp__iOSDriver__ui_longPress

@@ -11,7 +11,7 @@
 | 层 | 工具体系 | 职责(一句话) | 包含 skill |
 |---|---|---|---|
 | **L0 构建调试** | XcodeBuildMCP(`mcp__XcodeBuildMCP__*`) | 编译、运行、启动、调试 App 进程,捕获系统级日志 | `ios-debugger-agent`(全局) |
-| **L1 操作层** | iOSDriver(`mcp__iOSDriver__*`,封装 iOSExploreServer HTTP) | 操作已运行 App 的 UI 与读取进程内日志 | 7 个 `ios-ui-*` + `ios-logs` + 入口 `ios-automation` |
+| **L1 操作层** | iOSDriver(`mcp__iOSDriver__*`,封装 iOSExploreServer HTTP) | 操作 App UI 与读取进程内日志(**开发调试 + 自动化测试通用**) | 7 个 `ios-ui-*` + `ios-logs` + 入口 `ios-automation` |
 | **L2 测试闭环** | iOSDriver + 离线源码分析 | 读业务源码产出测试判据 → 自动驱动 UI 跑 → 出覆盖报告 | `ios-test-intent` + `ios-test-runner` |
 
 **两套日志能力的关系(互补,非冲突)**:

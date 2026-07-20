@@ -1,6 +1,6 @@
 ---
 name: ios-ui-picker
-description: iOS App 日期选择器与滚轮选择器操作(UIDatePicker / UIPickerView)/ date picker, picker view, select row, set date, birthday, 生日, 预约, 地区选择, ui.datePicker.setDate, ui.picker.selectRow, call_action
+description: iOS App 日期选择器与滚轮选择器操作(开发验证 + 自动化测试)UIDatePicker / UIPickerView / date picker, picker view, select row, set date, birthday, 生日, 预约, 地区选择, ui.datePicker.setDate, ui.picker.selectRow, call_action
 allowed-tools:
   - mcp__iOSDriver__call_action
   - mcp__iOSDriver__ui_inspect

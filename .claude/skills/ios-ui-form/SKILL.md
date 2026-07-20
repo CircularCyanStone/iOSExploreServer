@@ -1,6 +1,6 @@
 ---
 name: ios-ui-form
-description: iOS App 表单填写与控件操作(原 ios-form-filling)/ form filling, text input, switch, slider, stepper, segmented, keyboard, submit, ui_input, ui_control_sendAction
+description: iOS App 表单填写与控件操作(开发验证 + 自动化测试)/ form filling, text input, switch, slider, stepper, segmented, keyboard, submit, manual testing, ui_input, ui_control_sendAction
 allowed-tools:
   - mcp__iOSDriver__ui_input
   - mcp__iOSDriver__ui_tap

@@ -1,19 +1,19 @@
 ---
 name: ios-automation
-description: iOS App 自动化测试 L1 总入口(连接管理 + 路由到 ios-ui-* / ios-logs 子 skill + 快速诊断)/ unified L1 entry, iproxy, connection check, skill routing, diagnostics, simulator, physical device, ping 38321
+description: iOS App 自动化操作统一入口(开发调试 + 自动化测试)连接管理、路由、快速诊断 / unified L1 entry, development debugging, automated testing, iproxy, connection check, skill routing, diagnostics, inspect, screenshot, logs
 allowed-tools:
   - mcp__iOSDriver__ui_inspect
   - mcp__iOSDriver__ui_tap_and_inspect
   - mcp__iOSDriver__app_logs_read
 ---
 
-# iOS 自动化总入口(L1)
+# iOS 自动化操作统一入口(L1)
 
 基于 iOSDriver MCP Server(`mcp__iOSDriver__*`,封装 iOSExploreServer HTTP)与宿主 iOS App 的 HTTP 端点(`POST http://localhost:38321/`),作为 L1 操作层的统一入口。本 skill **本身不做复杂 UI 操作**,只负责三件事:**连接管理**(模拟器 localhost 直连 / 真机 iproxy USB 转发)、**任务路由**(把请求分发给 `ios-ui-*` 与 `ios-logs` 子 skill)、**快速诊断**(ping、UI 快照、进程日志、端口冲突排查)。
 
 ## 目标
 
-解决"开发者要测一个已集成 iOSExploreServer 的 iOS App,但不确定从哪里开始"这一入口问题。具体回答三个问题:
+解决"开发者/测试人员要操作一个已集成 iOSExploreServer 的 iOS App,但不确定从哪里开始"这一入口问题。具体回答三个问题:
 
 - **怎么连上 App** — 模拟器与真机连接方式不同(localhost vs iproxy),且真机有四个易踩的坑(端口残留、设备 ID 两套体系、env 注入限制、版本判定),本 skill 给一份精简清单。
 - **该用哪个子 skill** — 一张路由表把"用户说什么话 → 走哪个子 skill"对清楚,避免 agent 在 `ios-ui-*` 之间反复试。
@@ -23,11 +23,23 @@ allowed-tools:
 
 ## 何时使用
 
+### 开发调试场景
+- ✅ 用户说"帮我看看登录界面"/"检查一下这个按钮"(开发期验证)
+- ✅ 用户说"实时监控 App 行为"/"看看当前页面状态"(开发期反馈)
+- ✅ 用户说"截个图看看布局"/"查看当前 UI 结构"(开发期诊断)
+- ✅ 用户说"检查一下日志有没有报错"(开发期排查)
+
+### 自动化测试场景
 - ✅ 用户说"测一下这个 iOS App"但没指定具体场景(先连上、再问要做什么)
+- ✅ 用户说"自动化测试"/"验证"/"跑测试"(自动化测试)
+
+### 连接管理与诊断
 - ✅ 用户要排查 iproxy / 端口 38321 / 连接问题(`curl: (7) Failed to connect`、`Address already in use`、真机返回模拟器旧数据)
 - ✅ 用户不确定该用 `ios-ui-*` 还是 L0 `ios-debugger-agent`,需要先判 L0/L1
 - ✅ 用户要快速看一眼当前 UI / 截图 / 弹窗状态(诊断,不是任务主体)
-- ✅ 用户说"自动化"、"自动化测试"、"连上 App"、"iproxy"、"38321"、"ping App"
+- ✅ 用户说"连上 App"、"iproxy"、"38321"、"ping App"
+
+### 不适用场景
 - ❌ 不要用于具体的表单填写 / 列表滚动 / 手势(直接走对应 `ios-ui-*`,本 skill 只在最前期不确定时介入)
 - ❌ 不要用于构建 / 安装 / 启动模拟器 / LLDB 调试(L0 `ios-debugger-agent`,见"L0 vs L1 选择规则")
 - ❌ 不要用于读源码出测试判据(`ios-test-intent`)或执行测试意图闭环(`ios-test-runner`)

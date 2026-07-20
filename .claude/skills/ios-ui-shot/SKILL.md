@@ -1,6 +1,6 @@
 ---
 name: ios-ui-shot
-description: iOS App 截图与视觉取证(原 ios-screenshot)/ screenshot, png, base64, visual verification, before/after, regression, maxDimension, ui_screenshot
+description: iOS App 截图与视觉取证(开发调试 + 自动化测试)/ screenshot, png, base64, visual verification, layout check, before/after, regression, ui_screenshot
 allowed-tools:
   - mcp__iOSDriver__ui_screenshot
   - mcp__iOSDriver__ui_inspect
