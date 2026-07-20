@@ -49,14 +49,12 @@ allowed-tools:
 - 最后一个表达式的值自动作为返回值
 - 不支持 `await` 和 Promise
 
-```bash
-curl -X POST http://localhost:38321/ -d '{
-  "action": "ui.webView.eval",
-  "data": {
-    "accessibilityIdentifier": "web_container",
-    "script": "document.title"
-  }
-}'
+```javascript
+mcp__iOSDriver__ui_webView_eval({
+  accessibilityIdentifier: "web_container",
+  script: "document.title"
+})
+// → 返回页面标题字符串
 ```
 
 **异步模式（`function`）**：
@@ -64,114 +62,111 @@ curl -X POST http://localhost:38321/ -d '{
 - 函数体会被自动包装为 `async function() { ... }`
 - iOS 14 以下自动降级到同步模式
 
-```bash
-curl -X POST http://localhost:38321/ -d '{
-  "action": "ui.webView.eval",
-  "data": {
-    "accessibilityIdentifier": "web_container",
-    "function": "const res = await fetch(\"/api/user\"); return await res.json();"
-  }
-}'
+```javascript
+mcp__iOSDriver__ui_webView_eval({
+  accessibilityIdentifier: "web_container",
+  function: "const res = await fetch(\"/api/user\"); return await res.json();"
+})
+// → 返回 API 响应的 JSON 对象
 ```
 
 **带参数的异步模式**：
 
-```bash
-curl -X POST http://localhost:38321/ -d '{
-  "action": "ui.webView.eval",
-  "data": {
-    "accessibilityIdentifier": "web_container",
-    "function": "const {userId} = arguments[0]; return document.querySelector(`#user-${userId}`).textContent;",
-    "arguments": {"userId": 123}
-  }
-}'
+```javascript
+mcp__iOSDriver__ui_webView_eval({
+  accessibilityIdentifier: "web_container",
+  function: "const {userId} = arguments[0]; return document.querySelector(`#user-${userId}`).textContent;",
+  arguments: {userId: 123}
+})
+// → 返回 #user-123 元素的文本内容
 ```
 
 ### 常见场景
 
 **1. 触发 JSBridge 调用**
 
-```bash
-curl -X POST http://localhost:38321/ -d '{
-  "action": "ui.webView.eval",
-  "data": {
-    "accessibilityIdentifier": "web_container",
-    "script": "window.bridge.goPay(); true"
-  }
-}'
+```javascript
+mcp__iOSDriver__ui_webView_eval({
+  accessibilityIdentifier: "web_container",
+  script: "window.bridge.goPay(); true"
+})
+// → 返回 true（表示调用已执行）
 ```
 
 **2. 点击 Web 元素**
 
-```bash
-curl -X POST http://localhost:38321/ -d '{
-  "action": "ui.webView.eval",
-  "data": {
-    "accessibilityIdentifier": "web_container",
-    "script": "document.querySelector('#submit-btn').click(); true"
-  }
-}'
+```javascript
+mcp__iOSDriver__ui_webView_eval({
+  accessibilityIdentifier: "web_container",
+  script: "document.querySelector('#submit-btn').click(); true"
+})
+// → 返回 true（表示点击已执行）
 ```
 
 **3. 填充表单**
 
-```bash
-curl -X POST http://localhost:38321/ -d '{
-  "action": "ui.webView.eval",
-  "data": {
-    "accessibilityIdentifier": "web_container",
-    "script": "document.querySelector('#username').value = 'alice'; document.querySelector('#password').value = '123456'; true"
-  }
-}'
+```javascript
+mcp__iOSDriver__ui_webView_eval({
+  accessibilityIdentifier: "web_container",
+  script: "document.querySelector('#username').value = 'alice'; document.querySelector('#password').value = '123456'; true"
+})
+// → 返回 true（表示表单已填充）
 ```
 
 **4. 读取页面状态**
 
-```bash
-curl -X POST http://localhost:38321/ -d '{
-  "action": "ui.webView.eval",
-  "data": {
-    "accessibilityIdentifier": "web_container",
-    "script": "localStorage.getItem('token')"
-  }
-}'
+```javascript
+mcp__iOSDriver__ui_webView_eval({
+  accessibilityIdentifier: "web_container",
+  script: "localStorage.getItem('token')"
+})
+// → 返回 localStorage 中存储的 token 值
 ```
 
 **5. 等待异步内容加载（iOS 14+）**
 
-```bash
-curl -X POST http://localhost:38321/ -d '{
-  "action": "ui.webView.eval",
-  "data": {
-    "accessibilityIdentifier": "web_container",
-    "function": "await new Promise(resolve => { const check = () => { if (document.querySelector('#content')) resolve(true); else setTimeout(check, 100); }; check(); }); return document.querySelector('#content').textContent;",
-    "timeout": 10
-  }
-}'
+```javascript
+mcp__iOSDriver__ui_webView_eval({
+  accessibilityIdentifier: "web_container",
+  function: `
+    // 轮询等待目标元素出现
+    await new Promise(resolve => {
+      const check = () => {
+        if (document.querySelector('#content')) {
+          resolve(true);
+        } else {
+          setTimeout(check, 100); // 每 100ms 检查一次
+        }
+      };
+      check();
+    });
+    // 元素出现后返回其文本内容
+    return document.querySelector('#content').textContent;
+  `,
+  timeout: 10
+})
+// → 返回 #content 的文本内容
 ```
 
 ### 典型工作流
 
-```bash
-# 1. 定位 WebView 容器
-curl -X POST http://localhost:38321/ -d '{
-  "action": "ui.inspect",
-  "data": {"includeText": false}
-}'
+```javascript
+// 1. 定位 WebView 容器
+mcp__iOSDriver__ui_inspect({
+  includeText: false
+})
+// → 返回控件树，找到 WKWebView 的 path 或 accessibilityIdentifier
 
-# 2. 执行 JS 操作
-curl -X POST http://localhost:38321/ -d '{
-  "action": "ui.webView.eval",
-  "data": {
-    "path": "root/0/1",
-    "script": "document.querySelector('#buy-btn').click(); true"
-  }
-}'
+// 2. 执行 JS 操作
+mcp__iOSDriver__ui_webView_eval({
+  path: "root/0/1",
+  script: "document.querySelector('#buy-btn').click(); true"
+})
+// → 返回 true（表示点击已执行）
 
-# 3. 验证跳转（Native 页面）
-curl -X POST http://localhost:38321/ -d '{
-  "action": "ui.topViewHierarchy"
-}'
+// 3. 验证跳转（Native 页面）
+mcp__iOSDriver__ui_topViewHierarchy()
+// → 返回跳转后的视图层级
 ```
 
 ### 错误处理

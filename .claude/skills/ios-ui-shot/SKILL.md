@@ -40,6 +40,7 @@ allowed-tools:
 
 ```
 ui_screenshot(maxDimension: 1280)   // 默认值,可省
+// → 返回包含 base64 PNG 的响应对象
 → {
     code: "ok",
     data: {
@@ -53,11 +54,13 @@ ui_screenshot(maxDimension: 1280)   // 默认值,可省
   }
 ```
 
-存文件(流式,避免 base64 串占内存):
+存文件示例：
 
-```
-curl -s -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}' \
-  | jq -r '.data.image' | base64 -d > screen.png
+```javascript
+// MCP 工具调用返回的响应包含 base64 编码的 PNG
+const result = await mcp__iOSDriver__ui_screenshot({ maxDimension: 1280 });
+// → result.image 是 base64 字符串，可保存到文件或用于视觉对比
+// result 包含 {image, format, width, height, scale, pixelScale}
 ```
 
 ### 2. 渲染管线(三级回退)
