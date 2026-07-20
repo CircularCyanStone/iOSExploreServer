@@ -1,6 +1,13 @@
 ---
 name: ios-automation
 description: iOS App 自动化测试统一入口。真机/模拟器操作、UI 验证、登录测试、页面信息获取、截图、日志。iOS app testing, device/sim operations, login, UI inspection.
+allowed-tools:
+  - mcp__iOSDriver__health_check
+  - mcp__iOSDriver__ui_inspect
+  - mcp__iOSDriver__call_action
+  - mcp__iOSDriver__ui_tap_and_inspect
+  - mcp__iOSDriver__app_logs_read
+  - mcp__XcodeBuildMCP__list_devices
 ---
 
 # iOS 自动化操作统一入口(L1)
@@ -67,8 +74,9 @@ Agent 执行本 skill 时必须按以下顺序检测 MCP 可用性:
 
 1. **检测 XcodeBuildMCP** — 尝试调用 `mcp__XcodeBuildMCP__list_devices`
 2. **检测 iOSDriver MCP** — 尝试调用 `mcp__iOSDriver__health_check`
-3. **任一 MCP 不可用** — 停止执行,提示用户:"MCP Server 未配置或不可用,请参考 `/ios-mcp-setup` skill 完成安装与配置,配置完成后重启 Claude Desktop 并重新执行本 skill"
-4. **两者都可用** — 继续执行快速连接验证流程
+3. **工具调用本身不存在或无法发起** — 这才是 MCP Server 未配置或不可用;停止执行,提示用户:"MCP Server 未配置或不可用,请参考 `/ios-mcp-setup` skill 完成安装与配置,配置完成后重启 Claude Desktop 并重新执行本 skill"
+4. **`health_check` 返回 `ok:false` 且错误来源是 `transport` / `connection_failed`** — iOSDriver MCP Server 已经可调用,但 App 的 `http://localhost:38321/` 端点当前不可达;不要说"MCP 不可用"或"真机不通",应路由到 `ios-connection` 启动/重启 App、确认 iproxy,然后重试 `health_check`
+5. **两者都可用且 `health_check.ok == true`** — 继续执行快速连接验证流程
 
 当检测到 MCP 不可用时,**不要尝试使用 curl 等底层命令替代**,也**禁用 bash 脚本**（包括 scripts/proxy.sh）。MCP 配置必须由用户手动完成,Agent 无法代劳。
 
@@ -76,20 +84,20 @@ Agent 执行本 skill 时必须按以下顺序检测 MCP 可用性:
 
 入口阶段做连接检查和设备类型识别:
 
-1. **识别设备类型**（真机 vs 模拟器）:
-   - 检查端口38321的监听进程：`lsof -iTCP:38321 -sTCP:LISTEN`
-   - COMMAND列是`iproxy` → **真机**（通过USB转发）
-   - COMMAND列是`SPMExampl`或其他App进程名 → **模拟器**（直接监听）
-   - 无进程监听 → 需要启动App或iproxy
-
-2. **连接验证**:
+1. **连接验证**:
    - 调用 `mcp__iOSDriver__health_check`
    - **成功** → App 已运行且可连接,继续任务路由(见"路由到子 skill")
    - **失败** → 路由到 `ios-connection` 处理连接问题
 
-3. **设备上下文传递**:
+2. **设备上下文传递**:
    - 将识别的设备类型（真机/模拟器）作为上下文信息
    - 后续操作需要重启App时,真机走`launch_app_device`,模拟器走`launch_app_sim`
+   - 若上下文未知,由 `ios-connection` 通过 XcodeBuildMCP 设备列表和当前 profile 判别;不要只凭一次 `health_check` 失败断言"真机不通"
+
+3. **动态工具暴露兜底**:
+   - `health_check.ok == true` 且 `dynamicToolCount > 0` 表示 App 的 help 已读到,动态工具加载链路是通的
+   - 如果工具面板仍未直接暴露 `mcp__iOSDriver__ui_inspect` / `ui_input`,先使用 `mcp__iOSDriver__call_action` 兜底: `action:"ui.inspect"` / `action:"ui.input"`,并在报告里记录"工具面板未刷新动态工具"
+   - 当前 iOSDriver 也提供固定桥接工具 `ui_inspect` / `ui_input` / `ui_tap`,优先用固定工具;没有固定工具时再用 `call_action`
 
 **不在此处理** iproxy 启动、设备同步、端口冲突等复杂场景,这些全部由 `ios-connection` 负责。
 
@@ -132,6 +140,7 @@ Agent 执行本 skill 时必须按以下顺序检测 MCP 可用性:
 |---|---|---|
 | `mcp__iOSDriver__health_check` | 验证 App 是否运行并可连接 | 快速连接验证的唯一工具 |
 | `mcp__iOSDriver__ui_inspect` | 读当前 UI 结构,签发 `viewSnapshotID` | 用于快速诊断,复杂调查路由给 `ios-ui-*` |
+| `mcp__iOSDriver__call_action` | 动态工具未直接展示时兜底转发 action | 例如 `action:"ui.inspect"`;只作兜底,成功后仍按子 skill 语义继续 |
 | `mcp__iOSDriver__ui_tap_and_inspect` | 点击 + 等稳定 + inspect 一次完成 | 用于"点一下看看发生什么"的快速诊断 |
 | `mcp__iOSDriver__app_logs_read` | 读进程内日志 | 快速诊断用,完整能力见 `ios-logs` |
 | `mcp__XcodeBuildMCP__list_devices` | 列出已连接设备 | MCP 依赖检测用 |

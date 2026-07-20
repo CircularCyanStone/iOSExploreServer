@@ -32,6 +32,71 @@ describe("static tools", () => {
     expect(tools.observe).toBeUndefined();
   });
 
+  test("常用 UI action 有静态桥接工具，避免动态工具未展示时只能 call_action", () => {
+    const tools = createStaticTools({
+      client: { call: async () => ({}) },
+      registry: fakeRegistry(0)
+    });
+
+    expect(Object.keys(tools)).toEqual(
+      expect.arrayContaining([
+        "ui_inspect",
+        "ui_input",
+        "ui_tap",
+        "ui_control_sendAction",
+        "ui_keyboard_dismiss",
+        "ui_scrollToElement"
+      ])
+    );
+  });
+
+  test("ui_inspect static bridge forwards input to ui.inspect", async () => {
+    const calls: Array<{ action: string; data: JSONObject }> = [];
+    const tools = createStaticTools({
+      client: {
+        call: async (action, data = {}) => {
+          calls.push({ action, data });
+          return { viewSnapshotID: "snap-1", targets: [] };
+        }
+      },
+      registry: fakeRegistry(0)
+    });
+
+    const result = await (tools.ui_inspect!).handler({
+      accessibilityIdentifierPrefix: "login_",
+      maxDepth: 8,
+      maxTargets: 120
+    });
+
+    expect(calls).toEqual([
+      {
+        action: "ui.inspect",
+        data: { accessibilityIdentifierPrefix: "login_", maxDepth: 8, maxTargets: 120 }
+      }
+    ]);
+    expect(JSON.parse(textContent(result))).toMatchObject({ viewSnapshotID: "snap-1" });
+    expect(result.isError).toBeFalsy();
+  });
+
+  test("ui_input static bridge preserves invalid_data as error result", async () => {
+    const tools = createStaticTools({
+      client: {
+        call: async () => {
+          const error = new Error("bad input") as Error & { source: string; code: string };
+          error.source = "ios_envelope";
+          error.code = "invalid_data";
+          throw error;
+        }
+      },
+      registry: fakeRegistry(0)
+    });
+
+    const result = await (tools.ui_input!).handler({ accessibilityIdentifier: "field", text: "abc" });
+    const body = JSON.parse(textContent(result));
+    expect(body).toMatchObject({ source: "ios_envelope", code: "invalid_data" });
+    expect(result.isError).toBe(true);
+  });
+
   test("wait_and_inspect 调用 ui.inspect 而非 ui.viewTargets", async () => {
     const calls: string[] = [];
     const tools = createStaticTools({

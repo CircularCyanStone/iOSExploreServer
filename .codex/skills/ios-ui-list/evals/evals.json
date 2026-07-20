@@ -1,0 +1,30 @@
+{
+  "skill_name": "ios-ui-list",
+  "description": "Test cases for iOS list/table/collection view interaction: scrollToElement, manual scroll fallback, cell selection, cell swipe actions, and static structure checks (formerly ios-list-interaction)",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "In an iOS app with a long UITableView, find and select the item with text 'Item 50' which is not currently visible on screen.",
+      "expected_output": "Should successfully:\n1. Call ui.scrollToElement with match='text' and value='Item 50' (2-7ms, no manual scroll needed)\n2. Response should show found=true, targetPath, targetType='UILabel' or similar, container='UITableView'\n3. Call ui.inspect to get a FRESH snapshot after scroll (old viewSnapshotID is stale)\n4. Find item path in fresh targets array\n5. Call ui_tap_and_inspect with fresh viewSnapshotID and item path (waitForStable=true for navigation animation)\n6. Verify navigation to detail or selection state changed\n7. Total time < 1 second",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Scroll down through an iOS collection view by half a screen using programmatic scroll, then verify new items are visible.",
+      "expected_output": "Should successfully:\n1. Call ui.inspect to locate the UICollectionView (capture accessibilityIdentifier or path)\n2. Call ui_scroll with accessibilityIdentifier='<scrollview-id>', direction='up', amount optional (defaults to half visible region)\n3. Call ui_wait mode='idle' stableMs=300 to let scroll layout settle\n4. Call ui.inspect again to confirm new items are now visible in targets\n5. Verify item set differs from pre-scroll inspect (new items appeared at bottom)",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Trigger a swipe-to-delete action on a UITableViewCell whose accessibility identifier is 'contact.cell.42'. The delete action title is '删除'.",
+      "expected_output": "Should successfully:\n1. Call ui_swipe with cellAccessibilityIdentifier='contact.cell.42', direction='left', actionTitle='删除'\n2. direction='left' triggers trailing swipe actions (delete/archive is typical)\n3. Response should indicate the swipe action was performed (not a container scroll)\n4. Do NOT pass accessibilityIdentifier/path of the scroll view here — cellAccessibilityIdentifier switches ui_swipe to cell-action mode\n5. Verify the row was deleted or action sheet / confirmation appeared",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Check the static structure of the ios-ui-list SKILL.md (offline, no app run): frontmatter must have name / description / allowed-tools fields present; every tool listed in allowed-tools must be a real iOSDriver MCP tool; the body must not hardcode SPMExample-specific values (com.coo.SPMExample bundle id, or specific UDIDs like 065CC8DB / 00008030).",
+      "expected_output": "Should verify offline (no app run required):\n1. Frontmatter has all three fields present — grep -E '^(name|description|allowed-tools):' returns 3\n2. allowed-tools lists exactly these 7 real iOSDriver tools: mcp__iOSDriver__ui_inspect, mcp__iOSDriver__ui_scroll, mcp__iOSDriver__ui_scrollToElement, mcp__iOSDriver__ui_swipe, mcp__iOSDriver__ui_tap, mcp__iOSDriver__ui_tap_and_inspect, mcp__iOSDriver__ui_wait\n3. No SPMExample hardcoding in body — grep -nE 'com\\.coo\\.SPMExample|065CC8DB|00008030' returns empty (OK)\n4. name field value matches directory name (ios-ui-list)\n5. description contains transition keyword '原 ios-list-interaction' for old-prompt routing\n6. Body covers the four preserved capabilities: scrollToElement, ui_scroll (direction+amount), cell selection, cell swipe action",
+      "files": []
+    }
+  ]
+}

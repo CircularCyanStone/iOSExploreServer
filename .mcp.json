@@ -9,6 +9,14 @@
         "IOS_EXPLORE_BASE_URL": "http://localhost:38321",
         "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "10000"
       }
+    },
+    "XcodeBuildMCP": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "xcodebuildmcp@latest",
+        "mcp"
+      ]
     }
   }
 }

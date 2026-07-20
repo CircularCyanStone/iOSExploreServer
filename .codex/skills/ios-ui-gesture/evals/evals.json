@@ -1,0 +1,30 @@
+{
+  "skill_name": "ios-ui-gesture",
+  "description": "Test cases for iOS advanced gesture automation: ui_swipe directional scroll (up/down/left/right, variable distance 0-1), ui_longPress with custom duration in SECONDS (not ms) for context menus, ui_swipe cell-action mode (cellAccessibilityIdentifier + actionTitle to trigger delete/edit directly), post-gesture re-inspect verification, and static structure checks (formerly ios-gestures; no ui.drag — it does not exist in iOSDriver)",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "In an iOS app with a long UICollectionView, swipe up to scroll down and reveal more items below the current viewport, then verify new items are visible.",
+      "expected_output": "Should successfully:\n1. Call ui_inspect to capture viewSnapshotID and locate the UICollectionView via accessibilityIdentifier or path (do NOT use withinElementRef/elementRef — those are XcodeBuildMCP params, not iOSDriver)\n2. Call ui_swipe with accessibilityIdentifier='<scrollview-id>' (or path), direction='up' (finger swipes up → reveals content below), distance=0.8 (default normalized fraction)\n3. Call ui_wait mode='idle' stableMs=300 to let the scroll decelerate (iOSDriver ui_swipe has NO built-in postDelay; gestures do not auto-wait for animations)\n4. Call ui_inspect again to verify new items appeared in targets (scrolling changed the view tree → old viewSnapshotID is stale, must use fresh inspect result)\n5. Note: iOS exposes no 'scroll-end' event — settle is approximated by fixed ~300ms idle wait or re-inspect polling until targets are stable",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Long press on a table cell for about 1 second to trigger a context menu, then read the menu actions.",
+      "expected_output": "Should successfully:\n1. Call ui_inspect to locate the target cell via accessibilityIdentifier or path and capture viewSnapshotID\n2. Call ui_longPress with accessibilityIdentifier='<cell-id>', duration=0.8 or 1.0 — duration is in SECONDS (default 0.5), NOT milliseconds. Passing 1000 would mean a 1000-second press (most common migration error from the old skill)\n3. Call ui_wait mode='idle' stableMs=500 to let the context-menu transition animation settle (ui_longPress has no postDelay param; menu appears over ~400-600ms)\n4. Call ui_inspect to verify menu items appeared (e.g. Copy / Delete / Share) — re-inspect is mandatory since the gesture changed the view tree\n5. If duration <0.5 the system may not recognize it as a long press and no menu appears — bump to 0.8-1.0",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Trigger a swipe-to-delete action on a UITableViewCell whose accessibility identifier is 'contact.cell.42'. The delete action title is 'Delete'.",
+      "expected_output": "Should successfully:\n1. Call ui_swipe with cellAccessibilityIdentifier='contact.cell.42', direction='left', actionTitle='Delete'\n2. cellAccessibilityIdentifier (or cellPath) switches ui_swipe into cell-action mode — do NOT pass the scroll container's accessibilityIdentifier/path here (container scroll vs cell-action are mutually exclusive)\n3. direction='left' reveals trailing actions (delete/archive is typical on the right side)\n4. actionTitle='Delete' DIRECTLY triggers that action (ui_swipe performs it — no separate ui_tap on the revealed button needed); omitting actionTitle triggers the first action\n5. Call ui_inspect (fresh viewSnapshotID) to verify the row was deleted or a confirmation alert/sheet appeared; if an alert appeared, hand off to ios-ui-alert (ui_alert_respond), not this skill",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Check the static structure of the ios-ui-gesture SKILL.md (offline, no app run): frontmatter must have name / description / allowed-tools fields present; every tool listed in allowed-tools must be a real iOSDriver MCP tool actually referenced in the body; the body must not hardcode SPMExample-specific values; the body must NOT contain any ui.drag / ui_drag reference (ui.drag does not exist in iOSDriver).",
+      "expected_output": "Should verify offline (no app run required):\n1. Frontmatter has all three fields present — grep -E '^(name|description|allowed-tools):' returns 3\n2. allowed-tools lists only real iOSDriver tools this skill actually calls in the body: mcp__iOSDriver__ui_swipe, mcp__iOSDriver__ui_longPress, mcp__iOSDriver__ui_inspect, mcp__iOSDriver__ui_wait (the gesture tools have no built-in delay params, so ui_wait is used for post-gesture animation settle)\n3. No ui.drag / ui_drag anywhere — grep -c 'ui\\.drag\\|ui_drag' returns 0 (drag capability was removed because the action does not exist in iOSDriver)\n4. No SPMExample hardcoding in body — grep -nE 'com\\.coo\\.SPMExample|065CC8DB|00008030' returns empty (OK)\n5. name field value matches directory name (ios-ui-gesture)\n6. description contains transition keyword '原 ios-gestures' for old-prompt routing\n7. Body covers preserved capabilities: directional swipe (up/down/left/right) with variable distance (0-1), ui_longPress with custom duration (in SECONDS, not ms), cell swipe action (cellAccessibilityIdentifier + actionTitle triggers delete/edit directly)\n8. Body surfaces the recovered M1 points: post-gesture re-inspect to verify result; handle animation timing (gestures do not auto-wait for animations — must idle/re-inspect); cannot programmatically detect scroll end; duration is seconds not milliseconds",
+      "files": []
+    }
+  ]
+}

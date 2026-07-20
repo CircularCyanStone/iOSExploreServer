@@ -1,0 +1,42 @@
+{
+  "skill_name": "ios-ui-shot",
+  "description": "Test cases for iOS screenshot capture and visual verification: ui_screenshot (PNG + base64, maxDimension downsampling), before/after comparison, navigation flow documentation, alert screenshots, ui_inspect metadata pairing, and static structure checks (formerly ios-screenshot)",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Capture a screenshot of the current iOS app screen and save it to a file named 'current_state.png'.",
+      "expected_output": "Should successfully:\n1. Call ui_screenshot with no parameters (maxDimension defaults to 1280)\n2. Response code 'ok' with data fields: image (base64 PNG), format='png', width, height, scale, pixelScale\n3. width/height are POST-DOWNSAMPLE pixel dimensions (not original screen resolution) — if original long edge > 1280, pixelScale < 1.0\n4. Decode base64 image data and save to current_state.png\n5. File size typically 50-200KB for default maxDimension=1280\n6. Total capture time 200-500ms\n7. Do NOT expect a viewSnapshotID field — ui_screenshot does not sign one; for structural info call ui_inspect separately",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Capture before and after screenshots around toggling a UISwitch in an iOS app, saving as 'before.png' and 'after.png' for visual comparison.",
+      "expected_output": "Should successfully:\n1. Call ui_screenshot and save as before.png\n2. Trigger the UISwitch (via ui_control_sendAction with event='valueChanged' — this is ios-ui-form territory, screenshot skill only captures)\n3. Wait for UI to settle: ui_wait mode='idle' stableMs=300 (do NOT screenshot immediately — taps return before the UI repaints)\n4. Call ui_screenshot and save as after.png\n5. Both PNGs should share the same dimensions (same device, same maxDimension)\n6. pixelScale field in both responses should be equal (same downsampling)\n7. External diff (ImageMagick 'compare' or Python Pillow) needed to compute visual difference — iOSExploreServer does not provide image diff",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Capture a lower-resolution screenshot of the current iOS screen at maxDimension=640 to reduce file size, then verify the downscaled output dimensions.",
+      "expected_output": "Should successfully:\n1. Call ui_screenshot with maxDimension=640 (range 1-4096; below default 1280)\n2. Response data.pixelScale < 1.0 on Retina devices (e.g. ~0.333 for an iPhone with 1920px long edge → 640px output)\n3. data.width and data.height reflect the SCALED pixel size, with longest edge <= 640\n4. File size is smaller than default 1280 capture (roughly 4x smaller in area)\n5. maxDimension is PIXEL long-side cap, NOT point — do not confuse with UIKit point coordinates\n6. Passing maxDimension=0 or maxDimension=5000 would return invalid_data (range is 1-4096)\n7. format is still 'png' regardless of maxDimension (no JPG/WebP option)",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Document a 3-step navigation flow in an iOS app by capturing a screenshot and a ui_inspect metadata snapshot at each step. Save them as '01_home.png'/'01_home.json', '02_settings.png'/'02_settings.json', '03_privacy.png'/'03_privacy.json'.",
+      "expected_output": "Should successfully:\n1. At each step: call ui_screenshot -> save <NN>_<name>.png; call ui_inspect -> save <NN>_<name>.json (paired evidence)\n2. Between steps: navigate (via ios-ui-nav or ios-ui-list commands) and wait ui_wait mode='idle' stableMs=500 before capturing the next step\n3. Each screenshot response has format='png', width/height consistent if device + maxDimension unchanged\n4. ui_inspect JSON contains targets[]/alert/navigationBar that the PNG cannot convey — pairing is the whole point\n5. Filename numbering is sequential and descriptive (01_home, 02_settings, 03_privacy)\n6. If transitionInProgress occurs at a step, wait and retry — do NOT accept a mid-transition frame as evidence\n7. ui_screenshot itself performs no navigation — it only captures the current state",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "An iOS app is showing a UIAlertController with title '确认操作' (confirmed via ui_inspect alert.available==true). Capture a screenshot of the alert appearance as 'alert_evidence.png'.",
+      "expected_output": "Should successfully:\n1. Verify alert presence FIRST via ui_inspect (alert.available==true, alert.title='确认操作') — ui_screenshot response has no alert field\n2. Call ui_screenshot with default maxDimension (or any 1-4096 value)\n3. Response code 'ok', data.format='png', data.image is base64 PNG\n4. The alert is rendered in-process by UIAlertController so it WILL appear in the captured PNG (drawHierarchy on keyWindow includes alert overlays)\n5. Save to alert_evidence.png via jq -r '.data.image' | base64 -d\n6. Do NOT expect to tap alert buttons via ui_screenshot — alert response goes through ui_alert_respond (ios-ui-alert); this skill only captures the visual\n7. System-level permission prompts (location/notifications/camera) are NOT in the app process and will NOT be captured",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "Check the static structure of the ios-ui-shot SKILL.md (offline, no app run): frontmatter must have name / description / allowed-tools fields present; every tool listed in allowed-tools must be a real iOSDriver MCP tool that the body actually calls; the body must not hardcode SPMExample-specific values (com.coo.SPMExample bundle id, or specific UDIDs like 065CC8DB / 00008030); the body must reference ui.screenshot / ui_screenshot.",
+      "expected_output": "Should verify offline (no app run required):\n1. Frontmatter has all three fields present — grep -E '^(name|description|allowed-tools):' returns 3\n2. allowed-tools lists exactly these 3 real iOSDriver tools: mcp__iOSDriver__ui_screenshot, mcp__iOSDriver__ui_inspect, mcp__iOSDriver__ui_wait (ui_wait is inlined by this skill for short stable waits before capture; ui_tap_and_inspect / ui_waitAny appear in body but are delegated to other skills and must NOT be listed)\n3. No SPMExample hardcoding in body — grep -nE 'com\\.coo\\.SPMExample|065CC8DB|00008030' returns empty (OK)\n4. name field value matches directory name (ios-ui-shot)\n5. description contains transition keyword '原 ios-screenshot' for old-prompt routing\n6. Body references ui_screenshot / ui.screenshot — grep -ic 'ui_screenshot\\|ui.screenshot' returns >= 1\n7. Body covers preserved capabilities: PNG + base64 capture, maxDimension downsampling (pixel not point, range 1-4096, default 1280), before/after comparison, navigation flow documentation, alert screenshots, ui_inspect metadata pairing\n8. Business codes cited match source: transitionInProgress, responseTooLarge, renderingFailed, invalid_data",
+      "files": []
+    }
+  ]
+}

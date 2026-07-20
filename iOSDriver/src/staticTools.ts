@@ -42,6 +42,19 @@ type StaticTool = {
 
 export function createStaticTools(options: { client: IOSExploreCaller; registry: RegistryLike }): Record<string, StaticTool> {
   const { client, registry } = options;
+  const forwardActionTool = (toolName: string, action: string, description: string, inputSchema: JSONObject): StaticTool => ({
+    name: toolName,
+    description: `${description}\n\nStatic bridge for iOSExplore action: ${action}`,
+    inputSchema,
+    handler: async input => {
+      try {
+        return jsonResult(await client.call(action, input));
+      } catch (error) {
+        return resultForFailure(normalizeError(error));
+      }
+    }
+  });
+
   return {
     health_check: {
       name: "health_check",
@@ -113,6 +126,42 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
         }
       }
     },
+    ui_inspect: forwardActionTool(
+      "ui_inspect",
+      "ui.inspect",
+      "读取当前 UI 结构并签发 viewSnapshotID。用于工具面板未暴露动态 ui_inspect 时的稳定入口。",
+      uiInspectSchema()
+    ),
+    ui_input: forwardActionTool(
+      "ui_input",
+      "ui.input",
+      "向 UITextField / UITextView / UISearchTextField 注入文本。text 字段必填，默认 replace。",
+      uiInputSchema()
+    ),
+    ui_tap: forwardActionTool(
+      "ui_tap",
+      "ui.tap",
+      "点击 ui.inspect 签发的可操作目标。通常需要 accessibilityIdentifier 或 path，并传入 viewSnapshotID。",
+      uiTapSchema()
+    ),
+    ui_control_sendAction: forwardActionTool(
+      "ui_control_sendAction",
+      "ui.control.sendAction",
+      "向 UIControl 发送真实 target-action 事件，如 valueChanged。",
+      uiControlSendActionSchema()
+    ),
+    ui_keyboard_dismiss: forwardActionTool(
+      "ui_keyboard_dismiss",
+      "ui.keyboard.dismiss",
+      "收起当前键盘或结束编辑状态。",
+      uiKeyboardDismissSchema()
+    ),
+    ui_scrollToElement: forwardActionTool(
+      "ui_scrollToElement",
+      "ui.scrollToElement",
+      "把匹配文本或 accessibilityIdentifier 的元素滚动到可见区域。滚动后必须重新 ui_inspect。",
+      uiScrollToElementSchema()
+    ),
     wait_and_inspect: {
       name: "wait_and_inspect",
       description: "先调用 ui.waitAny，再调用 ui.inspect。wait_timeout 后仍尽量返回最新 observation。",
@@ -203,6 +252,93 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
         }
       }
     }
+  };
+}
+
+function uiInspectSchema(): JSONObject {
+  return {
+    type: "object",
+    properties: {
+      includeHidden: { type: "boolean" },
+      maxDepth: { type: "integer", minimum: 0, maximum: 20 },
+      accessibilityIdentifier: { type: "string" },
+      accessibilityIdentifierPrefix: { type: "string" },
+      textLimit: { type: "integer", minimum: 0, maximum: 1000 },
+      maxTargets: { type: "integer", minimum: 1, maximum: 2048 },
+      maxVisitedNodes: { type: "integer", minimum: 1, maximum: 20000 }
+    }
+  };
+}
+
+function uiInputSchema(): JSONObject {
+  return {
+    type: "object",
+    properties: {
+      accessibilityIdentifier: { type: "string" },
+      path: { type: "string" },
+      viewSnapshotID: { type: "string" },
+      text: { type: "string", description: "要注入的文本内容，不是 value 或 input。" },
+      mode: { type: "string", enum: ["replace", "append"] },
+      submit: { type: "boolean" }
+    },
+    required: ["text"]
+  };
+}
+
+function uiTapSchema(): JSONObject {
+  return {
+    type: "object",
+    properties: {
+      accessibilityIdentifier: { type: "string" },
+      path: { type: "string" },
+      viewSnapshotID: { type: "string" }
+    },
+    required: ["viewSnapshotID"]
+  };
+}
+
+function uiControlSendActionSchema(): JSONObject {
+  return {
+    type: "object",
+    properties: {
+      accessibilityIdentifier: { type: "string" },
+      path: { type: "string" },
+      viewSnapshotID: { type: "string" },
+      event: {
+        type: "string",
+        enum: ["touchUpInside", "valueChanged", "editingChanged", "editingDidBegin", "editingDidEnd"]
+      },
+      value: {
+        description: "控件值。UISlider 用 0.0...1.0，UISegmentedControl 用索引，UISwitch/UIStepper 通常不传。"
+      }
+    },
+    required: ["event", "viewSnapshotID"]
+  };
+}
+
+function uiKeyboardDismissSchema(): JSONObject {
+  return {
+    type: "object",
+    properties: {
+      strategy: { type: "string", enum: ["auto", "endEditing", "resignFirstResponder"] },
+      waitAfterMs: { type: "integer", minimum: 0, maximum: 1500 }
+    }
+  };
+}
+
+function uiScrollToElementSchema(): JSONObject {
+  return {
+    type: "object",
+    properties: {
+      match: { type: "string", enum: ["text", "accessibilityIdentifier"] },
+      value: { type: "string", description: "要滚动到的文本片段或 accessibilityIdentifier。" },
+      containerAccessibilityIdentifier: { type: "string" },
+      containerPath: { type: "string" },
+      direction: { type: "string", enum: ["up", "down"] },
+      maxScrolls: { type: "integer", minimum: 1, maximum: 50 },
+      includeHidden: { type: "boolean" }
+    },
+    required: ["match", "value"]
   };
 }
 
