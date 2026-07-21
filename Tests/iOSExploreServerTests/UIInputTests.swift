@@ -6,88 +6,149 @@ import iOSExploreServer
 
 /// `ui.input` 的 schema 解析与执行核心测试。
 ///
-/// schema 解析（Foundation-only typed query）与 executor 派发（locate → first responder
-/// → insertText → 委托比对 → 密码脱敏）都在这里覆盖。通过 `UIKitTestHost` 注入可控 view
-/// 树，真实驱动 `UITextInputExecutor.execute` 的全部成功/失败分支。
-///
-/// executor 已 throw 化：成功路径用 `try` 直取 JSON，失败路径用 do/catch 断言
-/// `error.failure.code`。secure 路径额外断言响应不含原文。
+/// schema 解析（Foundation-only typed query）与 executor 派发（批量顺序 → locate →
+/// first responder → insertText → 委托比对 → 密码脱敏）都在这里覆盖。通过
+/// `UIKitTestHost` 注入可控 view 树，真实驱动 `UITextInputExecutor.execute` 的主要成功/失败分支。
 
 // MARK: - UIInputInput schema 解析（Foundation-only typed query）
 
-@Test("UIInputInput: text 必填；mode 默认 replace；submit 默认 true")
+@Test("UIInputInput: 单字段也必须放入 fields；mode 默认 replace；submit 默认 false")
 func inputInputParseDefaults() throws {
-    let input = try UIInputInput.parse(from: ["path": "root/0", "text": "hi"])
-    #expect(input.text == "hi")
-    #expect(input.mode == .replace)
-    #expect(input.submit == true)
+    let input = try UIInputInput.parse(from: [
+        "fields": [
+            [
+                "path": "root/0",
+                "text": "hi",
+            ],
+        ],
+    ])
+
+    #expect(input.fields.count == 1)
+    #expect(input.fields[0].text == "hi")
+    #expect(input.fields[0].mode == .replace)
+    #expect(input.fields[0].submit == false)
+    #expect(input.stopOnFailure == true)
     #expect(input.viewSnapshotID == nil)
 }
 
-@Test("UIInputInput: 缺 text 抛解析错误")
-func inputInputRejectsMissingText() {
+@Test("UIInputInput: fields 必填且不能为空")
+func inputInputRejectsMissingOrEmptyFields() {
     #expect(throws: CommandInputParseError.self) {
-        _ = try UIInputInput.parse(from: ["path": "root/0"])
+        _ = try UIInputInput.parse(from: [:])
+    }
+    #expect(throws: CommandInputParseError.self) {
+        _ = try UIInputInput.parse(from: ["fields": []])
     }
 }
 
-@Test("UIInputInput: append 模式与 submit=false 可显式传入")
-func inputInputParsesAppendAndNoSubmit() throws {
-    let input = try UIInputInput.parse(from: [
-        "accessibilityIdentifier": "field.email",
-        "text": "x",
-        "mode": "append",
-        "submit": false,
-    ])
-    #expect(input.mode == .append)
-    #expect(input.submit == false)
-    #expect(input.target == .accessibilityIdentifier("field.email"))
+@Test("UIInputInput: field 缺 text 抛带下标的解析错误")
+func inputInputRejectsMissingFieldText() {
+    #expect(throws: CommandInputParseError.self) {
+        _ = try UIInputInput.parse(from: ["fields": [["path": "root/0"]]])
+    }
 }
 
-@Test("UIInputInput: viewSnapshotID 搭配 identifier 合法（与 ui.tap 一致）")
-func inputInputAcceptsViewSnapshotIDWithIdentifier() throws {
+@Test("UIInputInput: append 模式与 submit=true 可显式传入")
+func inputInputParsesAppendAndSubmit() throws {
     let input = try UIInputInput.parse(from: [
-        "accessibilityIdentifier": "field.email",
-        "text": "x",
+        "fields": [
+            [
+                "accessibilityIdentifier": "field.email",
+                "text": "x",
+                "mode": "append",
+                "submit": true,
+            ],
+        ],
+    ])
+
+    #expect(input.fields[0].mode == .append)
+    #expect(input.fields[0].submit == true)
+    #expect(input.fields[0].target == .accessibilityIdentifier("field.email"))
+}
+
+@Test("UIInputInput: viewSnapshotID 放在顶层并适用于 identifier/path")
+func inputInputAcceptsTopLevelViewSnapshotID() throws {
+    let input = try UIInputInput.parse(from: [
         "viewSnapshotID": "view_snapshot_test",
+        "fields": [
+            [
+                "accessibilityIdentifier": "field.email",
+                "text": "x",
+            ],
+        ],
     ])
+
     #expect(input.viewSnapshotID == "view_snapshot_test")
-    #expect(input.target == .accessibilityIdentifier("field.email"))
+    #expect(input.fields[0].target == .accessibilityIdentifier("field.email"))
 }
 
-@Test("UIInputInput schema 声明字段顺序与互斥约束")
-func inputInputSchemaFieldsAndConstraints() {
+@Test("UIInputInput: stopOnFailure=false 可继续后续字段")
+func inputInputParsesStopOnFailureFalse() throws {
+    let input = try UIInputInput.parse(from: [
+        "stopOnFailure": false,
+        "fields": [
+            ["path": "root/0", "text": "x"],
+            ["path": "root/1", "text": "y"],
+        ],
+    ])
+
+    #expect(input.stopOnFailure == false)
+    #expect(input.fields.count == 2)
+}
+
+@Test("UIInputInput: field 同时传 identifier 和 path 会被拒绝")
+func inputInputRejectsAmbiguousFieldLocator() {
+    #expect(throws: CommandInputParseError.self) {
+        _ = try UIInputInput.parse(from: [
+            "fields": [
+                [
+                    "accessibilityIdentifier": "field.email",
+                    "path": "root/0",
+                    "text": "x",
+                ],
+            ],
+        ])
+    }
+}
+
+@Test("UIInputInput: fields 超过上限会被拒绝")
+func inputInputRejectsTooManyFields() {
+    let fields = (0...UIInputInput.maxFields).map { index in
+        JSONValue.object(JSON([
+            "path": .string("root/\(index)"),
+            "text": .string("x"),
+        ]))
+    }
+
+    #expect(throws: CommandInputParseError.self) {
+        _ = try UIInputInput.parse(from: ["fields": .array(fields)])
+    }
+}
+
+@Test("UIInputInput schema 声明 fields 数组元素是对象")
+func inputInputSchemaFieldsAndItems() throws {
     #expect(UIInputInput.inputSchema.fields.map(\.name) == [
-        "accessibilityIdentifier",
-        "path",
+        "fields",
         "viewSnapshotID",
-        "text",
-        "mode",
-        "submit",
+        "stopOnFailure",
     ])
 
     let json = UIInputInput.inputSchema.toJSON()
-    guard case .array(let oneOf)? = json["oneOf"] else {
-        Issue.record("oneOf not found")
-        return
-    }
-    // exactlyOneOf(["accessibilityIdentifier", "path"]) 展开为每个字段一个 oneOf 条目。
-    #expect(oneOf.count == 2)
+    let properties = try #require(json["properties"]?.objectValue)
+    let fieldsSchema = try #require(properties["fields"]?.objectValue)
+    #expect(fieldsSchema["type"]?.stringValue == "array")
+    #expect(fieldsSchema["minItems"]?.doubleValue == 1)
+    #expect(fieldsSchema["maxItems"]?.doubleValue == Double(UIInputInput.maxFields))
 
-    // P0-2 后 viewSnapshotID 校验迁移到 executor 内（identifier/path 都走 validateViewSnapshot），
-    // schema 不再声明 viewSnapshotID-only-path 约束；x-iosExplore-constraints key 可能整体不存在，
-    // 此时应视为符合（无旧约束），不应 Issue.record。
-    let constraints = json["x-iosExplore-constraints"]?.arrayValue ?? []
-    #expect(constraints.map(\.stringValue).contains("viewSnapshotID is valid only with path") == false)
+    let itemSchema = try #require(fieldsSchema["items"]?.objectValue)
+    #expect(itemSchema["type"]?.stringValue == "object")
+    let itemProperties = try #require(itemSchema["properties"]?.objectValue)
+    #expect(Set(itemProperties.storage.keys) == ["accessibilityIdentifier", "path", "text", "mode", "submit"])
+    #expect(itemSchema["required"]?.arrayValue == [.string("text")])
+    #expect(itemSchema["oneOf"]?.arrayValue?.count == 2)
 }
 
 // MARK: - UITextInputExecutor 派发
-//
-// 说明：executor 的 inputRejected 比对路径（finalText != expected）在纯 logic test 下难以
-// 稳定触发——`UITextField`/`UITextView` 的程序化 `insertText`（UITextInput 协议）会直接写入
-// 文本，委托（shouldChangeCharactersIn / shouldChangeTextIn）仅对真实键盘/输入会话生效，在
-// logic test 中不被咨询。故 inputRejected 工厂与比对逻辑由 `UIKitCommandErrorTests` 在
-// 工厂级覆盖（码/message/logMessage 契约），此处不再构造不可靠的委托 fixture。
 
 @Test("executor replace 写入中文与 emoji") @MainActor
 func executorReplaceWritesChineseAndEmoji() throws {
@@ -98,11 +159,16 @@ func executorReplaceWritesChineseAndEmoji() throws {
         root.addSubview(field)
     }
 
-    let input = UIInputInput(target: .path([0]), text: "中文🎉", mode: .replace)
+    let input = UIInputInput(fields: [
+        UIInputField(target: .path([0]), text: "中文🎉", mode: .replace),
+    ])
     let data = try UITextInputExecutor.execute(input: input, context: context)
+    let result = try singleResult(from: data)
 
-    #expect(data["finalText"]?.stringValue == "中文🎉")
-    #expect(data["type"]?.stringValue == "UITextField")
+    #expect(data["completed"]?.boolValue == true)
+    #expect(result["finalText"]?.stringValue == "中文🎉")
+    #expect(result["type"]?.stringValue == "UITextField")
+    #expect(result["code"]?.stringValue == "ok")
 }
 
 @Test("executor append 在旧文本后拼接") @MainActor
@@ -114,30 +180,85 @@ func executorAppendConcatenates() throws {
         root.addSubview(field)
     }
 
-    let input = UIInputInput(target: .path([0]), text: "X", mode: .append)
+    let input = UIInputInput(fields: [
+        UIInputField(target: .path([0]), text: "X", mode: .append),
+    ])
     let data = try UITextInputExecutor.execute(input: input, context: context)
 
-    #expect(data["finalText"]?.stringValue == "oldX")
+    #expect(try singleResult(from: data)["finalText"]?.stringValue == "oldX")
 }
 
-@Test("executor 非 text 控件抛 unsupportedTextInputType") @MainActor
-func executorRejectsLabel() {
+@Test("executor 两个字段顺序输入成功") @MainActor
+func executorWritesTwoFieldsInOrder() throws {
+    let context = UIKitTestHost.context { root in
+        let first = UITextField()
+        first.frame = CGRect(x: 10, y: 10, width: 200, height: 40)
+        root.addSubview(first)
+        let second = UITextField()
+        second.frame = CGRect(x: 10, y: 60, width: 200, height: 40)
+        root.addSubview(second)
+    }
+
+    let input = UIInputInput(fields: [
+        UIInputField(target: .path([0]), text: "A"),
+        UIInputField(target: .path([1]), text: "B"),
+    ])
+    let data = try UITextInputExecutor.execute(input: input, context: context)
+    let results = try resultObjects(from: data)
+
+    #expect(data["completed"]?.boolValue == true)
+    #expect(results.map { $0["finalText"]?.stringValue } == ["A", "B"])
+}
+
+@Test("executor 非 text 控件写入失败并按 stopOnFailure 停止") @MainActor
+func executorRejectsLabelAndStops() throws {
     let context = UIKitTestHost.context { root in
         let label = UILabel()
         label.text = "hi"
         label.frame = CGRect(x: 10, y: 10, width: 200, height: 40)
         root.addSubview(label)
+        let field = UITextField()
+        field.frame = CGRect(x: 10, y: 60, width: 200, height: 40)
+        root.addSubview(field)
     }
 
-    let input = UIInputInput(target: .path([0]), text: "x")
-    do {
-        _ = try UITextInputExecutor.execute(input: input, context: context)
-        Issue.record("expected failure, got success")
-    } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .unsupportedTextInputType)
-    } catch {
-        Issue.record("unexpected error: \(error)")
+    let input = UIInputInput(fields: [
+        UIInputField(target: .path([0]), text: "x"),
+        UIInputField(target: .path([1]), text: "y"),
+    ])
+    let data = try UITextInputExecutor.execute(input: input, context: context)
+    let results = try resultObjects(from: data)
+
+    #expect(data["completed"]?.boolValue == false)
+    #expect(data["failedIndex"]?.doubleValue == 0)
+    #expect(results.count == 1)
+    #expect(results[0]["code"]?.stringValue == "unsupported_text_input_type")
+}
+
+@Test("executor stopOnFailure=false 时失败后继续执行") @MainActor
+func executorContinuesWhenStopOnFailureFalse() throws {
+    let context = UIKitTestHost.context { root in
+        let label = UILabel()
+        label.frame = CGRect(x: 10, y: 10, width: 200, height: 40)
+        root.addSubview(label)
+        let field = UITextField()
+        field.frame = CGRect(x: 10, y: 60, width: 200, height: 40)
+        root.addSubview(field)
     }
+
+    let input = UIInputInput(fields: [
+        UIInputField(target: .path([0]), text: "x"),
+        UIInputField(target: .path([1]), text: "y"),
+    ], stopOnFailure: false)
+    let data = try UITextInputExecutor.execute(input: input, context: context)
+    let results = try resultObjects(from: data)
+
+    #expect(data["completed"]?.boolValue == false)
+    #expect(data["failedIndex"]?.doubleValue == 0)
+    #expect(results.count == 2)
+    #expect(results[0]["code"]?.stringValue == "unsupported_text_input_type")
+    #expect(results[1]["code"]?.stringValue == "ok")
+    #expect(results[1]["finalText"]?.stringValue == "y")
 }
 
 @Test("executor secure 字段只回 masked/length，不回原文") @MainActor
@@ -151,20 +272,21 @@ func executorSecureFieldMasksResponse() throws {
     }
 
     let secret = "p@ssw0rd"
-    let input = UIInputInput(target: .path([0]), text: secret, mode: .replace)
+    let input = UIInputInput(fields: [
+        UIInputField(target: .path([0]), text: secret, mode: .replace),
+    ])
     let data = try UITextInputExecutor.execute(input: input, context: context)
+    let result = try singleResult(from: data)
 
-    // 成功响应只含 type/masked/length，绝不回 finalText。
-    #expect(data["masked"]?.stringValue == String(repeating: "•", count: secret.count))
-    #expect(data["length"]?.doubleValue == Double(secret.count))
-    #expect(data["finalText"] == nil)
-    // 整个响应序列化后不得出现明文密码。
+    #expect(result["masked"]?.stringValue == String(repeating: "•", count: secret.count))
+    #expect(result["length"]?.doubleValue == Double(secret.count))
+    #expect(result["finalText"] == nil)
     let serialized = describe(data)
     #expect(serialized.contains(secret) == false)
 }
 
-@Test("executor 带 viewSnapshotID 且陈旧时抛 staleLocator") @MainActor
-func executorStaleViewSnapshotThrows() {
+@Test("executor 带 viewSnapshotID 且陈旧时返回 staleLocator 字段结果") @MainActor
+func executorStaleViewSnapshotReturnsFieldFailure() throws {
     let context = UIKitTestHost.context { root in
         let field = UITextField()
         field.text = ""
@@ -172,27 +294,20 @@ func executorStaleViewSnapshotThrows() {
         root.addSubview(field)
     }
 
-    // 用一个 store 里不存在的 viewSnapshotID 触发 stale（unknown id → isStale 返回 true）。
-    let input = UIInputInput(target: .path([0]), text: "x", viewSnapshotID: "snap-nonexistent")
-    do {
-        _ = try UITextInputExecutor.execute(input: input, context: context)
-        Issue.record("expected failure, got success")
-    } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .staleLocator)
-        // 消息含 TTL 插值（UIKitSnapshotStore.ttlSeconds，当前 120s），用 contains 验证关键短语，
-        // 避免 TTL 值调整时（如 10ca9a1 加 TTL、P1-6 调秒数）绑死全文。
-        let staleMessage = error.failure.message
-        #expect(staleMessage.contains("view snapshot expired"))
-        #expect(staleMessage.contains("or target changed"))
-        #expect(staleMessage.contains("Call ui.inspect"))
-        #expect(error.failure.logMessage == "uikit locator stale action=ui.input viewSnapshot=snap-nonexistent")
-    } catch {
-        Issue.record("unexpected error: \(error)")
-    }
+    let input = UIInputInput(fields: [
+        UIInputField(target: .path([0]), text: "x"),
+    ], viewSnapshotID: "snap-nonexistent")
+    let data = try UITextInputExecutor.execute(input: input, context: context)
+    let result = try singleResult(from: data)
+
+    #expect(data["completed"]?.boolValue == false)
+    #expect(data["failedIndex"]?.doubleValue == 0)
+    #expect(result["code"]?.stringValue == "stale_locator")
+    #expect(result["message"]?.stringValue?.contains("view snapshot expired") == true)
 }
 
-@Test("executor identifier 定位带 viewSnapshotID 且陈旧时抛 staleLocator") @MainActor
-func executorIdentifierWithStaleViewSnapshotThrows() {
+@Test("executor identifier 定位带 viewSnapshotID 且陈旧时返回 staleLocator 字段结果") @MainActor
+func executorIdentifierWithStaleViewSnapshotReturnsFieldFailure() throws {
     let context = UIKitTestHost.context { root in
         let field = UITextField()
         field.text = ""
@@ -201,29 +316,18 @@ func executorIdentifierWithStaleViewSnapshotThrows() {
         root.addSubview(field)
     }
 
-    // 用一个 store 里不存在的 viewSnapshotID 触发 stale（unknown id → isStale 返回 true）。
-    let input = UIInputInput(target: .accessibilityIdentifier("field.test"), text: "x", viewSnapshotID: "snap-nonexistent")
-    do {
-        _ = try UITextInputExecutor.execute(input: input, context: context)
-        Issue.record("expected failure, got success")
-    } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .staleLocator)
-        // 消息含 TTL 插值（UIKitSnapshotStore.ttlSeconds，当前 120s），用 contains 验证关键短语，
-        // 避免 TTL 值调整时（如 10ca9a1 加 TTL、P1-6 调秒数）绑死全文。
-        let staleMessage = error.failure.message
-        #expect(staleMessage.contains("view snapshot expired"))
-        #expect(staleMessage.contains("or target changed"))
-        #expect(staleMessage.contains("Call ui.inspect"))
-        #expect(error.failure.logMessage == "uikit locator stale action=ui.input viewSnapshot=snap-nonexistent")
-    } catch {
-        Issue.record("unexpected error: \(error)")
-    }
+    let input = UIInputInput(fields: [
+        UIInputField(target: .accessibilityIdentifier("field.test"), text: "x"),
+    ], viewSnapshotID: "snap-nonexistent")
+    let data = try UITextInputExecutor.execute(input: input, context: context)
+    let result = try singleResult(from: data)
+
+    #expect(data["completed"]?.boolValue == false)
+    #expect(result["code"]?.stringValue == "stale_locator")
 }
 
-@Test("F-03: executor 目标未找到抛 target_not_found（非 invalid_data）") @MainActor
-func executorTargetNotFoundUsesTargetNotFoundCode() {
-    // 不存在的 path → UIKitLocatorResolver.locate 的 notFound 闭包应抛 target_not_found，
-    // 不再是 invalid_data（旧码与 message "input target not_found" 自相矛盾，且是 6 个命令里唯一离群点）。
+@Test("F-03: executor 目标未找到返回 target_not_found（非 invalid_data）") @MainActor
+func executorTargetNotFoundUsesTargetNotFoundCode() throws {
     let context = UIKitTestHost.context { root in
         let field = UITextField()
         field.text = ""
@@ -231,21 +335,28 @@ func executorTargetNotFoundUsesTargetNotFoundCode() {
         root.addSubview(field)
     }
 
-    let input = UIInputInput(target: .path([99]), text: "x")
-    do {
-        _ = try UITextInputExecutor.execute(input: input, context: context)
-        Issue.record("expected failure, got success")
-    } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .targetNotFound)
-        // message 应含恢复指引（与 tap 同款），不再是旧 "input target not_found"。
-        let message = error.failure.message
-        #expect(message.contains("not found"))
-        #expect(message.contains("call ui.inspect first"))
-        #expect(message.contains("invalid_data") == false)
-        // logMessage 应标注 action 和 target。
-        #expect(error.failure.logMessage.contains("action=ui.input"))
-    } catch {
-        Issue.record("unexpected error: \(error)")
+    let input = UIInputInput(fields: [
+        UIInputField(target: .path([99]), text: "x"),
+    ])
+    let data = try UITextInputExecutor.execute(input: input, context: context)
+    let result = try singleResult(from: data)
+
+    #expect(result["code"]?.stringValue == "target_not_found")
+    #expect(result["message"]?.stringValue?.contains("not found") == true)
+    #expect(result["message"]?.stringValue?.contains("call ui.inspect first") == true)
+    #expect(result["message"]?.stringValue?.contains("invalid_data") == false)
+}
+
+/// 取单字段结果对象。
+private func singleResult(from data: JSON) throws -> JSON {
+    let results = try resultObjects(from: data)
+    return try #require(results.first)
+}
+
+/// 取批量结果对象数组。
+private func resultObjects(from data: JSON) throws -> [JSON] {
+    try #require(data["results"]?.arrayValue).map { value in
+        try #require(value.objectValue)
     }
 }
 

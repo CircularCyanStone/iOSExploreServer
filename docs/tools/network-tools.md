@@ -32,6 +32,7 @@
 | `ui.inspect` | 可选筛选参数 | 返回 canonical targets、可用动作与 `viewSnapshotID`（UIKit 平台） |
 | `ui.control.sendAction` | `accessibilityIdentifier` 或 `path` + `viewSnapshotID` + `event` | 向指定 UIControl 发送显式 target-action 事件（UIKit 平台） |
 | `ui.tap` | `accessibilityIdentifier` 或 `path` + `viewSnapshotID` | 对 canonical target 执行默认激活动作（UIKit 平台） |
+| `ui.input` | 顶层 `fields` 数组 + 可选 `viewSnapshotID`/`stopOnFailure` | 按顺序向多个文本字段写入文本（UIKit 平台） |
 | `app.logs.mark` | 忽略 | 当前进程日志 cursor 与 source 捕获状态（Diagnostics 显式注册后） |
 | `app.logs.read` | `after` cursor、`limit`、`sources`、`minimumLevel` | 当前进程内已捕获日志的增量列表（Diagnostics 显式注册后） |
 
@@ -76,7 +77,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"afte
 
 - `accessibilityIdentifier`（优先）：按业务层 identifier **精确匹配，不截断、不做 prefix 匹配**。匹配多个 view 返回 `invalid_data`，避免误触发。
 - `path`：来自 `ui.inspect` / `ui.topViewHierarchy` 的只读路径（`root/0/2`），仅描述当前 view 树内位置，不写回业务 UI。动作授权以 `ui.inspect` 为准。
-- `viewSnapshotID`：只由 `ui.inspect` 签发，代表本次返回 canonical targets 的结构指纹表，不是截图 ID。`ui.tap` / `ui.control.sendAction` 必填，且 identifier/path 都校验 freshness；`ui.input` / `ui.scroll` 仅在 `path + viewSnapshotID` 组合下做可选陈旧校验；`ui.wait(snapshotChanged)` 必填；`ui.screenshot` / `ui.topViewHierarchy` 不签发。页面已变动、snapshot 过期/淘汰或 path 未被签发时返回 `stale_locator`，固定提示调用方重新 `ui.inspect`。
+- `viewSnapshotID`：只由 `ui.inspect` 签发，代表本次返回 canonical targets 的结构指纹表，不是截图 ID。`ui.tap` / `ui.control.sendAction` 必填，且 identifier/path 都校验 freshness；`ui.input` 顶层可选携带，适用于 `fields` 中的 identifier/path 两种定位；`ui.scroll` 也可选携带，缺省时不做陈旧校验；`ui.wait(snapshotChanged)` 必填；`ui.screenshot` / `ui.topViewHierarchy` 不签发。页面已变动、snapshot 过期/淘汰或 path 未被签发时返回 `stale_locator`，固定提示调用方重新 `ui.inspect`。
 
 ### `ui.topViewHierarchy`
 
@@ -152,6 +153,42 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"path":"root
 - `UISlider` / `UISegmentedControl` / 普通 `UIView` / 未知自定义 control：没有默认 tap，返回 `unsupported_target` 或只暴露精确动作。
 
 成功响应包含 `activated`、`activationRoute`、`path`、`type` 和对应 route 的补充字段。动作成功只表示默认激活动作已发出，不代表页面跳转或测试通过；后续必须 `ui.wait` 或重新 observe。
+
+### `ui.input`
+
+按顺序向一个或多个文本控件输入内容。`ui.input` 只有批量形态，单字段输入也必须放进顶层 `fields` 数组：
+
+```bash
+curl -X POST http://localhost:38321/ -d '{"action":"ui.input","data":{"viewSnapshotID":"snap-1","fields":[{"accessibilityIdentifier":"login.username","text":"test"},{"accessibilityIdentifier":"login.password","text":"123456"}]}}'
+curl -X POST http://localhost:38321/ -d '{"action":"ui.input","data":{"viewSnapshotID":"snap-1","stopOnFailure":false,"fields":[{"path":"root/0/2/1","text":"hello","mode":"replace"},{"path":"root/0/2/2","text":" world","mode":"append","submit":true}]}}'
+```
+
+顶层参数：
+
+- `fields`: 必填对象数组，长度 `1...16`。每个元素必须包含 `text`，且 `accessibilityIdentifier` / `path` 二选一。
+- `viewSnapshotID`: 可选但推荐，来自同一屏的 `ui.inspect`；identifier/path 两种定位都会校验 freshness。
+- `stopOnFailure`: 默认 `true`。某个字段失败后停止后续字段；已成功写入的字段不回滚。
+
+每个 field 支持：
+
+- `text`: 要输入的文本。空字符串表示清空字段。
+- `mode`: `replace`（默认，先清空再写入）或 `append`（在原内容末尾追加）。
+- `submit`: 默认 `false`。仅当业务依赖 Return / Done / Search 或结束编辑语义时设为 `true`。
+
+成功响应走顶层 `code:"ok"`，`data` 内表达整批是否完成：
+
+```json
+{
+  "completed": false,
+  "failedIndex": 1,
+  "results": [
+    { "index": 0, "completed": true, "code": "ok", "target": "id=login.username", "type": "UITextField", "finalText": "test", "textLength": 4, "maskedText": "••••" },
+    { "index": 1, "completed": false, "code": "target_not_found", "message": "...", "target": "id=login.password" }
+  ]
+}
+```
+
+安全输入字段不返回明文，只返回长度和 masked 值。字段失败不会变成顶层 HTTP/业务失败；只有请求结构非法（例如缺 `fields`、字段不是对象、定位字段同时传）才返回顶层 `invalid_data`。
 
 ## 注册自定义命令
 

@@ -184,9 +184,13 @@ if (menuListContentViews.length > 0) {
       if (usernameTf) {
         console.log("Username textfield path:", usernameTf.path, "placeholder:", usernameTf.placeholder);
         await callTool("alert-input-username", "ui_input", {
-          path: usernameTf.path,
           viewSnapshotID: duringLoginSid,
-          text: "E2EAgentName42"
+          fields: [
+            {
+              path: usernameTf.path,
+              text: "E2EAgentName42"
+            }
+          ]
         }, 600);
         await new Promise(r => setTimeout(r, 800));
         // Re-inspect to verify text was written

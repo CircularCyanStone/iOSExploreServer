@@ -91,10 +91,47 @@ describe("static tools", () => {
       registry: fakeRegistry(0)
     });
 
-    const result = await (tools.ui_input!).handler({ accessibilityIdentifier: "field", text: "abc" });
+    const result = await (tools.ui_input!).handler({
+      fields: [{ accessibilityIdentifier: "field", text: "abc" }]
+    });
     const body = JSON.parse(textContent(result));
     expect(body).toMatchObject({ source: "ios_envelope", code: "invalid_data" });
     expect(result.isError).toBe(true);
+  });
+
+  test("ui_input schema defines fields as object array and removes old top-level text", () => {
+    const schema = createStaticTools({
+      client: { call: async () => ({}) },
+      registry: fakeRegistry(0)
+    }).ui_input!.inputSchema;
+
+    const properties = (schema as { properties: Record<string, unknown>; required: string[] }).properties;
+    expect(Object.keys(properties).sort()).toEqual(["fields", "stopOnFailure", "viewSnapshotID"].sort());
+    expect((schema as { required: string[] }).required).toEqual(["fields"]);
+
+    const fieldsSchema = properties.fields as {
+      type: string;
+      minItems: number;
+      maxItems: number;
+      items: {
+        type: string;
+        properties: Record<string, unknown>;
+        required: string[];
+        additionalProperties: boolean;
+      };
+    };
+
+    expect(fieldsSchema.type).toBe("array");
+    expect(fieldsSchema.minItems).toBe(1);
+    expect(fieldsSchema.maxItems).toBe(16);
+    expect(fieldsSchema.items.type).toBe("object");
+    expect(Object.keys(fieldsSchema.items.properties).sort()).toEqual(
+      ["accessibilityIdentifier", "path", "text", "mode", "submit"].sort()
+    );
+    expect(fieldsSchema.items.required).toEqual(["text"]);
+    expect(fieldsSchema.items.additionalProperties).toBe(false);
+    expect(properties).not.toHaveProperty("text");
+    expect(properties).not.toHaveProperty("submit");
   });
 
   test("wait_and_inspect 调用 ui.inspect 而非 ui.viewTargets", async () => {
@@ -220,6 +257,35 @@ describe("static tools", () => {
     expect(inspectOptionsSchema.additionalProperties).toBe(false);
     // detailLevel is a topViewHierarchy-only field and must NOT be in inspectOptions' allowed set
     expect(allowedFields).not.toContain("detailLevel");
+  });
+
+  test("wait_and_inspect schema defines conditions as object array", () => {
+    const schema = createStaticTools({
+      client: { call: async () => ({}) },
+      registry: fakeRegistry(0)
+    }).wait_and_inspect!.inputSchema;
+
+    const properties = (schema as { properties: Record<string, unknown> }).properties;
+    const conditionsSchema = properties.conditions as {
+      type: string;
+      items: {
+        type: string;
+        properties: Record<string, unknown>;
+        required: string[];
+        additionalProperties: boolean;
+      };
+    };
+
+    expect(conditionsSchema.type).toBe("array");
+    expect(conditionsSchema.items.type).toBe("object");
+    expect(Object.keys(conditionsSchema.items.properties).sort()).toEqual(
+      ["id", "mode", "accessibilityIdentifier", "path", "text", "viewSnapshotID"].sort()
+    );
+    expect(conditionsSchema.items.required).toEqual(["id", "mode"]);
+    expect(conditionsSchema.items.additionalProperties).toBe(false);
+
+    const modeSchema = conditionsSchema.items.properties.mode as { enum: string[] };
+    expect(modeSchema.enum).toEqual(["idle", "targetExists", "targetGone", "textExists", "snapshotChanged"]);
   });
 
   test("wait_and_inspect handler passes inspectOptions.maxDepth through to ui.inspect", async () => {

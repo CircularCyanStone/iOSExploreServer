@@ -14,16 +14,18 @@ const snapshot = await mcp__iOSDriver__ui_inspect({
 })
 
 await mcp__iOSDriver__ui_input({
-  accessibilityIdentifier: "auth_username_field",
-  text: "<username>",
-  submit: false,
-  viewSnapshotID: snapshot.viewSnapshotID
-})
-
-await mcp__iOSDriver__ui_input({
-  accessibilityIdentifier: "auth_password_field",
-  text: "<password>",
-  submit: true,
+  fields: [
+    {
+      accessibilityIdentifier: "auth_username_field",
+      text: "<username>",
+      submit: false
+    },
+    {
+      accessibilityIdentifier: "auth_password_field",
+      text: "<password>",
+      submit: false
+    }
+  ],
   viewSnapshotID: snapshot.viewSnapshotID
 })
 
@@ -93,7 +95,7 @@ if (result.matchedID === "success_alert") {
 
 Alert 按钮响应归 `ios-ui-alert`;本 skill 只负责填写和触发提交。
 
-## UISearchBar 基础搜索
+## UISearchBar 键盘 Search 提交
 
 `UISearchBar` 是容器,需要定位内部 `UISearchTextField`。
 
@@ -110,10 +112,13 @@ const searchField = snapshot.targets.find(t =>
 )
 
 await mcp__iOSDriver__ui_input({
-  path: searchField.path,
-  text: "<query>",
-  mode: "replace",
-  submit: true,
+  fields: [{
+    path: searchField.path,
+    text: "<query>",
+    mode: "replace",
+    // 仅当搜索由键盘 Search / Done 触发时才设 true。
+    submit: true
+  }],
   viewSnapshotID: snapshot.viewSnapshotID
 })
 
@@ -128,7 +133,7 @@ const result = await mcp__iOSDriver__wait_and_inspect({
 })
 ```
 
-如果 App 只在独立搜索按钮上触发查询,将 `submit` 设为 `false`,重新 inspect 后用 `ui_tap` 点击该按钮。
+如果 App 只在独立搜索按钮上触发查询,将 `submit` 设为 `false`,重新 inspect 后用 `ui_tap` 点击该按钮。只有键盘 Search / Done 是业务触发条件时才使用 `submit:true`。
 
 ## UISearchBar 取消和清空
 

@@ -2,10 +2,10 @@
 import Foundation
 import iOSExploreServer
 
-/// 向文本控件注入文本的命令。
+/// 向文本控件批量注入文本的命令。
 ///
 /// action 为 `ui.input`。命令只负责解析请求并在 `MainActor.run` 内取上下文、调用
-/// `UITextInputExecutor.execute`。执行语义（定位、陈旧校验、白名单、first responder、
+/// `UITextInputExecutor.execute`。执行语义（批量顺序、定位、陈旧校验、白名单、first responder、
 /// insertText、委托比对、密码脱敏）全部收敛在 executor 中，本命令不再内联执行逻辑。
 ///
 /// handler 顶层 catch：`UIKitCommandError` 转 envelope（业务码不丢），其它意外错误兜底
@@ -21,15 +21,15 @@ struct InputCommand: Command {
     let action = InputCommand.actionName
 
     /// `help` 命令展示的说明。
-    let description = "向 UITextField/UITextView/UISearchTextField 注入文本 (UITextInput.insertText)。目标用 accessibilityIdentifier 或 path 定位；viewSnapshotID 可选，identifier/path 两种定位方式都支持陈旧校验（与 ui.tap 一致）"
+    let description = "按顺序向多个 UITextField/UITextView/UISearchTextField 注入文本 (UITextInput.insertText)。顶层传 fields 数组，单字段输入也必须放进数组；viewSnapshotID 可选，stopOnFailure 默认 true。"
 
     /// 执行文本注入。
     ///
     /// - Parameter input: 已通过 typed schema 校验的 input 参数。
-    /// - Returns: 成功时返回 type + finalText（secure 时为 masked + length）；失败时返回对应业务码 envelope。
+    /// - Returns: 成功时返回批量结果 JSON；失败时返回对应业务码 envelope。
     func handle(_ input: UIInputInput) async -> ExploreResult {
-        // 日志只记大小与模式，不回原文（可能含敏感信息）。
-        UIKitCommandLogging.info("command", "command \(action) start target=\(input.target.logSummary) mode=\(input.mode.rawValue) textLen=\(input.text.count) submit=\(input.submit)")
+        // 日志只记批量规模与模式，不回原文（可能含敏感信息）。
+        UIKitCommandLogging.info("command", "command \(action) start fields=\(input.fields.count) stopOnFailure=\(input.stopOnFailure) viewSnapshot=\(input.viewSnapshotID ?? "nil")")
         do {
             let data = try await MainActor.run {
                 let context = try UIKitContextProvider.currentContext(action: InputCommand.actionName)

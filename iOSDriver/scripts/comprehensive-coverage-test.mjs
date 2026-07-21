@@ -215,9 +215,12 @@ async function testAllUICommands() {
 
   // 9. ui.input
   result = await sendCommand('ui.input', {
-    match: 'accessibilityIdentifier',
-    value: 'text.field.main',
-    text: 'Hello Test'
+    fields: [
+      {
+        accessibilityIdentifier: 'text.field.main',
+        text: 'Hello Test'
+      }
+    ]
   });
   recordTest('ui.input', '文本输入', result, true);
   await delay(DELAY_MS);

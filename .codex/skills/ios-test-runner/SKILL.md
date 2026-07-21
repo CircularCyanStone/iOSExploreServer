@@ -84,7 +84,7 @@ L2 执行型 skill:把 `ios-test-intent` 产出的"测试意图清单"(`docs/tes
    - "输入 `<seed-user>`" → 找 `placeholder` / `accessibilityLabel` 含"用户名"的 textField。
    - "点「登录」" → 找 `text=="登录"` 或 `title=="登录"` 的 button。
    - "用户名留空" → **不输入**(或输入后清空),直接跳到点提交。
-3. 用 `ui_input`(`mode:"replace"`)逐字段填,`submit:true` 收键盘。
+3. 把同一屏上的文本字段合并为一次 `ui_input({viewSnapshotID, fields:[...]})` 批量填写;每个 field 默认 `mode:"replace"`、`submit:false`。只有目标被键盘遮挡、业务依赖 Return / Done / Search / 结束编辑,或任务明确验证键盘状态时,才在对应 field 使用 `submit:true` 或额外调用 `ui_keyboard_dismiss`。
 4. 点提交按钮:用 `ui_tap`(普通点击)。**判成败靠紧接着的 `ui_waitAny`**(见 Step 4),不要在 tap 里等稳定——异步提交的 loading 中间态会被误判。
 
 > **为什么现场解析而不是预录 path**:path(`root/0/0/4`)会随 UI 重构变;可见文案("登录"、"用户名")是稳定契约。runner 只信任文案/角色,path 仅在单次 inspect 生命周期内有效。

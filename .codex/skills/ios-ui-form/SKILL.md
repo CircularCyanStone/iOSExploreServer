@@ -22,7 +22,7 @@ description: iOS App 表单填写与控件操作(开发验证 + 自动化测试)
 - ✅ 用户要填写登录 / 注册 / 资料表单,包括用户名、密码、邮箱、手机号等字段
 - ✅ 用户要在搜索框输入文字,或在多行文本框里输入带换行的内容
 - ✅ 用户要打开 / 关闭开关,调整滑块,操作 stepper,选择 segment
-- ✅ 用户要关掉键盘,或填完最后一个字段后收键盘
+- ✅ 用户要关掉键盘,或任务明确依赖 Return / Done / Search / 结束编辑语义
 - ✅ 用户要点提交 / 登录 / 保存按钮,并判断提交是否成功
 - ✅ 用户要填写屏幕外字段,需要先滚动定位
 - ✅ 用户说 "表单" / "填写" / "输入文字" / "开关" / "滑块" / "分段控件" / "提交" / "登录"
@@ -34,26 +34,28 @@ description: iOS App 表单填写与控件操作(开发验证 + 自动化测试)
 
 ## 工作原理
 
-表单填写的核心时序:**inspect 取字段 → 逐字段 input / sendAction → 收键盘 → inspect 取提交按钮 → tap 提交 → 等并读取终态判据**。每个字段操作前 `viewSnapshotID` 必须来自当前屏幕;跨页、scroll、键盘开合或等待后继续操作时要重新 inspect。
+表单填写的核心时序:**inspect 取字段 → 一次 ui_input 批量填文本字段 / sendAction 改控件 → 必要时重新 inspect → tap 提交 → 等并读取终态判据**。`viewSnapshotID` 必须来自当前屏幕;跨页、scroll、键盘开合或等待后继续操作时要重新 inspect。键盘关闭不是提交前默认步骤,只在目标被键盘遮挡、业务依赖结束编辑、或任务本身要求键盘状态时执行。
 
 ### 1. 文本输入(`ui_input`)
 
-支持 `UITextField`、`UITextView`、`UISearchTextField`。定位优先用 `accessibilityIdentifier`,其次用 `path`;两者都应配合最近一次 `ui_inspect` 的 `viewSnapshotID`。
+支持 `UITextField`、`UITextView`、`UISearchTextField`。`ui_input` 只有批量形态:顶层传 `fields` 数组,单字段输入也必须放进数组。每个 field 的定位优先用 `accessibilityIdentifier`,其次用 `path`;整批共用最近一次 `ui_inspect` 的顶层 `viewSnapshotID`。
 
 | 参数 | 含义 | 注意 |
 |---|---|---|
-| `text` | 要输入的文本 | 必填;空字符串表示清空字段 |
-| `accessibilityIdentifier` / `path` | 定位目标字段 | 二选一;优先 identifier |
-| `viewSnapshotID` | 当前控件树快照 | 必填;跨屏 / scroll / 键盘开合后重取 |
-| `mode` | `"replace"`(默认)/ `"append"` | 表单填写默认 replace |
-| `submit` | bool,默认 true | 批量填字段时中间设 false,最后一个设 true |
+| `fields` | 字段数组 | 顶层必填;每个元素是一个文本字段 |
+| `fields[].text` | 要输入的文本 | 必填;空字符串表示清空字段 |
+| `fields[].accessibilityIdentifier` / `fields[].path` | 定位目标字段 | 二选一;优先 identifier |
+| `viewSnapshotID` | 当前控件树快照 | 顶层传;跨屏 / scroll / 键盘开合后重取 |
+| `fields[].mode` | `"replace"`(默认)/ `"append"` | 表单填写默认 replace |
+| `fields[].submit` | bool,默认 false | 只有要触发 Return / Done / Search 或结束编辑时才设 `true` |
+| `stopOnFailure` | bool,默认 true | 某个字段失败后停止后续字段;批量表单默认保持 true |
 
 关键约束:
 
 - Unicode / emoji / 中文可直接传;内部走 `UITextInput.insertText`,不是键盘码。
 - 安全字段响应不回原文,只回长度和 masked 值。
 - `\n` 换行只在 `UITextView` 有效;发到 `UITextField` 会返回 `input_rejected`。
-- 批量填字段时不要每个字段都收键盘;中间字段 `submit:false`,最后字段 `submit:true` 或统一调 `ui_keyboard_dismiss`。
+- 多字段输入时默认保持键盘状态;只有目标被键盘遮挡、业务依赖 editingDidEnd / Return / Done / Search,或任务本身要求键盘状态时,才在对应 field 使用 `submit:true` 或额外调用 `ui_keyboard_dismiss`。
 
 ### 2. 控件交互(`ui_control_sendAction`)
 
@@ -70,16 +72,22 @@ description: iOS App 表单填写与控件操作(开发验证 + 自动化测试)
 
 ### 3. 键盘管理(`ui_keyboard_dismiss`)
 
-两种收键盘方式:
+键盘管理不是提交前默认步骤。只有以下情况才处理键盘:
 
-- 自动:`ui_input(submit:true)` 输完即收,适合单字段或最后一字段。
-- 手动:`ui_keyboard_dismiss(strategy:"auto"|"endEditing"|"resignFirstResponder")`,适合批量填完后统一收。
+- 要点击的目标被键盘实际遮挡,或普通 tap 因键盘覆盖失败。
+- App 业务逻辑依赖 `editingDidEnd`、Return、Done、Search 等键盘事件。
+- 用户任务本身要求验证键盘出现 / 消失 / 输入焦点。
+
+两种键盘处理方式:
+
+- 自动:`ui_input({fields:[{..., submit:true}]})` 输入后触发提交键语义,适合搜索框、单字段提交、或明确依赖 Return / Done 的字段。
+- 手动:`ui_keyboard_dismiss(strategy:"auto"|"endEditing"|"resignFirstResponder")`,适合目标被键盘遮挡或必须结束当前编辑状态的场景。
 
 `strategy:"auto"` 默认先试 `resignFirstResponder` 再试 `endEditing`;`endEditing` 递归整个子树,更强;`resignFirstResponder` 只处理当前 first responder,更温和。响应回 `firstResponderBefore` / `firstResponderAfter`,用于确认键盘是否收起。
 
 ### 4. 提交表单
 
-填完字段后:**收键盘 → 重新 inspect 取提交按钮 → tap → 按同步 / 异步选择等待方式**。
+填完字段后:**必要时重新 inspect 取提交按钮 → tap → 按同步 / 异步选择等待方式**。只有键盘遮挡目标、业务依赖结束编辑、或键盘状态本身是验证目标时,才先收键盘。
 
 - **同步提交**:纯前端校验、本地切页、无网络。用 `ui_tap_and_inspect(waitForStable:true, stableTimeMs:300~500)`,直接读返回的 `targets` / `navigationBar` / `alert`。
 - **异步提交**:登录、注册、保存到服务器等。用 `ui_tap` 只负责触发按钮,然后用 `wait_and_inspect` 或 `ui_waitAny` 等明确的成功 / 失败判据。
@@ -126,7 +134,7 @@ const result = await mcp__iOSDriver__wait_and_inspect({
 
 - `ui_input` 应定位内部 `UISearchTextField`,不是外层 `UISearchBar`。
 - `maxDepth` 设到 4-5,避免 UISearchBar 内部结构被截断。
-- 基础搜索可用 `submit:true`;如果 App 只响应键盘 Search 键或独立按钮,用 `submit:false` 后再 `ui_keyboard_dismiss` 或 `ui_tap` 搜索按钮。
+- 搜索语义依赖键盘 Search / Done 时用 `submit:true`;如果 App 由独立按钮触发查询,保持 `submit:false`,重新 inspect 后 `ui_tap` 搜索按钮。只有需要结束编辑或稳定取消按钮状态时才调用 `ui_keyboard_dismiss`。
 - 取消按钮和清空按钮是动态出现的;点击搜索框或输入文本后必须重新 inspect。
 
 完整搜索示例见 [references/form-examples.md](references/form-examples.md)。

@@ -137,7 +137,7 @@ describe("schemaMapper", () => {
     expect(mapped.inputSchema.required).toBeUndefined();
   });
 
-  // F-02：Claude Code 的 MCP 客户端不消化顶层 oneOf → ui.tap/ui.input/ui.control.sendAction
+  // F-02：Claude Code 的 MCP 客户端不消化顶层 oneOf → ui.tap/ui.control.sendAction 等
   // 不会被暴露。App 用 exactlyOneOf(["accessibilityIdentifier","path"]) 产出顶层 oneOf,
   // mapInputSchema 必须把它拍平为 properties + required + 文本说明。
   test("flattens top-level oneOf into properties + description note (ui.tap shape)", () => {
@@ -191,6 +191,38 @@ describe("schemaMapper", () => {
     expect(mapped.inputSchema.oneOf).toBeUndefined();
     expect(mapped.inputSchema.allOf).toBeUndefined();
     expect(mapped.inputSchema.required).toEqual(["action"]);
+    expect(mapped.descriptionSuffix).toBe("");
+  });
+
+  test("flattens nested oneOf inside array item schema (ui.input fields shape)", () => {
+    const mapped = mapInputSchema({
+      type: "object",
+      properties: {
+        fields: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              accessibilityIdentifier: { type: ["string", "null"], description: "按 identifier 定位" },
+              path: { type: ["string", "null"], description: "按 path 定位" },
+              text: { type: "string", description: "要输入的文本" }
+            },
+            required: ["text"],
+            oneOf: [
+              { required: ["accessibilityIdentifier"] },
+              { required: ["path"] }
+            ]
+          }
+        }
+      },
+      required: ["fields"]
+    });
+
+    const props = mapped.inputSchema.properties as Record<string, unknown>;
+    const fields = props.fields as { items: { oneOf?: unknown; properties: Record<string, { description?: string }> } };
+    expect(fields.items.oneOf).toBeUndefined();
+    expect(fields.items.properties.accessibilityIdentifier.description ?? "").toContain("二选一");
+    expect(fields.items.properties.path.description ?? "").toContain("二选一");
     expect(mapped.descriptionSuffix).toBe("");
   });
 });

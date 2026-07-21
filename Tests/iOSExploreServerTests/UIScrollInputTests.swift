@@ -6,7 +6,7 @@ import Testing
 ///
 /// `UIScrollInput`（含 `ScrollDirection` / `ScrollExtent`）保持 Foundation-only
 /// （无 `#if canImport(UIKit)`），因此本测试在 macOS SPM 与 iOS framework 工程下均可运行，
-/// 覆盖 direction 必填、amount 必须 > 0、定位字段可缺省以及 viewSnapshotID 仅允许与 path 搭配的规则。
+/// 覆盖 direction 必填、amount 必须 > 0、定位字段可缺省以及 viewSnapshotID 可选陈旧校验规则。
 
 @Test("UIScrollInput: direction 必填；amount>0；target 可缺；animated 默认 false")
 func scrollInputParse() throws {

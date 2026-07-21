@@ -135,7 +135,7 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
     ui_input: forwardActionTool(
       "ui_input",
       "ui.input",
-      "向 UITextField / UITextView / UISearchTextField 注入文本。text 字段必填，默认 replace。",
+      "按顺序向多个 UITextField / UITextView / UISearchTextField 注入文本。顶层传 fields 数组，单字段输入也必须放进数组；stopOnFailure 默认 true，只有需要 Return / Done / Search / 结束编辑语义时才显式把单项 submit 设为 true。",
       uiInputSchema()
     ),
     ui_tap: forwardActionTool(
@@ -153,7 +153,7 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
     ui_keyboard_dismiss: forwardActionTool(
       "ui_keyboard_dismiss",
       "ui.keyboard.dismiss",
-      "收起当前键盘或结束编辑状态。",
+      "收起当前键盘或结束编辑状态。仅在目标被键盘遮挡、业务依赖结束编辑、或任务本身验证键盘状态时使用。",
       uiKeyboardDismissSchema()
     ),
     ui_scrollToElement: forwardActionTool(
@@ -271,17 +271,48 @@ function uiInspectSchema(): JSONObject {
 }
 
 function uiInputSchema(): JSONObject {
+  const fieldSchema = {
+    type: "object",
+    properties: {
+      accessibilityIdentifier: {
+        type: "string",
+        description: "按 accessibilityIdentifier 精确定位目标 view；与 path 二选一。"
+      },
+      path: {
+        type: "string",
+        description: "按 ui.inspect 返回的只读路径定位目标 view；与 accessibilityIdentifier 二选一。"
+      },
+      text: {
+        type: "string",
+        description: "要注入的文本内容，不是 value 或 input。"
+      },
+      mode: { type: "string", enum: ["replace", "append"] },
+      submit: {
+        type: "boolean",
+        description: "是否触发 Return / Done / Search / 结束编辑语义；批量输入默认显式传 false。"
+      }
+    },
+    required: ["text"],
+    additionalProperties: false
+  };
+
   return {
     type: "object",
     properties: {
-      accessibilityIdentifier: { type: "string" },
-      path: { type: "string" },
       viewSnapshotID: { type: "string" },
-      text: { type: "string", description: "要注入的文本内容，不是 value 或 input。" },
-      mode: { type: "string", enum: ["replace", "append"] },
-      submit: { type: "boolean" }
+      stopOnFailure: {
+        type: "boolean",
+        description: "某个字段失败后是否停止执行后续字段；默认 true。"
+      },
+      fields: {
+        type: "array",
+        minItems: 1,
+        maxItems: 16,
+        items: fieldSchema,
+        description: "按顺序执行的字段数组；单字段输入也必须放进数组。"
+      }
     },
-    required: ["text"]
+    required: ["fields"]
   };
 }
 
@@ -343,6 +374,39 @@ function uiScrollToElementSchema(): JSONObject {
 }
 
 function waitAndInspectSchema(): JSONObject {
+  const waitConditionSchema = {
+    type: "object",
+    properties: {
+      id: {
+        type: "string",
+        description: "条件标识,用于从 matchedID 判断命中的是哪条成功或失败判据。"
+      },
+      mode: {
+        type: "string",
+        enum: ["idle", "targetExists", "targetGone", "textExists", "snapshotChanged"],
+        description: "等待模式。targetExists/targetGone 需要 accessibilityIdentifier 或 path；textExists 需要 text；snapshotChanged 需要 viewSnapshotID；idle 无额外字段。"
+      },
+      accessibilityIdentifier: {
+        type: "string",
+        description: "targetExists/targetGone 模式按 accessibilityIdentifier 精确定位目标 view。"
+      },
+      path: {
+        type: "string",
+        description: "targetExists/targetGone 模式按 ui.inspect 返回的 root/0/1 路径定位目标 view。"
+      },
+      text: {
+        type: "string",
+        description: "textExists 模式要等待的文本片段。"
+      },
+      viewSnapshotID: {
+        type: "string",
+        description: "snapshotChanged 模式参照的 viewSnapshotID。"
+      }
+    },
+    required: ["id", "mode"],
+    additionalProperties: false
+  };
+
   return {
     type: "object",
     properties: {
@@ -350,6 +414,7 @@ function waitAndInspectSchema(): JSONObject {
         type: "array",
         minItems: 1,
         maxItems: 16,
+        items: waitConditionSchema,
         description: "每项必须包含 id/mode；targetExists/targetGone 需要 accessibilityIdentifier 或 path；textExists 需要 text；snapshotChanged 需要 viewSnapshotID；idle 无额外字段。"
       },
       timeoutMs: { type: "number" },

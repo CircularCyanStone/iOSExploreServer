@@ -192,9 +192,13 @@ if (loginButtonTargets.length > 0) {
   if (loginAlertInspect?.alert?.textFields?.length > 0) {
     const usernameTf = loginAlertInspect.alert.textFields[0];
     const ui_input_test = await callTool("ui_input", {
-      path: usernameTf.path,
       viewSnapshotID: loginSid,
-      text: "E2EAgentName42"
+      fields: [
+        {
+          path: usernameTf.path,
+          text: "E2EAgentName42"
+        }
+      ]
     });
     await waitForAll(1);
     await new Promise(r => setTimeout(r, 500));

@@ -107,15 +107,12 @@ func longPressDurationNonPositiveRejected() {
     }
 }
 
-@Test("ui.input 命令 description 写明 viewSnapshotID 与 identifier/path 都可搭配")
-func inputCommandDescriptionExplainsViewSnapshotAlignment() {
+@Test("ui.input 命令 description 写明 fields 批量形态")
+func inputCommandDescriptionExplainsBatchShape() {
     let description = InputCommand().description
-    #expect(description.contains("accessibilityIdentifier 或 path"))
-    // P0-2（fe48071）后 viewSnapshotID 校验与 ui.tap 对齐：identifier/path 两种定位都支持
-    // 陈旧校验，不再有 "viewSnapshotID 只与 path 搭配 / identifier 不能带" 的旧约束。
-    #expect(description.contains("identifier/path 两种定位方式都支持陈旧校验"))
-    #expect(description.contains("viewSnapshotID 仅允许与 path 搭配") == false)
-    #expect(description.contains("identifier 定位不能带 viewSnapshotID") == false)
-    #expect(description.contains("必须先调 ui.inspect") == false)
+    #expect(description.contains("fields 数组"))
+    #expect(description.contains("单字段输入也必须放进数组"))
+    #expect(description.contains("stopOnFailure 默认 true"))
+    #expect(description.contains("text 字段必填") == false)
 }
 #endif

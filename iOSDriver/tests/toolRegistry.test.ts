@@ -67,22 +67,29 @@ describe("ToolRegistry", () => {
     expect(registry.tools()).toEqual([]);
   });
 
-  // Agent 凭直觉容易把 ui.input 的注入文本字段传成 "value"（invalid_data）。
-  // 工具 description 必须显式点名 "text" 字段名 + mode 取值，避免第一次调用就失败。
-  test('appends "text" field hint to ui.input description', async () => {
+  // ui.input 是批量字段数组；工具 description 必须显式点名 fields[]，避免 Agent 按旧单字段形态传参。
+  test('appends "fields" array hint to ui.input description', async () => {
     const registry = new ToolRegistry({
       fixedToolNames: new Set(),
       client: fakeHelpClient([
         {
           action: "ui.input",
-          description: "向 UITextField/UITextView 注入文本",
+          description: "向 UITextField/UITextView 批量注入文本",
           inputSchema: {
             type: "object",
             properties: {
-              text: { type: "string", description: "要输入的文本 (任意 Unicode, 含中文/emoji)" },
-              mode: { type: "string", enum: ["replace", "append"] }
+              fields: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    text: { type: "string" }
+                  },
+                  required: ["text"]
+                }
+              }
             },
-            required: ["text"]
+            required: ["fields"]
           }
         }
       ])
@@ -90,12 +97,11 @@ describe("ToolRegistry", () => {
 
     await registry.refresh();
     const desc = registry.tools()[0].description ?? "";
-    expect(desc).toContain("向 UITextField/UITextView 注入文本");
-    expect(desc).toContain('"text"');
-    expect(desc).toContain('"replace"');
-    expect(desc).toContain('"append"');
-    // 同步防止 agent 误传 value：明确点名"不是 value 或 input"
-    expect(desc).toContain('"value"');
+    expect(desc).toContain("向 UITextField/UITextView 批量注入文本");
+    expect(desc).toContain("fields 数组");
+    expect(desc).toContain("accessibilityIdentifier/path 二选一");
+    expect(desc).toContain("必填 text");
+    expect(desc).toContain("单字段输入也必须放入数组");
   });
 
   // scrollToElement 的 "value" 字段名同样反直觉，老提交 4de3775 已加 suffix；

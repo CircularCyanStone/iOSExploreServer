@@ -40,6 +40,8 @@ public struct CommandFieldSchema: Sendable, Equatable {
     public let maximum: Double?
     /// 字符串枚举允许值。
     public let enumValues: [String]?
+    /// 额外 schema 键值，用于表达 `items` / `properties` 等基础标量字段工厂未覆盖的结构。
+    public let extraSchema: JSON
 
     /// 创建字段 schema 描述。
     ///
@@ -52,6 +54,7 @@ public struct CommandFieldSchema: Sendable, Equatable {
     ///   - minimum: 数值或整数下界。
     ///   - maximum: 数值或整数上界。
     ///   - enumValues: 字符串枚举允许值。
+    ///   - extraSchema: 额外 schema 键值，用于补充数组元素、对象属性等复杂结构约束。
     public init(type: CommandJSONSchemaType,
                 required: Bool,
                 description: String,
@@ -59,7 +62,8 @@ public struct CommandFieldSchema: Sendable, Equatable {
                 allowsNull: Bool = false,
                 minimum: Double? = nil,
                 maximum: Double? = nil,
-                enumValues: [String]? = nil) {
+                enumValues: [String]? = nil,
+                extraSchema: JSON = JSON()) {
         self.type = type
         self.required = required
         self.description = description
@@ -68,6 +72,7 @@ public struct CommandFieldSchema: Sendable, Equatable {
         self.minimum = minimum
         self.maximum = maximum
         self.enumValues = enumValues
+        self.extraSchema = extraSchema
     }
 
     /// 输出单字段 JSON Schema object。
@@ -95,6 +100,9 @@ public struct CommandFieldSchema: Sendable, Equatable {
         }
         if let enumValues = enumValues {
             json["enum"] = .array(enumValues.map { .string($0) })
+        }
+        for (key, value) in extraSchema.storage {
+            json[key] = value
         }
         return json
     }
@@ -226,6 +234,59 @@ public enum CommandFields {
                 throw CommandInputParseError("\(name) must be a string")
             }
             return parsed
+        }
+    }
+
+    /// 必填数组字段：缺失或 null 抛出解析错误，存在但非数组也抛出解析错误。
+    ///
+    /// 该工厂用于需要在 schema 里声明 `items` 的命令输入，例如批量字段数组。调用方可以通过
+    /// `itemsSchema` 让工具客户端看见数组元素结构，同时在 `decode` 里拿到原始数组值做后续逐项解析。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - description: 字段说明。
+    ///   - itemsSchema: 数组元素的 JSON Schema object。
+    ///   - minimumCount: 数组最小长度。
+    ///   - maximumCount: 数组最大长度。
+    /// - Returns: 解析为 `[JSONValue]` 的命令字段。
+    public static func requiredArray(_ name: String,
+                                     description: String,
+                                     itemsSchema: JSON? = nil,
+                                     minimumCount: Int? = nil,
+                                     maximumCount: Int? = nil) -> CommandField<[JSONValue]> {
+        precondition(minimumCount == nil || minimumCount! >= 0, "\(name) minimumCount must be non-negative")
+        precondition(maximumCount == nil || maximumCount! >= 0, "\(name) maximumCount must be non-negative")
+        if let minimumCount, let maximumCount, minimumCount > maximumCount {
+            preconditionFailure("\(name) minimumCount must be <= maximumCount")
+        }
+        var extra = JSON()
+        if let itemsSchema {
+            extra["items"] = .object(itemsSchema)
+        }
+        if let minimumCount {
+            extra["minItems"] = .double(Double(minimumCount))
+        }
+        if let maximumCount {
+            extra["maxItems"] = .double(Double(maximumCount))
+        }
+        return CommandField(name: name,
+                            schema: CommandFieldSchema(type: .array,
+                                                       required: true,
+                                                       description: description,
+                                                       extraSchema: extra)) { raw in
+            guard let raw = raw, raw != .null else {
+                throw CommandInputParseError("missing required parameter '\(name)'")
+            }
+            guard case .array(let values) = raw else {
+                throw CommandInputParseError("\(name) must be an array")
+            }
+            if let minimumCount, values.count < minimumCount {
+                throw CommandInputParseError("\(name) must contain at least \(minimumCount) item(s)")
+            }
+            if let maximumCount, values.count > maximumCount {
+                throw CommandInputParseError("\(name) must contain at most \(maximumCount) item(s)")
+            }
+            return values
         }
     }
 

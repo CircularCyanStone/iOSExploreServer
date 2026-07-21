@@ -54,7 +54,7 @@ export function mapInputSchema(schema: JSONObject): SchemaMapping {
   }
 
   // 拍平顶层组合关键字（oneOf/anyOf/allOf）。Claude Code 的 MCP 客户端在 ListTools
-  // 时不消化顶层 oneOf → 含该关键字的工具（ui.tap/ui.input/ui.control.sendAction，App 用
+  // 时不消化顶层 oneOf → 含该关键字的工具（ui.tap/ui.control.sendAction 等，App 用
   // exactlyOneOf → 顶层 oneOf 表达 identifier/path 互斥）不会被暴露给 agent（F-02）。
   // 拍平后：分支 properties 合并进顶层、互斥替代项不强制 required、用 description 文本
   // 保留"二选一"语义，输出 schema 不再含顶层 oneOf/anyOf/allOf。运行时互斥仍由 App 端
@@ -221,6 +221,11 @@ function normalizeSchemaValue(value: unknown): unknown {
       enum: enumValues
     };
   }
+
+  // 嵌套 schema（如 ui.input 的 fields.items）也可能含 oneOf。MCP 客户端对组合关键字
+  // 的支持不稳定，嵌套组合也会让模型难以直接填写参数；这里复用同一套拍平逻辑，把互斥关系
+  // 落到字段 description 上。
+  flattenTopLevelComposition(normalized);
 
   return normalized;
 }

@@ -62,11 +62,10 @@ export class ToolRegistry {
         if (tool.action === "ui.scrollToElement") {
           description += `\n\n⚠️ 该工具的 "value" 字段（必填）就是要滚动到的文本片段或 accessibilityIdentifier，不是通用值字段。`;
         }
-        // ui.input 的 App 端 inputSchema 用字段名 "text"（required）承载要注入的文本，
-        // 但"text"作为字段名在描述里只出现一次（且与 tool description 自身"注入文本"语义重叠），
-        // Agent 凭直觉容易传 "value"。在描述尾部追加显式说明，避免首次调用就 invalid_data。
+        // ui.input 的 App 端 inputSchema 现在是批量字段数组；单字段也必须放在 fields[]。
+        // 在描述尾部追加显式说明，避免 Agent 仍按旧单字段语义传参。
         if (tool.action === "ui.input") {
-          description += `\n\n⚠️ 该工具的 "text" 字段（必填）就是要注入到输入框的文本内容（任意 Unicode, 含中文/emoji），不是 "value" 或 "input"；同时 mode 默认 "replace"（先清空原内容），可选 "append" 在末尾追加。`;
+          description += `\n\n⚠️ 该工具顶层必须传 fields 数组；每个元素再包含 accessibilityIdentifier/path 二选一与必填 text。单字段输入也必须放入数组。`;
         }
         return {
           ...tool,
