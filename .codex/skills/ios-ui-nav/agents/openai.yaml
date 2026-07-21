@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS UI Navigation"
+  short_description: "iOS 屏幕导航、返回、Tab 切换和导航栏按钮操作"
+  default_prompt: "使用 $ios-ui-nav 操作 iOS 屏幕导航、返回、Tab 或导航栏按钮。"

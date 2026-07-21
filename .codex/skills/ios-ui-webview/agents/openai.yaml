@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS UI WebView"
+  short_description: "iOS WKWebView JavaScript 执行与轻量自动化"
+  default_prompt: "使用 $ios-ui-webview 在 iOS WKWebView 中执行 JavaScript 并读取结果。"

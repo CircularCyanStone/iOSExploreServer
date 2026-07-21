@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS Automation"
+  short_description: "iOS 自动化统一入口、连接验证、截图日志与技能路由规则"
+  default_prompt: "使用 $ios-automation 先验证 App 连接，再把当前 iOS 自动化请求路由到正确子 skill。"

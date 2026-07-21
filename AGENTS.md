@@ -12,6 +12,7 @@ iOS App HTTP Server 的 SPM 库（基于 `NWListener`）。Mac 经 `iproxy`（US
 6. **通信失败用 HTTP 状态码（400/500），业务失败用 HTTP 200 + body 失败 code/message**。
 7. **内置命令在 `ExploreServer.init` 同步注册一次**；UIKit 命令由宿主显式 `server.registerUIKitCommands()` 注册。
 8. **开发期只留最合理设计**：任何设计不合理的地方都应推到最合理方案，不保留"能用先这样"的妥协代码。改完代码先 `swift test` 再说完成。
+9. **通用 skills 必须与本地项目解耦**：`.codex/skills` / `.claude/skills` 是可迁移能力说明，开发期间不得在 skill 本体里写入本仓库项目名、示例 App、测试工程路径、bundle id、设备 ID、测试账号、本机绝对路径或任何本地开发/测试项目内容；需要真实案例时放到 `docs/skills/examples/` 或仓库文档中，并在 skill 本体只保留占位符和通用规则。
 
 ## 沟通约定：抽象短词必须解释
 

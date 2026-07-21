@@ -1,11 +1,6 @@
 ---
 name: ios-ui-wait
 description: iOS App 异步等待与动态内容稳定(开发验证 + 自动化测试)/ wait, loading, dynamic content, async, polling, idle, targetExists, targetGone, textExists, snapshotChanged, ui_wait, ui_waitAny, wait_and_inspect
-allowed-tools:
-  - mcp__iOSDriver__ui_wait
-  - mcp__iOSDriver__ui_waitAny
-  - mcp__iOSDriver__wait_and_inspect
-  - mcp__iOSDriver__ui_inspect
 ---
 
 # iOS 异步等待与动态内容稳定
@@ -193,4 +188,4 @@ loading spinner 通常带 a11y id(如 `loading.spinner` / `HUD.progress`),用 `t
 - `ios-ui-alert` — 等 alert 出现可借本 skill 的 `textExists`,但响应 alert 按钮必走 `ui_alert_respond`
 - `ios-automation` — L1 总入口;不确定走哪个子 skill 时先问它
 
-**平台约束**:iOSExploreServer 是 Debug-only 开发工具,等待 action 在主线程轮询 view 树,被 `#if DEBUG` 隔离,Release 构建下不可用。`timeoutMs` 硬上限 30000ms(30 秒),`intervalMs` 下限 50ms;`viewSnapshotID` 默认 TTL 120 秒,`snapshotChanged` 参照过期会报错。iOS 不向测试暴露"网络请求完成"或"滚动结束"事件,等待只能基于 view 树可见状态间接判定,无法感知后台任务进度。
+**平台约束**:本套自动化能力是 Debug-only 开发工具,等待 action 在主线程轮询 view 树,被 `#if DEBUG` 隔离,Release 构建下不可用。`timeoutMs` 硬上限 30000ms(30 秒),`intervalMs` 下限 50ms;`viewSnapshotID` 默认 TTL 120 秒,`snapshotChanged` 参照过期会报错。iOS 不向测试暴露"网络请求完成"或"滚动结束"事件,等待只能基于 view 树可见状态间接判定,无法感知后台任务进度。

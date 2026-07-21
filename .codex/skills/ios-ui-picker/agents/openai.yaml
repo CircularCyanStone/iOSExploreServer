@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS UI Picker"
+  short_description: "iOS 日期选择器与滚轮选择器精确设值和验证自动化"
+  default_prompt: "使用 $ios-ui-picker 设置 iOS 日期选择器或滚轮选择器的目标值。"

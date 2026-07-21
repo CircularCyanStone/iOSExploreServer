@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS UI Form"
+  short_description: "iOS 表单输入、控件赋值、键盘处理和提交等待自动化规则"
+  default_prompt: "使用 $ios-ui-form 填写 iOS 表单、操作控件并触发表单提交。"

@@ -1,0 +1,155 @@
+# iOS 表单示例
+
+本文件只在需要完整流程示例时读取。示例使用泛化的 accessibilityIdentifier 和占位文本,不要把它们理解为某个本地测试 App 的真实账号、bundle id 或固定页面结构。
+
+## 异步提交
+
+适合登录、注册、保存等会经过 loading 或网络请求的流程。
+
+```javascript
+const snapshot = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "auth_",
+  maxDepth: 8,
+  maxTargets: 120
+})
+
+await mcp__iOSDriver__ui_input({
+  accessibilityIdentifier: "auth_username_field",
+  text: "<username>",
+  submit: false,
+  viewSnapshotID: snapshot.viewSnapshotID
+})
+
+await mcp__iOSDriver__ui_input({
+  accessibilityIdentifier: "auth_password_field",
+  text: "<password>",
+  submit: true,
+  viewSnapshotID: snapshot.viewSnapshotID
+})
+
+await mcp__iOSDriver__ui_tap({
+  accessibilityIdentifier: "auth_submit_button",
+  viewSnapshotID: snapshot.viewSnapshotID
+})
+
+const result = await mcp__iOSDriver__wait_and_inspect({
+  conditions: [
+    { id: "success", mode: "targetExists", accessibilityIdentifier: "dashboard_title" },
+    { id: "error_label", mode: "targetExists", accessibilityIdentifier: "auth_error_label" },
+    { id: "error_text", mode: "textExists", text: "登录失败" }
+  ],
+  timeoutMs: 10000,
+  intervalMs: 200,
+  inspectOptions: { maxDepth: 8, maxTargets: 120 }
+})
+
+if (result.matchedID === "success") {
+  // 继续验证成功页结构
+} else if (result.matchedID === "error_label" || result.matchedID === "error_text") {
+  // 继续验证错误提示、按钮状态、密码字段是否被清空等失败态
+} else {
+  // 超时:重新 inspect 并记录当前屏幕状态
+}
+```
+
+异步流程不要用 `snapshotChanged` 判断成功,也不要用固定 sleep 代替条件等待。成功和失败都应有明确 UI 判据。
+
+## 同步提交
+
+适合纯本地校验,例如必填字段为空后立即显示错误文案。
+
+```javascript
+const result = await mcp__iOSDriver__ui_tap_and_inspect({
+  accessibilityIdentifier: "profile_save_button",
+  viewSnapshotID: snapshot.viewSnapshotID,
+  waitForStable: true,
+  stableTimeMs: 300
+})
+
+const errorLabel = result.targets.find(t =>
+  t.accessibilityIdentifier === "profile_error_label"
+)
+```
+
+同步流程可以直接读 `ui_tap_and_inspect` 返回的 targets;若出现 loading、按钮禁用、网络请求中等中间态,应改走异步提交流程。
+
+## 注册成功 Alert
+
+```javascript
+const result = await mcp__iOSDriver__wait_and_inspect({
+  conditions: [
+    { id: "success_alert", mode: "textExists", text: "注册成功" },
+    { id: "register_error", mode: "targetExists", accessibilityIdentifier: "register_error_label" }
+  ],
+  timeoutMs: 10000,
+  intervalMs: 200,
+  inspectOptions: { maxDepth: 8 }
+})
+
+if (result.matchedID === "success_alert") {
+  await mcp__iOSDriver__ui_alert_respond({ role: "default" })
+}
+```
+
+Alert 按钮响应归 `ios-ui-alert`;本 skill 只负责填写和触发提交。
+
+## UISearchBar 基础搜索
+
+`UISearchBar` 是容器,需要定位内部 `UISearchTextField`。
+
+```javascript
+const snapshot = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "search_",
+  maxDepth: 5,
+  maxTargets: 80
+})
+
+const searchField = snapshot.targets.find(t =>
+  t.type === "UISearchTextField" ||
+  (t.type === "UITextField" && t.path.includes("search"))
+)
+
+await mcp__iOSDriver__ui_input({
+  path: searchField.path,
+  text: "<query>",
+  mode: "replace",
+  submit: true,
+  viewSnapshotID: snapshot.viewSnapshotID
+})
+
+const result = await mcp__iOSDriver__wait_and_inspect({
+  conditions: [
+    { id: "result", mode: "targetExists", accessibilityIdentifier: "search_result_label" },
+    { id: "empty", mode: "targetExists", accessibilityIdentifier: "search_empty_state" }
+  ],
+  timeoutMs: 5000,
+  intervalMs: 200,
+  inspectOptions: { maxDepth: 8 }
+})
+```
+
+如果 App 只在独立搜索按钮上触发查询,将 `submit` 设为 `false`,重新 inspect 后用 `ui_tap` 点击该按钮。
+
+## UISearchBar 取消和清空
+
+取消按钮通常在搜索框获得焦点后才出现:
+
+```javascript
+await mcp__iOSDriver__ui_tap({
+  accessibilityIdentifier: "search_container",
+  viewSnapshotID: snapshot.viewSnapshotID
+})
+
+await mcp__iOSDriver__ui_wait({ mode: "idle", stableMs: 300 })
+
+const focused = await mcp__iOSDriver__ui_inspect({
+  accessibilityIdentifierPrefix: "search_",
+  maxDepth: 5
+})
+
+const cancelButton = focused.targets.find(t =>
+  t.type === "UIButton" && (t.text === "Cancel" || t.text === "取消")
+)
+```
+
+清空按钮只在输入框有内容时出现。输入后重新 inspect,按按钮 text、accessibilityLabel 或 path 定位后用 `ui_tap`。不同 App 对取消和清空后的文本保留策略可能不同,以 inspect 后的实际字段状态为准。

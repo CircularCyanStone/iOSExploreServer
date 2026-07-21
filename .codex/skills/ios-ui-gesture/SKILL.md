@@ -1,11 +1,6 @@
 ---
 name: ios-ui-gesture
 description: iOS App 进阶手势(swipe 方向滑动 / long press 长按 / cell 滑动操作)(开发验证 + 自动化测试)/ swipe, scroll, long press, context menu, cell swipe action, delete, edit, ui_swipe, ui_longPress
-allowed-tools:
-  - mcp__iOSDriver__ui_swipe
-  - mcp__iOSDriver__ui_longPress
-  - mcp__iOSDriver__ui_inspect
-  - mcp__iOSDriver__ui_wait
 ---
 
 # iOS 进阶手势:swipe 滑动与 long press 长按
@@ -150,4 +145,4 @@ allowed-tools:
 - `ios-ui-shot` — 手势前后的视觉对比取证归它,本 skill 不做截图
 - `ios-automation` — L1 总入口;不确定走哪个子 skill 时先问它
 
-**平台约束**:iOSExploreServer 是 Debug-only 开发工具,手势执行依赖私有 API 注入、被 `#if DEBUG` 隔离,Release 构建下不可用。命令在主线程执行,单次必须在 5 秒内完成。`viewSnapshotID` 默认 TTL 120 秒,但手势(改变 view 树)会提前作废。
+**平台约束**:本套自动化能力是 Debug-only 开发工具,手势执行依赖私有 API 注入、被 `#if DEBUG` 隔离,Release 构建下不可用。命令在主线程执行,单次必须在 5 秒内完成。`viewSnapshotID` 默认 TTL 120 秒,但手势(改变 view 树)会提前作废。

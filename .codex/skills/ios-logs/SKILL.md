@@ -1,16 +1,13 @@
 ---
 name: ios-logs
 description: 读取 iOS App 进程内日志(开发调试 + 自动化测试)实时监控、排查、断言 / app logs, stdout, stderr, nslog, oslog, debug, mark, read, monitoring, troubleshooting
-allowed-tools:
-  - mcp__iOSDriver__app_logs_mark
-  - mcp__iOSDriver__app_logs_read
 ---
 
 # iOS App 进程内日志读取
 
-基于 iOSDriver MCP Server(`mcp__iOSDriver__app_logs_*`),封装 `iOSExploreDiagnostics` 的两个命令,解决"命令已经发到 App 进程,里面到底发生了什么"这一调试问题。核心是两个真实 action:`app.logs.mark`(建立检查点 cursor)、`app.logs.read`(从 cursor 之后增量读取进程内捕获的日志,可按 source / level 过滤、可分页)。
+基于 iOSDriver MCP Server(`mcp__iOSDriver__app_logs_*`),封装 App 内诊断扩展的两个命令,解决"命令已经发到 App 进程,里面到底发生了什么"这一调试问题。核心是两个真实 action:`app.logs.mark`(建立检查点 cursor)、`app.logs.read`(从 cursor 之后增量读取进程内捕获的日志,可按 source / level 过滤、可分页)。
 
-这是 Debug-only 能力,只读 App 当前进程内存 store,不做持久化、不上传、不进 Release 上架产物。与 L0 的 `ios-debugger-agent` 系统级日志捕获互补:L0 抓整个模拟器/系统控制台,L1 的本 skill 抓 App 进程内按来源分类的精准日志,可按 source/level 过滤、可做断言。
+这是 Debug-only 能力,只读 App 当前进程内存 store,不做持久化、不上传、不进 Release 上架产物。与 L0 构建/设备管理工具的系统级日志捕获互补:L0 抓整个模拟器/系统控制台,L1 的本 skill 抓 App 进程内按来源分类的精准日志,可按 source/level 过滤、可做断言。
 
 ## 目标
 
@@ -18,7 +15,7 @@ allowed-tools:
 
 1. **"命令发出去了,App 里面到底执行了什么"**:`app.logs.mark` 记一个检查点,触发动作后 `app.logs.read` 只读这个检查点之后的新日志,精确定位本次动作产生的事件(不混历史噪音)。
 2. **"我的 print / NSLog / os_log 到底有没有输出"**:按 source 过滤读对应通道,看是否真有写入;读不到时通过 `capture.state` 区分"没执行"、"配置没开"还是"系统不让读"。
-3. **"命令链失败在哪一步"**:`explore` source 含 iOSExploreServer 自己的生命周期日志(http / listener / router / command),能看到请求有没有进来、命令是否注册、执行是成功还是失败。
+3. **"命令链失败在哪一步"**:`explore` source 含自动化服务自身的生命周期日志(http / listener / router / command),能看到请求有没有进来、命令是否注册、执行是成功还是失败。
 
 关键不是单条命令,而是:**先 mark 建 cursor → 触发动作 → read 按 source 增量读 → 读不到先看 `capture.state` 再下结论**,绝不能把 `unavailable` / `notCaptured` 误判成"代码没执行"。
 
@@ -38,7 +35,7 @@ allowed-tools:
 - ✅ 用户说 "日志" / "log" / "stdout" / "stderr" / "NSLog" / "os_log" / "print 有没有输出" / "进程内日志"
 
 ### 不适用场景
-- ❌ 不要用于抓系统级或整个模拟器控制台日志(走 L0 `ios-debugger-agent` 的系统级日志能力,本 skill 只读 App 当前进程)
+- ❌ 不要用于抓系统级或整个模拟器控制台日志(走 L0 构建/设备管理工具的系统级日志能力,本 skill 只读 App 当前进程)
 - ❌ 不要用于读别的 App 或别的进程的日志(`OSLogStore` 与 fd 接管都只覆盖当前 App 进程)
 - ❌ 不要用于线上 Release 日志收集(本 skill 是 Debug-only,Release 构建下 Diagnostics 整体 disabled)
 
@@ -78,8 +75,8 @@ App 每次重启都会产生新的 `captureSessionID`;旧 cursor 不能跨重启
 
 | source | 开发者平时怎么产生 | 默认 | 开启方式 | 读到后的典型用途 |
 |---|---|---|---|---|
-| `explore` | iOSExploreServer 内部自己写的日志 | 开 | `captureExploreLogs`(默认 true) | 看 HTTP 请求有没有进来、命令有没有注册、执行成功还是失败 |
-| `bridge` | 宿主 App 调 `ExploreAppLog.emit(...)` 主动写 | 开 | `enableBridge`(默认 true,最稳定) | App 关键业务点主动打日志,不依赖系统日志实现 |
+| `explore` | 自动化服务内部自己写的日志 | 开 | `captureExploreLogs`(默认 true) | 看 HTTP 请求有没有进来、命令有没有注册、执行成功还是失败 |
+| `bridge` | 宿主 App 调桥接日志 API 主动写 | 开 | `enableBridge`(默认 true,最稳定) | App 关键业务点主动打日志,不依赖系统日志实现 |
 | `stdout` | `print(...)` / `FileHandle.standardOutput.write(...)` | 关 | `captureStdout: true` | 看临时 print 是否真的执行 |
 | `stderr` | `FileHandle.standardError.write(...)` / `fprintf(stderr,...)` | 关 | `captureStderr: true` | 看错误输出,level 固定 `error` |
 | `nslog` | `NSLog(...)` | 关 | `captureNSLog: true` | 看老代码 / Objective-C / 第三方调试代码的 NSLog |
@@ -93,7 +90,7 @@ App 每次重启都会产生新的 `captureSessionID`;旧 cursor 不能跨重启
 
 | source | 模拟器 capture.state | 模拟器可读 | 真机 capture.state | 真机可读 |
 |---|---|---|---|---|
-| `explore` | enabled | 是(本仓库自身生命周期日志:http / listener / router / command) | 待补 | 待补 |
+| `explore` | enabled | 是(自动化服务自身生命周期日志:http / listener / router / command) | 待补 | 待补 |
 | `bridge` | enabled | 是(宿主 App 经 `UIKitCommandLogging` 上报的桥接事件) | 待补 | 待补 |
 | `stdout` | enabled | 是(`print` 写入,category=`stdio`,level=`info`) | 待补 | 待补 |
 | `stderr` | enabled | 是(level 固定 `error`) | 待补 | 待补 |
@@ -101,7 +98,7 @@ App 每次重启都会产生新的 `captureSessionID`;旧 cursor 不能跨重启
 | `oslog` | enabled | 是(`os_log` 与 Swift `Logger` 记录,带 subsystem / category;另含 NSLog 镜像条目) | 取决于系统是否允许当前进程读 `OSLogStore`(需 iOS 15+),以 `capture.state` 为准 | 同左 |
 
 实测说明:
-- **NSLog 镜像**:实测同一条 NSLog 文本会同时出现在 `nslog` source(NSLog 行格式)和 `oslog` source(裸条目),印证 NSLog 底层会写入 os_log 的系统行为。这是 iOS 系统行为而非本仓库代码的额外拷贝,在 `oslog` source 看到 NSLog 文本不要误判为重复捕获。
+- **NSLog 镜像**:实测同一条 NSLog 文本会同时出现在 `nslog` source(NSLog 行格式)和 `oslog` source(裸条目),印证 NSLog 底层会写入 os_log 的系统行为。这是 iOS 系统行为而非自动化服务额外拷贝,在 `oslog` source 看到 NSLog 文本不要误判为重复捕获。
 - **os_log 写入延迟**:`OSLogStore` 不是同步 stdout 管道,日志进入系统 store 可能有亚秒到秒级延迟;`app.logs.read` 会主动 flush 一次,但真实设备上首次 `oslog` 读空时建议等 1–2 秒重读一次,再判定为"无日志"。
 - **真机 oslog 不保证可用**:真机上 `OSLogStore(.currentProcessIdentifier)` 有可能因系统进程级读取限制在不同 iOS 版本下返回 `unavailable`,这正是不能写死平台断言的根因。
 
@@ -149,7 +146,7 @@ App 每次重启都会产生新的 `captureSessionID`;旧 cursor 不能跨重启
 - **现象**:read 某 source 返回空 `entries`,调用方下结论"我的 print / NSLog / os_log 没执行"
 - **原因**:`capture.state` 是 `unavailable` 或 `notCaptured`,日志其实写了,只是当前进程读不到这条通道
 - **判别**:先读 `data.capture` 里该 source 的 `state`;`notCaptured` = 配置没开,`unavailable` = 系统不让读(看 `reason`)
-- **处理**:`notCaptured` 改 `registerDiagnosticsCommands` 配置打开对应 capture 再重启 App;`unavailable` 看 `reason` 决定能否绕过(如 oslog 不可用可改用 `bridge`,让 App 在关键点 `ExploreAppLog.emit(...)` 主动写)
+- **处理**:`notCaptured` 改 `registerDiagnosticsCommands` 配置打开对应 capture 再重启 App;`unavailable` 看 `reason` 决定能否绕过(如 oslog 不可用可改用 `bridge`,让 App 在关键点通过桥接日志 API 主动写)
 
 ### mark / read 顺序颠倒读到历史噪音
 
@@ -182,14 +179,14 @@ App 每次重启都会产生新的 `captureSessionID`;旧 cursor 不能跨重启
 ### 在 `oslog` 看到 NSLog 文本以为是重复捕获
 
 - **现象**:同一条 NSLog 文本同时出现在 `nslog` 和 `oslog` source
-- **原因**:iOS 系统行为,NSLog 底层会写入 os_log;本仓库没有额外拷贝
+- **原因**:iOS 系统行为,NSLog 底层会写入 os_log;自动化服务没有额外拷贝
 - **判别**:`nslog` source 里是带时间戳与 PID 的完整 NSLog 行;`oslog` source 里是无 subsystem / category 的裸条目
 - **处理**:判别时按 source 分开看;这是系统行为不是 bug
 
 ## 相关 skill
 
 - `ios-automation` — L1 总入口;不确定走哪个子 skill 时先问它
-- `ios-debugger-agent`(L0 全局)— 需要**系统级或整个模拟器控制台日志**时改用它(基于 XcodeBuildMCP,抓 App 控制台);本 skill 只读 App 进程内按来源分类的精准日志。App 未集成 iOSExploreServer 时也只能用 L0
-- `ios-test-runner`(L2)— 消费测试意图清单跑测试时,用本 skill 的 `app.logs.read` 做日志断言;**前置必须检查对应 source 的 `capture.state`**,只有 `enabled` 才能作为有效日志判据,`unavailable` / `notCaptured` 的 source 要自动降级(跳过或改用 `bridge`,要求被测 App 在关键点 `ExploreAppLog.emit`)
+- 构建/设备管理 MCP（L0）— 需要**系统级或整个模拟器控制台日志**时改用它(抓 App 控制台);本 skill 只读 App 进程内按来源分类的精准日志。App 未接入 HTTP 自动化端点时也只能用 L0
+- `ios-test-runner`(L2)— 消费测试意图清单跑测试时,用本 skill 的 `app.logs.read` 做日志断言;**前置必须检查对应 source 的 `capture.state`**,只有 `enabled` 才能作为有效日志判据,`unavailable` / `notCaptured` 的 source 要自动降级(跳过或改用 `bridge`,要求被测 App 在关键点通过桥接日志 API 主动写)
 
-**平台约束**:`iOSExploreDiagnostics` 是 Debug-only 能力,Release 构建下 `registerDiagnosticsCommands` 返回 disabled,4 个 capture 开关都不会安装。`stdout` / `stderr` capture 是进程级 fd 接管(默认关闭,避免改变标准流行为);`oslog` / `nslog` 依赖系统是否允许当前进程读 `OSLogStore`(需 iOS 15+ / macOS 12+)。App 进程内 store 是 ring buffer,日志量大时旧条目会被覆盖(响应里通过 `gap` 字段说明丢失范围)。App 重启后内存 cursor 不继续使用。
+**平台约束**:App 内诊断扩展是 Debug-only 能力,Release 构建下 `registerDiagnosticsCommands` 返回 disabled,4 个 capture 开关都不会安装。`stdout` / `stderr` capture 是进程级 fd 接管(默认关闭,避免改变标准流行为);`oslog` / `nslog` 依赖系统是否允许当前进程读 `OSLogStore`(需 iOS 15+ / macOS 12+)。App 进程内 store 是 ring buffer,日志量大时旧条目会被覆盖(响应里通过 `gap` 字段说明丢失范围)。App 重启后内存 cursor 不继续使用。

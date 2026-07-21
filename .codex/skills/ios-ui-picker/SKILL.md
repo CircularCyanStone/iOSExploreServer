@@ -1,11 +1,6 @@
 ---
 name: ios-ui-picker
 description: iOS App 日期选择器与滚轮选择器操作(开发验证 + 自动化测试)UIDatePicker / UIPickerView / date picker, picker view, select row, set date, birthday, 生日, 预约, 地区选择, ui.datePicker.setDate, ui.picker.selectRow, call_action
-allowed-tools:
-  - mcp__iOSDriver__call_action
-  - mcp__iOSDriver__ui_inspect
-  - mcp__iOSDriver__ui_tap_and_inspect
-  - mcp__iOSDriver__ui_screenshot
 ---
 
 # iOS 日期选择器与滚轮选择器操作
@@ -160,4 +155,4 @@ await mcp__iOSDriver__call_action({
 - `ios-ui-shot` — 设值前后截图取证
 - `ios-automation` — L1 总入口;不确定走哪个子 skill 时先问它
 
-**平台约束**:`UIDatePicker.date` / `UIPickerView.selectRow(_:inComponent:animated:)` 均为公开 UIKit API,无私有 API 依赖。仅 Debug 集成(`iOSExploreServer` 整体 Debug-only)。设值在主线程执行。`viewSnapshotID` 用 `accessibilityIdentifier` 定位时可省略,用 `path` 定位时建议携带做陈旧校验。
+**平台约束**:`UIDatePicker.date` / `UIPickerView.selectRow(_:inComponent:animated:)` 均为公开 UIKit API,无私有 API 依赖。仅 Debug 集成(整套自动化能力 Debug-only)。设值在主线程执行。`viewSnapshotID` 用 `accessibilityIdentifier` 定位时可省略,用 `path` 定位时建议携带做陈旧校验。

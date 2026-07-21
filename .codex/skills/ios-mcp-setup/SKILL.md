@@ -1,320 +1,233 @@
 ---
 name: ios-mcp-setup
-description: iOS 自动化工具 MCP 配置指引。当用户说"配置 MCP"、"安装 iOSDriver"、"工具不可用"、"MCP Server 连不上"、"怎么安装 XcodeBuildMCP"时使用。提供 iOSDriver MCP 与 XcodeBuildMCP 的安装、配置、验证步骤。MCP setup, iOSDriver installation, XcodeBuildMCP configuration
-allowed-tools: []
+description: iOS 自动化工具 MCP 配置指引。当用户说"配置 MCP"、"安装 iOSDriver"、"工具不可用"、"MCP Server 连不上"、"怎么安装 XcodeBuildMCP"时使用。提供 iOSDriver MCP 与 XcodeBuildMCP 的客户端中立安装、配置、验证步骤。
 ---
 
 # iOS MCP 配置指引
 
-专门处理 iOS 自动化所需的两个 MCP Server 的安装、配置与验证。当 `ios-automation` 检测到 MCP 工具不可用时会路由到此 skill，或用户主动询问配置方法时使用。
+处理 iOS 自动化所需 MCP Server 的安装、配置与验证。把配置说明写成客户端中立流程：先识别用户使用的 MCP 客户端，再按该客户端的配置文件格式填入等价的 server 配置。
 
 ## 目标
 
-解决"怎么让 iOS 自动化工具可用"的配置问题：
+解决"怎么让 iOS 自动化 MCP 工具可用"的问题：
 
-- **检测当前状态** — 判断哪些 MCP Server 已安装、哪些缺失
-- **提供安装步骤** — iOSDriver MCP 与 XcodeBuildMCP 的完整配置流程
-- **验证安装结果** — 重启后如何确认工具可用
+- 检测当前状态：判断 iOSDriver MCP 与 XcodeBuildMCP 是否已被客户端加载。
+- 提供安装步骤：安装依赖、构建 server、写入 MCP 客户端配置。
+- 验证安装结果：重连 MCP 客户端后确认工具可发现、server 可启动、App HTTP API 可连通。
 
-**不做**：不执行实际的 iOS App 操作（回到 `ios-automation` 路由），不处理连接问题（走 `ios-connection`），不构建调试 App（走 `ios-debugger-agent`）。
-
-## 何时使用
-
-### 使用场景
-- ✅ `ios-automation` 检测到 MCP 工具不可用，路由到此处理配置
-- ✅ 用户说"配置 MCP"、"安装 iOSDriver"、"怎么设置 XcodeBuildMCP"
-- ✅ 用户遇到"tool not found"、"MCP Server 连不上"、"工具列表里没有 mcp__iOSDriver__*"
-- ✅ 首次使用 iOS 自动化功能，需要环境准备
-
-### 不适用场景
-- ❌ MCP 已配置，要操作 iOS App → 回到 `ios-automation` 继续路由
-- ❌ MCP 已配置但连接失败 → 走 `ios-connection` 处理连接问题
-- ❌ 需要构建/安装/调试 App → 走 L0 `ios-debugger-agent`
+不做实际 App 操作、UI 自动化流程编排、连接排障或 Xcode 构建调试；这些任务应回到对应的 iOS 自动化、连接、构建调试流程。
 
 ## MCP Server 依赖
 
-iOS 自动化需要两个 MCP Server：
+iOS 自动化通常需要两个 MCP Server：
 
-| MCP Server | 层级 | 用途 | 工具前缀 |
-|---|---|---|---|
-| **iOSDriver MCP** | L1 | 已集成 iOSExploreServer 的 App UI 操作与日志 | `mcp__iOSDriver__*` |
-| **XcodeBuildMCP** | L0 | Xcode 构建、设备管理、App 启动调试 | `mcp__XcodeBuildMCP__*` |
+| MCP Server | 用途 | 典型工具 |
+|---|---|---|
+| iOSDriver MCP | 把已接入 App 内 HTTP 自动化端点的 action 包装成 MCP tools | `health_check`、`ui_inspect`、`ui_tap`、`app_logs_read` |
+| XcodeBuildMCP | 提供 Xcode 构建、模拟器/真机管理、App 启动调试能力 | `list_devices`、`build_run_sim`、`launch_app_device` |
 
-两者配合工作：XcodeBuildMCP 负责构建和启动 App，iOSDriver MCP 负责 App 内的 UI 操作与进程日志读取。
+两者配合工作：XcodeBuildMCP 负责构建和启动 App，iOSDriver MCP 负责访问 App 内的 HTTP 自动化 API。
 
 ## 配置流程
 
 ### 1. 检测当前状态
 
-首次配置时，Agent 应尝试列出当前可用的 MCP 工具，判断哪些已安装：
+先在当前 MCP 客户端中查看已加载的 MCP server 和 tools：
 
-- 看到 `mcp__iOSDriver__health_check` / `mcp__iOSDriver__ui_inspect` → iOSDriver MCP 已安装
-- 看到 `mcp__XcodeBuildMCP__list_devices` / `mcp__XcodeBuildMCP__build_run_sim` → XcodeBuildMCP 已安装
-- 两者都缺失 → 需要全新安装
-- 只有一个 → 补全另一个
+- 看到 iOSDriver 的 `health_check`、`ui_inspect` 或同类工具，说明 iOSDriver MCP 已加载。
+- 看到 XcodeBuildMCP 的 `list_devices`、`build_run_sim` 或同类工具，说明 XcodeBuildMCP 已加载。
+- 两者都缺失时，按下文全新安装。
+- 只有一个缺失时，只补齐缺失项。
 
-### 2. iOSDriver MCP 安装
+如果客户端支持 MCP server 日志或工具列表刷新，先使用客户端自带能力读取真实错误；不要只根据当前聊天界面是否展示工具下结论。
 
-iOSDriver MCP Server 封装了 iOSExploreServer 的 HTTP API（`POST http://localhost:38321/`），提供类型安全的工具调用接口。
+### 2. 安装 iOSDriver MCP
 
-#### 安装步骤
+iOSDriver MCP Server 封装目标 App 的 HTTP 自动化 API，默认访问 `POST http://localhost:38321/`。
 
-**前置要求**：
-- Node.js 14+ 已安装（`node --version` 验证）
-- Git 已安装
+前置要求：
 
-**安装流程**：
+- 安装 Node.js，建议使用当前 LTS 版本。
+- 安装 Git。
+- 准备一个可被 MCP 客户端访问的 iOSDriver 源码目录。
 
-1. **克隆仓库**
-   ```bash
-   git clone https://github.com/cystone/iOSDriver.git
-   cd iOSDriver
-   ```
+安装流程：
 
-2. **安装依赖**
-   ```bash
-   npm install
-   ```
-
-3. **构建项目**（如果仓库包含构建步骤）
-   ```bash
-   npm run build
-   ```
-   如果没有 build 脚本，跳过此步。
-
-4. **配置 Claude Desktop**
-
-   编辑 Claude Desktop MCP 配置文件（位置见下方"配置文件位置"），添加：
-
-   ```json
-   {
-     "mcpServers": {
-       "iOSDriver": {
-         "command": "node",
-         "args": ["/absolute/path/to/iOSDriver/build/index.js"],
-         "env": {}
-       }
-     }
-   }
-   ```
-
-   **注意**：
-   - 将 `/absolute/path/to/iOSDriver` 替换为实际的绝对路径
-   - 如果仓库没有 `build/index.js`，可能是 `src/index.js` 或 `index.js`，根据实际结构调整
-   - `args` 必须是绝对路径，不能用 `~` 或相对路径
-
-5. **重启 Claude Desktop**
-
-   配置文件修改后必须完全退出并重启 Claude Desktop 才能加载新的 MCP Server。
-
-#### 验证安装
-
-重启后，执行 `/ios-automation`，应能看到以下工具可用：
-- `mcp__iOSDriver__health_check`
-- `mcp__iOSDriver__ui_inspect`
-- `mcp__iOSDriver__ui_tap_and_inspect`
-- `mcp__iOSDriver__app_logs_read`
-- 其他 `mcp__iOSDriver__*` 工具
-
-如果看不到这些工具，检查：
-- Claude Desktop 是否完全重启（不是刷新，是退出后重新打开）
-- 配置文件 JSON 格式是否正确（逗号、引号、括号）
-- `args` 路径是否存在且可执行（`node /path/to/index.js` 能否运行）
-
-### 3. XcodeBuildMCP 安装
-
-XcodeBuildMCP 提供 Xcode 构建、设备管理、App 启动调试能力，是 L0 层的核心工具。
-
-#### 安装步骤
-
-**前置要求**：
-- macOS 系统
-- Xcode 已安装（`xcodebuild -version` 验证）
-- Command Line Tools 已安装（`xcode-select --install`）
-
-**安装流程**：
-
-1. **通过 NPM 安装 CLI 工具**
-
-   ```bash
-   npm install -g xcodebuildmcp@latest
-   ```
-
-2. **配置 Claude Desktop**
-
-   ```bash
-   xcodebuildmcp install
-   ```
-
-   该命令会自动在 Claude Desktop MCP 配置中添加：
-   ```json
-   {
-     "mcpServers": {
-       "XcodeBuildMCP": {
-         "command": "npx",
-         "args": ["-y", "xcodebuildmcp@latest", "mcp"]
-       }
-     }
-   }
-   ```
-
-3. **重启 Claude Desktop**
-
-完整文档与最新安装方法：https://www.xcodebuildmcp.com/#get-started
-
-#### 验证安装
-
-重启后，应能看到以下工具可用：
-- `mcp__XcodeBuildMCP__list_devices`
-- `mcp__XcodeBuildMCP__build_run_sim`
-- `mcp__XcodeBuildMCP__launch_app_device`
-- `mcp__XcodeBuildMCP__session_show_defaults`
-- 其他 `mcp__XcodeBuildMCP__*` 工具
-
-如果看不到这些工具，执行：
 ```bash
-xcodebuildmcp doctor
+git clone https://github.com/cystone/iOSDriver.git
+cd iOSDriver
+npm install
+npm run build
 ```
-根据诊断结果修复问题。
 
-### 4. 配置文件位置
+如果仓库没有 `build` 脚本，按仓库实际说明选择入口文件，例如 `dist/index.js`、`build/index.js`、`src/index.js` 或 `index.js`。
 
-Claude Desktop MCP 配置文件位于：
-
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **Linux**: `~/.config/claude/claude_desktop_config.json`
-
-如果文件不存在，创建一个新的 JSON 文件，内容为：
-```json
-{
-  "mcpServers": {}
-}
-```
-然后按上述步骤添加各 MCP Server 配置。
-
-### 5. 完整配置示例
-
-同时配置两个 MCP Server 的完整 `claude_desktop_config.json` 示例：
+把 iOSDriver 注册到 MCP 客户端。不同客户端的配置文件位置和格式不同，使用客户端文档确认实际位置；下面是通用 JSON 形态示例：
 
 ```json
 {
   "mcpServers": {
     "iOSDriver": {
       "command": "node",
-      "args": ["/Users/username/Projects/iOSDriver/build/index.js"],
-      "env": {}
-    },
+      "args": ["/path/to/iOSDriver/dist/index.js"],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "10000"
+      }
+    }
+  }
+}
+```
+
+配置要求：
+
+- 使用真实绝对路径替换 `/path/to/iOSDriver/dist/index.js`。
+- 不要在 `args` 中使用 `~` 或依赖当前工作目录的相对路径。
+- 保留 `IOS_EXPLORE_BASE_URL`，除非 App 监听的 host 或端口已被显式改动。
+- 修改配置后，按客户端要求重连 MCP server；多数客户端需要完全重启或重新加载 MCP 配置。
+
+### 3. 安装 XcodeBuildMCP
+
+XcodeBuildMCP 提供 Xcode 构建、设备管理、App 启动调试能力。
+
+前置要求：
+
+- 使用 macOS。
+- 安装 Xcode，并用 `xcodebuild -version` 验证。
+- 安装 Command Line Tools；缺失时运行 `xcode-select --install`。
+
+安装流程：
+
+```bash
+npm install -g xcodebuildmcp@latest
+```
+
+如果客户端支持 XcodeBuildMCP 的自动安装命令，可按官方文档执行：
+
+```bash
+xcodebuildmcp install
+```
+
+如果需要手动写入 MCP 配置，使用等价 server 配置：
+
+```json
+{
+  "mcpServers": {
     "XcodeBuildMCP": {
-      "command": "xcodebuildmcp",
-      "args": ["mcp"],
+      "command": "npx",
+      "args": ["-y", "xcodebuildmcp@latest", "mcp"],
       "env": {}
     }
   }
 }
 ```
 
-**注意**：
-- XcodeBuildMCP 的配置可能由 `xcodebuildmcp install` 自动生成，以实际安装结果为准
-- 如果已有其他 MCP Server 配置，在 `mcpServers` 对象内并列添加即可
-- JSON 格式要求严格：对象最后一项后不能有逗号，所有字符串用双引号
+验证本地安装：
+
+```bash
+xcodebuildmcp doctor
+```
+
+完整文档与最新安装方法见 https://www.xcodebuildmcp.com/#get-started。
+
+### 4. 合并配置
+
+如果客户端已有其他 MCP server，在同一个 `mcpServers` 对象内并列添加。保持 JSON、TOML 或客户端专用配置格式有效，避免多余逗号、错误引号或重复 server 名。
+
+通用 JSON 合并示例：
+
+```json
+{
+  "mcpServers": {
+    "iOSDriver": {
+      "command": "node",
+      "args": ["/path/to/iOSDriver/dist/index.js"],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "10000"
+      }
+    },
+    "XcodeBuildMCP": {
+      "command": "npx",
+      "args": ["-y", "xcodebuildmcp@latest", "mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+## 验证流程
+
+配置完成后按顺序验证：
+
+1. 重连或重启 MCP 客户端，让客户端重新读取 MCP 配置。
+2. 查看 MCP server 状态，确认 iOSDriver 和 XcodeBuildMCP 都已启动且没有配置解析错误。
+3. 查看 MCP tools 列表，确认 iOSDriver 暴露 `health_check`，XcodeBuildMCP 暴露设备或构建相关工具。
+4. 对 XcodeBuildMCP 执行设备列表能力，确认能看到本机模拟器或已连接真机。
+5. 在 App 已运行且目标 HTTP 自动化端点已监听后，调用 iOSDriver `health_check`；成功时再继续使用 UI、日志或截图工具。
+
+iOSDriver 连接失败时，先直接验证 HTTP API：
+
+```bash
+curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
+```
+
+预期响应：
+
+```json
+{"code":"ok","data":{"pong":true}}
+```
 
 ## 常见问题
 
-### 工具列表里看不到 mcp__iOSDriver__*
+### 工具列表里看不到 iOSDriver 工具
 
-**原因**：
-- iOSDriver MCP Server 未启动
-- 配置文件路径错误
-- Claude Desktop 未重启
+按顺序排查：
 
-**排查步骤**：
-1. 检查配置文件位置是否正确（见"配置文件位置"）
-2. 检查 JSON 格式是否有语法错误（用在线 JSON validator 验证）
-3. 检查 `args` 路径是否存在：`ls -l /path/to/iOSDriver/build/index.js`
-4. 尝试手动运行：`node /path/to/iOSDriver/build/index.js`，看是否报错
-5. 完全退出 Claude Desktop（Command+Q 或右键 Dock 图标退出），重新打开
+1. 确认 MCP 客户端已重新加载配置。
+2. 检查客户端 MCP 配置文件语法。
+3. 检查 `args` 指向的 iOSDriver 入口文件是否存在。
+4. 手动运行 `node /path/to/iOSDriver/dist/index.js`，读取启动错误。
+5. 查看客户端的 MCP server 日志，确认 server 是否启动后立即退出。
+6. 如果 `health_check` 已可用但部分动态 UI 工具未展示，先确认 App 是否已启动并返回 action 列表；部分客户端会在重新列出 tools 后才展示新工具。
 
-### xcodebuildmcp: command not found
+### XcodeBuildMCP 命令不可用
 
-**原因**：
-- XcodeBuildMCP 未安装
-- 安装路径未加入 PATH
+按顺序排查：
 
-**解决**：
-1. 重新执行安装步骤：访问 https://www.xcodebuildmcp.com/#get-started
-2. 检查安装是否成功：`which xcodebuildmcp`
-3. 如果安装了但找不到，检查 shell 配置文件（`.zshrc` / `.bash_profile`）是否包含正确的 PATH
+1. 运行 `which xcodebuildmcp` 确认 CLI 是否在 `PATH` 内。
+2. 运行 `xcodebuildmcp doctor` 读取诊断结果。
+3. 检查 Node.js、Xcode、Command Line Tools 是否满足前置要求。
+4. 如果使用 `npx -y xcodebuildmcp@latest mcp`，确认当前网络环境允许下载 npm 包。
 
-### 配置后工具仍不可用
+### iOSDriver 能启动但连接 App 失败
 
-**原因**：
-- Claude Desktop 缓存未清理
-- MCP Server 进程启动失败
+按顺序排查：
 
-**解决**：
-1. 完全退出 Claude Desktop
-2. 删除缓存（可选）：`rm -rf ~/Library/Caches/Claude`
-3. 重新打开 Claude Desktop
-4. 查看 Claude Desktop 日志（通常在 `~/Library/Logs/Claude/` 或开发者工具控制台）寻找错误信息
+1. 确认 App 已接入 App 内 HTTP 自动化端点，并在 DEBUG 或测试构建中启动 server。
+2. 用 `curl` 调用 `ping` action 验证端口。
+3. 模拟器场景通常可直接访问 `localhost:38321`。
+4. 真机场景通常需要 USB 端口转发，例如把 Mac 的 `38321` 转发到设备的 `38321`。
+5. 检查 `IOS_EXPLORE_BASE_URL` 是否指向实际可访问地址。
 
-### 能看到工具但调用报错
+### 配置文件位置不明确
 
-**原因**：
-- MCP Server 已连接但运行时出错
-- 依赖环境不满足（如 Node.js 版本过低、Xcode 未安装）
+不要硬编码某个客户端的配置路径。先查看当前 MCP 客户端文档或设置界面，确认：
 
-**解决**：
-1. 检查 Node.js 版本：`node --version`（需 14+）
-2. 检查 Xcode 版本：`xcodebuild -version`
-3. 尝试调用 `mcp__iOSDriver__health_check` 或 `mcp__XcodeBuildMCP__list_devices`，根据具体错误信息排查
-
-## 验证完整流程
-
-配置完成后，执行以下步骤验证：
-
-1. **验证 MCP Server 可用**
-   ```
-   执行 /ios-automation，Agent 应能成功调用：
-   - mcp__XcodeBuildMCP__list_devices（列出设备）
-   - mcp__iOSDriver__health_check（检测 App 连接）
-   ```
-
-2. **验证 L0 能力（XcodeBuildMCP）**
-   ```
-   执行 /ios-debugger-agent，应能：
-   - 列出已连接的模拟器和真机
-   - 构建并运行 iOS 项目
-   - 管理 session defaults
-   ```
-
-3. **验证 L1 能力（iOSDriver MCP）**
-   ```
-   在 App 已运行且集成 iOSExploreServer 的情况下：
-   - health_check 返回成功
-   - ui_inspect 返回当前 UI 结构
-   - 可执行 ios-ui-* 系列操作
-   ```
-
-如果上述验证都通过，说明配置成功，可以开始使用 iOS 自动化功能。
+- 配置文件路径。
+- 配置格式是 JSON、TOML 还是客户端专用 schema。
+- 修改后需要重启客户端、重连 MCP server，还是刷新当前会话。
 
 ## 后续步骤
 
-配置完成后：
+配置通过后，把用户带回实际任务：
 
-- **开发调试场景** → 回到 `/ios-automation`，它会自动路由到对应的 `ios-ui-*` 或 `ios-logs`
-- **需要构建/安装 App** → 使用 `/ios-debugger-agent` 进行 L0 操作
-- **连接问题** → 如果 `health_check` 失败，会自动路由到 `/ios-connection` 处理
-
-## 相关 skill
-
-- `ios-automation`（L1 入口） — 配置完成后的任务路由入口，会在启动时检测 MCP 可用性
-- `ios-connection`（L1） — 处理 App 连接问题（iproxy、端口冲突等），需要 MCP 已配置
-- `ios-debugger-agent`（L0） — XcodeBuildMCP 的主要使用者，负责构建调试
-- `ios-ui-*`（L1） — iOSDriver MCP 的主要使用者，负责 UI 操作
+- 需要启动或调试 App：使用 XcodeBuildMCP 相关流程。
+- 需要操作 UI、表单、列表、弹窗或截图：使用 iOSDriver 相关流程。
+- 需要排查 App HTTP 连接、端口冲突或真机 USB 转发：使用连接诊断流程。
 
 ## 参考资源
 
 - iOSDriver MCP GitHub: https://github.com/cystone/iOSDriver
 - XcodeBuildMCP 官网: https://www.xcodebuildmcp.com
-- Claude Desktop MCP 文档: https://docs.anthropic.com/claude/docs/mcp
+- MCP 规范: https://modelcontextprotocol.io

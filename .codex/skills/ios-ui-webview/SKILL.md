@@ -1,11 +1,6 @@
 ---
 name: ios-ui-webview
 description: WKWebView JavaScript 执行与轻量级 Web 自动化(开发调试 + 自动化测试)/ webview, javascript, js, eval, jsbridge, hybrid, web interaction, ui.webView.eval
-allowed-tools:
-  - mcp__iOSDriver__ui_inspect
-  - mcp__iOSDriver__ui_webView_eval
-  - mcp__iOSDriver__ui_topViewHierarchy
-  - mcp__iOSDriver__ui_screenshot
 ---
 
 # ios-ui-webview

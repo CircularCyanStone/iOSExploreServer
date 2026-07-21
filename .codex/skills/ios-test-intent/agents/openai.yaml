@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS Test Intent"
+  short_description: "从 iOS 业务源码生成测试意图清单和成败判据契约"
+  default_prompt: "使用 $ios-test-intent 读取 iOS 业务源码并生成测试意图和成败判据。"

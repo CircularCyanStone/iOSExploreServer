@@ -1,16 +1,6 @@
 ---
 name: ios-ui-nav
 description: iOS App 屏幕导航、返回、导航栏按钮、tab bar 切换与 controller 层级检查(开发调试 + 自动化测试)/ navigation, back, dismiss, modal, nav bar button, tab bar, page transition, debugging navigation, ui_navigation_back, ui_navigation_tapBarButton
-allowed-tools:
-  - mcp__iOSDriver__ui_inspect
-  - mcp__iOSDriver__ui_tap
-  - mcp__iOSDriver__ui_tap_and_inspect
-  - mcp__iOSDriver__ui_navigation_back
-  - mcp__iOSDriver__ui_navigation_tapBarButton
-  - mcp__iOSDriver__ui_controllers
-  - mcp__iOSDriver__ui_screenshot
-  - mcp__iOSDriver__ui_wait
-  - mcp__iOSDriver__call_action
 ---
 
 # iOS 屏幕导航与 controller 层级检查

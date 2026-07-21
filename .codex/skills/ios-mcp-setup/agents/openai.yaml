@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS MCP Setup"
+  short_description: "iOS 自动化 MCP 安装配置、加载排障与客户端中立验证"
+  default_prompt: "使用 $ios-mcp-setup 配置 iOSDriver MCP 和 XcodeBuildMCP 并验证工具可用。"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS Connection"
+  short_description: "iOS App 连接管理、iproxy 转发和端口冲突诊断"
+  default_prompt: "使用 $ios-connection 诊断 iOS App 连接、iproxy 转发或 38321 端口问题。"

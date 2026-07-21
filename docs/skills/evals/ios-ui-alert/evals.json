@@ -1,0 +1,42 @@
+{
+  "skill_name": "ios-ui-alert",
+  "description": "Test cases for iOS alert/dialog detection and response: ui_inspect alert block (available/title/message/buttons/textFields), ui_alert_respond three selectors (buttonIndex/buttonTitle/role, mutually exclusive), input alerts via ui_input, action sheets, nested/consecutive alerts, and static structure checks (formerly ios-alert-handling)",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "An iOS app shows a two-button confirmation alert with title '确认操作', message '是否继续?', buttons '取消' (cancel role, index 0) and '确认' (default role, index 1). Detect the alert, read its structure, then tap the Confirm button.",
+      "expected_output": "Should successfully:\n1. Call ui_inspect and verify response.data.alert.available == true\n2. Read alert.title == '确认操作', alert.message == '是否继续?', alert.buttons array (index/title/role for each)\n3. Call ui_alert_respond with exactly ONE selector — buttonIndex=1 OR buttonTitle='确认' OR role='default' (the three are mutually exclusive; passing more than one is invalid)\n4. Response code 'ok' with data.performed=true, data.dismissed=true, data.button.role='default'/title='确认'/index=1\n5. data.dismissWaitMs reflects async wait for dismiss animation (typically 400-500ms, capped at 1500ms)\n6. Do NOT pass role='destructive' — this alert has no destructive button; that would return alert_button_not_found",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Handle a three-button file-operation alert: 'Delete' (destructive), 'Save' (default), 'Cancel' (cancel). Tap Cancel using role-based selection.",
+      "expected_output": "Should successfully:\n1. Call ui_inspect; read alert.buttons confirming 3 buttons with roles destructive/default/cancel\n2. Call ui_alert_respond with role='cancel' (language-independent, recommended for cross-language apps)\n3. Response data.button.role='cancel', data.performed=true, data.dismissed=true\n4. Do NOT add retry/fallback logic for destructive role — the executor matches all three roles via the same equality check ($0.role == parsedRole), so destructive has no special failure mode. If destructive were needed, role='destructive' works the same way.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "A login alert dialog has two text fields (username placeholder '用户名', password placeholder '密码' isSecure=true) and a Login button. Fill username 'alice', password 'hunter2', then tap Login.",
+      "expected_output": "Should successfully:\n1. Call ui_inspect; read alert.textFields array — each entry has placeholder/isSecure/path/accessibilityIdentifier\n2. Note text field paths are VERY deep (e.g. root/0/0/1/0/0/4/0/0/0/0/0/0/0/0) and fragile — read fresh from this ui_inspect, do NOT hardcode or reuse across runs\n3. Call ui_input on the username field (path/identifier from inspect, viewSnapshotID, text='alice', mode='replace')\n4. Call ui_input on the password field (text='hunter2') — response returns length + masked, NOT plaintext (isSecure field)\n5. Call ui_alert_respond with the Login button selector (buttonIndex or buttonTitle='登录' or role='default', per inspect)\n6. All fields filled, alert dismissed (performed=true, dismissed=true)",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "An iOS app shows a bottom action sheet for choosing a photo source: '拍照' (take photo), '从相册选择' (photo library), '取消' (cancel). Tap '从相册选择'.",
+      "expected_output": "Should successfully:\n1. Call ui_inspect; verify alert.available==true — action sheets (UIAlertController.Style.actionSheet) are reported in the SAME alert block as regular alerts, no special handling\n2. Read alert.buttons to find '从相册选择' index/title\n3. Call ui_alert_respond with buttonTitle='从相册选择' (or its index, or role='cancel' if choosing cancel)\n4. Response performed=true, dismissed=true\n5. Action sheets use identical API to alerts — no separate preferredStyle parameter is exposed or needed",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "After tapping Confirm in an alert, the button handler immediately presents a second follow-up alert. Respond to the first alert, then detect and respond to the second one.",
+      "expected_output": "Should successfully:\n1. Call ui_inspect to confirm first alert; ui_alert_respond to trigger Confirm\n2. Response includes presentedAfterDismiss — CRITICAL: this field reports whether the DISMISSED alert itself is still in the presenting chain (identity comparison via ===), NOT whether a new alert appeared. A new alert presented by the handler is a different object and does NOT flip this to true.\n3. To detect the follow-up alert, re-call ui_inspect after respond and check alert.available / alert.title again — do NOT rely on presentedAfterDismiss as a 'new alert' signal\n4. If inspect still shows the old state, ui_wait(mode:'idle', stableMs:300) to let the present animation settle, then inspect again\n5. Respond to the second alert with the appropriate selector",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "Check the static structure of the ios-ui-alert SKILL.md (offline, no app run): frontmatter must contain only name and description; the body must not hardcode project-specific bundle ids, credentials, local paths, or device identifiers; the body must reference ui.alert.respond / ui_alert_respond.",
+      "expected_output": "Should verify offline (no app run required):\n1. Frontmatter has only name and description in the YAML block; no tool allowlist or client-specific metadata field\n2. name field value matches directory name (ios-ui-alert)\n3. description contains alert / action sheet / dialog trigger keywords\n4. Body references ui_alert_respond / ui.alert.respond\n5. Body covers alert detection, response by index/title/role, input alerts, action sheets, nested or consecutive alerts, and role fallback behavior\n6. Body cites real business codes: alert_unavailable, alert_button_not_found, alert_button_required, alert_button_trigger_failed, alert_release_unsupported\n7. Body does not hardcode concrete bundle ids, device identifiers, local paths, client-private paths, or real credentials",
+      "files": []
+    }
+  ]
+}

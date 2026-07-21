@@ -1,10 +1,6 @@
 ---
 name: ios-ui-shot
 description: iOS App 截图与视觉取证(开发调试 + 自动化测试)/ screenshot, png, base64, visual verification, layout check, before/after, regression, ui_screenshot
-allowed-tools:
-  - mcp__iOSDriver__ui_screenshot
-  - mcp__iOSDriver__ui_inspect
-  - mcp__iOSDriver__ui_wait
 ---
 
 # iOS 截图与视觉取证
@@ -190,4 +186,4 @@ ui_inspect    → step.json   // 带 targets[] / alert / navigationBar
 - `ios-ui-form` / `ios-ui-list` — 操作(填表 / 点 cell / 触发 swipe action)本身走它们;本 skill 只负责操作前后取证
 - `ios-automation` — L1 总入口;不确定走哪个子 skill 时先问它
 
-**平台约束**:iOSExploreServer 要求 iOS 15+,部署目标视宿主 App 而定。仅 Debug 集成(渲染依赖 iOSExploreServer 注入路径,Release 下整套 ui.* 不可用)。命令在主线程执行,单次截图必须在 30 秒内完成(自声明超时)。`width` / `height` 是缩放后尺寸,非屏幕原始分辨率;默认 `maxDimension=1280` 对应大多数 iOS 设备的屏幕长边会被缩到 1280 像素以内。
+**平台约束**:本套自动化能力要求 iOS 15+,部署目标视宿主 App 而定。仅 Debug 集成(渲染依赖目标 App 注入路径,Release 下整套 ui.* 不可用)。命令在主线程执行,单次截图必须在 30 秒内完成(自声明超时)。`width` / `height` 是缩放后尺寸,非屏幕原始分辨率;默认 `maxDimension=1280` 对应大多数 iOS 设备的屏幕长边会被缩到 1280 像素以内。

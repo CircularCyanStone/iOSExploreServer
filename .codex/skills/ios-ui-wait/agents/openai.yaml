@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS UI Wait"
+  short_description: "iOS 异步等待、条件轮询、loading 与动态内容稳定规则"
+  default_prompt: "使用 $ios-ui-wait 等待 iOS App 的异步结果、loading 消失或目标出现。"

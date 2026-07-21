@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS UI Alert"
+  short_description: "iOS 弹窗、操作表与输入型 alert 自动化处理"
+  default_prompt: "使用 $ios-ui-alert 查询并响应当前 iOS App 的弹窗或操作表。"

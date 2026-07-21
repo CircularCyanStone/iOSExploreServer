@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS UI Gesture"
+  short_description: "iOS 滑动、滚动、长按和 cell 操作手势自动化"
+  default_prompt: "使用 $ios-ui-gesture 执行 iOS 滑动、长按或列表 cell 手势操作。"

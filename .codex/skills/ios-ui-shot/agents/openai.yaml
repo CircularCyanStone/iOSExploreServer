@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS UI Screenshot"
+  short_description: "iOS 截图、视觉取证、布局检查和前后状态记录自动化"
+  default_prompt: "使用 $ios-ui-shot 截取 iOS App 当前屏幕并保留视觉取证。"

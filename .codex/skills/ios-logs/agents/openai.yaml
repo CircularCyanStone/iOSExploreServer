@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS Logs"
+  short_description: "iOS App 进程内日志读取、stdout、oslog 过滤与断言"
+  default_prompt: "使用 $ios-logs 读取 App 进程内日志并按来源过滤排查问题。"

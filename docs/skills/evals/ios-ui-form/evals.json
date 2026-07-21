@@ -1,0 +1,36 @@
+{
+  "skill_name": "ios-ui-form",
+  "description": "Test cases for iOS form filling and control interaction: ui_input (replace/append, Unicode/emoji, secure, UITextView multiline), ui_control_sendAction (UISwitch/UISlider/UIStepper/UISegmentedControl), keyboard dismissal, sync vs async submit strategies, scrollToElement for offscreen fields, and static structure checks (formerly ios-form-filling)",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Fill out a login form on an iOS app with username 'john.doe@example.com' and password 'SecurePass123', then tap the login button. The login is an async server call.",
+      "expected_output": "Should successfully:\n1. Call ui_inspect to locate username/password fields and login button (prefer accessibilityIdentifier over path)\n2. Call ui_input for username with mode='replace', submit=false (intermediate field, avoid keyboard flicker)\n3. Call ui_input for password with mode='replace', submit=true (last field, auto-dismiss keyboard)\n4. Verify password response returns length + masked (secure field does not echo plaintext)\n5. Call ui_tap on the login button (do NOT use ui_tap_and_inspect with fixed stableTimeMs — async submit would land on loading intermediate state)\n6. Delegate success/fail judgment to ios-ui-wait ui_waitAny with two conditions: success = targetExists on post-login element (e.g. 'home_welcome_label'); fail = targetExists alert or textContains '错误'\n7. Each ui_input ~100ms; control actions ~3ms; total fill < 1 second, wait time bounded by ui_waitAny timeout",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "In an iOS settings screen, toggle a UISwitch with accessibility identifier 'notifications.switch', adjust a UISlider with accessibility identifier 'volume.slider' to 75%, increment a UIStepper with accessibility identifier 'count.stepper' once, and select the second segment (index 1) of a UISegmentedControl with accessibility identifier 'theme.segmented'.",
+      "expected_output": "Should successfully:\n1. Call ui_inspect once to capture viewSnapshotID and confirm all four controls are enabled (isEnabled==true)\n2. Call ui_control_sendAction four times back-to-back with event='valueChanged' (NOT 'action'):\n   - UISwitch: accessibilityIdentifier='notifications.switch', no value field (flips on/off)\n   - UISlider: accessibilityIdentifier='volume.slider', value=0.75 (must be 0.0-1.0)\n   - UIStepper: accessibilityIdentifier='count.stepper', no value (increments one step)\n   - UISegmentedControl: accessibilityIdentifier='theme.segmented', value=1 (segment index, 0-based)\n3. No need to re-inspect between the four calls (same screen, viewSnapshotID stays valid)\n4. Each response returns previousValue/currentValue — verify switch flipped, slider=0.75, segment=1\n5. Total ~12-16ms for all four control actions (3-4ms each)",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Fill a UITextView in an iOS app (verified via ui_inspect type=='UITextView') with three lines of text containing Unicode and emoji: '第一行 🎉\\n第二行 ✨\\n第三行', then dismiss the keyboard.",
+      "expected_output": "Should successfully:\n1. Call ui_inspect and confirm target type is UITextView (NOT UITextField — UITextField rejects \\n with input_rejected)\n2. Call ui_input with accessibilityIdentifier/path of the UITextView, text='第一行 🎉\\n第二行 ✨\\n第三行', mode='replace', submit=false (we want manual dismiss afterward)\n3. Verify response finalText preserves \\n and the Unicode/emoji characters (ui_input goes through UITextInput.insertText, full UTF-8 support — not keyboard scancodes)\n4. Call ui_keyboard_dismiss with strategy='auto' (default) to close the keyboard\n5. Verify keyboard_dismiss response shows firstResponderAfter==null\n6. Total time ~300ms (input ~93ms + dismiss ~206ms)",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "A long iOS registration form has a 'Confirm Password' field at the bottom that is off-screen. Scroll it into view, then fill it with 'Pass123' in replace mode.",
+      "expected_output": "Should successfully:\n1. Call ui_scrollToElement with match='text' (or 'accessibilityIdentifier') and value='Confirm Password' (or the field's a11y id) to scroll the off-screen field into the visible region\n2. Call ui_inspect to get a FRESH viewSnapshotID (the old one is now stale — scroll invalidates snapshot immediately)\n3. Locate the Confirm Password field in the fresh targets array via accessibilityIdentifier or path\n4. Call ui_input with mode='replace' and the fresh viewSnapshotID\n5. Verify response finalText='Pass123' (or length+masked if it is a secure field)\n6. Do NOT reuse the pre-scroll viewSnapshotID — that returns stale_locator",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Check the static structure of the ios-ui-form SKILL.md (offline, no app run): frontmatter must contain only name and description; the body must not hardcode project-specific bundle ids, credentials, local paths, device identifiers, or a deployment target tied to any one sample app.",
+      "expected_output": "Should verify offline (no app run required):\n1. Frontmatter has only name and description in the YAML block; no tool allowlist or client-specific metadata field\n2. name field value matches directory name (ios-ui-form)\n3. Body covers text input, ui_control_sendAction for UISwitch/UISlider/UIStepper/UISegmentedControl, keyboard management, sync vs async form submission, and scrollToElement for offscreen fields\n4. Body references the form examples file only for optional long examples\n5. Platform constraint uses generic wording such as iOSExploreServer 要求 iOS 15+ and deployment target depends on the host App\n6. Body does not hardcode concrete bundle ids, device identifiers, local paths, client-private paths, real credentials, or sample-app deployment targets",
+      "files": []
+    }
+  ]
+}

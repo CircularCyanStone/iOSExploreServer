@@ -1,14 +1,6 @@
 ---
 name: ios-ui-list
 description: iOS App 列表/集合视图查找、滚动定位与 cell 选中(开发验证 + 自动化测试)/ list, table view, collection view, scroll, scrollToElement, find item, select cell, swipe action, ui_scroll, ui_scrollToElement, ui_swipe
-allowed-tools:
-  - mcp__iOSDriver__ui_inspect
-  - mcp__iOSDriver__ui_scroll
-  - mcp__iOSDriver__ui_scrollToElement
-  - mcp__iOSDriver__ui_swipe
-  - mcp__iOSDriver__ui_tap
-  - mcp__iOSDriver__ui_tap_and_inspect
-  - mcp__iOSDriver__ui_wait
 ---
 
 # iOS 列表与集合视图查找、滚动、选中

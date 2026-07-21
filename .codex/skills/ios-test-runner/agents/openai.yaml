@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS Test Runner"
+  short_description: "执行 iOS 测试意图清单、判定成败并生成覆盖报告"
+  default_prompt: "使用 $ios-test-runner 执行测试意图清单并汇总通过率和覆盖报告。"

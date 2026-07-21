@@ -9,19 +9,12 @@ description: |
 
   Use this skill when the user needs to: 执行测试意图, 跑意图清单, 跑测试用例,
   test runner, 执行测试, run intent manifest, 验证测试意图, 生成覆盖报告,
-  or "把 <app>-<flow>.json 跑一遍". Must mention an intent manifest /
+  or "把某个 manifest JSON 跑一遍". Must mention an intent manifest /
   test-intents / 跑意图 / test runner to trigger.
 
-  Based on iOSDriver MCP Server wait vocabulary + ios-automation execution tools.
+  Based on runtime wait vocabulary + iOS automation execution tools.
   Upstream: ios-test-intent (authors the manifest). This skill is the downstream
   consumer — it operates the app, ios-test-intent does not.
-allowed-tools:
-  - mcp__iOSDriver__ui_waitAny
-  - mcp__iOSDriver__ui_inspect
-  - mcp__iOSDriver__ui_tap
-  - mcp__iOSDriver__ui_input
-  - mcp__iOSDriver__app_logs_read
-  - mcp__iOSDriver__app_logs_mark
 ---
 
 # iOS Test Runner(消费意图清单 → 执行 → 覆盖报告)
@@ -55,7 +48,7 @@ L2 执行型 skill:把 `ios-test-intent` 产出的"测试意图清单"(`docs/tes
 
 ## 工作原理
 
-**6 步工作流**,每条 intent 走 Step 2–5。所有举例用占位 App `<MyApp>`(虚构),不引任何真实项目类名/行号;完整真实 App 套用案例见"相关 skill"末尾的 examples 指针。
+**6 步工作流**,每条 intent 走 Step 2–5。所有举例用占位 App `<MyApp>`(虚构),不引任何真实项目类名/行号。若需要真实 App 套用案例,应放在使用者自己的仓库文档或外部资料中,不要作为 skill 本体依赖。
 
 ### Step 1 — 加载清单 + 排序
 
@@ -73,7 +66,7 @@ L2 执行型 skill:把 `ios-test-intent` 产出的"测试意图清单"(`docs/tes
 **(a) 回到正确页面**:
 - 每条 intent 的起点由其 `prompt` 描述(如"在登录页输入...")。执行前先 `ui_inspect` 核对当前页是否符合该起点(看 `navigationBar.title` 或关键 label/button 是否在树里)。
 - 若不在起点:成功路径跑完常跳首页且整栈替换 + `hidesBackButton`(无法 `ui_navigation_back`),下一条失败类 intent 必须**重启 App 回起点**。**如需回到某流程起点,由调用方提供 App 专属启动参数**(App 各自的测试工程可能有快捷启动参数,本 skill 不写死任何参数名);或让 App 在 `viewDidLoad` 直接落到起点页。
-- 重启 = 停 App 再启动(具体 stop/launch 工具由 L0 `ios-debugger-agent` 或 `ios-automation` 提供,本 skill 的 6 个 MCP 工具不含 stop/launch;执行时借 L0 完成重启,然后回来继续 Step 3)。
+- 重启 = 停 App 再启动(具体 stop/launch 工具由构建/设备管理 MCP 或 `ios-automation` 连接流程提供;执行时借 L0 完成重启,然后回来继续 Step 3)。
 
 **(b) 清除上一条的 UI 残留(防同文案串味——最容易踩的坑)**:
 - 连续失败类 intent(如 `login-user-not-found` → `login-wrong-password`)可能显示同一句错误文案。前一条跑完后 **errorLabel 残留该文本**;下一条点提交后的 loading 期间,errorLabel 仍是旧文本,`ui_waitAny` 第一次轮询就会误匹配成 pass(`elapsedMs≈0` 时序假象),根本没等新请求完成。
@@ -133,10 +126,10 @@ L2 执行型 skill:把 `ios-test-intent` 产出的"测试意图清单"(`docs/tes
 1. 先调 `app_logs_mark`,响应 `data.capture` 含 6 个 source(`explore`/`bridge`/`stdout`/`stderr`/`nslog`/`oslog`)的状态快照。
 2. 读你要断言的那个 source 的 `capture.state`:
    - `enabled` → 该 source 可作有效日志判据,继续。
-   - `notCaptured` → 配置没开,该 source **不能**作判据(读到的空 entries 是"没开"不是"没执行");要打开对应 capture 配置再重启 App,或改用 `bridge`(宿主 App 调 `ExploreAppLog.emit` 主动写,最稳定)。
+   - `notCaptured` → 配置没开,该 source **不能**作判据(读到的空 entries 是"没开"不是"没执行");要打开对应 capture 配置再重启 App,或改用 `bridge`(宿主 App 通过桥接日志 API 主动写,最稳定)。
    - `unavailable` → 配置开了但系统不让读(看 `reason`),该 source **不能**作判据;改用 `bridge`/`stdout`。
 3. **只有 `enabled` 的 source 才能作有效日志判据**;`notCaptured`/`unavailable` 的 source 上读到的"空"不能当"代码没执行"的证据。
-4. **模拟器上 `oslog` 判据自动降级**:模拟器 `oslog` 通常 `enabled`,但真机 `OSLogStore` 可能 `unavailable`(系统进程级读取限制,iOS 版本相关)。不要按平台写死断言——以实际 `capture.state` 为准。`oslog` 不可用时改用 `bridge`(要求被测 App 在关键点 `ExploreAppLog.emit`),或 `stdout`(`print`)。
+4. **模拟器上 `oslog` 判据自动降级**:模拟器 `oslog` 通常 `enabled`,但真机 `OSLogStore` 可能 `unavailable`(系统进程级读取限制,iOS 版本相关)。不要按平台写死断言——以实际 `capture.state` 为准。`oslog` 不可用时改用 `bridge`(要求被测 App 在关键点通过桥接日志 API 主动写),或 `stdout`(`print`)。
 
 详见 `ios-logs` skill的"来源 × 平台可用性矩阵"与"`unavailable` 语义"。
 
@@ -151,7 +144,7 @@ L2 执行型 skill:把 `ios-test-intent` 产出的"测试意图清单"(`docs/tes
 5. **数关键词条数**:在 `entries[]` 里找目标 `category` + `message` 片段,数匹配条数。
 6. **对照预期**:条数 == 预期值(如双击守卫预期 1)→ pass;多了 → fail(守卫失效)。
 
-> App 用 Swift `Logger(subsystem:category:)` → 走 `oslog` source;用 `ExploreAppLog.emit` → 走 `bridge` source;用 `print` → 走 `stdout` source。源不明确时优先要求 App 用 `bridge`(最稳定,纯内存路径不依赖系统日志实现)。
+> App 用 Swift `Logger(subsystem:category:)` → 走 `oslog` source;用桥接日志 API → 走 `bridge` source;用 `print` → 走 `stdout` source。源不明确时优先要求 App 用 `bridge`(最稳定,纯内存路径不依赖系统日志实现)。
 
 #### 机制 2:瞬时态捕获(loading 窗口)
 
@@ -250,7 +243,7 @@ L2 执行型 skill:把 `ios-test-intent` 产出的"测试意图清单"(`docs/tes
 - **现象**:用 `app_logs_read` 数某 source 条数做 pass/fail 判据,读到空就判"代码没执行/请求没发"
 - **原因**:该 source 的 `capture.state` 是 `notCaptured`(配置没开)或 `unavailable`(系统不让读),日志其实写了,当前进程读不到
 - **判别**:`app_logs_mark` / `app_logs_read` 的 `data.capture` 里该 source 的 `state`;只有 `enabled` 才能作有效判据
-- **处理**:`notCaptured` 改 `registerDiagnosticsCommands` 配置打开对应 capture 再重启 App;`unavailable` 看 `reason`,改用 `bridge`(App 关键点 `ExploreAppLog.emit`)或 `stdout`;**模拟器 `oslog` 通常 enabled,真机可能 unavailable——不要按平台写死,以实际 `capture.state` 为准**;降级后仍无法获取日志则该 intent 标 `skipped` + 原因
+- **处理**:`notCaptured` 改 `registerDiagnosticsCommands` 配置打开对应 capture 再重启 App;`unavailable` 看 `reason`,改用 `bridge`(App 关键点通过桥接日志 API 主动写)或 `stdout`;**模拟器 `oslog` 通常 enabled,真机可能 unavailable——不要按平台写死,以实际 `capture.state` 为准**;降级后仍无法获取日志则该 intent 标 `skipped` + 原因
 
 ### 同文案失败类 intent 之间不重启(状态污染)
 
@@ -296,14 +289,14 @@ L2 执行型 skill:把 `ios-test-intent` 产出的"测试意图清单"(`docs/tes
 - `ios-ui-wait` — `ui_waitAny` 的 mode/字段语义来源;`textExists`/`targetExists`/`targetGone`/`idle` 词汇语义。
 - `ios-ui-alert` — alert 响应(`ui_alert_respond`)走该 skill;本 skill 只能靠 `ui_inspect` 的 `alert.available` 判 alert 是否出现。
 
-> **完整真实 App 套用案例**:SPMExample 登录流程的完整意图清单 + 实跑报告作为"如何对真实 App 套用 test-intent / runner"的参考案例,位于 `docs/skills/examples/spmexample-login/`(含 `intent.json` / `run-report.json` / `README.md`)。这是本仓库内唯一的真实 App 例子,skill 本体不依赖它。
+> **真实 App 套用案例**:如需保留具体项目的意图清单、实跑报告、账号、bundle id、设备信息或启动参数,请放在该项目自己的文档或测试数据目录中。本 skill 本体只描述通用方法,不依赖任何真实 App 案例。
 
 ## 限制
 
 - **纯 UI 判据覆盖不到的 intent → 用 Step 4b 进阶机制补**:请求数用 logCount(机制 1,需日志 `capture.state` 前置检查);secure 字段用二次提交协议(机制 3);瞬时 loading 态受 agent-loop 间隔限制,短窗口标 skipped(机制 2)。
-- **本 skill 6 个 MCP 工具不含 stop/launch App、`ui_navigation_back`、`ui_alert_respond`**:重启 App、导航返回、响应 alert 按钮时借 L0(`ios-debugger-agent`)/L1(`ios-automation` 及其子 skill)完成,再回本 skill 继续。
+- **本 skill 不直接负责 stop/launch App、`ui_navigation_back`、`ui_alert_respond`**:重启 App 走构建/设备管理 MCP,导航返回和响应 alert 按钮走 `ios-automation` 及其子 skill,再回本 skill 继续。
 - **目标解析失败时该条件省略**:`targetExists('某描述')` 在当次 inspect 解析不到,该 condition 省略并在 notes 记"解析失败",不阻塞其余条件。
 - **不验证视觉/动画质量**(颜色、过渡美感)——这是意图层的设计边界,runner 继承。
 - **模拟器/真机行为可能差异**:报告里记 `simulator` 字段;日志 source 的 `capture.state` 在两平台可能不同,以实际为准。
-- **覆盖率以意图清单的 intent 通过率为准**(passed / (passed+failed)),辅以 `business_points_covered` 看源码分支覆盖;skill 自测用例 `evals/evals.json`。
+- **覆盖率以意图清单的 intent 通过率为准**(passed / (passed+failed)),辅以 `business_points_covered` 看源码分支覆盖;skill 自测用例 `docs/skills/evals/ios-test-runner/evals.json`。
 - skill 是执行型指导,无独立运行时副作用(不写代码、不改 App);意图清单是源码快照,App 源码/文案变更后需重跑。

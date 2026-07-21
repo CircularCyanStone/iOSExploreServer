@@ -1,0 +1,4 @@
+interface:
+  display_name: "iOS UI List"
+  short_description: "iOS 列表和集合视图查找、滚动定位与选择自动化规则"
+  default_prompt: "使用 $ios-ui-list 在 iOS 列表或集合视图中查找、滚动并选择目标项。"
