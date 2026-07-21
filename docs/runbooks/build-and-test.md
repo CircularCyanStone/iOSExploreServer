@@ -52,7 +52,7 @@ App 启动后默认「○ 已停止」，点「启动 Server」开始监听 `:38
 
 1. 真机连数据线 → 信任此电脑。
 2. Xcode 选真机 → Run SPMExample → App 内点「启动 Server」（状态变 `● 监听中 :38321`）。
-3. Mac 终端：`./scripts/proxy.sh`（前台，保持运行）。
+3. Mac 终端：`iproxy 38321 38321`（前台，保持运行）。
 4. **另开一个终端**：
    ```bash
    curl -X POST http://localhost:38321/ -d '{"action":"ping"}'

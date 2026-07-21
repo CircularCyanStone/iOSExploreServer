@@ -96,8 +96,6 @@ iOSExploreServer/                      ← 仓库根
 │   └── iOSExploreServer.xcodeproj/    ← framework 工程（同步组指向 ../Sources/iOSExploreServer）
 ├── Examples/
 │   └── SPMExample/                    ← 测试 App
-├── scripts/
-│   └── proxy.sh                       ← iproxy 一键脚本
 └── docs/
     └── superpowers/specs/
         └── 2026-06-21-ios-explore-server-design.md   ← 本文件
@@ -345,13 +343,11 @@ curl -X POST http://localhost:38321/ \
 - 任何解析/分发异常都**不使连接悬挂**，必定返回一个 HTTP 响应后关闭连接。
 - handler 内部用 typed throws（Swift 6）或转 `.failure`，错误信息不泄漏敏感数据。
 
-## 9. iproxy / Mac 侧（不进包，文档 + 脚本）
+## 9. iproxy / Mac 侧（不进包）
 
-`scripts/proxy.sh`：
+Mac 侧直接使用 `iproxy` 做端口转发：
 
 ```bash
-#!/usr/bin/env bash
-# 一键起 iproxy 转发（前台运行，Ctrl-C 停止）
 PORT=38321
 command -v iproxy >/dev/null || brew install libimobiledevice
 exec iproxy "$PORT" "$PORT"
@@ -362,7 +358,7 @@ README 写明三步：
 ```bash
 # 1) 手机上启动 SPMExample，点「启动 Server」
 # 2) Mac 上起转发
-./scripts/proxy.sh
+iproxy 38321 38321
 # 3) 另开终端发命令
 curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 ```

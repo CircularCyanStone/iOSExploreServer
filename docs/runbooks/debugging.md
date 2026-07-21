@@ -1,10 +1,10 @@
 # 排障手册
 
-## `proxy.sh` 一直显示 `waiting for connection`
+## `iproxy` 一直显示 `waiting for connection`
 
 **这是正常的，不是故障。** `iproxy` 在 Mac 监听 38321，**被动等待 `curl` 来连**——它不是在等设备。`curl` 一连 `localhost:38321`，iproxy 才把连接通过 USB 转发到设备。
 
-解决：**另开一个终端**跑 `curl`。`proxy.sh` 那个终端保持前台运行不要关。
+解决：**另开一个终端**跑 `curl`。运行 `iproxy 38321 38321` 的终端保持前台不要关。
 
 确认两端就绪：
 ```bash
@@ -19,7 +19,7 @@ lsof -iTCP:38321 -sTCP:LISTEN -n -P # 应看到 iproxy 在监听 *:38321
 1. **设备 App 是否点了「启动 Server」**？状态必须是 `● 监听中 :38321`。没启动则设备 :38321 无人监听，curl 会超时。
 2. **iproxy 是否在跑**？`lsof -iTCP:38321` 看有没有 iproxy 进程。
 3. **设备是否连接且被信任**？`idevice_id -l` 有 UDID；首次连需在手机点「信任」。
-4. **端口是否被占用**？`lsof -iTCP:38321` 若被别的进程占，换端口（`ExploreServer(port:)` + `PORT=xxxx ./scripts/proxy.sh`）。
+4. **端口是否被占用**？`lsof -iTCP:38321` 若被别的进程占，停止冲突进程，或同时修改 `ExploreServer(port:)` 和 `iproxy <mac-port> <device-port>` 的端口。
 
 ## 设备返回错误 envelope
 

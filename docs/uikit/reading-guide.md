@@ -127,5 +127,4 @@
 读完这份指南，建议：
 1. 按第 0→1→2→3 步打开文件实际走一遍。
 2. 遇到具体文件疑问，查 [uikit-file-reference.md](./uikit-file-reference.md)。
-3. 想看历史设计决策，读 `docs/superpowers/specs/2026-06-23-uikit-command-extension-architecture-design.md`。
-4. 如果你在构建 MCP 服务 / Skill / agent 自动化脚本，**必须先读** [agent-command-protocol.md](./agent-command-protocol.md) —— 里面写明了每个 `ui.*` 命令的前置条件、两步调用时序、`viewSnapshotID` 契约、以及 cell 定位的正确方法（避免"靠 subviews 顺序猜 cell"这类已知陷阱）。
+3. 如果你在构建 MCP 服务 / Skill / agent 自动化脚本，**必须先读** [agent-command-protocol.md](./agent-command-protocol.md) —— 里面写明了每个 `ui.*` 命令的前置条件、两步调用时序、`viewSnapshotID` 契约、以及 cell 定位的正确方法（避免"靠 subviews 顺序猜 cell"这类已知陷阱）。

@@ -22,7 +22,7 @@
 | `ios-ui-shot` | **L1 操作层** | iOSDriver | `ui_screenshot` / `ui_inspect` / `ui_wait` | healthy | active | 原 `ios-screenshot` |
 | `ios-ui-gesture` | **L1 操作层** | iOSDriver | `ui_swipe` / `ui_longPress` / `ui_inspect` / `ui_wait` | healthy | active | 原 `ios-gestures`;**不含 drag**(`ui.drag` 不存在,Task 3 Step 5 删除) |
 | `ios-ui-wait` | **L1 操作层** | iOSDriver | `ui_wait` / `ui_waitAny` / `wait_and_inspect` / `ui_inspect` | healthy | active | 原 `ios-dynamic-content`;补 wait/waitAny 真实用法(原 skill 标 not fully tested) |
-| `ios-logs` | **L1 操作层** | iOSDriver | `app_logs_mark` / `app_logs_read` | healthy | active | Task 12 新建;正文含来源×平台矩阵(数据见 `design/log-matrix-measured.md`)+ `capture.state` + `unavailable` 语义专节 |
+| `ios-logs` | **L1 操作层** | iOSDriver | `app_logs_mark` / `app_logs_read` | healthy | active | 进程内日志读取;正文含来源可用性、`capture.state` 与 `unavailable` 语义 |
 | `ios-test-intent` | **L2 测试闭环** | 离线源码分析 | `Read` / `Glob` / `Grep`(读 App 源码,**无 iOSDriver 调用**) | healthy | active | Task 13 通用化(方法论保留,样例占位化) |
 | `ios-test-runner` | **L2 测试闭环** | iOSDriver + 源码分析 | `ui_waitAny` / `ui_inspect` / `ui_tap` / `ui_input` / `app_logs_read` / `app_logs_mark` | healthy | active | Task 14 解耦(去 UDID/bundle 硬编码)+ 加日志判据 capture 前置检查 |
 

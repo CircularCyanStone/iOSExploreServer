@@ -219,7 +219,7 @@ server.register(action: "greet", description: "按 name 打招呼", input: Greet
 ```bash
 # 1) 手机上启动 App，点「启动 Server」
 # 2) Mac 起转发（前台，Ctrl-C 停）
-./scripts/proxy.sh          # 等价 iproxy 38321 38321
+iproxy 38321 38321
 # 3) 另开终端发命令
 curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 curl -X POST http://localhost:38321/ -d '{"action":"info"}'
@@ -236,9 +236,9 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.waitAny","data":{"timeout
 
 ## iproxy 工作原理（重要）
 
-`iproxy <macport> <deviceport>` 在 Mac 监听 `macport`，**被动等待** Mac 客户端连接；客户端一连，它把连接通过 USB 转发到设备 `deviceport`。所以 `proxy.sh` 启动后显示 `waiting for connection` 是**正常状态**——它在等 `curl` 来连，不是在等设备。详见 `docs/runbooks/debugging.md`。
+`iproxy <macport> <deviceport>` 在 Mac 监听 `macport`，**被动等待** Mac 客户端连接；客户端一连，它把连接通过 USB 转发到设备 `deviceport`。所以启动后显示 `waiting for connection` 是**正常状态**——它在等 `curl` 来连，不是在等设备。详见 `docs/runbooks/debugging.md`。
 
 ## 端口
 
-- 默认 **38321**（库默认 + `proxy.sh` 默认）。
+- 默认 **38321**（库默认端口；真机转发使用 `iproxy 38321 38321`）。
 - 集成测试用 **38399**（避开生产默认，见 `Tests/iOSExploreServerTests/IntegrationTests.swift`）。

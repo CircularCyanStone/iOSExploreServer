@@ -237,7 +237,7 @@ check_device_setup() {
         echo "  1. 确保设备已信任此电脑"
         echo "  2. 确保设备开发者模式已启用"
         echo "  3. 如需与 iOSExploreServer 通信，运行："
-        echo "     ./scripts/proxy.sh --daemon"
+        echo "     iproxy 38321 38321"
         echo ""
     fi
 }

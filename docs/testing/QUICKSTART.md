@@ -13,7 +13,7 @@ open Examples/SPMExample/SPMExample.xcodeproj
 # 2. 在 Xcode 中创建 UI Test target
 #    File → New → Target → UI Testing Bundle
 #    Name: SPMExampleUITests
-#    详细步骤见: docs/testing/xcuitest-setup-checklist.md
+#    详细步骤见: docs/testing/xcuitest-guide.md
 
 # 3. 验证配置
 cd Examples/SPMExample
@@ -77,7 +77,7 @@ xcrun xctrace list devices
 # ✅ iOS 版本 ≥ 26.2
 
 # 3. （可选）启动 iproxy（如需与 iOSExploreServer 通信）
-./scripts/proxy.sh --daemon
+iproxy 38321 38321
 
 # 4. 运行测试
 ./scripts/run-uitests.sh --device-id <UDID>
@@ -100,7 +100,7 @@ xcrun xctrace list devices
 ### ❌ 找不到 UITests target
 
 **原因**: 尚未在 Xcode 中创建 UITests target  
-**解决**: 参考 `docs/testing/xcuitest-setup-checklist.md`
+**解决**: 参考 `docs/testing/xcuitest-guide.md`
 
 ### ❌ 测试超时 - "Failed to find element"
 
@@ -126,9 +126,9 @@ lsof -iTCP:38321
 # 如果是 SPMExampl，清理模拟器残留
 xcrun simctl terminate booted com.coo.SPMExample
 
-# 重启 iproxy
-./scripts/proxy.sh --stop
-./scripts/proxy.sh --daemon
+# 停止旧 iproxy 后重新前台启动
+pkill -x iproxy
+iproxy 38321 38321
 ```
 
 ---
@@ -141,8 +141,7 @@ xcrun simctl terminate booted com.coo.SPMExample
 | `Examples/SPMExample/SPMExampleUITests/SystemAlertMonitorTests.swift` | 系统弹窗示例 |
 | `scripts/run-uitests.sh` | 自动化运行脚本 |
 | `docs/testing/xcuitest-guide.md` | 完整使用指南（架构、原理、FAQ） |
-| `docs/testing/xcuitest-setup-checklist.md` | 设置步骤清单 |
-| `docs/testing/xcuitest-verification-report.md` | 验证报告（技术细节） |
+| `docs/testing/xcuitest-guide.md` | 完整使用与排障指南 |
 
 ---
 

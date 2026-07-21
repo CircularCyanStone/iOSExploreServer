@@ -68,7 +68,7 @@ L0 也含 UI 操作,但**工具体系不同**:
 1. L0:`session_use_defaults_profile("sim-app")` → `build_run_sim()`(或 `device-app` profile 走真机 + `iproxy`)。
 2. L1:`curl http://localhost:38321/` 确认 `pong` → 走 `ios-automation` 入口路由到 `ios-ui-*` / `ios-logs`。
 
-真机还需 `./scripts/proxy.sh` 做 USB 转发(`iproxy 38321 38321`),模拟器与 Mac 共享 localhost 不需要。本项目的三个 profile(`sim-app` / `sim-fw` / `device-app`)与四个易踩的坑(设备 ID 两套、机型字段串号、`build_run_*` 不注入 env、curl 前先 `lsof` 确认是 iproxy)详见 `AGENTS.md`「XcodeBuildMCP 运行配置」与「四个必须记住的差异」,此处不重复。
+真机还需运行 `iproxy 38321 38321` 做 USB 转发,模拟器与 Mac 共享 localhost 不需要。本项目的三个 profile(`sim-app` / `sim-fw` / `device-app`)与四个易踩的坑(设备 ID 两套、机型字段串号、`build_run_*` 不注入 env、curl 前先 `lsof` 确认是 iproxy)详见 `AGENTS.md`「XcodeBuildMCP 运行配置」与「四个必须记住的差异」,此处不重复。
 
 ---
 
@@ -95,7 +95,7 @@ L0 也含 UI 操作,但**工具体系不同**:
 L0 和 L1 各有一套日志能力,定位不同,不冲突:
 
 - **L0 `start_sim_log_cap`**:系统/模拟器级捕获,抓**整个 App 控制台**(stdout/stderr/系统日志),模拟器友好。粒度粗,适合「App 有没有报错、控制台整体输出」。
-- **L1 `app.logs.*`(iOSExploreDiagnostics)**:App 进程内**精准**捕获,可按 source(`stdout`/`stderr`/`nslog`/`oslog`/`explore`/`bridge`)与 level 过滤、可做断言。粒度细,适合「这条业务路径有没有打日志、按来源判别」。真机 `oslog` 更全,模拟器受限(实测矩阵见 `design/log-matrix-measured.md`)。
+- **L1 `app.logs.*`(iOSExploreDiagnostics)**:App 进程内**精准**捕获,可按 source(`stdout`/`stderr`/`nslog`/`oslog`/`explore`/`bridge`)与 level 过滤、可做断言。粒度细,适合「这条业务路径有没有打日志、按来源判别」。真机 `oslog` 更全,模拟器可能受系统可见性限制。
 
 选哪套同样服从 §4 的总规则:已集成 server → 优先 L1 的 `app.log.*`(可断言、可过滤);未集成或要看全量控制台 → L0 `start_sim_log_cap`。
 
@@ -125,4 +125,3 @@ L0 和 L1 各有一套日志能力,定位不同,不冲突:
 - 12 个 skill 权威状态表(含 L0 行):`inventory.md` §1
 - 设计 spec(权威,§3 是选择规则出处):`design/2026-07-16-skills-architecture.md`
 - 本项目真机/模拟器跑法与四个坑:`AGENTS.md`「XcodeBuildMCP 运行配置」+「四个必须记住的差异」
-- 日志来源×平台实测矩阵:`design/log-matrix-measured.md`

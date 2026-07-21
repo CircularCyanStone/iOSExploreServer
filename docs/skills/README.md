@@ -16,7 +16,7 @@
 
 **两套日志能力的关系(互补,非冲突)**:
 - L0 `start_sim_log_cap`:系统/模拟器级捕获,模拟器友好,抓整个 App 控制台。
-- L1 `app.logs.*`(iOSExploreDiagnostics):App 进程内精准捕获,可按 source/level 过滤、可做断言;真机 `oslog` 更全,模拟器受限(详见 `ios-logs` 正文与 `design/log-matrix-measured.md`)。
+- L1 `app.logs.*`(iOSExploreDiagnostics):App 进程内精准捕获,可按 source/level 过滤、可做断言;真机 `oslog` 更全,模拟器可能受系统可见性限制。
 
 ---
 
@@ -70,7 +70,6 @@
 | 判断 skill 正文是否过度耦合 SPMExample | `conventions/decoupling.md` |
 | 判断一个 EXPERIMENTAL skill 该不该删/合/留 | `conventions/lifecycle.md` |
 | 看 SPMExample 登录的真实参考案例(intent + run-report) | `examples/spmexample-login/`(plan Task 15 产出) |
-| 看日志来源×平台矩阵实测数据 | `design/log-matrix-measured.md` |
 | 看本次重构的整体设计背景与决策记录 | `design/2026-07-16-skills-architecture.md` |
 
 ### 4.2 目录结构(spec §9)
@@ -80,8 +79,7 @@ docs/skills/
 ├── README.md                 # 本文件(看一个文件懂全貌)
 ├── inventory.md              # 全部 skill 清单:层/工具/健康度/状态/废弃记录
 ├── design/
-│   ├── 2026-07-16-skills-architecture.md   # 设计 spec(权威)
-│   └── log-matrix-measured.md              # 实测日志矩阵(供 ios-logs 引用)
+│   └── 2026-07-16-skills-architecture.md   # 设计 spec(权威)
 ├── conventions/
 │   ├── skill-template.md     # skill-creator 中文模板(正文中文+中英 description+allowed-tools)
 │   ├── naming.md             # 命名/分组前缀规则
@@ -89,11 +87,8 @@ docs/skills/
 │   └── lifecycle.md          # EXPERIMENTAL 挂账上限 + 废弃标准
 ├── examples/
 │   └── spmexample-login/     # SPMExample 登录真实案例(intent + run-report,plan Task 15)
-├── l0-build-debug.md         # L0 ios-debugger-agent 定位与选择规则(plan Task 16)
-└── archive/                  # docs 顶层散报告 + 旧设计文档归档(plan Task 17)
+└── l0-build-debug.md         # L0 ios-debugger-agent 定位与选择规则
 ```
-
-> `l0-build-debug.md`(plan Task 16)与 `archive/`(plan Task 17)均已产出。
 
 ---
 
@@ -104,7 +99,7 @@ docs/skills/
 3. **解耦自检**:`conventions/decoupling.md` §5 跑清单。
 4. **生命周期判断**:新建默认 `active` + `healthy`;确有未验证项才标 `experimental`,并写明 1 迭代验证计划(`conventions/lifecycle.md` §2–§3)。
 5. **更新清单**:在 `inventory.md` 里登记(或更新健康度/状态)。
-6. **验证命令**:plan `2026-07-16-skills-refactor.md` 的 G5 通用验证命令集(每个重写 skill 都跑,全 PASS 才算完成)。
+6. **验证命令**:按 `inventory.md` 的状态规则和各 skill 的 frontmatter / 解耦约束做静态校验；涉及运行时能力时用对应 `ios-*` skill 的实际工具跑最小闭环。
 
 ---
 
@@ -115,5 +110,5 @@ docs/skills/
 3. **空壳/重叠**:删空壳 + 合并重叠(`ios-date-picker` / `ios-table-actions` / `ios-controller-navigation`)。
 4. **L0 纳入**:全局 `ios-debugger-agent` 纳入分层定位(改名影响其他项目,保留原名)。
 5. **命名**:语义前缀分组(L1 细化为 `ios-ui-*` + `ios-logs`)。
-6. **日志**:新增 `ios-logs`,含来源×平台矩阵与 `unavailable` 语义(实测数据见 `design/log-matrix-measured.md`)。
+6. **日志**:新增 `ios-logs`,含来源可用性与 `unavailable` 语义。
 7. **evals**:静态结构 evals 严格通用;动态回归 evals 可用 SPMExample 作参考 fixture(放 `examples/spmexample-login/`),**不算 skill 本体耦合**。

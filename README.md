@@ -27,30 +27,21 @@ Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :3
 ```
 
 **可用的专业 skills：**
-- `/ios-form-filling` — 表单填写 ⭐⭐⭐⭐⭐
-- `/ios-alert-handling` — 弹窗处理 ⭐⭐⭐⭐⭐
-- `/ios-navigation` — 页面导航 ⭐⭐⭐⭐⭐
-- `/ios-list-interaction` — 列表交互 ⭐⭐⭐⭐⭐
-- `/ios-screenshot` — 截图验证 ⭐⭐⭐⭐⭐
+- `/ios-ui-form` — 表单填写与控件操作
+- `/ios-ui-alert` — 弹窗检测与响应
+- `/ios-ui-nav` — 页面导航与返回
+- `/ios-ui-list` — 列表查找、滚动与选中
+- `/ios-ui-shot` — 截图与视觉验证
 
-**完整 skills 索引：** `docs/ios-automation-skills-index.md`
+**完整 skills 索引：** `docs/skills/README.md`
 
 ### 方式 2：手动使用 curl
 
 1. 在手机/模拟器上运行集成了 iOSExploreServer 的 App（见 `Examples/SPMExample`），启动 Server。
 2. Mac 上起转发（真机）：
    ```bash
-   # 前台运行（Ctrl-C 停止）
-   ./scripts/proxy.sh
-   
-   # 后台运行（推荐）
-   ./scripts/proxy.sh --daemon
-   
-   # 检查状态
-   ./scripts/proxy.sh --status
-   
-   # 停止后台进程
-   ./scripts/proxy.sh --stop
+   # 前台运行，保持此终端不关闭；Ctrl-C 停止
+   iproxy 38321 38321
    ```
    > 模拟器无需 `iproxy`：App 监听的端口 Mac 本机直接可达。
 3. 发命令：
@@ -104,7 +95,7 @@ let server = ExploreServer()
 server.registerUIKitCommands()   // 一次性注册 14 个 ui.* 命令
 ```
 
-`ui.*` 典型闭环：先 `ui.viewTargets` 观察页面拿到 canonical target 的 `path` 与本次 `viewSnapshotID`（仅此命令签发，`ui.screenshot` / `ui.topViewHierarchy` 都不再签发）→ 优先用 `accessibilityIdentifier`，必要时用 `path + viewSnapshotID` 调动作。`ui.tap` / `ui.control.sendAction` 必填 `viewSnapshotID` 并校验 freshness；`ui.input` / `ui.scroll` 只有在 `path + viewSnapshotID` 组合下做可选陈旧防护；滚动后应重新 `ui.viewTargets`。动作后用 `ui.wait` 等待明确反馈，或重新 `ui.viewTargets` 观察页面；必要时用 `ui.screenshot` 留失败证据。`ui.tap` 成功只表示激活动作已发出，不表示测试步骤成功。可直接照跑的 JSON/curl 闭环见 `docs/superpowers/agent-mcp-exploration/curl-json-loop-protocol.md`。
+`ui.*` 典型闭环：先 `ui.viewTargets` 观察页面拿到 canonical target 的 `path` 与本次 `viewSnapshotID`（仅此命令签发，`ui.screenshot` / `ui.topViewHierarchy` 都不再签发）→ 优先用 `accessibilityIdentifier`，必要时用 `path + viewSnapshotID` 调动作。`ui.tap` / `ui.control.sendAction` 必填 `viewSnapshotID` 并校验 freshness；`ui.input` / `ui.scroll` 只有在 `path + viewSnapshotID` 组合下做可选陈旧防护；滚动后应重新 `ui.viewTargets`。动作后用 `ui.wait` 等待明确反馈，或重新 `ui.viewTargets` 观察页面；必要时用 `ui.screenshot` 留失败证据。`ui.tap` 成功只表示激活动作已发出，不表示测试步骤成功。外部 agent / MCP 调用约束见 `docs/uikit/agent-command-protocol.md`。
 
 **Diagnostics 扩展**（`server.registerDiagnosticsCommands()` 显式注册；不依赖 UIKit）：
 
@@ -149,15 +140,15 @@ server.register(action: "greet", description: "按 name 打招呼", input: Greet
 
 **已实现**：core 4 个 action 自动注册；UIKit 扩展显式注册 14 个 `ui.*` action；Diagnostics 扩展显式注册 2 个 `app.logs.*` action。Example App 额外注册 `greet` / `device` / `debug.emitAppLog` / `debug.emitStdout` / `debug.emitStderr`，并显式开放 UIKit 与 Diagnostics 命令。现有能力链已覆盖查询（`viewTargets` / `topViewHierarchy`）→ 看屏（`screenshot`）→ 操作（`tap` / `input` / `scroll` / `control` / `navigation` / `keyboard`）→ 等待（`ui.wait` 单条件 / `ui.waitAny` 多分支）→ 读取动作后的进程内增量日志（`app.logs.mark/read`）。
 
-**质量**：macOS `swift test` 225 用例 + iOS framework 344 用例全绿；历史三层验证记录见 `docs/superpowers/agent-mcp-exploration/runtime-validation-2026-07-02.md`。
+**质量**：macOS `swift test` 225 用例 + iOS framework 344 用例全绿。
 
 **最近修复**：HTTPListener 连接槽耗尽后 server 不响应（Network 层 `newConnectionLimit` 被误设为业务上限，连接关闭后不释放）。
 
-**下一步**：Agent 使用协议已写入 `docs/superpowers/agent-mcp-exploration/agent-usage-protocol.md`，可运行的 curl/JSON 闭环写入 `docs/superpowers/agent-mcp-exploration/curl-json-loop-protocol.md`。navigationBar / UIBarButtonItem 可达性、`ui.tap` 结构化默认激活、`ui.alert.respond dryRun=false`、`ui.waitAny` 均已完成。当前剩余主任务是实现 Mac 本机 MCP server，把现有 HTTP action 包装成 MCP tools，并在工具层固化 `observe → act → wait_and_observe → verify` 调用顺序；设计见 `docs/superpowers/specs/2026-07-06-mac-mcp-server-design.md`。
+**MCP bridge**：Mac 本机 MCP Server 已收敛到 `iOSDriver/`，它把现有 HTTP action 包装成 MCP tools；本仓库根不再保留单独的 Node 安装入口。
 
 ## 待观察问题
 
-- **P1-6 Snapshot TTL（时间维度）的收益与代价**：当前 `UIKitSnapshotStore` 用 `ttlSeconds` 做 freshness 判定（工作树已从 30s/8 调整为 120s/32，分支 `fix/freshness-consistency`，未合并）。初步分析认为：时间维度在 LLM‑Agent 长思考场景下会因思考时间超过阈值而产生误报（`stale_locator`），而真正能彻底消除误报的做法是去掉时间维度的 freshness 判定、只靠 `UIKitTargetFingerprint` 指纹对比 + context 匹配来判断陈旧，并把 TTL 退化为只在 `evictIfNeeded` 里做内存清理的辅助上限。但时间维度原本确有收益（内存上限兜底 + 指纹盲区兜底 + 实现简单），方案是否推进需要先观察当前 120s/32 在真实 agent 流程里的 `stale_locator` 触发频率再决定。完整辩证分析、收益代价对照、彻底改造方案的逐文件位置与单元测试改动清单见 `docs/investigations/p1-6-stale-locator-analysis.md`，**当前仅记录不实施**。
+- **P1-6 Snapshot TTL（时间维度）的收益与代价**：当前 `UIKitSnapshotStore` 仍用 `ttlSeconds` 做 freshness 判定。时间维度能控制内存和兜底指纹盲区，但在 LLM-Agent 长思考场景下可能误报 `stale_locator`；是否改为只靠指纹 + context 匹配，先观察真实 agent 流程里的触发频率，**当前仅记录不实施**。
 
 ## 调试日志
 

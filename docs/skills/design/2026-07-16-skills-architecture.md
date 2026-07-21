@@ -3,7 +3,7 @@
 - **日期**:2026-07-16
 - **状态**:设计待评审 → 评审通过后进入实施计划(writing-plans)
 - **范围**:`.claude/skills/` 下全部项目级 skill + 全局 `ios-debugger-agent` 的定位梳理 + `docs/skills/` 管理目录建立
-- **前置背景**:本仓库的 skill 体系经过 6 轮迭代(详见 `docs/skills/archive/` 归档的历史文档),但**从未有过一份正规设计 spec**。本文件补上这个缺口,作为后续所有 skill 构建、精简、测试、废弃的基线。
+- **前置背景**:本仓库的 skill 体系经过多轮迭代后，需要一份正规设计 spec 承载最终分层、命名、生命周期和解耦规则。本文件作为后续所有 skill 构建、精简、测试、废弃的基线。
 
 ---
 
@@ -229,16 +229,7 @@ docs/skills/
 │   └── lifecycle.md          # EXPERIMENTAL 挂账上限与废弃标准(解决空壳长期挂账)
 ├── examples/
 │   └── spmexample-login/     # SPMExample 登录真实案例(意图清单+实跑报告)
-└── archive/                  # docs 顶层散落的一次性测试报告 + 旧设计文档归档
 ```
-
-### docs 顶层清理
-将以下一次性产物从 docs 顶层移入 `docs/skills/archive/`:
-`alert-test-complete-report.*`、`input-alert-control-test-*`、`final-two-commands-test-report.*`、`skills-test-report.*`、`skill-design-final.md`、`skills-improvement-recommendations.md`、`skills-improvements-applied.md`、`renaming-report.md`、`ALL-TESTS-COMPLETE-SUMMARY.md`、`100-PERCENT-COVERAGE-FINAL.md`、`final-command-coverage.md`、`TASK-COMPLETION-SUMMARY.md`、`testing-summary.md`、`command-gap-analysis.md`、旧 `ios-automation-skills-index.md`、`QUICK_START.md`(评估后定)。
-
-**保留在 docs 顶层**(非一次性产物,不归档):`agent_instructions.md`(Agent 指令与 docs 组织规则,长期有效)。
-
-> 注意:仓库根 `reports/`(**不是** `docs/reports/`,后者不存在)下有 `2026-07-13-14-skills-creation-project/` 和 `2026-07-14-skills-creation/` 两个历史目录,是 docs 顶层这些文件的另一份副本。归档时只归 docs 顶层副本,**不动仓库根 `reports/`**。在 `archive/README.md` 注明两处副本关系,避免后人困惑。
 
 ---
 

@@ -9,6 +9,13 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 .codegraph
+/node_modules/
+/reports/
+/test-*.js
+/test_*.py
+/test_*.sh
+/optimization_verification_report.md
+/verification-report-*.md
 MCPServer/node_modules/
 MCPServer/dist/
 .worktrees

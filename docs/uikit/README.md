@@ -37,4 +37,4 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 ## 相关文档
 
 - 架构总览（含 UIKit 模块边界）→ `docs/architecture/index.md`
-- 历史设计决策 → `docs/superpowers/specs/2026-06-23-uikit-command-extension-architecture-design.md` 等
+- 架构总览（含 UIKit 模块边界）→ `docs/architecture/index.md`

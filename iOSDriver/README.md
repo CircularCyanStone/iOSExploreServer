@@ -34,5 +34,4 @@ npm run build
 
 ## 端到端测试
 
-- 完整端到端流程文档：[docs/investigations/mcp-e2e-test.md](../docs/investigations/mcp-e2e-test.md)
 - 本地临时调试（不安装 iOSDriver 到任何 MCP 客户端）：[docs/local-mcp-test.md](docs/local-mcp-test.md)

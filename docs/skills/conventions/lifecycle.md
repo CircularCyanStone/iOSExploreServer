@@ -57,7 +57,7 @@
 
 **新建 skill 默认 `active` + `healthy`**,不要默认标 `experimental`。只有以下情况才标 `experimental`:
 
-- 该 skill 调用的某个 action 尚未在模拟器 + 真机各实测一次(如 `ios-logs` 的 `oslog` / `nslog` 来源矩阵,见 `design/log-matrix-measured.md`)。
+- 该 skill 调用的某个 action 尚未在模拟器 + 真机各实测一次(如 `ios-logs` 的 `oslog` / `nslog` 来源可用性)。
 - 该 skill 的方法论待案例验证(如 `ios-test-intent` 的"读源码产出判据"流程)。
 
 标 `experimental` 必须**同时**写明:
