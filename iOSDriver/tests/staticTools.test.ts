@@ -120,6 +120,85 @@ describe("static tools", () => {
     expect((tools.ui_keyboard_dismiss!.inputSchema as any).properties.waitAfterMs).toMatchObject({ minimum: 0, maximum: 3000, default: 200 });
   });
 
+  test("表单静态工具暴露批量输入与数值控件关键约束", () => {
+    const tools = createStaticTools({ client: { call: async () => ({}) } });
+    const input = tools.ui_input!.inputSchema as any;
+    expect(input.required).toEqual(["fields"]);
+    expect(input.properties.fields).toMatchObject({ minItems: 1, maxItems: 16 });
+    expect(input.properties.fields.items.properties).toMatchObject({
+      mode: { enum: ["replace", "append"], default: "replace" },
+      submit: { type: "boolean", default: false }
+    });
+
+    const control = tools.ui_control_sendAction!.inputSchema as any;
+    expect(control.required).toEqual(["event", "viewSnapshotID"]);
+    expect(control.properties.value.type).toBe("number");
+    expect(control.properties.event.enum).toContain("valueChanged");
+  });
+
+  test("wait_and_inspect schema 与返回值保留 wait 和 observation 两层", async () => {
+    const calls: Array<{ action: string; data: Record<string, unknown> }> = [];
+    const tools = createStaticTools({ client: { call: async (action, data) => {
+      calls.push({ action, data });
+      if (action === "ui.waitAny") return { satisfied: true, matchedID: "success" };
+      if (action === "ui.inspect") return { targets: [{ path: "root/0" }] };
+      return {};
+    } } });
+
+    const schema = tools.wait_and_inspect!.inputSchema as any;
+    expect(schema.required).toEqual(["conditions"]);
+    expect(Object.keys(schema.properties.inspectOptions.properties).sort()).toEqual([
+      "accessibilityIdentifier",
+      "accessibilityIdentifierPrefix",
+      "includeHidden",
+      "maxDepth",
+      "maxTargets",
+      "maxVisitedNodes",
+      "textLimit"
+    ]);
+
+    const result = await tools.wait_and_inspect!.handler({
+      conditions: [{ id: "success", mode: "targetExists", accessibilityIdentifier: "result" }],
+      timeoutMs: 1000,
+      inspectOptions: { maxDepth: 4, maxTargets: 20 }
+    });
+    expect(text(result)).toEqual({
+      wait: { satisfied: true, matchedID: "success" },
+      observation: { targets: [{ path: "root/0" }] }
+    });
+    expect(calls).toEqual([
+      {
+        action: "ui.waitAny",
+        data: {
+          conditions: [{ id: "success", mode: "targetExists", accessibilityIdentifier: "result" }],
+          timeoutMs: 1000
+        }
+      },
+      { action: "ui.inspect", data: { maxDepth: 4, maxTargets: 20 } }
+    ]);
+  });
+
+  test("ui_tap_and_inspect 把提交后 inspect 结果放在 stateAfter", async () => {
+    const tools = createStaticTools({ client: { call: async action => {
+      if (action === "ui.tap") return { tapped: true };
+      if (action === "ui.inspect") return { targets: [{ accessibilityIdentifier: "validation-result" }] };
+      return { satisfied: true };
+    } } });
+
+    const result = await tools.ui_tap_and_inspect!.handler({
+      accessibilityIdentifier: "submit",
+      viewSnapshotID: "snapshot",
+      waitForStable: false,
+      inspectDepth: 4,
+      inspectMaxTargets: 20
+    });
+    expect(text(result)).toMatchObject({
+      tap: { tapped: true },
+      stateAfter: { targets: [{ accessibilityIdentifier: "validation-result" }] },
+      timing: expect.any(Object)
+    });
+  });
+
   test("静态工具转发 App unknown_action 时保留业务结果语义", async () => {
     const tools = createStaticTools({ client: { call: async () => {
       throw new IOSExploreStructuredError({ source: "ios_envelope", code: "unknown_action", message: "not registered" });

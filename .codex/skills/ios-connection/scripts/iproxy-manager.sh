@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# iproxy 管理脚本 - ios-automation skill 配套工具
+# iproxy 管理脚本 - ios-connection skill 配套工具
 # 功能：安装、启动、停止、诊断 iproxy
 
 set -euo pipefail
@@ -28,7 +28,7 @@ error() { echo -e "${RED}❌ $*${NC}" >&2; }
 
 show_help() {
   cat <<EOF
-iproxy 管理脚本 - ios-automation skill
+iproxy 管理脚本 - ios-connection skill
 
 用法: $0 <命令> [选项]
 
@@ -233,8 +233,7 @@ write_launchd_plist() {
   <key>ProgramArguments</key>
   <array>
     <string>${escaped_iproxy}</string>
-    <string>${escaped_port}</string>
-    <string>${escaped_remote}</string>
+    <string>${escaped_port}:${escaped_remote}</string>
     <string>-u</string>
     <string>${escaped_udid}</string>
   </array>
