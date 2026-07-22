@@ -34,12 +34,12 @@ node scripts/mcp-inspector.mjs
 # 模式 B：按顺序调用任意工具，每对参数 = 工具名 + JSON 字符串
 node scripts/mcp-inspector.mjs <toolName> '<jsonArgs>' [<toolName2> '<jsonArgs2>' ...]
 
-# 工具名就是 tools/list 里看到的 name（动态工具名规则见下节）
+# 工具名就是 tools/list 里看到的静态 name
 ```
 
-## 工具名映射规则（如何从 iOSExplore action 推断 MCP 工具名）
+## 静态工具名
 
-`toolName.ts` 把 action 名里所有非 `[A-Za-z0-9_]` 字符替换为下划线：
+工具名不是运行时从 App action 推断的，而是由 `src/staticTools.ts` 的静态清单固定：
 
 | iOSExplore action | MCP 工具名 |
 |---|---|
@@ -49,7 +49,9 @@ node scripts/mcp-inspector.mjs <toolName> '<jsonArgs>' [<toolName2> '<jsonArgs2>
 | `ui.scrollToElement` | `ui_scrollToElement` |
 | `app.logs.read` | `app_logs_read` |
 
-静态工具清单以 `src/staticTools.ts` 导出的 `STATIC_TOOL_NAMES` 为唯一来源；动态工具的 description 末尾会附 `Original iOSExplore action: <action>`，便于反查。为什么要区分静态核心和动态扩展、两者各自解决什么问题，见[动态 MCP 工具设计说明](../../docs/architecture/dynamic-mcp-tools.md)。
+静态工具清单以 `src/staticTools.ts` 导出的 `STATIC_TOOL_NAMES` 为唯一来源。私有或实验
+action 使用 `call_action`，App `help` 只通过 `health_check` / `check_capabilities` 做能力检查。
+完整架构说明见[静态 MCP 工具架构决策](../../docs/architecture/dynamic-mcp-tools.md)。
 
 ## 排障
 
@@ -64,5 +66,5 @@ node scripts/mcp-inspector.mjs <toolName> '<jsonArgs>' [<toolName2> '<jsonArgs2>
 
 ## 与单元测试的边界
 
-- `npm test`（vitest）覆盖 iOSDriver 内部逻辑：工具名映射、schema 转换、动态工具发现、transport 重试、screenshot 转 image content 等，**mock 掉真实 HTTP**，不需要真 App 跑。
+- `npm test`（vitest）覆盖 iOSDriver 内部逻辑：静态工具集合、能力检查、transport 重试、screenshot 转 image content 等，**mock 掉真实 HTTP**，不需要真 App 跑。
 - `scripts/mcp-inspector.mjs` 走真 stdio + 真 HTTP，验证 iOSDriver 在真 MCP 协议下、真 App 响应下的端到端表现。两者互补：改完内部逻辑先 `npm test`，再起 App 走 mcp-inspector 做端到端 smoke。

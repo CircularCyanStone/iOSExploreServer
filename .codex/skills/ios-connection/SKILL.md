@@ -89,7 +89,7 @@ Agent 执行本 skill 时协助完成以下步骤：
 
 连接通但行为异常时，用 `mcp__iOSDriver__ui_inspect` 取当前视图结构（targets / alert / navigationBar），签发 `viewSnapshotID` 给后续 `ui_tap_and_inspect` 用。本 skill 的诊断范围只到"读状态"，看到具体 UI 问题后路由给对应 `ios-ui-*`。
 
-若 `health_check.ok == true` 且 `dynamicToolCount > 0`，但工具面板没有直接显示 `ui_inspect`，说明 App 的 `help` 已返回、动态工具加载链路已通，只是客户端工具列表没有刷新出来。此时允许用 `mcp__iOSDriver__call_action({action:"ui.inspect", data:{...}})` 兜底取快照，并在报告里记录"动态工具未直接暴露"；不要把这种情况误判为连接失败。
+`ui_inspect` 是静态工具，正常情况下与 `health_check` 同时可见。若工具本身不存在，属于 MCP 安装或客户端缓存问题，应重新构建并重连 iOSDriver；若工具可调用但返回 `unknown_action`，说明 App 未注册 UIKit 命令，不是连接失败。`call_action` 不用于替代稳定的 `ui_inspect`。
 
 #### 3. 设备与 App 状态检查
 

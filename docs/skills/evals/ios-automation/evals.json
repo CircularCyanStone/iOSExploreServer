@@ -1,7 +1,7 @@
 {
   "skill_name": "ios-automation",
   "description": "L1 总入口的 evals:静态结构检查(frontmatter 两字段 / 无本地项目硬编码 / 路由表正确 / L0-L1 选择规则)、动态连接诊断(ping 38321 / 真机 iproxy 残留排查)。",
-  "_readme": "The expected_output field describes behavior to verify in an automation run. Tool names are intentionally client-neutral; fixed tools, dynamic tools, and call_action forwarding are all acceptable when they expose the same iOSExploreServer action.",
+  "_readme": "The expected_output field describes behavior to verify in an automation run. Stable public actions use static tools; call_action is reserved for host-private, Debug, experimental, or not-yet-static actions.",
   "evals": [
     {
       "id": 1,

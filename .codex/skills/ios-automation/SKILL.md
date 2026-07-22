@@ -87,11 +87,11 @@ description: iOS App 自动化测试 L1 统一入口。用于已接入 App 内 H
    - 后续操作需要重启App时,真机走`launch_app_device`,模拟器走`launch_app_sim`
    - 若上下文未知,由 `ios-connection` 通过构建/设备管理 MCP 的设备列表和当前配置判别;不要只凭一次 `health_check` 失败断言"真机不通"
 
-3. **动态工具暴露兜底**:
-   - `health_check.ok == true` 且 `dynamicToolCount > 0` 表示 App 的 help 已读到,动态工具加载链路是通的
-   - 部分 MCP 客户端会延迟展示动态工具。若当前只看到 `health_check` / `call_action`,不要立即判断其他工具不存在;先使用客户端提供的工具发现能力精确查找 `ui_inspect` / `ui_input` / `ui_tap` / `wait_and_inspect`
-   - 精确检索后仍未暴露固定工具时,再使用 `call_action` 兜底: `action:"ui.inspect"` / `action:"ui.input"` / `action:"ui.tap"`,并在报告里记录"宿主未展示对应固定工具,已用 call_action 转发"
-   - 当前 iOSDriver 也提供固定桥接工具 `ui_inspect` / `ui_input` / `ui_tap`,优先用固定工具;只有精确检索失败时才用 `call_action`
+3. **静态工具与能力检查**:
+   - iOSDriver 的稳定公共工具在进程启动后即固定可见，不随 App 是否启动或模块是否注册而变化
+   - `health_check` / `check_capabilities` 读取 `ping` 和 `help` 只做能力诊断，不刷新工具列表
+   - UIKit / Diagnostics 静态工具调用返回 `unknown_action` 时，说明 App 当前未注册对应模块，应检查宿主注册入口
+   - `call_action` 只用于宿主私有、Debug、实验性或尚未静态封装的 action；稳定公共 action 始终优先用静态工具
 
 **不在此处理** iproxy 启动、设备同步、端口冲突等复杂场景,这些全部由 `ios-connection` 负责。
 
@@ -137,13 +137,13 @@ description: iOS App 自动化测试 L1 统一入口。用于已接入 App 内 H
 
 ## 关键参数
 
-本 skill 入口阶段会用到这些能力。不同客户端可能以固定工具、动态工具或 `call_action` 转发形式暴露它们:
+本 skill 入口阶段会用到这些静态能力；工具列表与 App 运行状态无关:
 
 | 工具 | 含义 | 注意 |
 |---|---|---|
 | `health_check` | 验证 App 是否运行并可连接 | 快速连接验证的唯一工具 |
 | `ui_inspect` | 读当前 UI 结构,签发 `viewSnapshotID` | 用于快速诊断,复杂调查路由给 `ios-ui-*` |
-| `call_action` | 动态工具未直接展示时兜底转发 action | 例如 `action:"ui.inspect"`;只作兜底,成功后仍按子 skill 语义继续 |
+| `call_action` | 转发宿主私有/Debug/实验 action | 不替代稳定公共 UIKit / Diagnostics 静态工具 |
 | `ui_tap_and_inspect` | 点击 + 等稳定 + inspect 一次完成 | 用于"点一下看看发生什么"的快速诊断 |
 | `app_logs_read` | 读进程内日志 | 快速诊断用,完整能力见 `ios-logs` |
 | 设备列表能力 | 列出模拟器或已连接设备 | MCP 依赖检测和设备上下文判断用 |

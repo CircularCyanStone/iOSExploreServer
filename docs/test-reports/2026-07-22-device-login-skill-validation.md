@@ -10,7 +10,7 @@
 
 | 项目 | 结果 | 运行时证据 |
 | --- | --- | --- |
-| 真机连接 | 通过 | iOSDriver `health_check` 返回 `pong: true`，动态 action 数为 30。 |
+| 真机连接 | 通过 | iOSDriver `health_check` 返回 `pong: true`，App `help` 能力检查读取到 30 个 action。 |
 | 登录页定位 | 通过 | `ui.inspect` 发现用户名、密码和登录按钮均有可操作的 accessibility identifier。 |
 | 表单输入 | 通过 | `ui.input` 成功写入用户名（长度 4）和安全密码（长度 6，响应中已掩码）。 |
 | 提交 | 通过 | `ui.tap` 通过 `control.touchUpInside` 激活登录按钮。 |
@@ -37,7 +37,7 @@
 
 建议：为两个日志 action 增加稳定桥接工具，或在 `ios-logs` 中把 `call_action` fallback 写为首选兼容路径并提供完整参数示例。
 
-处理结果：iOSDriver 已新增 `app_logs_mark` / `app_logs_read` 固定桥接，并使用统一的静态工具名清单阻止动态工具重名。TypeScript 回归覆盖了工具存在性、参数 schema、action 转发和动态工具冲突。
+处理结果：iOSDriver 已新增 `app_logs_mark` / `app_logs_read` 固定桥接，并使用统一的静态工具名清单。TypeScript 回归覆盖了工具存在性、参数 schema 和 action 转发。
 
 ### 2. `ui.input` 记录重复的开始日志
 

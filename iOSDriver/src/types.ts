@@ -18,17 +18,8 @@ export function isFailureEnvelope(envelope: IOSExploreEnvelope): envelope is IOS
   return envelope.code !== "ok";
 }
 
-export type CommandMetadata = {
-  action: string;
-  description: string;
-  inputSchema: JSONObject;
-};
-
-export type ToolDefinition = {
-  name: string;
-  description: string;
-  inputSchema: JSONObject;
-  action?: string;
+export type IOSExploreCaller = {
+  call(action: string, data?: JSONObject): Promise<JSONObject>;
 };
 
 export type StructuredError = {

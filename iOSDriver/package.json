@@ -13,7 +13,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "clean": "node scripts/clean-dist.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
     "test": "npm run build && vitest run",
     "test:watch": "vitest",

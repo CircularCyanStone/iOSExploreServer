@@ -2,7 +2,7 @@
 
 > 本文是 agent 日常参考的精炼版。完整设计背景见 `docs/superpowers/specs/2026-06-21-ios-explore-server-design.md`。
 
-> MCP 工具分层、动态工具存在的目的和新增 action 的判断规则见 [`dynamic-mcp-tools.md`](dynamic-mcp-tools.md)。
+> MCP 工具架构决策、静态工具集合、能力检查和 `call_action` 边界见 [`dynamic-mcp-tools.md`](dynamic-mcp-tools.md)。
 
 ## 通信链路
 

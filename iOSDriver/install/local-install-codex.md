@@ -130,6 +130,6 @@ npm test
 
 - `Cannot find module .../dist/index.js`：在 iOSDriver 目录执行 `npm run build`，并检查上面的绝对路径。
 - Codex 启动失败或配置解析失败：检查 `~/.codex/config.toml` 的 TOML 表名、引号和数组语法；同名 `[mcp_servers.iOSDriver]` 只能保留一组。
-- 工具列表没有更新：确认已经重新启动 Codex；动态工具还依赖 App 当前注册的 action。
+- 工具调用返回 `unknown_action`：确认 App 是否注册了对应 UIKit/Diagnostics 模块；静态工具列表不会因 App 状态改变。
 - `health_check` 连接失败：先用上面的 `curl` 验证 App 端口，再检查模拟器/真机端口转发。
 - 换了电脑或目录：重新注册 `iOSDriver`，把命令中的绝对路径替换为新路径。

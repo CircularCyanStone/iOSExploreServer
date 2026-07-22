@@ -69,7 +69,7 @@
 
 **测试总计**：`swift test` 289 passed / `xcodebuild test`（iOS framework）489 passed，0 failed。示例App build SUCCEEDED 0 警告。新增测试文件：`UISecureTextLeakTests`（F-16/F-01，含 helper 直测 + scrollSubtree/labelSubtree 模拟 UIFieldEditor）、`UIKitActionExecutorTests`（F-18）、`UIInputTests`（F-03）、`UIKitCommandErrorTests`（F-23/F-24）。
 
-**未修（有意）**：F-02（根因在 MCP 客户端侧、不在被测库内，需改 `iOSDriver/src/schemaMapper.ts`）、F-25/F-26/F-27/F-28/F-29（设计特性/记录项）、F-30（补 SwipeTest 真删除测试床，待定）、F-39（destructive 偶发失败待核 alert 报告）、F-40~F-45 零碎项（部分已随 skill 校正处理）。
+**未修（有意）**：F-25/F-26/F-27/F-28/F-29（设计特性/记录项）、F-30（补 SwipeTest 真删除测试床，待定）、F-39（destructive 偶发失败待核 alert 报告）、F-40~F-45 零碎项（部分已随 skill 校正处理）。F-02 的历史动态 schema 映射实现已在 2026-07-22 的 MCP 架构收敛中删除，当前由静态工具 schema 直接覆盖稳定公共 action。
 
 ### F-16【P0·安全·库bug】ui.topViewHierarchy 经 text.value 泄露密码明文（非编辑态、默认参数）— 比 F-01 更严重
 - 任何 isSecureTextEntry UITextField，ui.topViewHierarchy 节点 accessibilityValue="••••••" 正确，但 text.value=明文。**非编辑态、detailLevel=appearance 默认即触发**。LoginVC + InputTestVC 两处复现，泛化所有 secure UITextField
@@ -197,7 +197,9 @@
 
 ## ✅ 已修复
 
-### F-02【P1·skill↔库一致性】ui.tap/ui.input/ui.control.sendAction oneOf 拍平
+### F-02【P1·skill↔库一致性·历史记录】ui.tap/ui.input/ui.control.sendAction oneOf 拍平
+
+> 本节记录 2026-07-15 的历史实现与验证结果。2026-07-22 已取消动态工具和 `schemaMapper`，因此下列动态映射代码路径不再存在；当前约束由 iOSDriver 静态工具 schema 直接维护，并由 `check_capabilities` 报告 App help schema 差异。
 - **原问题**：App server 注册的 ui.tap/ui.input/ui.control.sendAction 三个命令的参数定义使用了 JSON Schema oneOf（identifier/path 二选一），早期 MCP 客户端可能无法处理导致工具不可用
 - **修复**：`iOSDriver/src/schemaMapper.ts:56-90` 实现 `flattenTopLevelComposition` 函数，自动拍平顶层 oneOf/anyOf/allOf：
   - 删除顶层 oneOf 关键字
