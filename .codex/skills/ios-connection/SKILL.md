@@ -57,8 +57,10 @@ Agent 执行本 skill 时协助完成以下步骤：
 
 1. **启动 iproxy（launchd 托管）** — `"$SKILL_DIR/scripts/iproxy-manager.sh" start` 可以由开发者终端、Agent shell、Makefile 或其他自动化入口执行；脚本会写入 `~/Library/LaunchAgents/com.codex.iproxy.<PORT>.plist` 并交给 launchd 以 `KeepAlive` 方式托管。稳定性来自 launchd 接管后的服务生命周期，而不是执行脚本的那个 shell 是否继续存在。若当前 Agent 环境没有 shell 权限或不适合改本机 launchd 状态，才提示开发者手动执行该命令。
 2. **同步设备配置** — 调用 `mcp__XcodeBuildMCP__list_devices` 获取已连接设备，自动更新 `deviceId` 到 session defaults。多设备时提示用户选择。
-3. **智能启动 App** — `mcp__iOSDriver__health_check` 检测 App 是否运行，未运行则调用 `mcp__XcodeBuildMCP__launch_app_device`。启动失败时根据错误类型给出明确提示（未安装/证书未信任/其他错误）。
-4. **验证连接** — 多次 `health_check` 确认稳定，失败时提示用户在终端执行 `"$SKILL_DIR/scripts/iproxy-manager.sh" status` 诊断。
+3. **先判真机启动能力是否真的可用** — 在当前客户端真实工具列表里检查 `launch_app_device` / `stop_app_device` / `build_run_device` 是否存在。只有这些工具已暴露时，才进入下一步的 MCP 真机启动。
+4. **智能启动 App** — `mcp__iOSDriver__health_check` 检测 App 是否运行；未运行且真机启动工具已存在时，调用 `mcp__XcodeBuildMCP__launch_app_device`。启动失败时根据错误类型给出明确提示（未安装/证书未信任/其他错误）。
+5. **真机工具缺失时给出单条结论** — 如果 `list_devices` 可用，但当前客户端只有 `*_sim` 工具、没有 `launch_app_device` / `stop_app_device` / `build_run_device`，直接输出"当前 XcodeBuildMCP 会话只暴露了模拟器能力，真机启动链路未加载"，并引导用户重连/修复 XcodeBuildMCP；只有在用户明确接受临时兜底时，才使用平台原生命令（如 `xcrun devicectl ...`）继续。
+6. **验证连接** — 多次 `health_check` 确认稳定，失败时提示用户在终端执行 `"$SKILL_DIR/scripts/iproxy-manager.sh" status` 诊断。
 
 `$SKILL_DIR/scripts/iproxy-manager.sh` 自动处理：iproxy 安装检查、残留清理、UDID 获取、launchd 服务管理、状态诊断。Agent 可在具备 shell 权限且任务需要时执行脚本；没有 shell 权限时才引导开发者执行。不要再以 `nohup ... &`、当前 agent shell、或旧 `scripts/proxy.sh --daemon` 作为长期稳定性的依据。
 
@@ -96,8 +98,11 @@ Agent 执行本 skill 时协助完成以下步骤：
 连接失败时，按以下顺序检查：
 
 1. **检查设备连接** — 调用 `mcp__XcodeBuildMCP__list_devices`，确认目标设备在列表中
-2. **检查 App 是否运行** — 真机场景提示用户在终端执行 `"$SKILL_DIR/scripts/iproxy-manager.sh" status` 检查 iproxy 状态和端口占用
-3. **尝试启动 App** — 调用 `mcp__XcodeBuildMCP__launch_app_device` 或 `launch_app_sim`，观察启动结果
+2. **检查当前客户端暴露的启动工具** — 真机至少要看到 `launch_app_device` / `stop_app_device` / `build_run_device`；模拟器至少要看到 `launch_app_sim` / `stop_app_sim` / `build_run_sim`
+3. **先给出能力结论,再决定动作**:
+   - 真机工具齐全 → 继续调用 `mcp__XcodeBuildMCP__launch_app_device`
+   - 只有模拟器工具 → 直接判定为"当前会话缺少真机启动能力",不要把责任归到 App 或 iOSDriver;转 `/ios-mcp-setup` 或提示用户重连 XcodeBuildMCP
+   - 启动工具存在但端点仍拒绝连接 → 真机场景提示用户在终端执行 `"$SKILL_DIR/scripts/iproxy-manager.sh" status` 检查 iproxy 状态和端口占用
 
 ### 开发者手动排查（仅供终端使用，Agent 禁用）
 
@@ -122,16 +127,16 @@ Agent 执行本 skill 时协助完成以下步骤：
 
 - **现象**：`health_check` 失败，无法连接到 App
 - **原因**：App 未启动、App 起了但 `server.start()` 没调、或 38321 未监听
-- **判别**：调用 `list_devices` 确认设备在线，再尝试 `launch_app_*`
-- **Agent 处理**：检查 App 是否已启动；真机场景提示用户在终端执行 `"$SKILL_DIR/scripts/iproxy-manager.sh" status` 检查 iproxy 状态
+- **判别**：先看 `list_devices` 是否可用，再看当前会话是否真的暴露了对应的 `launch_app_*` / `stop_app_*` / `build_run_*`
+- **Agent 处理**：若真机工具缺失，先明确告知"当前 XcodeBuildMCP 只加载了模拟器能力"并引导修复 MCP 暴露；若真机工具存在，再检查 App 是否已启动；端口仍不通时提示用户在终端执行 `"$SKILL_DIR/scripts/iproxy-manager.sh" status` 检查 iproxy 状态
 - **开发者手动修复**：`"$SKILL_DIR/scripts/iproxy-manager.sh" status` 检查端口和服务状态
 
 ### 先失败后成功（health_check 瞬时失败）
 
 - **现象**：第一次 `health_check` 返回 `connection_failed`，随后 XcodeBuildMCP 构建/启动 App 后再次 `health_check` 返回 `ok:true`、`ping.pong:true`
 - **原因**：第一次检查发生在 App 尚未启动、DEBUG `server.start()` 尚未 ready、或真机 iproxy 隧道尚未连到 App 监听端口之前；这只能说明"当时端点不可达"，不能说明真机能力不可用
-- **判别**：`mcp__iOSDriver__health_check` 能返回结构化 body，本身就证明 iOSDriver MCP Server 可调用；只有 `ok:false` 的错误来源指向 App 端点
-- **Agent 处理**：先用 XcodeBuildMCP 启动目标 profile 的 App，等待短暂 ready 窗口后重试 `health_check`；成功后继续 UI 操作，并在报告里把早期失败标为"启动前端点未 ready"
+- **判别**：`mcp__iOSDriver__health_check` 能返回结构化 body，本身就证明 iOSDriver MCP Server 可调用；只有 `ok:false` 的错误来源指向 App 端点。若当前客户端连 `launch_app_device` 都没有，则说明缺的是真机启动能力暴露，不是单纯的"瞬时失败"
+- **Agent 处理**：先确认真机启动工具是否存在；存在时再用 XcodeBuildMCP 启动目标 App，等待短暂 ready 窗口后重试 `health_check`；成功后继续 UI 操作，并在报告里把早期失败标为"启动前端点未 ready"
 
 ### 真机返回模拟器旧数据
 
@@ -178,11 +183,11 @@ Agent 执行本 skill 时协助完成以下步骤：
 | `mcp__iOSDriver__ui_inspect` | 读当前 UI 结构 | 连接通但行为异常时用 |
 | `mcp__iOSDriver__call_action` | 工具面板没暴露动态 UI 工具时兜底转发 | 只在 `health_check.ok == true` 后使用 |
 | `mcp__XcodeBuildMCP__list_devices` | 列出已连接设备 | 返回 CoreDevice identifier（不是 USB UDID） |
-| `mcp__XcodeBuildMCP__launch_app_device` | 启动真机 App | 需先 `list_devices` 同步 deviceId |
+| `mcp__XcodeBuildMCP__launch_app_device` | 启动真机 App | 需先 `list_devices` 同步 deviceId；如果当前客户端根本看不到此工具，应先判定为"真机能力未加载" |
 | `mcp__XcodeBuildMCP__launch_app_sim` | 启动模拟器 App | 可传 `env` / `launchArgs` |
-| `mcp__XcodeBuildMCP__stop_app_device` | 停止真机 App | 启动参数未生效时先停再启 |
+| `mcp__XcodeBuildMCP__stop_app_device` | 停止真机 App | 启动参数未生效时先停再启；若缺失,说明当前客户端未暴露完整真机链路 |
 | `mcp__XcodeBuildMCP__stop_app_sim` | 停止模拟器 App | 启动参数未生效时先停再启 |
-| `mcp__XcodeBuildMCP__build_run_device` | 构建并运行真机 App | 不注入 session env，需单独 `launch_app_*` 传参 |
+| `mcp__XcodeBuildMCP__build_run_device` | 构建并运行真机 App | 不注入 session env，需单独 `launch_app_*` 传参；缺失时不能假定真机构建链路可用 |
 | `mcp__XcodeBuildMCP__build_run_sim` | 构建并运行模拟器 App | 不注入 session env，需单独 `launch_app_*` 传参 |
 
 ## 相关 skill

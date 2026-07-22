@@ -65,11 +65,12 @@ description: iOS App 自动化测试 L1 统一入口。用于已接入 App 内 H
 
 执行本 skill 时必须按以下顺序检测 MCP 可用性:
 
-1. **检测构建/设备管理 MCP** — 尝试列出模拟器或已连接设备
+1. **检测构建/设备管理 MCP** — 尝试列出模拟器或已连接设备,并确认本次任务需要的启动工具是否真的存在
 2. **检测 iOSDriver MCP** — 尝试调用 `health_check`
 3. **工具调用本身不存在或无法发起** — 这才是 MCP Server 未配置或不可用;停止执行,提示用户参考 `ios-mcp-setup` skill 完成安装与配置,配置完成后重启当前 MCP 客户端并重新执行本 skill
-4. **`health_check` 返回 `ok:false` 且错误来源是 `transport` / `connection_failed`** — iOSDriver MCP Server 已经可调用,但 App 的 `http://localhost:38321/` 端点当前不可达;不要说"MCP 不可用"或"真机不通",应路由到 `ios-connection` 启动/重启 App、确认 iproxy,然后重试 `health_check`
-5. **两者都可用且 `health_check.ok == true`** — 继续执行快速连接验证流程
+4. **构建/设备管理 MCP 已加载,但真机任务缺少 `launch_app_device` / `stop_app_device` / `build_run_device` 等真机工具** — 这是"当前客户端只加载了部分 XcodeBuildMCP 能力"或"device workflow 未生效",不要误报成 iOSDriver 失败;应路由到 `ios-connection` 或 `ios-mcp-setup`,先修复真机工具暴露
+5. **`health_check` 返回 `ok:false` 且错误来源是 `transport` / `connection_failed`** — iOSDriver MCP Server 已经可调用,但 App 的 `http://localhost:38321/` 端点当前不可达;不要说"MCP 不可用"或"真机不通",应路由到 `ios-connection` 启动/重启 App、确认 iproxy,然后重试 `health_check`
+6. **两者都可用且 `health_check.ok == true`** — 继续执行快速连接验证流程
 
 当检测到 MCP 不可用时,**不要尝试使用 curl 等底层命令或脚本替代 MCP 工具**。MCP 配置必须由用户手动完成,Agent 无法代劳。
 
@@ -84,8 +85,9 @@ description: iOS App 自动化测试 L1 统一入口。用于已接入 App 内 H
 
 2. **设备上下文传递**:
    - 将识别的设备类型（真机/模拟器）作为上下文信息
-   - 后续操作需要重启App时,真机走`launch_app_device`,模拟器走`launch_app_sim`
-   - 若上下文未知,由 `ios-connection` 通过构建/设备管理 MCP 的设备列表和当前配置判别;不要只凭一次 `health_check` 失败断言"真机不通"
+   - 后续操作需要重启 App 时,先核对当前构建/设备管理 MCP **真实暴露** 了哪些工具:模拟器至少要有 `launch_app_sim`,真机至少要有 `launch_app_device`
+   - 真机测试场景里,如果当前客户端只看到了 `*_sim` 工具、看不到 `launch_app_device` / `stop_app_device` / `build_run_device`,结论应是"当前会话只加载了模拟器启动能力",不要把它误判成 App 坏了或 iOSDriver 不可用;此时路由到 `ios-connection` 处理真机启动能力缺失
+   - 若上下文未知,由 `ios-connection` 通过构建/设备管理 MCP 的设备列表、工具可见性和当前配置判别;不要只凭一次 `health_check` 失败断言"真机不通"
 
 3. **静态工具与能力检查**:
    - iOSDriver 的稳定公共工具在进程启动后即固定可见，不随 App 是否启动或模块是否注册而变化

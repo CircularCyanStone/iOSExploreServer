@@ -160,6 +160,54 @@ is_iproxy_listening() {
   lsof -iTCP:"${PORT}" -sTCP:LISTEN -n -P 2>/dev/null | tail -n +2 | grep -q "iproxy"
 }
 
+log_has_connection_refused() {
+  [[ -f "$LOGFILE" ]] && grep -q "Connection refused" "$LOGFILE"
+}
+
+print_status_conclusion() {
+  local listener_kind="$1"
+  local usb_present="$2"
+  local ping_ok="$3"
+  local launchd_loaded="$4"
+  local connection_refused="$5"
+
+  echo "最终结论:"
+  case "${listener_kind}:${usb_present}:${ping_ok}:${launchd_loaded}:${connection_refused}" in
+    iproxy:true:true:*)
+      echo "  - 结论: USB 转发和设备侧 HTTP 服务都正常，当前真机链路已打通。"
+      echo "  - 下一步: 可以继续执行 health_check、ui.inspect 或后续 UI 自动化。"
+      ;;
+    iproxy:true:false:*:true)
+      echo "  - 结论: Mac 本地端口和 USB 转发都在，但设备侧当前拒绝连接；最可能是目标 App 未启动，或 App 尚未监听 ${REMOTE_PORT}。"
+      echo "  - 下一步: 先启动或重启目标 App，再重试 health_check；若仍失败，检查 App 是否真的调用了 server.start()。"
+      ;;
+    iproxy:true:false:true:false)
+      echo "  - 结论: iproxy 由 launchd 托管并在监听，但 App 端点还没有返回有效响应。"
+      echo "  - 下一步: 确认目标 App 正在前台运行，必要时重启 App 后再重试。"
+      ;;
+    iproxy:false:false:*:*)
+      echo "  - 结论: 本地是 iproxy 在监听，但当前没有检测到 USB 设备；链路断在 USB 连接或设备信任阶段。"
+      echo "  - 下一步: 检查 USB 线、设备解锁与“信任此电脑”，确认设备重新出现在 idevice_id -l 列表。"
+      ;;
+    other:*:*:*)
+      echo "  - 结论: ${PORT} 被非 iproxy 进程占用，这不是预期的真机转发链路。"
+      echo "  - 下一步: 先清理占用端口的本地进程，再重新启动 iproxy。"
+      ;;
+    none:*:*:true:*)
+      echo "  - 结论: launchd 已加载 iproxy，但当前没有实际监听端口；通常是设备断开、未信任，或 iproxy 正在反复拉起失败。"
+      echo "  - 下一步: 先检查 USB 连接和日志文件，再重新执行 status 或 restart。"
+      ;;
+    none:*:*:false:*)
+      echo "  - 结论: 本地端口 ${PORT} 当前没有任何监听进程，真机转发链路尚未建立。"
+      echo "  - 下一步: 先执行 start 建立 iproxy，再启动目标 App 并重试。"
+      ;;
+    *)
+      echo "  - 结论: 本地端口、USB 与 App 响应状态存在混合异常，需要继续结合上面的详细输出排查。"
+      echo "  - 下一步: 优先确认端口监听者类型，再确认 USB 设备在线，最后重试 ping。"
+      ;;
+  esac
+}
+
 write_launchd_plist() {
   local iproxy_bin udid escaped_label escaped_iproxy escaped_port escaped_remote escaped_udid escaped_log
   iproxy_bin=$(command -v iproxy)
@@ -434,6 +482,11 @@ stop_iproxy() {
 show_status() {
   echo "📊 iproxy 状态检查 (本地端口 ${PORT}, 设备端口 ${REMOTE_PORT})"
   echo ""
+  local listener_kind="none"
+  local usb_present="false"
+  local ping_ok="false"
+  local launchd_loaded="false"
+  local connection_refused="false"
 
   # 检查 iproxy 是否已安装
   if ! check_iproxy_installed; then
@@ -453,8 +506,14 @@ show_status() {
   listeners=$(lsof -iTCP:"${PORT}" -sTCP:LISTEN -n -P 2>/dev/null | tail -n +2 || true)
 
   if [[ -z "$listeners" ]]; then
-    error "端口 ${PORT} 未被监听"
     if is_launchd_loaded; then
+      launchd_loaded="true"
+    fi
+    if log_has_connection_refused; then
+      connection_refused="true"
+    fi
+    error "端口 ${PORT} 未被监听"
+    if [[ "$launchd_loaded" == "true" ]]; then
       warning "LaunchAgent 已加载但当前未监听；可能是设备断开、未信任，或 iproxy 正在被 launchd 重试"
       info "LaunchAgent: ${LAUNCHD_PLIST}"
       if [[ -f "$LOGFILE" ]]; then
@@ -468,6 +527,8 @@ show_status() {
     echo "  1. iOS App 未启动"
     echo "  2. 真机需要先启动 iproxy: $0 start"
     echo "  3. App 中的 server.start() 未调用"
+    echo ""
+    print_status_conclusion "$listener_kind" "$usb_present" "$ping_ok" "$launchd_loaded" "$connection_refused"
     return 1
   fi
 
@@ -477,9 +538,11 @@ show_status() {
 
   # 判断监听进程类型
   if echo "$listeners" | grep -q "iproxy"; then
+    listener_kind="iproxy"
     success "iproxy 运行中 (真机模式)"
 
     if is_launchd_loaded; then
+      launchd_loaded="true"
       success "launchd 正在托管: ${LAUNCHD_LABEL}"
       info "LaunchAgent: ${LAUNCHD_PLIST}"
     else
@@ -499,6 +562,7 @@ show_status() {
       fi
     fi
   else
+    listener_kind="other"
     warning "非 iproxy 进程监听端口；这通常表示模拟器 App 直接监听或其他本地进程占用"
     warning "如需测试真机，需先清理或停止该进程。可设置 APP_BUNDLE_ID 后执行: $0 clean"
   fi
@@ -511,6 +575,7 @@ show_status() {
   udid=$(idevice_id -l 2>/dev/null | head -1 || true)
 
   if [[ -n "$udid" ]]; then
+    usb_present="true"
     success "检测到设备: ${udid}"
   else
     warning "未检测到 USB 设备"
@@ -520,9 +585,13 @@ show_status() {
 
   # 尝试 ping 验证服务
   info "验证服务可用性..."
-  if curl -s -X POST http://localhost:"${PORT}"/ -d '{"action":"ping"}' --max-time 2 2>/dev/null | grep -q '"code":"ok"'; then
+  if curl --noproxy '*' -s -X POST http://localhost:"${PORT}"/ -H 'Content-Type: application/json' -d '{"action":"ping"}' --max-time 2 2>/dev/null | grep -q '"code":"ok"'; then
+    ping_ok="true"
     success "服务正常响应 (ping 成功)"
   else
+    if log_has_connection_refused; then
+      connection_refused="true"
+    fi
     error "服务无响应或返回异常"
     echo ""
     echo "排查步骤："
@@ -530,13 +599,16 @@ show_status() {
     echo "  2. 检查 App 中的 server.start() 是否已调用"
     echo "  3. 查看日志: $0 status"
   fi
+
+  echo ""
+  print_status_conclusion "$listener_kind" "$usb_present" "$ping_ok" "$launchd_loaded" "$connection_refused"
 }
 
 # 快速检查连接
 quick_check() {
   info "快速检查连接..."
 
-  if curl -s -X POST http://localhost:"${PORT}"/ -d '{"action":"ping"}' --max-time 2 2>/dev/null | grep -q '"code":"ok"'; then
+  if curl --noproxy '*' -s -X POST http://localhost:"${PORT}"/ -H 'Content-Type: application/json' -d '{"action":"ping"}' --max-time 2 2>/dev/null | grep -q '"code":"ok"'; then
     success "连接正常"
     return 0
   else

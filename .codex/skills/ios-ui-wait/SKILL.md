@@ -79,6 +79,47 @@ ui_waitAny(
 
 适合"等待后立刻要基于新 snapshot 继续"的场景,省一轮推理。超时也会尽量返回最新的 observation,不会因超时丢掉 inspect 结果。
 
+### 3.1 带确认弹窗的两段式等待
+
+删除、退出登录、重置、提交敏感操作这类流程,不要只等"最终页面出现"。正确建模是先等**中间态 alert**或**最终页面**谁先出现:
+
+1. 触发入口动作(如点"退出登录" / "删除")
+2. 用 `wait_and_inspect` 或 `ui_waitAny` 同时等待:
+   - `alert_title`: `textExists`,等确认标题或确认文案
+   - `success_screen`: `targetExists` / `textExists`,等最终成功页
+3. 如果先命中 `alert_title`,立即切到 `ios-ui-alert` 用 `ui_alert_respond`
+4. alert 响应后,再执行第二段等待,专门等最终页面或失败文本
+
+不要把"最终页面"设成唯一条件,否则正常的确认框流程会被误报为超时。
+
+示例:
+
+```
+wait_and_inspect(
+  conditions: [
+    {id:"confirm_alert", mode:"textExists", text:"确认"},
+    {id:"logged_out", mode:"targetExists", accessibilityIdentifier:"login_submit_button"}
+  ],
+  timeoutMs: 5000,
+  intervalMs: 200,
+  inspectOptions: { maxDepth: 8, maxTargets: 120 }
+)
+```
+
+若先命中 `confirm_alert`,后续不是直接判失败,而是:
+
+```
+ui_alert_respond({ role:"destructive" })
+ui_waitAny(
+  conditions: [
+    {id:"logged_out", mode:"targetExists", accessibilityIdentifier:"login_submit_button"},
+    {id:"logout_error", mode:"textExists", text:"退出失败"}
+  ],
+  timeoutMs: 5000,
+  intervalMs: 200
+)
+```
+
 ### 4. `ui_inspect` 轮询兜底
 
 服务端等待表达不了的复杂条件,退回手搓轮询(旧 skill 的 bash 示例依然有效,但**优先用 `ui_wait` / `ui_waitAny`**,网络往返少一个数量级):
@@ -178,6 +219,13 @@ loading spinner 通常带 a11y id(如 `loading.spinner` / `HUD.progress`),用 `t
 - **原因**:`ui_wait` 只返回 `matched`,不返回 alert 结构;响应 alert 要走 `ui_alert_respond`
 - **判别**:等待目标是 `UIAlertController` 弹窗
 - **处理**:等 alert 出现可用 `ui_wait(textExists:alert.title)` 或直接 `ui_inspect` 看 `alert.available`;响应按钮必走 `ios-ui-alert` 的 `ui_alert_respond`
+
+### 最终页一直没出现,其实中间先弹了确认框
+
+- **现象**:点退出 / 删除后,只等最终页,结果 `wait_timeout`
+- **原因**:流程中间先出现 `UIAlertController`,而等待条件里没有 alert 分支
+- **判别**:超时后执行 `ui_inspect`,看到 `alert.available == true` 或 alert 标题 / 按钮
+- **处理**:改成两段式等待:第一段等"alert 或最终页",命中 alert 后先 `ui_alert_respond`,第二段再等最终页或失败态
 
 ## 相关 skill
 

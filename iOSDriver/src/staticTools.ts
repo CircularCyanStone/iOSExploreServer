@@ -124,7 +124,16 @@ export function createStaticTools(options: { client: IOSExploreCaller }): Record
         try {
           return jsonResult(await capabilityReport(client, staticTools));
         } catch (error) {
-          return jsonResult({ ok: false, server: { ok: true }, error: normalizeError(error) }, false);
+          const normalized = normalizeError(error);
+          if (normalized.source === "transport") {
+            return jsonResult({
+              ok: false,
+              server: { ok: true },
+              error: normalized,
+              connection: transportFailureContext(normalized)
+            }, false);
+          }
+          return jsonResult({ ok: false, server: { ok: true }, error: normalized }, false);
         }
       }
     },
@@ -381,6 +390,10 @@ async function capabilityReport(client: IOSExploreCaller, staticTools: Record<st
       } : { uikit: { status: "unknown" }, diagnostics: { status: "unknown" } }
     }
   };
+  const transportError = firstTransportError([pingError, helpError]);
+  if (transportError) {
+    result.connection = transportFailureContext(transportError);
+  }
   return result;
 }
 
@@ -934,9 +947,8 @@ async function enrichTransportError(error: IOSExploreStructuredError, caller: IO
     ...normalized,
     retry: { attempted: true, delayMs: 200, succeeded: false },
     healthCheck: await pingHealthCheck(caller),
-    nextSteps: [
-      "iOSExplore App 当前不可达；如果是真机调试，请确认 App 仍在运行、iproxy 仍在监听 38321，并用 XcodeBuildMCP launch_app_device 以 IOS_EXPLORE_AUTOSTART=1 重启后再试。"
-    ]
+    connection: transportFailureContext(normalized),
+    nextSteps: transportNextSteps()
   };
 }
 
@@ -946,4 +958,26 @@ async function pingHealthCheck(caller: IOSExploreCaller): Promise<JSONObject> {
   } catch (error) {
     return { ok: false, error: normalizeError(error) };
   }
+}
+
+function firstTransportError(errors: Array<StructuredError | undefined>): StructuredError | undefined {
+  return errors.find((error): error is StructuredError => error?.source === "transport");
+}
+
+function transportFailureContext(error: StructuredError): JSONObject {
+  return {
+    status: "app_endpoint_unreachable",
+    error,
+    probableCause: "MCP server 已可调用，但目标 App 的 HTTP 自动化端点当前没有接受连接。",
+    nextSteps: transportNextSteps()
+  };
+}
+
+function transportNextSteps(): string[] {
+  return [
+    "确认目标 App 仍在运行，并且已经启动 iOSExplore HTTP server。",
+    "确认 localhost:38321 指向的是可访问端点；真机场景还需要确认本地端口转发或代理仍在监听。",
+    "如果当前构建/设备管理 MCP 已暴露 launch_app_device 或 launch_app_sim，使用对应启动工具重启 App 后再重试 health_check。",
+    "如果当前任务是真机，但客户端只看得到 *_sim 工具，先修复或重连构建/设备管理 MCP，让真机启动工具暴露出来。"
+  ];
 }

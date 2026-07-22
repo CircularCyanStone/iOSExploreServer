@@ -56,6 +56,28 @@ describe("static tools", () => {
     expect(text(await tools.health_check!.handler({}))).toMatchObject({ server: { ok: true }, app: { ping: { ok: true }, help: { ok: true } } });
   });
 
+  test("health_check 遇到 transport 失败时返回单条连接结论和下一步", async () => {
+    const tools = createStaticTools({ client: { call: async action => {
+      throw new IOSExploreStructuredError({ source: "transport", code: "connection_failed", message: `${action} offline`, action });
+    } } });
+    const body = text(await tools.health_check!.handler({})) as any;
+    expect(body.ok).toBe(false);
+    expect(body.connection).toMatchObject({
+      status: "app_endpoint_unreachable",
+      probableCause: expect.stringContaining("HTTP 自动化端点"),
+      nextSteps: expect.arrayContaining([
+        expect.stringContaining("目标 App 仍在运行"),
+        expect.stringContaining("localhost:38321"),
+        expect.stringContaining("launch_app_device"),
+        expect.stringContaining("*_sim")
+      ])
+    });
+    expect(body.app).toMatchObject({
+      ping: { ok: false, error: { source: "transport", code: "connection_failed" } },
+      help: { ok: false, error: { source: "transport", code: "connection_failed" } }
+    });
+  });
+
   test("ui.screenshot 将 PNG 转为 MCP image content", async () => {
     const tools = createStaticTools({ client: { call: async () => ({ image: "base64png", format: "png", width: 10, height: 20, scale: 2 }) } });
     const result = await tools.ui_screenshot!.handler({});
@@ -158,7 +180,11 @@ describe("static tools", () => {
     const result = await tools.call_action!.handler({ action: "debug.custom" });
     expect(result.isError).toBe(true);
     expect(calls).toEqual(["debug.custom", "debug.custom", "ping"]);
-    expect(text(result)).toMatchObject({ retry: { attempted: true, succeeded: false }, healthCheck: { ok: false } });
+    expect(text(result)).toMatchObject({
+      retry: { attempted: true, succeeded: false },
+      healthCheck: { ok: false },
+      connection: { status: "app_endpoint_unreachable" }
+    });
   });
 
   test("call_action 保留自定义 action 转发和 transport 重试", async () => {

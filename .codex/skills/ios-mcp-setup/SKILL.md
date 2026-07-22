@@ -24,7 +24,7 @@ iOS 自动化通常需要两个 MCP Server：
 | MCP Server | 用途 | 典型工具 |
 |---|---|---|
 | iOSDriver MCP | 把已接入 App 内 HTTP 自动化端点的 action 包装成 MCP tools | `health_check`、`ui_inspect`、`ui_tap`、`app_logs_read` |
-| XcodeBuildMCP | 提供 Xcode 构建、模拟器/真机管理、App 启动调试能力 | `list_devices`、`build_run_sim`、`launch_app_device` |
+| XcodeBuildMCP | 提供 Xcode 构建、模拟器/真机管理、App 启动调试能力 | `list_devices`、`build_run_sim`、`launch_app_device`（真机工具是否可见取决于当前客户端实际加载的 workflow） |
 
 两者配合工作：XcodeBuildMCP 负责构建和启动 App，iOSDriver MCP 负责访问 App 内的 HTTP 自动化 API。
 
@@ -36,6 +36,7 @@ iOS 自动化通常需要两个 MCP Server：
 
 - 看到 iOSDriver 的 `health_check`、`ui_inspect` 或同类工具，说明 iOSDriver MCP 已加载。
 - 看到 XcodeBuildMCP 的 `list_devices`、`build_run_sim` 或同类工具，说明 XcodeBuildMCP 已加载。
+- 如果当前任务需要真机，而工具列表里只有 `*_sim`、没有 `launch_app_device` / `stop_app_device` / `build_run_device`，结论应是"XcodeBuildMCP 已加载，但当前客户端只暴露了模拟器能力"，不要误判成 App 或 iOSDriver 故障。
 - 两者都缺失时，按下文全新安装。
 - 只有一个缺失时，只补齐缺失项。
 
@@ -163,8 +164,9 @@ xcodebuildmcp doctor
 1. 重连或重启 MCP 客户端，让客户端重新读取 MCP 配置。
 2. 查看 MCP server 状态，确认 iOSDriver 和 XcodeBuildMCP 都已启动且没有配置解析错误。
 3. 查看 MCP tools 列表，确认 iOSDriver 暴露 `health_check`，XcodeBuildMCP 暴露设备或构建相关工具。
-4. 对 XcodeBuildMCP 执行设备列表能力，确认能看到本机模拟器或已连接真机。
-5. 在 App 已运行且目标 HTTP 自动化端点已监听后，调用 iOSDriver `health_check`；成功时再继续使用 UI、日志或截图工具。
+4. 如果后续要跑真机，额外确认 `launch_app_device` / `stop_app_device` / `build_run_device` 已一起出现；只看到 `*_sim` 说明当前客户端还没有加载完整真机 workflow。
+5. 对 XcodeBuildMCP 执行设备列表能力，确认能看到本机模拟器或已连接真机。
+6. 在 App 已运行且目标 HTTP 自动化端点已监听后，调用 iOSDriver `health_check`；成功时再继续使用 UI、日志或截图工具。
 
 iOSDriver 连接失败时，先直接验证 HTTP API：
 
@@ -199,6 +201,16 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 2. 运行 `xcodebuildmcp doctor` 读取诊断结果。
 3. 检查 Node.js、Xcode、Command Line Tools 是否满足前置要求。
 4. 如果使用 `npx -y xcodebuildmcp@latest mcp`，确认当前网络环境允许下载 npm 包。
+
+### XcodeBuildMCP 只看到模拟器工具，看不到真机工具
+
+按顺序排查：
+
+1. 先确认当前任务确实需要真机能力，而不是只做模拟器验证。
+2. 检查 XcodeBuildMCP 当前配置是否启用了 `device` workflow；只启用 `simulator` 时，客户端通常只会看到 `*_sim` 工具。
+3. 修改 workflow 配置后，按客户端要求重连或重启 MCP server；很多客户端不会在当前会话里自动刷新工具列表。
+4. 重连后重新查看 tools 列表；只有 `launch_app_device` / `stop_app_device` / `build_run_device` 出现，才说明真机启动链路已真正加载。
+5. 若仍缺失，再查看客户端的 MCP server 日志，确认是否是旧版本 XcodeBuildMCP、旧缓存或配置文件未被当前客户端读取。
 
 ### iOSDriver 能启动但连接 App 失败
 

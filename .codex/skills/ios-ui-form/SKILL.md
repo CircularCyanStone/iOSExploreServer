@@ -93,6 +93,7 @@ description: iOS App 表单填写与控件操作(开发验证 + 自动化测试)
 
 - **同步提交**:纯前端校验、本地切页、无网络。用 `ui_tap_and_inspect(waitForStable:true, stableTimeMs:300~500)`,直接读返回的 `targets` / `navigationBar` / `alert`。
 - **异步提交**:登录、注册、保存到服务器等。用 `ui_tap` 只负责触发按钮,然后用 `wait_and_inspect` 或 `ui_waitAny` 等明确的成功 / 失败判据。不要在 `ui_tap` 后立刻 `ui_inspect` 并把这次快照当终态;那通常只是提交中间态或旧帧。
+- **带确认框的异步提交**:退出登录、删除、重置、危险操作提交等,不能直接只等最终页。先用 `wait_and_inspect` 等"确认 alert 或最终页"二选一;若先命中 alert,切到 `ios-ui-alert` 响应后,再做第二段等待去等最终页或错误态。
 
 异步判据建议:
 
@@ -122,6 +123,28 @@ const result = await mcp__iOSDriver__wait_and_inspect({
   intervalMs: 200,
   inspectOptions: { maxDepth: 8, maxTargets: 120 }
 })
+```
+
+带确认框的提交形态:
+
+```javascript
+await mcp__iOSDriver__ui_tap({
+  accessibilityIdentifier: "danger_submit_button",
+  viewSnapshotID: snapshot.viewSnapshotID
+})
+
+const branch = await mcp__iOSDriver__wait_and_inspect({
+  conditions: [
+    { id: "confirm_alert", mode: "textExists", text: "确认" },
+    { id: "success", mode: "targetExists", accessibilityIdentifier: "success_title" },
+    { id: "error", mode: "textExists", text: "提交失败" }
+  ],
+  timeoutMs: 5000,
+  intervalMs: 200,
+  inspectOptions: { maxDepth: 8, maxTargets: 120 }
+})
+
+// 命中 confirm_alert 后，切到 ios-ui-alert 响应，再执行第二段等待。
 ```
 
 ### 5. 屏幕外字段定位(`ui_scrollToElement`)
@@ -182,6 +205,12 @@ const result = await mcp__iOSDriver__wait_and_inspect({
 - **现象**:点提交后立即返回按钮禁用、spinner、"提交中"等中间状态
 - **原因**:异步流程不能靠 `ui_tap_and_inspect` 的短稳定窗口判断终态
 - **处理**:改为 `ui_tap` + `ui_waitAny` / `wait_and_inspect`,等待明确成功或失败判据
+
+### 提交后误报超时,其实卡在确认弹窗
+
+- **现象**:点退出 / 删除 / 重置后一直等不到最终页面,最终报超时
+- **原因**:等待条件只覆盖了最终页面,漏掉了中间确认 alert
+- **处理**:第一段等待把 alert 分支和最终页分支一起写进 `ui_waitAny`;若先命中 alert,转 `ios-ui-alert` 响应后再做第二段等待
 
 ### 安全字段重试为空
 
