@@ -95,6 +95,16 @@ description: iOS App 自动化测试 L1 统一入口。用于已接入 App 内 H
 
 **不在此处理** iproxy 启动、设备同步、端口冲突等复杂场景,这些全部由 `ios-connection` 负责。
 
+## 低冗余执行规则
+
+入口阶段只做连接判断和任务路由,不要预读或预调用尚未进入任务路径的子 skill。具体规则:
+
+- **先连通,再加载场景 skill**:`health_check` 失败只走 `ios-connection`;成功后再按用户目标加载一个主 skill（如登录/保存走 `ios-ui-form`）。不要因为 UI 可能跳转就提前读取 `ios-ui-nav`,也不要因为可能要证据就提前读取 `ios-ui-shot`。
+- **结构化优先于视觉证据**:默认用 `ui_inspect` 判断当前页面、字段、按钮和终态。只有用户明确要截图、需要 bug 证据、或结构化结果不足以说明视觉问题时,才加载 `ios-ui-shot` 并调用 `ui_screenshot`。
+- **异步动作必须等待判据**:登录、注册、保存、刷新等提交动作不能用"tap 后立刻 inspect"当终态。按 `ios-ui-form` 规则触发提交后,用 `wait_and_inspect` / `ui_waitAny` 等待成功和失败判据先命中。
+- **日志检查点靠近被测动作**:若需要日志证据,在字段已定位/已填写、提交或关键动作即将触发前调用 `app.logs.mark`;不要在初始 `ui_inspect` 前 mark,否则会把连接、inspect、工具探测日志混进本次动作证据。
+- **日志先窄后宽**:默认先读 `explore` / `bridge` 的增量日志确认自动化命令链和 App 主动业务日志;需要查异常时再读 `minimumLevel:"error"`。只有排查 stdout/NSLog/os_log 本身时才扩大到全部 source + debug。
+
 ## 路由到子 skill
 
 把请求分发给对应专业 skill。本 skill **不直接调用** 子 skill 里的 UI 工具(如 `ui_input` / `ui_alert_respond` / `ui_scroll`),而是路由 agent 到该 skill,由它执行。

@@ -2,6 +2,10 @@ import Testing
 import Foundation
 @testable import iOSExploreServer
 @testable import iOSExploreDiagnostics
+#if canImport(UIKit)
+import UIKit
+@testable import iOSExploreUIKit
+#endif
 
 /// 所有 touch `ExploreLogging` 全局 sink 的测试集中在本 suite 并标 `.serialized`。
 ///
@@ -11,6 +15,45 @@ import Foundation
 /// 的 `extensionLogUsesCoreSink`)收拢到此,即可在不加全局锁的前提下彻底消除竞态。
 @Suite(.serialized)
 struct ExploreLoggingTests {
+#if canImport(UIKit)
+    @Test("ui.input 顶层批量生命周期 start 只记录一次")
+    @MainActor
+    func inputCommandLogsBatchLifecycleOnce() throws {
+        ExploreLogging.resetForTesting()
+        let records = Mutex<[ExploreLogRecord]>([])
+        ExploreLogging.setEnabled(true)
+        ExploreLogging.setSinkForTesting { record in
+            records.withLock { $0.append(record) }
+        }
+        defer { ExploreLogging.resetForTesting() }
+
+        let context = UIKitTestHost.context { root in
+            let field = UITextField()
+            field.frame = CGRect(x: 10, y: 10, width: 200, height: 40)
+            root.addSubview(field)
+        }
+        let input = UIInputInput(fields: [
+            UIInputField(target: .path([0]), text: "x"),
+        ])
+
+        let result = InputCommand.execute(input: input, context: context)
+        guard case .success = result else {
+            Issue.record("ui.input test execution should return success envelope")
+            return
+        }
+
+        let messages = records.withLock { $0.map(\.message) }
+        let starts = messages.filter {
+            $0.hasPrefix("command ui.input start fields=1 stopOnFailure=true viewSnapshot=nil")
+        }
+        let completions = messages.filter {
+            $0.hasPrefix("command ui.input completed fields=1 completed=true failedIndex=nil")
+        }
+        #expect(starts.count == 1)
+        #expect(completions.count == 1)
+    }
+#endif
+
     @Test("日志默认关闭,不会输出到 sink")
     func loggingDisabledByDefaultSuppressesOutput() {
         ExploreLogging.resetForTesting()

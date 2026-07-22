@@ -77,7 +77,7 @@ describe("server handlers", () => {
     ]);
   });
 
-  test("refreshes registry once when an iOS dynamic tool is missing, then calls the refreshed action", async () => {
+  test("refreshes registry once when any dynamic tool is missing, then calls the refreshed action", async () => {
     const calls: Array<{ action: string; data: JSONObject }> = [];
     let refreshed = false;
     const handlers = createToolHandlers({
@@ -85,8 +85,8 @@ describe("server handlers", () => {
       registry: {
         tools: () => [],
         findByName: (name: string): ToolDefinition | undefined =>
-          refreshed && name === "ui_newAction"
-            ? { name, description: "new action", inputSchema: {}, action: "ui.newAction" }
+          refreshed && name === "greet"
+            ? { name, description: "new action", inputSchema: {}, action: "greet" }
             : undefined,
         refresh: async () => {
           refreshed = true;
@@ -101,11 +101,11 @@ describe("server handlers", () => {
       }
     });
 
-    const result = await handlers.callTool("ui_newAction", { value: 1 });
+    const result = await handlers.callTool("greet", { value: 1 });
 
-    expect(calls).toEqual([{ action: "ui.newAction", data: { value: 1 } }]);
+    expect(calls).toEqual([{ action: "greet", data: { value: 1 } }]);
     const firstText = result.content.find(c => c.type === "text")!;
-    expect(JSON.parse(firstText.text)).toEqual({ called: "ui.newAction" });
+    expect(JSON.parse(firstText.text)).toEqual({ called: "greet" });
   });
 
   test("retries a dynamic call once after transport failure before returning success", async () => {

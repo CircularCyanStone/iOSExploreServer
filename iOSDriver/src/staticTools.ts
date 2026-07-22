@@ -40,6 +40,25 @@ type StaticTool = {
   handler(input: JSONObject): Promise<MCPToolResult>;
 };
 
+// ToolRegistry 用这份清单排除与静态桥接同名的动态工具。名称与实现放在同一模块，
+// 避免新增静态工具后漏改启动入口，导致 listTools 暴露重名工具。
+export const STATIC_TOOL_NAMES = [
+  "health_check",
+  "refresh_tools",
+  "call_action",
+  "app_logs_mark",
+  "app_logs_read",
+  "ui_inspect",
+  "ui_input",
+  "ui_tap",
+  "ui_control_sendAction",
+  "ui_keyboard_dismiss",
+  "ui_scrollToElement",
+  "wait_and_inspect",
+  "ui_wait",
+  "ui_tap_and_inspect"
+] as const;
+
 export function createStaticTools(options: { client: IOSExploreCaller; registry: RegistryLike }): Record<string, StaticTool> {
   const { client, registry } = options;
   const forwardActionTool = (toolName: string, action: string, description: string, inputSchema: JSONObject): StaticTool => ({
@@ -63,9 +82,16 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
       handler: async () => {
         try {
           const ping = await client.call("ping");
-          await client.call("help");
-          // 自动刷新动态工具，避免初次调用时 dynamicToolCount 为 0
-          await registry.refresh();
+          const refresh = await registry.refresh();
+          if (refresh.error) {
+            return jsonResult({
+              ok: false,
+              ping,
+              error: refresh.error,
+              dynamicToolCount: registry.tools().length,
+              conflicts: registry.conflicts()
+            }, false);
+          }
           return jsonResult({ ok: true, ping, dynamicToolCount: registry.tools().length, conflicts: registry.conflicts() });
         } catch (error) {
           return jsonResult({ ok: false, error: normalizeError(error), dynamicToolCount: registry.tools().length }, false);
@@ -126,6 +152,18 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
         }
       }
     },
+    app_logs_mark: forwardActionTool(
+      "app_logs_mark",
+      "app.logs.mark",
+      "建立当前 App 进程日志检查点。返回 cursor 与各日志来源的 capture 状态；后续 app_logs_read 应把 cursor 作为 after 传入。",
+      emptyObjectSchema()
+    ),
+    app_logs_read: forwardActionTool(
+      "app_logs_read",
+      "app.logs.read",
+      "读取当前 App 进程内日志。增量验证应传入 app_logs_mark 或上一次读取返回的 cursor，并先检查 capture 状态再判断日志是否发生。",
+      appLogsReadSchema()
+    ),
     ui_inspect: forwardActionTool(
       "ui_inspect",
       "ui.inspect",
@@ -252,6 +290,51 @@ export function createStaticTools(options: { client: IOSExploreCaller; registry:
         }
       }
     }
+  };
+}
+
+function emptyObjectSchema(): JSONObject {
+  return {
+    type: "object",
+    properties: {},
+    additionalProperties: false
+  };
+}
+
+function appLogsReadSchema(): JSONObject {
+  return {
+    type: "object",
+    properties: {
+      after: {
+        type: ["object", "null"],
+        description: "增量读取起点 cursor；使用 app_logs_mark 或上一次 app_logs_read 返回的 cursor。",
+        properties: {
+          captureSessionID: { type: "string" },
+          id: { type: "integer", minimum: 0 }
+        },
+        required: ["captureSessionID", "id"],
+        additionalProperties: false
+      },
+      limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 500,
+        default: 100,
+        description: "本次最多返回的日志条数。"
+      },
+      sources: {
+        type: ["array", "null"],
+        items: { type: "string", enum: ["explore", "bridge", "stdout", "stderr", "nslog", "oslog"] },
+        uniqueItems: true,
+        description: "日志来源过滤；省略表示读取全部来源。"
+      },
+      minimumLevel: {
+        type: ["string", "null"],
+        enum: ["debug", "info", "error", "fault", "unknown"],
+        description: "最低日志等级过滤。"
+      }
+    },
+    additionalProperties: false
   };
 }
 

@@ -13,6 +13,8 @@ export type RefreshResult = {
   error?: StructuredError;
 };
 
+export type ToolListChangedHandler = () => void | Promise<void>;
+
 export class ToolRegistry {
   private dynamicTools: ToolDefinition[] = [];
   private lastConflicts: ToolNameConflict[] = [];
@@ -21,6 +23,8 @@ export class ToolRegistry {
   // refresh 又失败导致 dynamicTools 仍 [] → 不能再误报 unknown_tool，
   // 必须把这个错误透传给调用方，避免 Agent 把 "App 不可达" 误判为 "工具不存在"。
   private lastRefreshError: StructuredError | undefined;
+  private toolListChangedHandler: ToolListChangedHandler | undefined;
+  private refreshInFlight: Promise<RefreshResult> | undefined;
 
   constructor(
     private readonly options: {
@@ -48,12 +52,30 @@ export class ToolRegistry {
     return this.dynamicTools.find(tool => tool.name === name);
   }
 
-  async refresh(): Promise<RefreshResult> {
+  setToolListChangedHandler(handler: ToolListChangedHandler | undefined): void {
+    this.toolListChangedHandler = handler;
+  }
+
+  refresh(): Promise<RefreshResult> {
+    if (this.refreshInFlight) {
+      return this.refreshInFlight;
+    }
+    const refresh = this.performRefresh();
+    this.refreshInFlight = refresh;
+    void refresh.finally(() => {
+      if (this.refreshInFlight === refresh) {
+        this.refreshInFlight = undefined;
+      }
+    });
+    return refresh;
+  }
+
+  private async performRefresh(): Promise<RefreshResult> {
     try {
       const help = await this.options.client.call("help");
       const commands = parseHelpCommands(help);
       const mapped = buildActionToolMap(commands, this.options.fixedToolNames);
-      this.dynamicTools = mapped.tools.map(tool => {
+      const nextTools = mapped.tools.map(tool => {
         const schema = mapInputSchema(tool.inputSchema);
         let description = `${tool.description}${schema.descriptionSuffix}`;
         // ui.scrollToElement 的 App 端 inputSchema 用字段名 "value"（required）
@@ -73,20 +95,31 @@ export class ToolRegistry {
           description
         };
       });
+      const changed = toolListFingerprint(this.dynamicTools) !== toolListFingerprint(nextTools);
+      this.dynamicTools = nextTools;
       this.lastConflicts = mapped.conflicts;
       this.lastRefreshError = undefined;
+      if (changed) {
+        try {
+          await this.toolListChangedHandler?.();
+        } catch {
+          // App help 已成功，通知失败不能把有效工具快照回滚成 refresh 失败。
+        }
+      }
       return { toolCount: this.dynamicTools.length, conflicts: this.lastConflicts };
     } catch (error) {
-      this.dynamicTools = [];
-      this.lastConflicts = [];
       const structured =
         error instanceof IOSExploreStructuredError
           ? error.toJSON()
           : { source: "mcp_server" as const, code: "refresh_failed", message: error instanceof Error ? error.message : String(error) };
       this.lastRefreshError = structured;
-      return { toolCount: 0, conflicts: [], error: structured };
+      return { toolCount: this.dynamicTools.length, conflicts: this.lastConflicts, error: structured };
     }
   }
+}
+
+function toolListFingerprint(tools: ToolDefinition[]): string {
+  return JSON.stringify(tools);
 }
 
 function parseHelpCommands(help: JSONObject): CommandMetadata[] {

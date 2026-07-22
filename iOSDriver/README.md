@@ -2,6 +2,8 @@
 
 Mac 本机运行的 MCP stdio server。它把 App 内 `ExploreServer` 的 `POST /` action 包装成 MCP tools，默认连接 `http://localhost:38321/`。
 
+工具分层说明（静态核心、动态扩展、`help`、`call_action` 和刷新时序）见仓库文档：[动态 MCP 工具设计说明](../docs/architecture/dynamic-mcp-tools.md)。
+
 ## 启动前提
 
 模拟器：App 启动并开启 `IOS_EXPLORE_AUTOSTART=1` 后,Mac 直接访问 `localhost:38321`。
@@ -22,6 +24,12 @@ npm test
 npm run typecheck
 npm run build
 ```
+
+`ios-explore-mcp-server` 的 `bin` 和本地调试脚本默认运行 `dist/index.js`。修改
+`src/staticTools.ts`、`src/schemaMapper.ts`、`src/toolRegistry.ts` 等工具暴露层后，必须先
+`npm run build`，再重连 MCP 客户端；否则客户端看到的仍是旧 `dist` 里的工具 schema。
+
+`npm test` 会先执行 `npm run build`，用于避免源码测试通过但本地 MCP 运行产物仍停留在旧 schema。
 
 ## 配置
 

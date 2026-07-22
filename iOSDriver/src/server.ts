@@ -17,6 +17,7 @@ type RegistryLike = {
   tools(): ToolDefinition[];
   findByName(name: string): ToolDefinition | undefined;
   refresh(): Promise<unknown>;
+  setToolListChangedHandler?(handler: (() => void | Promise<void>) | undefined): void;
   // 上一次 refresh 失败的结构化错误；refresh 成功后为 undefined。
   // lazy-refresh 路径用它判断 "工具不存在" 是真不存在，还是 refresh 失败导致没工具。
   refreshError(): StructuredError | undefined;
@@ -42,7 +43,7 @@ export function createToolHandlers(options: {
         return fixed.handler(args);
       }
       let dynamic = options.registry.findByName(name);
-      if (!dynamic && isIOSExploreDynamicToolName(name)) {
+      if (!dynamic) {
         await options.registry.refresh();
         dynamic = options.registry.findByName(name);
         // 如果 refresh 失败且工具仍未注册，透传 refresh 的结构化错误，
@@ -99,9 +100,22 @@ export async function startStdioServer(options: {
 }) {
   const server = new Server(
     { name: "ios-explore-mcp-server", version: "0.1.0" },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: { listChanged: true } } }
   );
   const handlers = createToolHandlers(options);
+
+  options.registry.setToolListChangedHandler?.(async () => {
+    try {
+      await server.sendToolListChanged();
+    } catch (error) {
+      process.stderr.write(`[ios-explore-mcp-server] tools/list_changed failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+  });
+  server.oninitialized = () => {
+    void options.registry.refresh().catch(error => {
+      process.stderr.write(`[ios-explore-mcp-server] initial dynamic tool refresh failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    });
+  };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => handlers.listTools());
   server.setRequestHandler(CallToolRequestSchema, async request => {
@@ -119,14 +133,6 @@ function toMCPTool(tool: StaticToolLike | ToolDefinition) {
     description: tool.description,
     inputSchema: tool.inputSchema
   };
-}
-
-function isIOSExploreDynamicToolName(name: string): boolean {
-  // T4 修复后动态工具名直接由 action 名派生（`toolNameForAction` 把 `ui.tap` 转成 `ui_tap`），
-  // 不再带 `ios_` 前缀。识别动态工具用 `ui_` 前缀——所有 UIKit action 都是 `ui.*` 命名空间。
-  // 静态工具（health_check / refresh_tools / call_action / wait_and_inspect）
-  // 不会以 `ui_` 开头，不会误触发 refresh。
-  return name.startsWith("ui_");
 }
 
 function isTransportError(error: unknown): error is IOSExploreStructuredError {

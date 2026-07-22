@@ -15,12 +15,12 @@ import iOSExploreServer
 @Test("UIInputInput: 单字段也必须放入 fields；mode 默认 replace；submit 默认 false")
 func inputInputParseDefaults() throws {
     let input = try UIInputInput.parse(from: [
-        "fields": [
-            [
-                "path": "root/0",
-                "text": "hi",
-            ],
-        ],
+        "fields": .array([
+            .object(JSON([
+                "path": .string("root/0"),
+                "text": .string("hi"),
+            ])),
+        ]),
     ])
 
     #expect(input.fields.count == 1)
@@ -37,28 +37,32 @@ func inputInputRejectsMissingOrEmptyFields() {
         _ = try UIInputInput.parse(from: [:])
     }
     #expect(throws: CommandInputParseError.self) {
-        _ = try UIInputInput.parse(from: ["fields": []])
+        _ = try UIInputInput.parse(from: ["fields": .array([])])
     }
 }
 
 @Test("UIInputInput: field 缺 text 抛带下标的解析错误")
 func inputInputRejectsMissingFieldText() {
     #expect(throws: CommandInputParseError.self) {
-        _ = try UIInputInput.parse(from: ["fields": [["path": "root/0"]]])
+        _ = try UIInputInput.parse(from: [
+            "fields": .array([
+                .object(JSON(["path": .string("root/0")]))
+            ])
+        ])
     }
 }
 
 @Test("UIInputInput: append 模式与 submit=true 可显式传入")
 func inputInputParsesAppendAndSubmit() throws {
     let input = try UIInputInput.parse(from: [
-        "fields": [
-            [
-                "accessibilityIdentifier": "field.email",
-                "text": "x",
-                "mode": "append",
-                "submit": true,
-            ],
-        ],
+        "fields": .array([
+            .object(JSON([
+                "accessibilityIdentifier": .string("field.email"),
+                "text": .string("x"),
+                "mode": .string("append"),
+                "submit": .bool(true),
+            ])),
+        ]),
     ])
 
     #expect(input.fields[0].mode == .append)
@@ -69,13 +73,13 @@ func inputInputParsesAppendAndSubmit() throws {
 @Test("UIInputInput: viewSnapshotID 放在顶层并适用于 identifier/path")
 func inputInputAcceptsTopLevelViewSnapshotID() throws {
     let input = try UIInputInput.parse(from: [
-        "viewSnapshotID": "view_snapshot_test",
-        "fields": [
-            [
-                "accessibilityIdentifier": "field.email",
-                "text": "x",
-            ],
-        ],
+        "viewSnapshotID": .string("view_snapshot_test"),
+        "fields": .array([
+            .object(JSON([
+                "accessibilityIdentifier": .string("field.email"),
+                "text": .string("x"),
+            ])),
+        ]),
     ])
 
     #expect(input.viewSnapshotID == "view_snapshot_test")
@@ -85,11 +89,11 @@ func inputInputAcceptsTopLevelViewSnapshotID() throws {
 @Test("UIInputInput: stopOnFailure=false 可继续后续字段")
 func inputInputParsesStopOnFailureFalse() throws {
     let input = try UIInputInput.parse(from: [
-        "stopOnFailure": false,
-        "fields": [
-            ["path": "root/0", "text": "x"],
-            ["path": "root/1", "text": "y"],
-        ],
+        "stopOnFailure": .bool(false),
+        "fields": .array([
+            .object(JSON(["path": .string("root/0"), "text": .string("x")])),
+            .object(JSON(["path": .string("root/1"), "text": .string("y")])),
+        ]),
     ])
 
     #expect(input.stopOnFailure == false)
@@ -100,13 +104,13 @@ func inputInputParsesStopOnFailureFalse() throws {
 func inputInputRejectsAmbiguousFieldLocator() {
     #expect(throws: CommandInputParseError.self) {
         _ = try UIInputInput.parse(from: [
-            "fields": [
-                [
-                    "accessibilityIdentifier": "field.email",
-                    "path": "root/0",
-                    "text": "x",
-                ],
-            ],
+            "fields": .array([
+                .object(JSON([
+                    "accessibilityIdentifier": .string("field.email"),
+                    "path": .string("root/0"),
+                    "text": .string("x"),
+                ])),
+            ]),
         ])
     }
 }

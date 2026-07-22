@@ -367,5 +367,4 @@ await navigationBack({ animated: false, waitAfterMs: 100 });
 
 ## 相关文档
 
-- [端到端测试报告](./e2e-test-screenshot-navigation-2026-07-12.md)
-- [问题修复报告](./fix-navigation-issues-2026-07-12.md)
+- [问题修复记录](./fix-navigation-issues-2026-07-12.md)

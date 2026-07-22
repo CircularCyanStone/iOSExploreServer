@@ -49,7 +49,7 @@ node scripts/mcp-inspector.mjs <toolName> '<jsonArgs>' [<toolName2> '<jsonArgs2>
 | `ui.scrollToElement` | `ui_scrollToElement` |
 | `app.logs.read` | `app_logs_read` |
 
-静态工具名不变：`health_check` / `refresh_tools` / `call_action` / `wait_and_inspect`。`tools/list` 响应里 description 末尾会附 `Original iOSExplore action: <action>`，便于反查。
+静态工具清单以 `src/staticTools.ts` 导出的 `STATIC_TOOL_NAMES` 为唯一来源；动态工具的 description 末尾会附 `Original iOSExplore action: <action>`，便于反查。为什么要区分静态核心和动态扩展、两者各自解决什么问题，见[动态 MCP 工具设计说明](../../docs/architecture/dynamic-mcp-tools.md)。
 
 ## 排障
 

@@ -30,7 +30,6 @@ enum UITextInputExecutor {
     /// - Throws: `UIKitCommandError`——仅在执行器内部出现无法转为逐项结果的异常时抛出。
     static func execute(input: UIInputInput, context: UIKitContextProvider.Context) throws -> JSON {
         let action = InputCommand.actionName
-        UIKitCommandLogging.info("command", "command \(action) start fields=\(input.fields.count) stopOnFailure=\(input.stopOnFailure) viewSnapshot=\(input.viewSnapshotID ?? "nil")")
 
         var results: [JSONValue] = []
         var failedIndex: Int?
@@ -74,7 +73,6 @@ enum UITextInputExecutor {
         if let failedIndex {
             response["failedIndex"] = .double(Double(failedIndex))
         }
-        UIKitCommandLogging.info("command", "command \(action) completed fields=\(input.fields.count) completed=\(failedIndex == nil) failedIndex=\(failedIndex.map(String.init) ?? "nil")")
         return response
     }
 

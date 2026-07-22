@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { ToolRegistry } from "../src/toolRegistry.js";
 import { IOSExploreStructuredError } from "../src/errors.js";
 import type { JSONObject } from "../src/types.js";
+import { STATIC_TOOL_NAMES } from "../src/staticTools.js";
 
 // 帮助命令的最小返回结构，便于在多个 case 里复用构造 fake help。
 type HelpCommand = {
@@ -44,6 +45,106 @@ describe("ToolRegistry", () => {
       name: "ui_inspect",
       action: "ui.inspect"
     });
+  });
+
+  test("only notifies when the dynamic tool snapshot changes", async () => {
+    let helpCalls = 0;
+    let notifications = 0;
+    const registry = new ToolRegistry({
+      fixedToolNames: new Set(),
+      client: {
+        call: async () => {
+          helpCalls++;
+          return {
+            commands: [{ action: "greet", description: "greet", inputSchema: {} }]
+          };
+        }
+      }
+    });
+    registry.setToolListChangedHandler(() => { notifications++; });
+
+    await registry.refresh();
+    await registry.refresh();
+
+    expect(helpCalls).toBe(2);
+    expect(notifications).toBe(1);
+  });
+
+  test("concurrent refresh calls share one help request", async () => {
+    let helpCalls = 0;
+    let releaseHelp: (() => void) | undefined;
+    const helpReady = new Promise<void>(resolve => { releaseHelp = resolve; });
+    const registry = new ToolRegistry({
+      fixedToolNames: new Set(),
+      client: {
+        call: async () => {
+          helpCalls++;
+          await helpReady;
+          return { commands: [{ action: "greet", description: "greet", inputSchema: {} }] };
+        }
+      }
+    });
+
+    const first = registry.refresh();
+    const second = registry.refresh();
+    releaseHelp?.();
+    await Promise.all([first, second]);
+
+    expect(helpCalls).toBe(1);
+  });
+
+  test("保留最后一次成功的动态工具快照", async () => {
+    let online = true;
+    const registry = new ToolRegistry({
+      fixedToolNames: new Set(),
+      client: {
+        call: async () => {
+          if (!online) {
+            throw new IOSExploreStructuredError({
+              source: "transport",
+              code: "connection_failed",
+              message: "offline",
+              action: "help"
+            });
+          }
+          return { commands: [{ action: "greet", description: "greet", inputSchema: {} }] };
+        }
+      }
+    });
+
+    await registry.refresh();
+    online = false;
+    const result = await registry.refresh();
+
+    expect(result.error).toMatchObject({ source: "transport", code: "connection_failed" });
+    expect(result.toolCount).toBe(1);
+    expect(registry.tools()[0]).toMatchObject({ name: "greet", action: "greet" });
+  });
+
+  test("固定日志桥接存在时不重复暴露动态 app.logs tools", async () => {
+    const registry = new ToolRegistry({
+      fixedToolNames: new Set<string>(STATIC_TOOL_NAMES),
+      client: fakeHelpClient([
+        {
+          action: "app.logs.mark",
+          description: "mark logs",
+          inputSchema: { type: "object", properties: {} }
+        },
+        {
+          action: "app.logs.read",
+          description: "read logs",
+          inputSchema: { type: "object", properties: {} }
+        }
+      ])
+    });
+
+    const result = await registry.refresh();
+
+    expect(registry.tools()).toEqual([]);
+    expect(result.conflicts).toEqual([
+      { toolName: "app_logs_mark", actions: ["app.logs.mark"] },
+      { toolName: "app_logs_read", actions: ["app.logs.read"] }
+    ]);
   });
 
   test("keeps server usable when help fails", async () => {

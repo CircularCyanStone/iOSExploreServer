@@ -3,24 +3,13 @@
 import { loadConfig } from "./config.js";
 import { IOSExploreClient } from "./iosExploreClient.js";
 import { startStdioServer } from "./server.js";
-import { createStaticTools } from "./staticTools.js";
+import { createStaticTools, STATIC_TOOL_NAMES } from "./staticTools.js";
 import { ToolRegistry } from "./toolRegistry.js";
 
 const config = loadConfig();
 const client = new IOSExploreClient(config);
-const fixedToolNames = new Set([
-  "health_check",
-  "refresh_tools",
-  "call_action",
-  "ui_inspect",
-  "ui_input",
-  "ui_tap",
-  "ui_control_sendAction",
-  "ui_keyboard_dismiss",
-  "ui_scrollToElement"
-]);
+const fixedToolNames = new Set<string>(STATIC_TOOL_NAMES);
 const registry = new ToolRegistry({ fixedToolNames, client });
 const staticTools = createStaticTools({ client, registry });
 
-await registry.refresh();
 await startStdioServer({ staticTools, registry, client });

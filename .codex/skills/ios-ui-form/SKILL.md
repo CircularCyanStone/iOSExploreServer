@@ -34,7 +34,9 @@ description: iOS App 表单填写与控件操作(开发验证 + 自动化测试)
 
 ## 工作原理
 
-表单填写的核心时序:**inspect 取字段 → 一次 ui_input 批量填文本字段 / sendAction 改控件 → 必要时重新 inspect → tap 提交 → 等并读取终态判据**。`viewSnapshotID` 必须来自当前屏幕;跨页、scroll、键盘开合或等待后继续操作时要重新 inspect。键盘关闭不是提交前默认步骤,只在目标被键盘遮挡、业务依赖结束编辑、或任务本身要求键盘状态时执行。
+表单填写的核心时序:**inspect 取字段 → 一次 ui_input 批量填文本字段 / sendAction 改控件 → 必要时重新 inspect → (可选)app.logs.mark → tap 提交 → 等并读取终态判据**。`viewSnapshotID` 必须来自当前屏幕;跨页、scroll、键盘开合或等待后继续操作时要重新 inspect。键盘关闭不是提交前默认步骤,只在目标被键盘遮挡、业务依赖结束编辑、或任务本身要求键盘状态时执行。
+
+若本次测试需要日志证据,`app.logs.mark` 应放在字段输入和提交按钮定位都完成之后、点击提交之前。不要在进入页面或首次 `ui_inspect` 前 mark,否则日志会混入连接检查、inspect 和工具探测噪音。
 
 ### 1. 文本输入(`ui_input`)
 
@@ -90,7 +92,7 @@ description: iOS App 表单填写与控件操作(开发验证 + 自动化测试)
 填完字段后:**必要时重新 inspect 取提交按钮 → tap → 按同步 / 异步选择等待方式**。只有键盘遮挡目标、业务依赖结束编辑、或键盘状态本身是验证目标时,才先收键盘。
 
 - **同步提交**:纯前端校验、本地切页、无网络。用 `ui_tap_and_inspect(waitForStable:true, stableTimeMs:300~500)`,直接读返回的 `targets` / `navigationBar` / `alert`。
-- **异步提交**:登录、注册、保存到服务器等。用 `ui_tap` 只负责触发按钮,然后用 `wait_and_inspect` 或 `ui_waitAny` 等明确的成功 / 失败判据。
+- **异步提交**:登录、注册、保存到服务器等。用 `ui_tap` 只负责触发按钮,然后用 `wait_and_inspect` 或 `ui_waitAny` 等明确的成功 / 失败判据。不要在 `ui_tap` 后立刻 `ui_inspect` 并把这次快照当终态;那通常只是提交中间态或旧帧。
 
 异步判据建议:
 

@@ -9,7 +9,8 @@ import iOSExploreServer
 /// insertText、委托比对、密码脱敏）全部收敛在 executor 中，本命令不再内联执行逻辑。
 ///
 /// handler 顶层 catch：`UIKitCommandError` 转 envelope（业务码不丢），其它意外错误兜底
-/// 为 `hierarchyUnavailable`。失败日志只在此处记一次（与既有 UIKit 命令一致）。
+/// 为 `hierarchyUnavailable`。批量命令的顶层生命周期日志由 `execute(input:context:)` 统一记录，
+/// 避免 command adapter 与 executor 重复记录同一条 start/complete 日志。
 struct InputCommand: Command {
     /// typed 输入模型，负责 schema 暴露和 data 解析。
     typealias Input = UIInputInput
@@ -28,20 +29,41 @@ struct InputCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的 input 参数。
     /// - Returns: 成功时返回批量结果 JSON；失败时返回对应业务码 envelope。
     func handle(_ input: UIInputInput) async -> ExploreResult {
-        // 日志只记批量规模与模式，不回原文（可能含敏感信息）。
-        UIKitCommandLogging.info("command", "command \(action) start fields=\(input.fields.count) stopOnFailure=\(input.stopOnFailure) viewSnapshot=\(input.viewSnapshotID ?? "nil")")
         do {
-            let data = try await MainActor.run {
+            return try await MainActor.run {
                 let context = try UIKitContextProvider.currentContext(action: InputCommand.actionName)
-                return try UITextInputExecutor.execute(input: input, context: context)
+                return InputCommand.execute(input: input, context: context)
             }
+        } catch {
+            // context 获取失败发生在批量执行入口之外，仍由 handler 统一兜底，避免裸异常穿到路由层。
+            let e = UIKitCommandError.hierarchyUnavailable(action: InputCommand.actionName, reason: "\(error)")
+            UIKitCommandLogging.error("command", e.failure.logMessage)
+            return e.result
+        }
+    }
+
+    /// 在已取得的 MainActor UIKit context 上执行一次批量输入并记录顶层生命周期。
+    ///
+    /// - Parameters:
+    ///   - input: 已通过 typed schema 校验的输入。
+    ///   - context: 当前 UIKit 查询上下文，调用方必须在 MainActor 上取得。
+    /// - Returns: 成功时返回批量结果；UIKit 执行失败时返回对应业务码 envelope。
+    @MainActor
+    static func execute(input: UIInputInput, context: UIKitContextProvider.Context) -> ExploreResult {
+        // 顶层 start 只在命令层记录一次；executor 只记录字段级步骤。
+        UIKitCommandLogging.info("command", "command \(actionName) start fields=\(input.fields.count) stopOnFailure=\(input.stopOnFailure) viewSnapshot=\(input.viewSnapshotID ?? "nil")")
+        do {
+            let data = try UITextInputExecutor.execute(input: input, context: context)
+            let completed = data["completed"]?.boolValue ?? false
+            let failedIndex = data["failedIndex"]?.doubleValue.map { String(Int($0)) } ?? "nil"
+            UIKitCommandLogging.info("command", "command \(actionName) completed fields=\(input.fields.count) completed=\(completed) failedIndex=\(failedIndex)")
             return .success(data)
         } catch let error as UIKitCommandError {
             UIKitCommandLogging.error("command", error.failure.logMessage)
             return error.result
         } catch {
             // executor 只 throw UIKitCommandError；这里兜底任何意外错误，避免裸异常穿到路由层。
-            let e = UIKitCommandError.hierarchyUnavailable(action: InputCommand.actionName, reason: "\(error)")
+            let e = UIKitCommandError.hierarchyUnavailable(action: actionName, reason: "\(error)")
             UIKitCommandLogging.error("command", e.failure.logMessage)
             return e.result
         }

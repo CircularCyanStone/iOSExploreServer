@@ -2,7 +2,7 @@
 
 **修复日期**: 2026-07-12  
 **修复人**: AI Agent (Claude)  
-**关联测试**: `iOSDriver/docs/e2e-test-screenshot-navigation-2026-07-12.md`
+本文记录已经落地的导航命令行为调整，以及仍需调用方注意的返回值限制。
 
 ## 修复概要
 
@@ -426,5 +426,4 @@ node scripts/mcp-inspector.mjs ui_navigation_tapBarButton '{"placement":"left","
 
 ## 参考
 
-- 原始测试报告: `iOSDriver/docs/e2e-test-screenshot-navigation-2026-07-12.md`
-- 相关 commit: f7d09b0, a82275c, e31ac8b
+- [Navigation 命令使用注意事项](./navigation-commands-best-practices.md)

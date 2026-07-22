@@ -27,6 +27,7 @@ description: iOS App 截图与视觉取证(开发调试 + 自动化测试)/ scre
 - ❌ 不要用于"读控件树 / 定位元素 / 读按钮文案"(走 `ios-ui-form` / `ios-ui-alert` / `ios-ui-list` 的 `ui_inspect`,截图不带结构化字段)
 - ❌ 不要用于"等动画 / loading 结束"(走 `ios-ui-wait`,截图是瞬时快照不等任何东西)
 - ❌ 不要用于"连续截图自动判 diff"的回归自动化(本 skill 只取单张 / 序列张;像素 diff 需外部工具如 ImageMagick / Pillow)
+- ❌ 不要因为"可能稍后需要证据"就提前加载本 skill 或搜索截图工具;只有用户明确要截图、测试报告要求视觉证据、或结构化 inspect 无法说明视觉问题时才使用。
 
 ## 工作原理
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createStaticTools } from "../src/staticTools.js";
+import { createStaticTools, STATIC_TOOL_NAMES } from "../src/staticTools.js";
 import type { JSONObject } from "../src/types.js";
 import { IOSExploreStructuredError } from "../src/errors.js";
 
@@ -21,7 +21,34 @@ describe("static tools", () => {
       ok: true,
       dynamicToolCount: 3
     });
-    expect(calls).toEqual(["ping", "help"]);
+    expect(calls).toEqual(["ping"]);
+  });
+
+  test("health_check reports help refresh failures without discarding ping", async () => {
+    const tools = createStaticTools({
+      client: { call: async () => ({ pong: true }) },
+      registry: {
+        async refresh() {
+          return {
+            toolCount: 0,
+            conflicts: [],
+            error: { source: "transport", code: "connection_failed", message: "help offline" }
+          };
+        },
+        tools: () => [],
+        conflicts: () => [],
+        refreshError: () => undefined
+      }
+    });
+
+    const result = await tools.health_check!.handler({});
+    expect(JSON.parse(textContent(result))).toMatchObject({
+      ok: false,
+      ping: { pong: true },
+      error: { source: "transport", code: "connection_failed" },
+      dynamicToolCount: 0
+    });
+    expect(result.isError).toBeFalsy();
   });
 
   test("observe 已废弃，不应出现在静态工具列表", () => {
@@ -32,7 +59,7 @@ describe("static tools", () => {
     expect(tools.observe).toBeUndefined();
   });
 
-  test("常用 UI action 有静态桥接工具，避免动态工具未展示时只能 call_action", () => {
+  test("常用 action 有静态桥接工具，避免动态工具未展示时只能 call_action", () => {
     const tools = createStaticTools({
       client: { call: async () => ({}) },
       registry: fakeRegistry(0)
@@ -45,9 +72,102 @@ describe("static tools", () => {
         "ui_tap",
         "ui_control_sendAction",
         "ui_keyboard_dismiss",
-        "ui_scrollToElement"
+        "ui_scrollToElement",
+        "app_logs_mark",
+        "app_logs_read"
       ])
     );
+  });
+
+  test("固定工具名清单与静态工具实现保持一致", () => {
+    const tools = createStaticTools({
+      client: { call: async () => ({}) },
+      registry: fakeRegistry(0)
+    });
+
+    expect([...STATIC_TOOL_NAMES].sort()).toEqual(Object.keys(tools).sort());
+  });
+
+  test("app_logs_mark static bridge forwards empty input to app.logs.mark", async () => {
+    const calls: Array<{ action: string; data: JSONObject }> = [];
+    const tools = createStaticTools({
+      client: {
+        call: async (action, data = {}) => {
+          calls.push({ action, data });
+          return { cursor: { captureSessionID: "session-1", id: 3 } };
+        }
+      },
+      registry: fakeRegistry(0)
+    });
+
+    const result = await tools.app_logs_mark!.handler({});
+
+    expect(calls).toEqual([{ action: "app.logs.mark", data: {} }]);
+    expect(JSON.parse(textContent(result))).toMatchObject({ cursor: { captureSessionID: "session-1", id: 3 } });
+    expect(result.isError).toBeFalsy();
+  });
+
+  test("app_logs_read static bridge forwards cursor and filters to app.logs.read", async () => {
+    const calls: Array<{ action: string; data: JSONObject }> = [];
+    const tools = createStaticTools({
+      client: {
+        call: async (action, data = {}) => {
+          calls.push({ action, data });
+          return { entries: [], hasMore: false };
+        }
+      },
+      registry: fakeRegistry(0)
+    });
+    const input = {
+      after: { captureSessionID: "session-1", id: 3 },
+      limit: 80,
+      sources: ["explore", "bridge"],
+      minimumLevel: "debug"
+    };
+
+    const result = await tools.app_logs_read!.handler(input);
+
+    expect(calls).toEqual([{ action: "app.logs.read", data: input }]);
+    expect(JSON.parse(textContent(result))).toEqual({ entries: [], hasMore: false });
+    expect(result.isError).toBeFalsy();
+  });
+
+  test("app_logs tools expose the App command parameter contract", () => {
+    const tools = createStaticTools({
+      client: { call: async () => ({}) },
+      registry: fakeRegistry(0)
+    });
+    expect(tools.app_logs_mark!.inputSchema).toEqual({
+      type: "object",
+      properties: {},
+      additionalProperties: false
+    });
+
+    const schema = tools.app_logs_read!.inputSchema as {
+      properties: Record<string, unknown>;
+      additionalProperties: boolean;
+    };
+    expect(Object.keys(schema.properties).sort()).toEqual(["after", "limit", "minimumLevel", "sources"].sort());
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.properties.after).toMatchObject({
+      type: ["object", "null"],
+      required: ["captureSessionID", "id"],
+      additionalProperties: false,
+      properties: {
+        captureSessionID: { type: "string" },
+        id: { type: "integer", minimum: 0 }
+      }
+    });
+    expect(schema.properties.limit).toMatchObject({ type: "integer", minimum: 1, maximum: 500, default: 100 });
+    expect(schema.properties.sources).toMatchObject({
+      type: ["array", "null"],
+      uniqueItems: true,
+      items: { enum: ["explore", "bridge", "stdout", "stderr", "nslog", "oslog"] }
+    });
+    expect(schema.properties.minimumLevel).toMatchObject({
+      type: ["string", "null"],
+      enum: ["debug", "info", "error", "fault", "unknown"]
+    });
   });
 
   test("ui_inspect static bridge forwards input to ui.inspect", async () => {
