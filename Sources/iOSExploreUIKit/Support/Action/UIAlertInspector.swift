@@ -138,7 +138,7 @@ enum UIAlertInspector {
                 accessibilityIdentifier: textField.accessibilityIdentifier
             )
         }
-        UIKitCommandLogging.info("command", "ui alert inspect available=true buttonCount=\(buttons.count) textFieldCount=\(textFields.count)")
+        UIKitCommandLogger.info("command", "ui alert inspect available=true buttonCount=\(buttons.count) textFieldCount=\(textFields.count)")
         return InspectAlertSummary(
             available: true,
             title: base.title,

@@ -48,7 +48,7 @@ enum UIPickerSelectRowExecutor {
         }
 
         guard let picker = located.view as? UIPickerView else {
-            UIKitCommandLogging.error("command", "\(action) target is not UIPickerView type=\(String(describing: type(of: located.view)))")
+            UIKitCommandLogger.error("command", "\(action) target is not UIPickerView type=\(String(describing: type(of: located.view)))")
             throw UIKitCommandError.invalidData(
                 action: action,
                 message: "target is not a UIPickerView (got \(String(describing: type(of: located.view))))"
@@ -58,7 +58,7 @@ enum UIPickerSelectRowExecutor {
         let numberOfComponents = picker.numberOfComponents
         guard input.component < numberOfComponents else {
             let msg = "component \(input.component) out of range (total \(numberOfComponents))"
-            UIKitCommandLogging.error("command", "\(action) \(msg)")
+            UIKitCommandLogger.error("command", "\(action) \(msg)")
             throw UIKitCommandError.invalidData(action: action, message: msg)
         }
         let numberOfRows = picker.numberOfRows(inComponent: input.component)
@@ -79,7 +79,7 @@ enum UIPickerSelectRowExecutor {
 
         guard targetRow < numberOfRows else {
             let msg = "row \(targetRow) out of range (component \(input.component) has \(numberOfRows) rows)"
-            UIKitCommandLogging.error("command", "\(action) \(msg)")
+            UIKitCommandLogger.error("command", "\(action) \(msg)")
             throw UIKitCommandError.invalidData(action: action, message: msg)
         }
 
@@ -89,7 +89,7 @@ enum UIPickerSelectRowExecutor {
 
         let selectedTitle = picker.delegate?.pickerView?(picker, titleForRow: targetRow, forComponent: input.component)
 
-        UIKitCommandLogging.info("command", "\(action) completed component=\(input.component) selectedRow=\(targetRow) animated=\(input.animated)")
+        UIKitCommandLogger.info("command", "\(action) completed component=\(input.component) selectedRow=\(targetRow) animated=\(input.animated)")
 
         return [
             "type": .string("UIPickerView"),
@@ -112,7 +112,7 @@ enum UIPickerSelectRowExecutor {
                                    picker: UIPickerView,
                                    action: String) throws -> Int {
         guard let delegate = picker.delegate else {
-            UIKitCommandLogging.error("command", "\(action) picker has no delegate; cannot resolve title")
+            UIKitCommandLogger.error("command", "\(action) picker has no delegate; cannot resolve title")
             throw UIKitCommandError.invalidData(action: action, message: "picker has no delegate; cannot resolve row by title (delegate must implement titleForRow or use row index instead)")
         }
         for row in 0..<numberOfRows {
@@ -120,7 +120,7 @@ enum UIPickerSelectRowExecutor {
                 return row
             }
         }
-        UIKitCommandLogging.error("command", "\(action) title not found title=\(title) component=\(component)")
+        UIKitCommandLogger.error("command", "\(action) title not found title=\(title) component=\(component)")
         throw UIKitCommandError.targetNotFound(
             action: action,
             message: "row with title '\(title)' not found in component \(component)",

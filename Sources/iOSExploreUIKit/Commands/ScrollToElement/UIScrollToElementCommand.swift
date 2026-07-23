@@ -25,7 +25,7 @@ struct ScrollToElementCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的 scroll-to-element 输入。
     /// - Returns: 成功时返回 found/target；失败时返回业务失败 envelope。
     func handle(_ input: UIScrollToElementInput) async -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start match=\(input.match.rawValue) valueLength=\(input.value.count)")
+        UIKitCommandLogger.info("command", "command \(action) start match=\(input.match.rawValue) valueLength=\(input.value.count)")
         do {
             let data = try await MainActor.run {
                 let context = try UIKitContextProvider.currentContext(action: ScrollToElementCommand.actionName)
@@ -33,11 +33,11 @@ struct ScrollToElementCommand: Command {
             }
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         } catch {
             let wrapped = UIKitCommandError.hierarchyUnavailable(action: ScrollToElementCommand.actionName, reason: "\(error)")
-            UIKitCommandLogging.error("command", wrapped.failure.logMessage)
+            UIKitCommandLogger.error("command", wrapped.failure.logMessage)
             return wrapped.result
         }
     }

@@ -26,7 +26,7 @@ struct AlertRespondCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的 alert respond 输入。
     /// - Returns: 成功时返回 alert 信息或已触发按钮；失败返回业务失败 envelope。
     func handle(_ input: UIAlertRespondInput) async -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start")
+        UIKitCommandLogger.info("command", "command \(action) start")
         do {
             // 第一阶段（同步）：在 MainActor 上选择按钮、触发 dismiss/handler。
             // dismiss 已启动但转场动画还没结束。同步块同时把「正在 dismiss 的那个 alert」
@@ -66,15 +66,15 @@ struct AlertRespondCommand: Command {
                 let elapsedMs = Int((ProcessInfo.processInfo.systemUptime - start) * 1000)
                 finalData["dismissWaitMs"] = .double(Double(min(elapsedMs, 1500)))
                 finalData["presentedAfterDismiss"] = .bool(stillPresented)
-                UIKitCommandLogging.info("command", "ui alert respond part2 async-wait performed=true dismissed=true dismissWaitMs=\(min(elapsedMs, 1500)) presentedAfter=\(stillPresented)")
+                UIKitCommandLogger.info("command", "ui alert respond part2 async-wait performed=true dismissed=true dismissWaitMs=\(min(elapsedMs, 1500)) presentedAfter=\(stillPresented)")
             }
             return .success(finalData)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         } catch {
             let wrapped = UIKitCommandError.hierarchyUnavailable(action: AlertRespondCommand.actionName, reason: "\(error)")
-            UIKitCommandLogging.error("command", wrapped.failure.logMessage)
+            UIKitCommandLogger.error("command", wrapped.failure.logMessage)
             return wrapped.result
         }
     }

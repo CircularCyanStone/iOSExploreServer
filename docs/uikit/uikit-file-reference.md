@@ -41,10 +41,10 @@
 - **关键点**：core 不自动注册 UIKit 命令，宿主必须显式调用；幂等安全；注册前后打 `uikit.registrar` 日志（started/completed count）。
 - **依赖**：14 个 `*Command` 类型。
 
-### `UIKitCommandLogging.swift` ✅
+### `UIKitCommandLogger.swift` ✅
 - **职责**：UIKit 模块统一的日志入口（`info`/`error`）。
-- **关键点**：core 的 `ExploreLogger` 是 internal，UIKit 模块通过 core 的 public 缝 `ExploreLogging.emitExtension` 复用日志；category 统一 `"command"`。不暴露 core 内部 logger。
-- **依赖**：core `ExploreLogging`。
+- **关键点**：UIKit 模块通过 core 的 public 缝 `ESLogger.emitExtension` 复用日志；category 统一 `"command"`。core 的 `ESLogCategory` 仍保持 internal，不暴露给扩展模块。
+- **依赖**：core `ESLogger`。
 
 ### `UIKitCommandError.swift` ✅
 - **职责**：UIKit 命令失败的统一错误工厂（包装 core `ExploreCommandFailure`），**conform `Error`**，是 UIKit 内部唯一可抛出的业务错误。
@@ -124,13 +124,13 @@
 ### `UIKitActionExecutor.swift` 🍎
 - **职责**：`@MainActor`，tap 与 control.sendAction 的实际 UIKit 执行入口。
 - **关键点**：**全模块执行核心**。`execute(_:) throws -> JSON` / `execute(_:context:) throws -> JSON`——成功返回纯 `JSON`，失败 `throw UIKitCommandError`。固定流程：取 Context → resolve locator（线性 `try`）→ **`viewSnapshotID` 陈旧校验（必填，`validateViewSnapshot`）** → tap 走默认激活路由（`UIKitDefaultActivationResolver`，不做 hit-test / 坐标 / 祖先 fallback）；**default route nil 时按序尝试 cellSelection → gesture adapter**：先 `UIGestureTargetExecutor.executeCellSelection`（cell 子树内 → 返回 `cell.select.public` / `cell.select.indexPath-nil` JSON；不在 cell 子树返回 nil fallthrough），再 `UIGestureTargetExecutor.execute`（**非 UIControl 且挂有手势**，`activationRoute = gesture.targetAction`，响应含 `gestures`/`triggeredCount`）/ control 走 `sendActions(for:)`。cellSelection 优先于 gesture adapter 是为了避开 cell 子 view 上 `_longPressGestureRecognized:` 的误触（prepareForReuse 相关手势不是 selection 语义）。复用调用方已 locate 的 `LocatedView` 避免二次遍历。失败日志不在执行器内记——统一由 handler 顶层 `catch` 后记 `error.failure.logMessage`。有 `execute(_:context:)` 注入入口供测试。
-- **依赖**：UIKit、`UIKitContextProvider`、`UIKitLocatorResolver`、`UIKitDefaultActivationResolver`、`UIGestureTargetExecutor`、`UIKitSnapshotStore`、`UIKitFingerprintCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
+- **依赖**：UIKit、`UIKitContextProvider`、`UIKitLocatorResolver`、`UIKitDefaultActivationResolver`、`UIGestureTargetExecutor`、`UIKitSnapshotStore`、`UIKitFingerprintCollector`、`UIKitCommandError`、`UIKitCommandLogger`。
 - **被调用**：`UITapCommand`、`UIControlSendActionCommand`。
 
 ### `UIKitDefaultActivationResolver.swift` 🍎
 - **职责**：`@MainActor`，`ui.tap` 的"默认激活动作"路由判定（按 target 类型派发，非触摸注入）。
 - **关键点**：V1 路由表：`UIButton` → `sendActions(.touchUpInside)`（`activationRoute = control.touchUpInside`）；`UISwitch` → `setOn(!isOn)` + `sendActions(.valueChanged)`（`switch.toggle`，响应含 `previousValue`/`currentValue`）；`UITextField`/`UITextView` → `becomeFirstResponder`（`input.focus`，响应含 `isFirstResponder`，失败复用 `becomeFirstResponderFailed` 错误码）。`UISlider`/`UISegmentedControl`/无手势的普通 `UIView` 无默认激活路由 → executor 返回 `unsupported_target`；**挂有手势的非 UIControl view 不经本路由**——由 `executeTap` 的手势 adapter 分支（`UIGestureTargetExecutor`）处理，`availableActions` 不声明 tap（agent 据 `hasGestureRecognizers` 推断）。navigationBar 走 `ui.navigation.tapBarButton`、alert 走专用命令，均不并入本路由。
-- **依赖**：UIKit、`UIKitCommandError`、`UIKitCommandLogging`。
+- **依赖**：UIKit、`UIKitCommandError`、`UIKitCommandLogger`。
 - **被调用**：`UIKitActionExecutor`（tap 分支）。
 
 ---
@@ -140,7 +140,7 @@
 ### `UIKitSnapshotStore.swift` ✅（类标 `@MainActor`，但内部纯计算可 macOS 测）
 - **职责**：UIKit 视图树指纹快照存储，解决"path 陈旧"问题。
 - **关键点**：**仅 `ui.inspect` 签发 `viewSnapshotID` 返回给调用方**（`ui.screenshot` / `ui.topViewHierarchy` 不再签发）；交互命令携带它时，executor 执行前用 `isStale(viewSnapshotID:path:context:current:) -> Bool` 比对指纹（含 `semanticDigest`），true 时 `throw UIKitCommandError.staleLocator`（`invalid_data`，固定消息 "locator is stale; call ui.inspect first"）。容量 **8 条快照 × 每条最多 512 指纹**，TTL **30 秒**，淘汰策略"先过期后 LRU"。时间可注入（`setNow`），测试推进时间即可触发过期。
-- **依赖**：`UIKitCommandLogging`。
+- **依赖**：`UIKitCommandLogger`。
 - **被调用**：`UIInspectCollector`（insert）、executor（isStale）。
 
 ### `UIKitSnapshotResponse.swift` ✅
@@ -172,7 +172,7 @@
 ### `UITapCommand.swift` 🍎
 - **职责**：`ui.tap` 命令 adapter。
 - **关键点**：薄 adapter——typed input 已由 `AnyCommand` 解析完成；handler 构造 `UIKitActionPlan.tap` → `try await executor.execute(plan)`；只 catch `UIKitCommandError` 取 `error.result`（记 `logMessage`）。执行逻辑全在 executor。
-- **依赖**：`UITapInput`、`UIKitActionPlan`、`UIKitActionExecutor`、`UIKitCommandError`、`UIKitCommandLogging`。
+- **依赖**：`UITapInput`、`UIKitActionPlan`、`UIKitActionExecutor`、`UIKitCommandError`、`UIKitCommandLogger`。
 
 ---
 
@@ -186,7 +186,7 @@
 ### `UIControlSendActionCommand.swift` 🍎
 - **职责**：`ui.control.sendAction` 命令 adapter。
 - **关键点**：薄 adapter——typed input 已由 `AnyCommand` 解析完成；handler 构造 `UIKitActionPlan.controlEvent` → `try await executor.execute(plan)`；只 catch `UIKitCommandError`。
-- **依赖**：`UIControlSendActionInput`、`UIKitActionPlan`、`UIKitActionExecutor`、`UIKitCommandError`、`UIKitCommandLogging`。
+- **依赖**：`UIControlSendActionInput`、`UIKitActionPlan`、`UIKitActionExecutor`、`UIKitCommandError`、`UIKitCommandLogger`。
 
 ---
 
@@ -200,12 +200,12 @@
 ### `UIViewHierarchyCollector.swift` 🍎
 - **职责**：`@MainActor`，从真实 `UIView` 递归读取属性生成完整快照。
 - **关键点**：`collectTopViewHierarchy(query:) throws -> JSON`（无 context 入口，取真实 context 失败 throw `hierarchyUnavailable`）；`collectTopViewHierarchy(query:context:) -> JSON`（注入入口，测试用）。`UIKitViewElement` 是 `UIViewHierarchyElement` 的 UIKit 实现；读 UIKit 后交给 Foundation-only 的 `UIViewHierarchyBuilder`。**不再签发 viewSnapshotID**（纯观察职责；动作所需的 `viewSnapshotID` 由 `ui.inspect` 签发）。
-- **依赖**：UIKit、`UIKitContextProvider`、`UIViewHierarchyBuilder`/`UIViewHierarchyModels`、`UIKitCommandError`/`UIKitCommandLogging`。
+- **依赖**：UIKit、`UIKitContextProvider`、`UIViewHierarchyBuilder`/`UIViewHierarchyModels`、`UIKitCommandError`/`UIKitCommandLogger`。
 
 ### `TopViewHierarchyCommand.swift` 🍎
 - **职责**：`ui.topViewHierarchy` 命令 adapter。
 - **关键点**：薄 adapter——typed input 已由 `AnyCommand` 解析完成；handler `try await collector`；有 identifier 筛选时返回 `matches` 列表，否则返回完整 `root` 树。
-- **依赖**：`UIViewHierarchyInput`、`UIViewHierarchyCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
+- **依赖**：`UIViewHierarchyInput`、`UIViewHierarchyCollector`、`UIKitCommandError`、`UIKitCommandLogger`。
 
 ---
 
@@ -219,12 +219,12 @@
 ### `UIInspectCollector.swift` 🍎
 - **职责**：`@MainActor`，递归遍历 view 树，**对每个节点判 full/minimal 分档**采集摘要并为 full 节点签发 `viewSnapshotID`。
 - **关键点**：`collect(query:) throws -> JSON`（无 context 入口）；`collect(query:context:) -> JSON`（注入入口）。刻意不复用完整层级快照（不读颜色/字体/图片）。identifier 筛选不提前剪枝子树。**分档**：每个节点先用 `makeCandidate(for:)` + `query.isFull` 判定 full/minimal——full 节点走 `summary(for:)`（完整 `availableActions`/文本/状态）、minimal 节点走 `minimalSummary(for:)`（强制 `isMinimal=true`、`actions=[]`、`toJSON` 只输出 `{path, type}`）。**`availableActions` 只认目标自身的 control 身份**（不向上借祖先 control），唯一例外是 `explore_cellAncestor != nil` 的 cell 子树 view（capability resolver 累加 `.tap`，由 cellSelection adapter 派发 `didSelectRow/didSelectItem`）。**不变式**：full returned target paths == `viewSnapshotID` 签发的 fingerprint paths == tap/sendAction 可执行 paths（minimal 节点不签发、不可操作；对 minimal 节点调 `ui.tap`/`ui.control.sendAction` 返回 `not_actionable`）。响应字段是 `viewSnapshotID`（不是 `snapshotID`）。
-- **依赖**：UIKit、`UIKitContextProvider`、`UIKitFingerprintCollector`、`UIKitSnapshotStore`、`UIKitSnapshotResponse`、`UIKitActionCapabilityResolver`、`UIInspectModels`、`UIKitCommandError`/`UIKitCommandLogging`。
+- **依赖**：UIKit、`UIKitContextProvider`、`UIKitFingerprintCollector`、`UIKitSnapshotStore`、`UIKitSnapshotResponse`、`UIKitActionCapabilityResolver`、`UIInspectModels`、`UIKitCommandError`/`UIKitCommandLogger`。
 
 ### `InspectCommand.swift` 🍎
 - **职责**：`ui.inspect` 命令 adapter。
 - **关键点**：薄 adapter——typed input 已由 `AnyCommand` 解析完成；handler `try await collector`。响应含 `targetCount`/`visitedNodeCount`/`truncated`/`viewSnapshotID`。
-- **依赖**：`UIInspectInput`、`UIInspectCollector`、`UIKitCommandError`、`UIKitCommandLogging`。
+- **依赖**：`UIInspectInput`、`UIInspectCollector`、`UIKitCommandError`、`UIKitCommandLogger`。
 
 ---
 

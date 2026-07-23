@@ -5,7 +5,7 @@ import Testing
 struct DiagnosticsStoreTests {
     @Test("mark 返回当前最大 cursor,read 只读取 cursor 之后的记录")
     func markAndReadIncrementalEntries() {
-        let store = AppLogStore(captureSessionID: "session-a", capacity: 10, maximumEntryBytes: 1024)
+        let store = ESAppLogStore(captureSessionID: "session-a", capacity: 10, maximumEntryBytes: 1024)
         _ = store.append(source: .bridge, level: .info, category: "auth", message: "before mark")
         let mark = store.mark()
         _ = store.append(source: .bridge, level: .error, category: "auth", message: "after mark")
@@ -20,12 +20,12 @@ struct DiagnosticsStoreTests {
 
     @Test("read 使用最后扫描的物理 id 推进 cursor,不是最后返回的 entry id")
     func readAdvancesCursorByLastScannedID() {
-        let store = AppLogStore(captureSessionID: "session-a", capacity: 10, maximumEntryBytes: 1024)
+        let store = ESAppLogStore(captureSessionID: "session-a", capacity: 10, maximumEntryBytes: 1024)
         _ = store.append(source: .stdout, level: .unknown, category: nil, message: "stdout-1")
         _ = store.append(source: .bridge, level: .info, category: "auth", message: "bridge-1")
         _ = store.append(source: .stderr, level: .unknown, category: nil, message: "stderr-1")
 
-        let result = store.read(after: AppLogCursor(captureSessionID: "session-a", id: 0),
+        let result = store.read(after: ESAppLogCursor(captureSessionID: "session-a", id: 0),
                                 limit: 10,
                                 sources: [.bridge],
                                 minimumLevel: nil)
@@ -38,12 +38,12 @@ struct DiagnosticsStoreTests {
 
     @Test("read 达到 limit 时返回 hasMore 并停在最后扫描 id")
     func readPaginatesWithHasMore() {
-        let store = AppLogStore(captureSessionID: "session-a", capacity: 10, maximumEntryBytes: 1024)
+        let store = ESAppLogStore(captureSessionID: "session-a", capacity: 10, maximumEntryBytes: 1024)
         _ = store.append(source: .bridge, level: .info, category: "auth", message: "one")
         _ = store.append(source: .bridge, level: .info, category: "auth", message: "two")
         _ = store.append(source: .bridge, level: .info, category: "auth", message: "three")
 
-        let firstPage = store.read(after: AppLogCursor(captureSessionID: "session-a", id: 0),
+        let firstPage = store.read(after: ESAppLogCursor(captureSessionID: "session-a", id: 0),
                                    limit: 2,
                                    sources: [.bridge],
                                    minimumLevel: nil)
@@ -61,7 +61,7 @@ struct DiagnosticsStoreTests {
 
     @Test("read 未传 after 时返回最近记录且不暗示可向旧记录翻页")
     func initialReadDoesNotReportOlderPages() {
-        let store = AppLogStore(captureSessionID: "session-a", capacity: 10, maximumEntryBytes: 1024)
+        let store = ESAppLogStore(captureSessionID: "session-a", capacity: 10, maximumEntryBytes: 1024)
         _ = store.append(source: .bridge, level: .info, category: "auth", message: "one")
         _ = store.append(source: .bridge, level: .info, category: "auth", message: "two")
         _ = store.append(source: .bridge, level: .info, category: "auth", message: "three")
@@ -76,12 +76,12 @@ struct DiagnosticsStoreTests {
 
     @Test("ring buffer 覆盖时 read 返回明确 gap")
     func readReportsBufferOverrunGap() {
-        let store = AppLogStore(captureSessionID: "session-a", capacity: 2, maximumEntryBytes: 1024)
+        let store = ESAppLogStore(captureSessionID: "session-a", capacity: 2, maximumEntryBytes: 1024)
         _ = store.append(source: .bridge, level: .info, category: nil, message: "one")
         _ = store.append(source: .bridge, level: .info, category: nil, message: "two")
         _ = store.append(source: .bridge, level: .info, category: nil, message: "three")
 
-        let result = store.read(after: AppLogCursor(captureSessionID: "session-a", id: 0),
+        let result = store.read(after: ESAppLogCursor(captureSessionID: "session-a", id: 0),
                                 limit: 10,
                                 sources: nil,
                                 minimumLevel: nil)
@@ -94,10 +94,10 @@ struct DiagnosticsStoreTests {
 
     @Test("capture session 不匹配时 read 返回 stale cursor")
     func readRejectsStaleCaptureSession() {
-        let store = AppLogStore(captureSessionID: "session-b", capacity: 10, maximumEntryBytes: 1024)
+        let store = ESAppLogStore(captureSessionID: "session-b", capacity: 10, maximumEntryBytes: 1024)
         _ = store.append(source: .bridge, level: .info, category: nil, message: "current")
 
-        let result = store.read(after: AppLogCursor(captureSessionID: "session-a", id: 0),
+        let result = store.read(after: ESAppLogCursor(captureSessionID: "session-a", id: 0),
                                 limit: 10,
                                 sources: nil,
                                 minimumLevel: nil)
@@ -108,7 +108,7 @@ struct DiagnosticsStoreTests {
 
     @Test("写入前先脱敏再截断")
     func appendRedactsBeforeTruncating() {
-        let store = AppLogStore(captureSessionID: "session-a", capacity: 10, maximumEntryBytes: 64)
+        let store = ESAppLogStore(captureSessionID: "session-a", capacity: 10, maximumEntryBytes: 64)
 
         _ = store.append(source: .bridge,
                          level: .error,
@@ -127,7 +127,7 @@ struct DiagnosticsStoreTests {
 
     @Test("metadata 写入前会限制数量和 key/value 长度并保持脱敏")
     func appendBoundsMetadataSizeAfterRedaction() {
-        let store = AppLogStore(captureSessionID: "session-a",
+        let store = ESAppLogStore(captureSessionID: "session-a",
                                 capacity: 10,
                                 maximumEntryBytes: 1024,
                                 maximumMetadataEntries: 2,

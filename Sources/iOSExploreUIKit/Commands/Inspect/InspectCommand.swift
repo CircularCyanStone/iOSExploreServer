@@ -50,15 +50,15 @@ struct InspectCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的查询参数。
     /// - Returns: 成功时返回 targets 列表；参数非法或 UIKit 上下文不可用时返回业务失败 envelope。
     func handle(_ input: UIInspectInput) async throws -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start input=typed")
+        UIKitCommandLogger.info("command", "command \(action) start input=typed")
         do {
             let data = try await UIInspectCollector.collect(query: input)
             let targetCount = data["targetCount"]?.doubleValue ?? 0
             let visitedCount = data["visitedNodeCount"]?.doubleValue ?? 0
-            UIKitCommandLogging.info("command", "command \(action) completed targetCount=\(targetCount) visitedNodeCount=\(visitedCount)")
+            UIKitCommandLogger.info("command", "command \(action) completed targetCount=\(targetCount) visitedNodeCount=\(visitedCount)")
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         }
     }

@@ -129,7 +129,7 @@ final class ClientSession: Sendable {
 
     /// 启动会话：记录 accepted 日志、订阅连接状态、在 networkQueue 上启动连接并开跑读循环。
     func start() {
-        ExploreLogger.info(.listener, "session accepted id=\(sessionID)")
+        ESLogger.info(.listener, "session accepted id=\(sessionID)")
         connection.stateUpdateHandler = { [weak self] state in
             self?.handleConnectionState(state)
         }
@@ -152,7 +152,7 @@ final class ClientSession: Sendable {
             return true
         }
         guard shouldClose else { return }
-        ExploreLogger.info(.listener, "session closed id=\(sessionID) reason=\(reason)")
+        ESLogger.info(.listener, "session closed id=\(sessionID) reason=\(reason)")
         connection.stateUpdateHandler = nil
         connection.cancel()
         onClose(sessionID)
@@ -165,11 +165,11 @@ final class ClientSession: Sendable {
     private func handleConnectionState(_ connectionState: NWConnection.State) {
         switch connectionState {
         case .ready:
-            ExploreLogger.debug(.listener, "session ready id=\(sessionID)")
+            ESLogger.debug(.listener, "session ready id=\(sessionID)")
         case .waiting(let error):
-            ExploreLogger.error(.listener, "session waiting id=\(sessionID) error=\(error)")
+            ESLogger.error(.listener, "session waiting id=\(sessionID) error=\(error)")
         case .failed(let error):
-            ExploreLogger.error(.listener, "session failed id=\(sessionID) error=\(error)")
+            ESLogger.error(.listener, "session failed id=\(sessionID) error=\(error)")
             close(reason: "connection_failed")
         case .cancelled:
             close(reason: "connection_cancelled")
@@ -190,12 +190,12 @@ final class ClientSession: Sendable {
             }
             await process(request: request)
         } catch SessionError.server(let error) {
-            ExploreLogger.error(.listener, "session error id=\(sessionID) category=\(error.category.rawValue) message=\(error.logMessage)")
+            ESLogger.error(.listener, "session error id=\(sessionID) category=\(error.category.rawValue) message=\(error.logMessage)")
             await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "read_timeout")
         } catch SessionError.closed {
             close(reason: "connection_closed")
         } catch {
-            ExploreLogger.error(.listener, "session error id=\(sessionID) error=\(error)")
+            ESLogger.error(.listener, "session error id=\(sessionID) error=\(error)")
             close(reason: "receive_error")
         }
     }
@@ -210,7 +210,7 @@ final class ClientSession: Sendable {
             let chunk = try await receive()
             let parseResult = state.withLock { state -> HTTPParseResult in
                 state.buffer.append(chunk)
-                ExploreLogger.debug(.listener, "session received id=\(sessionID) chunkBytes=\(chunk.count) totalBytes=\(state.buffer.count)")
+                ESLogger.debug(.listener, "session received id=\(sessionID) chunkBytes=\(chunk.count) totalBytes=\(state.buffer.count)")
                 return HTTPParser.parseRequestResult(from: state.buffer,
                                                      limits: configuration.parseLimits)
             }
@@ -220,7 +220,7 @@ final class ClientSession: Sendable {
             case .incomplete:
                 continue
             case .invalid(let error):
-                ExploreLogger.error(.http, "http parse failed session=\(sessionID) category=\(error.category.rawValue) message=\(error.logMessage)")
+                ESLogger.error(.http, "http parse failed session=\(sessionID) category=\(error.category.rawValue) message=\(error.logMessage)")
                 await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "bad_request")
                 throw SessionError.closed
             }
@@ -235,7 +235,7 @@ final class ClientSession: Sendable {
             connection.receive(minimumIncompleteLength: 1,
                                maximumLength: configuration.receiveMaximumLength) { data, _, isComplete, error in
                 if let error {
-                    ExploreLogger.error(.listener, "session receive error id=\(self.sessionID) error=\(error)")
+                    ESLogger.error(.listener, "session receive error id=\(self.sessionID) error=\(error)")
                     cont.resume(throwing: SessionError.receiveFailed(error.localizedDescription))
                     return
                 }
@@ -260,7 +260,7 @@ final class ClientSession: Sendable {
     private func process(request: HTTPRequest) async {
         guard request.method == "POST", request.path == "/" else {
             let error = ExploreServerError.invalidMethod(method: request.method, path: request.path)
-            ExploreLogger.error(.http, "http rejected session=\(sessionID) message=\(error.logMessage)")
+            ESLogger.error(.http, "http rejected session=\(sessionID) message=\(error.logMessage)")
             await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "bad_request")
             onEvent(.responded(status: 400, ok: false))
             return
@@ -271,13 +271,13 @@ final class ClientSession: Sendable {
         case .success(let req):
             exploreReq = req
         case .failure(let error):
-            ExploreLogger.error(.http, "http rejected session=\(sessionID) message=\(error.logMessage)")
+            ESLogger.error(.http, "http rejected session=\(sessionID) message=\(error.logMessage)")
             await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "bad_request")
             onEvent(.responded(status: 400, ok: false))
             return
         }
 
-        ExploreLogger.info(.http, "http received session=\(sessionID) method=\(request.method) path=\(request.path) action=\(exploreReq.action) bodyBytes=\(request.body.count)")
+        ESLogger.info(.http, "http received session=\(sessionID) method=\(request.method) path=\(request.path) action=\(exploreReq.action) bodyBytes=\(request.body.count)")
         onEvent(.received(method: request.method, path: request.path, action: exploreReq.action))
 
         let result: ExploreResult
@@ -292,11 +292,11 @@ final class ClientSession: Sendable {
                 await router.route(exploreReq)
             }
         } catch SessionError.server(let error) {
-            ExploreLogger.error(.router, "router route failed session=\(sessionID) category=\(error.category.rawValue) message=\(error.logMessage)")
+            ESLogger.error(.router, "router route failed session=\(sessionID) category=\(error.category.rawValue) message=\(error.logMessage)")
             result = .failure(code: error.code, message: error.message)
         } catch {
             let serverError = ExploreServerError.handlerThrown(action: exploreReq.action, error: error)
-            ExploreLogger.error(.router, "router route failed session=\(sessionID) category=\(serverError.category.rawValue) message=\(serverError.logMessage)")
+            ESLogger.error(.router, "router route failed session=\(sessionID) category=\(serverError.category.rawValue) message=\(serverError.logMessage)")
             result = .failure(code: serverError.code, message: serverError.message)
         }
 
@@ -304,7 +304,7 @@ final class ClientSession: Sendable {
         let ok: Bool
         if case .success = result { ok = true } else { ok = false }
         onEvent(.responded(status: 200, ok: ok))
-        ExploreLogger.info(.http, "http responded session=\(sessionID) status=200 ok=\(ok) action=\(exploreReq.action)")
+        ESLogger.info(.http, "http responded session=\(sessionID) status=200 ok=\(ok) action=\(exploreReq.action)")
     }
 
     /// 发送 HTTP 响应并随后关闭连接。
@@ -324,15 +324,15 @@ final class ClientSession: Sendable {
             let error = ExploreServerError.responseTooLarge(action: resolvedAction,
                                                             bytes: response.body.count,
                                                             limit: configuration.maxResponseBodyBytes)
-            ExploreLogger.error(.listener, "session response too large id=\(sessionID) action=\(action ?? "?") bytes=\(response.body.count) limit=\(configuration.maxResponseBodyBytes)")
+            ESLogger.error(.listener, "session response too large id=\(sessionID) action=\(action ?? "?") bytes=\(response.body.count) limit=\(configuration.maxResponseBodyBytes)")
             await send(HTTPParser.errorResponse(for: error), action: action, closeReason: "response_too_large")
             return
         }
-        ExploreLogger.debug(.http, "http send session=\(sessionID) status=\(response.status) bodyBytes=\(response.body.count)")
+        ESLogger.debug(.http, "http send session=\(sessionID) status=\(response.status) bodyBytes=\(response.body.count)")
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             connection.send(content: response.serialized(), completion: .contentProcessed { error in
                 if let error {
-                    ExploreLogger.error(.http, "http send error session=\(self.sessionID) error=\(error)")
+                    ESLogger.error(.http, "http send error session=\(self.sessionID) error=\(error)")
                 }
                 cont.resume()
             })

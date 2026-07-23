@@ -29,17 +29,17 @@ struct UIControlSendActionCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的 control action 输入。
     /// - Returns: 成功时返回目标摘要；失败时返回 `invalid_data` 或 UI 不可用错误。
     func handle(_ input: UIControlSendActionInput) async throws -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start target=\(input.target.logSummary) event=\(input.event.rawValue) valueProvided=\(input.value != nil)")
+        UIKitCommandLogger.info("command", "command \(action) start target=\(input.target.logSummary) event=\(input.event.rawValue) valueProvided=\(input.value != nil)")
         do {
             let plan = UIKitActionPlan.controlEvent(locator: input.target.locator,
                                                     event: input.event,
                                                     value: input.value,
                                                     viewSnapshotID: input.viewSnapshotID)
             let data = try await UIKitActionExecutor.execute(plan)
-            UIKitCommandLogging.info("command", "command \(action) completed target=\(input.target.logSummary) event=\(input.event.rawValue) valueProvided=\(input.value != nil) type=\(data["type"]?.stringValue ?? "unknown")")
+            UIKitCommandLogger.info("command", "command \(action) completed target=\(input.target.logSummary) event=\(input.event.rawValue) valueProvided=\(input.value != nil) type=\(data["type"]?.stringValue ?? "unknown")")
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         }
     }

@@ -55,21 +55,21 @@ enum UIWebViewEvalExecutor {
 
         // 3. 类型校验
         guard let webView = located.view as? WKWebView else {
-            UIKitCommandLogging.error("command", "\(action) target is not WKWebView type=\(String(describing: type(of: located.view)))")
+            UIKitCommandLogger.error("command", "\(action) target is not WKWebView type=\(String(describing: type(of: located.view)))")
             throw UIKitCommandError.invalidData(
                 action: action,
                 message: "target is not a WKWebView (got \(String(describing: type(of: located.view))))"
             )
         }
 
-        UIKitCommandLogging.info("command", "\(action) located WKWebView")
+        UIKitCommandLogger.info("command", "\(action) located WKWebView")
 
         // 执行 JS
         let startTime = Date()
 
         if let script = input.script {
             // 同步模式
-            UIKitCommandLogging.info("command", "\(action) executing sync script")
+            UIKitCommandLogger.info("command", "\(action) executing sync script")
             let result = try await executeSync(webView: webView, script: script, timeout: input.timeout, action: action)
             let elapsed = Date().timeIntervalSince(startTime)
 
@@ -83,7 +83,7 @@ enum UIWebViewEvalExecutor {
         } else if let function = input.function {
             // 异步模式
             if #available(iOS 14.0, *) {
-                UIKitCommandLogging.info("command", "\(action) executing async function")
+                UIKitCommandLogger.info("command", "\(action) executing async function")
                 let result = try await executeAsync(
                     webView: webView,
                     function: function,
@@ -102,7 +102,7 @@ enum UIWebViewEvalExecutor {
                 ])
             } else {
                 // iOS 14 以下降级到同步模式
-                UIKitCommandLogging.info("command", "\(action) iOS < 14.0, downgrade to sync mode")
+                UIKitCommandLogger.info("command", "\(action) iOS < 14.0, downgrade to sync mode")
                 let result = try await executeSync(webView: webView, script: function, timeout: input.timeout, action: action)
                 let elapsed = Date().timeIntervalSince(startTime)
 
@@ -162,12 +162,12 @@ enum UIWebViewEvalExecutor {
             switch firstResult {
             case .success(let jsResult):
                 if let error = jsResult.error {
-                    UIKitCommandLogging.error("command", "\(action) JS execution failed error=\(error)")
+                    UIKitCommandLogger.error("command", "\(action) JS execution failed error=\(error)")
                     throw UIKitCommandError.invalidData(action: action, message: "JS execution failed: \(error.localizedDescription)")
                 }
                 return serializeJSResult(jsResult.result)
             case .failure:
-                UIKitCommandLogging.error("command", "\(action) JS execution timed out after \(timeout)s")
+                UIKitCommandLogger.error("command", "\(action) JS execution timed out after \(timeout)s")
                 throw UIKitCommandError.invalidData(action: action, message: "JS execution timed out after \(Int(timeout))s")
             }
         }
@@ -233,12 +233,12 @@ enum UIWebViewEvalExecutor {
             switch firstResult {
             case .success(let jsResult):
                 if let error = jsResult.error {
-                    UIKitCommandLogging.error("command", "\(action) async JS execution failed error=\(error)")
+                    UIKitCommandLogger.error("command", "\(action) async JS execution failed error=\(error)")
                     throw UIKitCommandError.invalidData(action: action, message: "JS execution failed: \(error.localizedDescription)")
                 }
                 return serializeJSResult(jsResult.result)
             case .failure:
-                UIKitCommandLogging.error("command", "\(action) async JS execution timed out after \(timeout)s")
+                UIKitCommandLogger.error("command", "\(action) async JS execution timed out after \(timeout)s")
                 throw UIKitCommandError.invalidData(action: action, message: "JS execution timed out after \(Int(timeout))s")
             }
         }
@@ -277,7 +277,7 @@ enum UIWebViewEvalExecutor {
         }
 
         // 不可序列化类型（DOM 节点、Function 等）
-        UIKitCommandLogging.info("command", "JS result not serializable type=\(String(describing: type(of: result)))")
+        UIKitCommandLogger.info("command", "JS result not serializable type=\(String(describing: type(of: result)))")
         return (.null, "object")
     }
 }

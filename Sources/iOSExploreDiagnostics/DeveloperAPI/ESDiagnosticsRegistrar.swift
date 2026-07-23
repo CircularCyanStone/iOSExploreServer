@@ -11,9 +11,9 @@ public extension ExploreServer {
     /// - Parameter configuration: Diagnostics 配置。
     /// - Returns: 注册结果，包含当前 capture session id。
     @discardableResult
-    func registerDiagnosticsCommands(_ configuration: DiagnosticsConfiguration = .default) -> DiagnosticsRegistration {
+    func registerDiagnosticsCommands(_ configuration: ESDiagnosticsConfiguration = .default) -> ESDiagnosticsRegistration {
 #if DEBUG
-        return ProcessDiagnosticsRuntime.shared.register(on: self, configuration: configuration)
+        return ESDiagnosticsRuntime.shared.register(on: self, configuration: configuration)
 #else
         return .disabled(reason: "iOSExploreDiagnostics is disabled in non-Debug builds.")
 #endif

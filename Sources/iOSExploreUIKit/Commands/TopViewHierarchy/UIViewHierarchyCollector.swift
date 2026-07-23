@@ -15,7 +15,7 @@ enum UIViewHierarchyCollector {
     /// - Returns: 层级 JSON。
     /// - Throws: `UIKitCommandError.hierarchyUnavailable`——UIKit 上下文不可用时。
     static func collectTopViewHierarchy(query: UIViewHierarchyInput) throws -> JSON {
-        UIKitCommandLogging.info("command", "ui hierarchy collect mainactor start detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
+        UIKitCommandLogger.info("command", "ui hierarchy collect mainactor start detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
         let context = try UIKitContextProvider.currentContext(action: TopViewHierarchyCommand.actionName)
         return try collectTopViewHierarchy(query: query, context: context)
     }
@@ -35,7 +35,7 @@ enum UIViewHierarchyCollector {
         let isControllerOverride: Bool
         if let controllerPath = query.controller {
             guard let parsed = parseControllerPath(controllerPath) else {
-                UIKitCommandLogging.error("command", "ui hierarchy collect controller path parse failed path=\(controllerPath)")
+                UIKitCommandLogger.error("command", "ui hierarchy collect controller path parse failed path=\(controllerPath)")
                 throw UIKitCommandError.invalidData(
                     action: TopViewHierarchyCommand.actionName,
                     message: "invalid controller path: \(controllerPath)"
@@ -44,11 +44,11 @@ enum UIViewHierarchyCollector {
             do {
                 let targetController = try UIControllerResolver.resolve(from: context.rootViewController, path: parsed)
                 if !targetController.isViewLoaded {
-                    UIKitCommandLogging.info("command", "ui hierarchy collect controller view not loaded, calling loadViewIfNeeded() path=\(controllerPath)")
+                    UIKitCommandLogger.info("command", "ui hierarchy collect controller view not loaded, calling loadViewIfNeeded() path=\(controllerPath)")
                     targetController.loadViewIfNeeded()
                 }
                 guard let overrideRoot = targetController.view else {
-                    UIKitCommandLogging.error("command", "ui hierarchy collect controller view is nil path=\(controllerPath)")
+                    UIKitCommandLogger.error("command", "ui hierarchy collect controller view is nil path=\(controllerPath)")
                     throw UIKitCommandError.hierarchyUnavailable(
                         action: TopViewHierarchyCommand.actionName,
                         reason: "controller view is nil (path=\(controllerPath))"
@@ -58,10 +58,10 @@ enum UIViewHierarchyCollector {
                 controllerLog = controllerPath
                 isControllerOverride = true
             } catch let resolveError as UIKitCommandError {
-                UIKitCommandLogging.error("command", resolveError.failure.logMessage)
+                UIKitCommandLogger.error("command", resolveError.failure.logMessage)
                 throw resolveError
             } catch {
-                UIKitCommandLogging.error("command", "ui hierarchy collect controller resolve failed path=\(controllerPath) error=\(error)")
+                UIKitCommandLogger.error("command", "ui hierarchy collect controller resolve failed path=\(controllerPath) error=\(error)")
                 throw UIKitCommandError.targetNotFound(
                     action: TopViewHierarchyCommand.actionName,
                     message: "controller path not found: \(controllerPath)",
@@ -78,7 +78,7 @@ enum UIViewHierarchyCollector {
             controllerLog = "default"
             isControllerOverride = false
         }
-        UIKitCommandLogging.info("command", "ui hierarchy collect start controller=\(controllerLog) detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
+        UIKitCommandLogger.info("command", "ui hierarchy collect start controller=\(controllerLog) detailLevel=\(query.detailLevel.rawValue) maxDepth=\(query.maxDepth.map(String.init) ?? "none") includeHidden=\(query.includeHidden) hasFilter=\(query.hasIdentifierFilter)")
 
         let element = UIKitViewElement(view: rootView, skipWindowGuard: isControllerOverride)
 
@@ -99,7 +99,7 @@ enum UIViewHierarchyCollector {
             data["controllerNote"] = .string("传入 controller 参数采集的视图层级来自非栈顶控制器，节点 path 相对于该控制器 view 而非当前栈顶 view，不可用于 ui.tap / ui.inspect / ui.control.sendAction 等操作的定位。要获取可操作 target 请用不带 controller 参数的 ui.inspect。")
             data["root"] = .object(root.toJSON(includePath: false))
             data["nodeCount"] = .double(Double(root.nodeCount))
-            UIKitCommandLogging.info("command", "ui hierarchy collect completed mode=controllerNote nodeCount=\(root.nodeCount) controllerPath=\(controllerLog)")
+            UIKitCommandLogger.info("command", "ui hierarchy collect completed mode=controllerNote nodeCount=\(root.nodeCount) controllerPath=\(controllerLog)")
         } else {
             let root = UIViewHierarchyBuilder.build(from: element, query: query)
             // topViewHierarchy 不签发 viewSnapshotID：结构化 freshness / locator 签发是 ui.inspect
@@ -127,10 +127,10 @@ enum UIViewHierarchyCollector {
                 let matches = UIViewHierarchyBuilder.matches(in: element, query: query)
                 data["matches"] = .array(matches.map { .object($0.toJSON()) })
                 data["matchCount"] = .double(Double(matches.count))
-                UIKitCommandLogging.info("command", "ui hierarchy collect completed mode=matches nodeCount=\(root.nodeCount) matchCount=\(matches.count)")
+                UIKitCommandLogger.info("command", "ui hierarchy collect completed mode=matches nodeCount=\(root.nodeCount) matchCount=\(matches.count)")
             } else {
                 data["root"] = .object(root.toJSON())
-                UIKitCommandLogging.info("command", "ui hierarchy collect completed mode=root nodeCount=\(root.nodeCount) rootType=\(root.type)")
+                UIKitCommandLogger.info("command", "ui hierarchy collect completed mode=root nodeCount=\(root.nodeCount) rootType=\(root.type)")
             }
         }
         return data
@@ -230,7 +230,7 @@ private struct UIKitViewElement: UIViewHierarchyElement {
             if isInWindowHierarchy {
                 subviews = view.subviews
             } else {
-                UIKitCommandLogging.info("command", "ui hierarchy collect skip detached subtree type=\(self.type) reason=nil-window")
+                UIKitCommandLogger.info("command", "ui hierarchy collect skip detached subtree type=\(self.type) reason=nil-window")
                 subviews = []
             }
         }

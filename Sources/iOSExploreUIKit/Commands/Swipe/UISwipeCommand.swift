@@ -34,20 +34,20 @@ struct SwipeCommand: Command {
     /// - Returns: 成功时返回滑动结果；失败时返回业务失败 envelope。
     func handle(_ input: UISwipeInput) async -> ExploreResult {
         let distanceDescription = input.distance.map { String(format: "%.2f", $0) } ?? "default"
-        UIKitCommandLogging.info("command", "command \(action) start direction=\(input.direction.rawValue) distance=\(distanceDescription) target=\(input.locator?.logSummary ?? "keyWindow")")
+        UIKitCommandLogger.info("command", "command \(action) start direction=\(input.direction.rawValue) distance=\(distanceDescription) target=\(input.locator?.logSummary ?? "keyWindow")")
         do {
             let data = try await MainActor.run {
                 let context = try UIKitContextProvider.currentContext(action: SwipeCommand.actionName)
                 return try UISwipeExecutor.execute(input: input, context: context)
             }
-            UIKitCommandLogging.info("command", "command \(action) completed path=\(data["path"]?.stringValue ?? "nil") route=\(data["route"]?.stringValue ?? "unknown")")
+            UIKitCommandLogger.info("command", "command \(action) completed path=\(data["path"]?.stringValue ?? "nil") route=\(data["route"]?.stringValue ?? "unknown")")
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         } catch {
             let wrapped = UIKitCommandError.hierarchyUnavailable(action: SwipeCommand.actionName, reason: "\(error)")
-            UIKitCommandLogging.error("command", wrapped.failure.logMessage)
+            UIKitCommandLogger.error("command", wrapped.failure.logMessage)
             return wrapped.result
         }
     }

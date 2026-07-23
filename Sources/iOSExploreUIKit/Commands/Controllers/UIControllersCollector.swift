@@ -27,7 +27,7 @@ enum UIControllersCollector {
     /// - Returns: 结构骨架 JSON。
     /// - Throws: `UIKitCommandError.hierarchyUnavailable`——active window / root / top 任一不可用时。
     static func collect(query: UIControllersInput) throws -> JSON {
-        UIKitCommandLogging.info("command", "ui controllers collect mainactor start maxDepth=\(query.maxDepth.map(String.init) ?? "none")")
+        UIKitCommandLogger.info("command", "ui controllers collect mainactor start maxDepth=\(query.maxDepth.map(String.init) ?? "none")")
         let context = try UIKitContextProvider.currentContext(action: ControllersCommand.actionName)
         return collect(query: query, context: context)
     }
@@ -63,7 +63,7 @@ enum UIControllersCollector {
             "topPath": topPath.map(JSONValue.string) ?? .null,
         ]
         data["root"] = .object(root.toJSON())
-        UIKitCommandLogging.info("command", "ui controllers collect completed controllerCount=\(root.nodeCount) topPath=\(topPath ?? "none")")
+        UIKitCommandLogger.info("command", "ui controllers collect completed controllerCount=\(root.nodeCount) topPath=\(topPath ?? "none")")
         return data
     }
 

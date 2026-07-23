@@ -143,7 +143,7 @@ public enum ExploreResult: Sendable, Equatable {
 /// 通信失败用 HTTP 状态码表达，业务失败统一 HTTP 200 + 顶层 `code`。新增能力（如 UIKit、
 /// Diagnostics 扩展命令）的业务错误码必须先在此枚举落点，再由各模块错误类型
 /// （`ExploreServerError` 的相关 `static func`、`UIKitCommandError`、
-/// `DiagnosticsCommandError`）引用，避免在调用点散写字符串。
+/// `ESDiagnosticsCommandError`）引用，避免在调用点散写字符串。
 public enum ExploreError: String, Sendable {
     /// `Router` 没有找到请求 action 对应的命令。
     case unknownAction = "unknown_action"

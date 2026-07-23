@@ -11,8 +11,9 @@ iOS App HTTP Server 的 SPM 库（基于 `NWListener`）。Mac 经 `iproxy`（US
 5. **Swift 6.2 严格并发**：跨边界模型 `Sendable`，共享状态用 `Mutex`，闭包 `@Sendable`。
 6. **通信失败用 HTTP 状态码（400/500），业务失败用 HTTP 200 + body 失败 code/message**。
 7. **内置命令在 `ExploreServer.init` 同步注册一次**；UIKit 命令由宿主显式 `server.registerUIKitCommands()` 注册。
-8. **开发期只留最合理设计**：任何设计不合理的地方都应推到最合理方案，不保留"能用先这样"的妥协代码。改完代码先 `swift test` 再说完成。
-9. **通用 skills 必须与本地项目解耦**：`.codex/skills` / `.claude/skills` 是可迁移能力说明，开发期间不得在 skill 本体里写入本仓库项目名、示例 App、测试工程路径、bundle id、设备 ID、测试账号、本机绝对路径或任何本地开发/测试项目内容；需要真实案例时放到 `docs/skills/examples/` 或仓库文档中，并在 skill 本体只保留占位符和通用规则。
+8. **开发期只留最合理设计**：任何设计不合理的地方都应推到最合理方案，不保留"能用先这样"的妥协代码。
+9. **验证按影响范围选择**：不要机械全量跑 `swift test`。只读、解释、查文件不跑测试；只改文档、README、注释时默认不跑测试，必要时只做链接、路径或格式检查；只移动文件或调整目录结构时优先做轻量验证（如 `swift build`、`swift package describe` 或相关工程引用检查），只有影响编译引用、target 配置或 public API 时才升级测试；改源码逻辑、HTTP 协议、命令行为、并发、网络、日志捕获、错误码或 public API 时，先跑与改动直接相关的定向测试，风险高或改动跨模块时再跑全量 `swift test`。如果用户明确要求不跑测试，不得擅自运行，只报告未验证风险。
+10. **通用 skills 必须与本地项目解耦**：`.codex/skills` / `.claude/skills` 是可迁移能力说明，开发期间不得在 skill 本体里写入本仓库项目名、示例 App、测试工程路径、bundle id、设备 ID、测试账号、本机绝对路径或任何本地开发/测试项目内容；需要真实案例时放到 `docs/skills/examples/` 或仓库文档中，并在 skill 本体只保留占位符和通用规则。
 
 ## 通用 Skill 内容治理（必须执行）
 

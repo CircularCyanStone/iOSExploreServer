@@ -173,7 +173,7 @@ enum UIKitActionExecutor {
             // [SPIKE] cell 子树优先：cell 内子 view 上挂的 _longPressGestureRecognized: 是误触，
             // 先尝试 cellSelection 看是否能 invoke selectGestureHandler: 触发真实 didSelectRow。
             if let cellAttempt = UIGestureTargetExecutor.executeCellSelection(on: located.view) {
-                UIKitCommandLogging.info("command",
+                UIKitCommandLogger.info("command",
                     "ui tap cell selection route=\(cellAttempt.activationRoute) path=\(located.pathString) type=\(cellAttempt.viewType) container=\(cellAttempt.containerViewType ?? "nil") indexPath=\(cellAttempt.indexPathSummary.map { "\($0.section)-\($0.item)" } ?? "nil")")
                 return [
                     "activated": .bool(cellAttempt.activated),
@@ -187,7 +187,7 @@ enum UIKitActionExecutor {
             }
             if !(located.view is UIControl),
                let triggered = UIGestureTargetExecutor.execute(on: located.view), !triggered.isEmpty {
-                UIKitCommandLogging.info("command",
+                UIKitCommandLogger.info("command",
                     "ui tap default activation route=gesture.targetAction path=\(located.pathString) type=\(String(describing: Swift.type(of: located.view))) triggered=\(triggered.count)")
                 return [
                     "activated": .bool(true),
@@ -216,7 +216,7 @@ enum UIKitActionExecutor {
             // 与人类触摸语义不一致。disabled 时返回 activated:false 让 agent 知晓按钮未响应。
             // 见 F-18。
             if !control.isEnabled {
-                UIKitCommandLogging.info("command", "ui tap default activation route=control.touchUpInside skipped disabled path=\(located.pathString) type=\(String(describing: Swift.type(of: control)))")
+                UIKitCommandLogger.info("command", "ui tap default activation route=control.touchUpInside skipped disabled path=\(located.pathString) type=\(String(describing: Swift.type(of: control)))")
                 return [
                     "activated": .bool(false),
                     "activationRoute": .string(route.rawValue),
@@ -225,7 +225,7 @@ enum UIKitActionExecutor {
                     "reason": .string("disabled"),
                 ]
             }
-            UIKitCommandLogging.info("command", "ui tap default activation route=control.touchUpInside path=\(located.pathString) type=\(String(describing: Swift.type(of: control)))")
+            UIKitCommandLogger.info("command", "ui tap default activation route=control.touchUpInside path=\(located.pathString) type=\(String(describing: Swift.type(of: control)))")
             control.sendActions(for: .touchUpInside)
             return [
                 "activated": .bool(true),
@@ -242,7 +242,7 @@ enum UIKitActionExecutor {
                                                           type: String(describing: Swift.type(of: located.view)))
             }
             let previous = switchView.isOn
-            UIKitCommandLogging.info("command", "ui tap default activation route=switch.toggle path=\(located.pathString) previous=\(previous)")
+            UIKitCommandLogger.info("command", "ui tap default activation route=switch.toggle path=\(located.pathString) previous=\(previous)")
             switchView.setOn(!previous, animated: false)
             switchView.sendActions(for: .valueChanged)
             return [
@@ -255,7 +255,7 @@ enum UIKitActionExecutor {
                 "currentValue": .bool(switchView.isOn),
             ]
         case .inputFocus:
-            UIKitCommandLogging.info("command", "ui tap default activation route=input.focus path=\(located.pathString) type=\(String(describing: Swift.type(of: located.view)))")
+            UIKitCommandLogger.info("command", "ui tap default activation route=input.focus path=\(located.pathString) type=\(String(describing: Swift.type(of: located.view)))")
             let focused = located.view.becomeFirstResponder()
             guard focused else {
                 throw UIKitCommandError.becomeFirstResponderFailed(action: tapAction, target: located.pathString)
@@ -329,7 +329,7 @@ enum UIKitActionExecutor {
 
         applyValue(value, to: control)
 
-        UIKitCommandLogging.info("command", "ui control send action mainactor target=\(located.pathString) type=\(String(describing: Swift.type(of: control))) event=\(event.rawValue) enabled=\(control.isEnabled) valueProvided=\(value != nil)")
+        UIKitCommandLogger.info("command", "ui control send action mainactor target=\(located.pathString) type=\(String(describing: Swift.type(of: control))) event=\(event.rawValue) enabled=\(control.isEnabled) valueProvided=\(value != nil)")
         control.sendActions(for: event.uiControlEvent)
 
         let current = controlValue(control)

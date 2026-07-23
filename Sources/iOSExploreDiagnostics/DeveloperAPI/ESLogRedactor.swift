@@ -4,9 +4,9 @@ import Foundation
 ///
 /// Diagnostics 在写入 store 前统一调用它，确保内存中不保存 token、cookie、password 等明显
 /// 敏感内容。规则保持保守，不尝试理解完整业务 payload。
-public struct LogRedactor: Sendable, Equatable {
+public struct ESLogRedactor: Sendable, Equatable {
     /// 默认脱敏规则。
-    public static let standard = LogRedactor()
+    public static let standard = ESLogRedactor()
 
     private let sensitiveKeys: Set<String> = [
         "authorization",

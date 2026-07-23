@@ -31,15 +31,15 @@ struct ControllersCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的查询参数。
     /// - Returns: 成功时返回骨架树；UIKit 上下文不可用时返回业务失败 envelope。
     func handle(_ input: UIControllersInput) async throws -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start input=typed")
+        UIKitCommandLogger.info("command", "command \(action) start input=typed")
         do {
             let data = try await UIControllersCollector.collect(query: input)
             let controllerCount = data["controllerCount"]?.doubleValue ?? 0
             let topPath = data["topPath"]?.stringValue
-            UIKitCommandLogging.info("command", "command \(action) completed controllerCount=\(controllerCount) topPath=\(topPath ?? "none")")
+            UIKitCommandLogger.info("command", "command \(action) completed controllerCount=\(controllerCount) topPath=\(topPath ?? "none")")
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         }
     }

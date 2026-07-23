@@ -41,7 +41,13 @@ let package = Package(
         ),
         .target(
             name: "iOSExploreDiagnostics",
-            dependencies: ["iOSExploreServer"]
+            dependencies: ["iOSExploreServer", "CFishhook"]
+        ),
+        // fishhook 的 C 封装 target。Diagnostics 使用它增强 Objective-C NSLog 捕获，
+        // 仅在宿主显式打开 captureNSLog 时安装。
+        .target(
+            name: "CFishhook",
+            publicHeadersPath: "include"
         ),
         .testTarget(
             name: "iOSExploreServerTests",

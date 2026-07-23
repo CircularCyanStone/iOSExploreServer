@@ -40,7 +40,7 @@ extension UIAlertController {
             throw ExploreActionDismissFailure.methodUnavailable
         }
         perform(selector, with: action)
-        UIKitCommandLogging.info("command",
+        UIKitCommandLogger.info("command",
             "ui alert dismissed with action via system entry title=\(action.title ?? "nil")")
     }
 }

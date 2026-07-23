@@ -50,7 +50,7 @@
 |---|---|---|---|---|
 | **F-16** | **P0** | 库 bug | `ui.topViewHierarchy` 经 `text.value` 泄露密码明文（非编辑态、默认参数） | ✅ 动态确认 100% |
 | **F-01** | **P0** | 库 bug | `ui.inspect` 编辑态 UIFieldEditor 子节点泄露密码 | ✅ 动态确认 100%（仍未修复） |
-| F-17 | P1 | 示例App | AuthService 预置密码明文进 os_log，LogRedactor 脱敏不掉 | ✅ 代码确认 |
+| F-17 | P1 | 示例App | AuthService 预置密码明文进 os_log，ESLogRedactor 脱敏不掉 | ✅ 代码确认 |
 | F-18 | P1 | 库 bug | `ui.tap` 用 `sendActions` 不校验 `isEnabled`，禁用态按钮仍触发 | ✅ 动态确认 |
 | F-19 | P1 | 示例App | 登录/注册/重置按钮 action 无防抖，`isEnabled` 在 async Task 内才置位 | ✅ 动态确认（双登录铁证） |
 | F-20 | P1 | 示例App | 注册 in-flight 时 `navigation.back` 打断，成功 alert 丢失 | ✅ 动态确认 |
@@ -167,11 +167,11 @@
   ```
 - **修复方向**：注册/重置回调里 `present` 前检查 `self.view.window != nil`（或 `self.navigationController != nil`），已离屏时改用其他反馈（如在 LoginVC 上 present，或 delegate/通知）。
 
-### F-17【P1·示例App】预置密码明文进 os_log，LogRedactor 脱敏不掉
+### F-17【P1·示例App】预置密码明文进 os_log，ESLogRedactor 脱敏不掉
 
-- **现象**：`AuthService.swift:31` `logger.info("🔐 AuthService 初始化完成，预置测试账号: test/123456")`。SPMExample 在 DEBUG 全开捕获（`AppDelegate.swift:169-174` captureOSLog:true），该日志经 `app.logs.read` 返回明文 `123456`。`LogRedactor` 的正则只认 `password=xxx`/`"password":"xxx"`/`Authorization: Bearer xxx` 等 key 前缀格式，裸值 `test/123456` 不匹配 → 原样返回。
+- **现象**：`AuthService.swift:31` `logger.info("🔐 AuthService 初始化完成，预置测试账号: test/123456")`。SPMExample 在 DEBUG 全开捕获（`AppDelegate.swift:169-174` captureOSLog:true），该日志经 `app.logs.read` 返回明文 `123456`。`ESLogRedactor` 的正则只认 `password=xxx`/`"password":"xxx"`/`Authorization: Bearer xxx` 等 key 前缀格式，裸值 `test/123456` 不匹配 → 原样返回。
 - **对照**：`AuthService.swift:73` 的 `token=\(token)` 命中 regex 被脱敏为 `token=[REDACTED]` —— 但这依赖日志格式巧合，脆弱。
-- **修复方向**：示例 App 删 `AuthService.swift:31` 的明文密码（改为「预置测试账号: test」）；库文档明确 LogRedactor 只覆盖 key=value/JSON key 格式，宿主不应 log 裸敏感值。
+- **修复方向**：示例 App 删 `AuthService.swift:31` 的明文密码（改为「预置测试账号: test」）；库文档明确 ESLogRedactor 只覆盖 key=value/JSON key 格式，宿主不应 log 裸敏感值。
 
 ### F-32 / F-33 / F-34【P1·skill↔库不一致】
 

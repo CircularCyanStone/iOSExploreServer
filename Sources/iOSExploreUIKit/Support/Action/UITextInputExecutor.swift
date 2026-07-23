@@ -34,7 +34,7 @@ enum UITextInputExecutor {
         var results: [JSONValue] = []
         var failedIndex: Int?
         for (index, field) in input.fields.enumerated() {
-            UIKitCommandLogging.info("command", "command \(action) field[\(index)] start target=\(field.target.logSummary) mode=\(field.mode.rawValue) submit=\(field.submit) textLen=\(field.text.count)")
+            UIKitCommandLogger.info("command", "command \(action) field[\(index)] start target=\(field.target.logSummary) mode=\(field.mode.rawValue) submit=\(field.submit) textLen=\(field.text.count)")
             do {
                 let data = try execute(field: field, viewSnapshotID: input.viewSnapshotID, context: context)
                 var payload = data.storage
@@ -43,7 +43,7 @@ enum UITextInputExecutor {
                 payload["code"] = .string("ok")
                 payload["target"] = .string(field.target.logSummary)
                 results.append(.object(JSON(payload)))
-                UIKitCommandLogging.info("command", "command \(action) field[\(index)] completed target=\(field.target.logSummary)")
+                UIKitCommandLogger.info("command", "command \(action) field[\(index)] completed target=\(field.target.logSummary)")
             } catch let error as UIKitCommandError {
                 if failedIndex == nil {
                     failedIndex = index
@@ -59,7 +59,7 @@ enum UITextInputExecutor {
                     payload["data"] = .object(data)
                 }
                 results.append(.object(payload))
-                UIKitCommandLogging.error("command", "command \(action) field[\(index)] failed code=\(error.failure.code.rawValue) target=\(field.target.logSummary)")
+                UIKitCommandLogger.error("command", "command \(action) field[\(index)] failed code=\(error.failure.code.rawValue) target=\(field.target.logSummary)")
                 if input.stopOnFailure {
                     break
                 }
@@ -163,7 +163,7 @@ enum UITextInputExecutor {
             responder.resignFirstResponder()
         }
 
-        UIKitCommandLogging.info("command", "ui input completed type=\(String(describing: type(of: view))) mode=\(field.mode.rawValue) finalLen=\(finalText.count) secure=\(secure)")
+        UIKitCommandLogger.info("command", "ui input completed type=\(String(describing: type(of: view))) mode=\(field.mode.rawValue) finalLen=\(finalText.count) secure=\(secure)")
 
         let masked = String(repeating: "•", count: finalText.count)
         if secure {

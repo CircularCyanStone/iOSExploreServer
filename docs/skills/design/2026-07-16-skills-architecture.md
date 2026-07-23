@@ -154,7 +154,7 @@
 | source | 含义 | 默认 | 开启方式 |
 |---|---|---|---|
 | `explore` | iOSExploreServer 内部日志 | 开 | `captureExploreLogs`(默认 true) |
-| `bridge` | App 调 `ExploreAppLog.emit(...)` 主动写 | 开 | `enableBridge`(默认 true,最稳定) |
+| `bridge` | App 调 `ESAppLogger.emit(...)` 主动写 | 开 | `enableBridge`(默认 true,最稳定) |
 | `stdout` | `print` 等 | 关 | `captureStdout` |
 | `stderr` | 错误输出(level 固定 error) | 关 | `captureStderr` |
 | `nslog` | `NSLog` | 关 | `captureNSLog` |
@@ -169,7 +169,7 @@
 | `nslog` | ⚠️ 依赖系统实现 | ⚠️ 依赖系统实现 | 依赖 `NSLog` 是否落到 stderr 或可被 `OSLogStore` 读取,由系统实现决定;以 `capture.state` 为准 |
 | `oslog` | ⚠️ 依赖系统权限 | ⚠️ 依赖系统权限 | 依赖系统是否允许当前进程读 `OSLogStore`(需 iOS 15+/macOS 12+);**源码无模拟器特殊分支**,以 `capture.state` 为准 |
 
-> **⚠️ 不要把"模拟器/真机"写成确定的平台断言**。`UnifiedLogCapture.swift` 的 oslog 逻辑只判断"系统是否允许当前进程读 `OSLogStore` + iOS 15+/macOS 12+",**没有模拟器特殊分支**;模拟器跑的是真实 iOS 内核,`OSLogStore(.currentProcessIdentifier)` 能否读取取决于系统权限而非"模拟器一定不行"。实施前必须在模拟器与真机各实测一次 `app.logs.read`(sources:`["oslog"]`、`["nslog"]`)填入实际观察;skill 正文统一教 agent 读 `capture.state` 判断,不按平台假设。
+> **⚠️ 不要把"模拟器/真机"写成确定的平台断言**。`ESUnifiedLogCapture.swift` 的 oslog 逻辑只判断"系统是否允许当前进程读 `OSLogStore` + iOS 15+/macOS 12+",**没有模拟器特殊分支**;模拟器跑的是真实 iOS 内核,`OSLogStore(.currentProcessIdentifier)` 能否读取取决于系统权限而非"模拟器一定不行"。实施前必须在模拟器与真机各实测一次 `app.logs.read`(sources:`["oslog"]`、`["nslog"]`)填入实际观察;skill 正文统一教 agent 读 `capture.state` 判断,不按平台假设。
 
 ### `unavailable` 语义(必须强调)
 `app.logs.mark`/`read` 返回的 `capture` 字段有三态:
@@ -182,7 +182,7 @@
 ### 与 L2 的衔接
 `ios-test-runner` 用 `app.logs.read` 做断言时,必须前置检查对应 source 的 `capture.state`:
 - 只有 `enabled` 的 source 才能作为有效日志判据。
-- 模拟器上 `oslog` 判据自动降级(跳过或改用 `bridge`/`stdout`,要求被测 App 在关键点 `ExploreAppLog.emit`)。
+- 模拟器上 `oslog` 判据自动降级(跳过或改用 `bridge`/`stdout`,要求被测 App 在关键点 `ESAppLogger.emit`)。
 
 ---
 

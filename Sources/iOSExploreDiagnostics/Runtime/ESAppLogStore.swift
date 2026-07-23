@@ -1,24 +1,24 @@
 import Foundation
 import iOSExploreServer
 
-private struct AppLogStoreState: Sendable {
+private struct ESAppLogStoreState: Sendable {
     var nextID: UInt64 = 1
-    var entries: [AppLogEntry] = []
+    var entries: [ESAppLogEntry] = []
 }
 
 /// 有界进程日志存储。
 ///
-/// `AppLogStore` 是 Diagnostics Runtime 的内存事实来源：所有日志先完成脱敏和截断，再在锁内
+/// `ESAppLogStore` 是 Diagnostics Runtime 的内存事实来源：所有日志先完成脱敏和截断，再在锁内
 /// 分配物理 id、写入 ring buffer。锁内不执行 IO、不 await，适合被日志高频路径调用。
-public final class AppLogStore: Sendable {
+final class ESAppLogStore: Sendable {
     private let captureSessionID: String
     private let capacity: Int
     private let maximumEntryBytes: Int
     private let maximumMetadataEntries: Int
     private let maximumMetadataKeyBytes: Int
     private let maximumMetadataValueBytes: Int
-    private let redactor: LogRedactor
-    private let state = Mutex(AppLogStoreState())
+    private let redactor: ESLogRedactor
+    private let state = Mutex(ESAppLogStoreState())
 
     /// 创建日志 store。
     ///
@@ -30,13 +30,13 @@ public final class AppLogStore: Sendable {
     ///   - maximumMetadataKeyBytes: 单个 metadata key 最大 UTF-8 字节数，至少为 1。
     ///   - maximumMetadataValueBytes: 单个 metadata value 最大 UTF-8 字节数，至少为 1。
     ///   - redactor: 写入前使用的脱敏器。
-    public init(captureSessionID: String,
+    init(captureSessionID: String,
                 capacity: Int,
                 maximumEntryBytes: Int,
                 maximumMetadataEntries: Int = 32,
                 maximumMetadataKeyBytes: Int = 128,
                 maximumMetadataValueBytes: Int = 1024,
-                redactor: LogRedactor = .standard) {
+                redactor: ESLogRedactor = .standard) {
         self.captureSessionID = captureSessionID
         self.capacity = max(1, capacity)
         self.maximumEntryBytes = max(1, maximumEntryBytes)
@@ -56,8 +56,8 @@ public final class AppLogStore: Sendable {
     ///   - metadata: 原始轻量上下文，写入前会脱敏。
     /// - Returns: store 分配的物理日志 id。
     @discardableResult
-    public func append(source: AppLogSource,
-                       level: AppLogLevel,
+    func append(source: ESAppLogSource,
+                       level: ESAppLogLevel,
                        category: String?,
                        message: String,
                        metadata: [String: String]? = nil) -> UInt64 {
@@ -67,7 +67,7 @@ public final class AppLogStore: Sendable {
         return state.withLock { state in
             let id = state.nextID
             state.nextID += 1
-            let entry = AppLogEntry(id: id,
+            let entry = ESAppLogEntry(id: id,
                                     timestamp: Date(),
                                     source: source,
                                     level: level,
@@ -86,9 +86,9 @@ public final class AppLogStore: Sendable {
     /// 建立当前日志检查点。
     ///
     /// - Returns: 最新 cursor 与当前可用 id 范围。
-    public func mark() -> AppLogMarkSnapshot {
+    func mark() -> ESAppLogMarkSnapshot {
         state.withLock { state in
-            AppLogMarkSnapshot(cursor: AppLogCursor(captureSessionID: captureSessionID, id: state.nextID - 1),
+            ESAppLogMarkSnapshot(cursor: ESAppLogCursor(captureSessionID: captureSessionID, id: state.nextID - 1),
                                oldestAvailableID: state.entries.first?.id,
                                latestAvailableID: state.nextID - 1)
         }
@@ -102,18 +102,18 @@ public final class AppLogStore: Sendable {
     ///   - sources: 可选来源过滤。
     ///   - minimumLevel: 可选等级过滤；`.unknown` 仅在调用方显式传入 `.unknown` 时参与比较。
     /// - Returns: 读取结果，包含分页 cursor、gap 与 stale cursor 状态。
-    public func read(after: AppLogCursor?,
+    func read(after: ESAppLogCursor?,
                      limit: Int,
-                     sources: Set<AppLogSource>?,
-                     minimumLevel: AppLogLevel?) -> AppLogReadResult {
+                     sources: Set<ESAppLogSource>?,
+                     minimumLevel: ESAppLogLevel?) -> ESAppLogReadResult {
         state.withLock { state in
             let latestID = state.nextID - 1
-            let capturedThrough = AppLogCursor(captureSessionID: captureSessionID, id: latestID)
+            let capturedThrough = ESAppLogCursor(captureSessionID: captureSessionID, id: latestID)
             let boundedLimit = max(1, limit)
             let oldestID = state.entries.first?.id
 
             if let after, after.captureSessionID != captureSessionID {
-                return AppLogReadResult(entries: [],
+                return ESAppLogReadResult(entries: [],
                                         nextCursor: capturedThrough,
                                         capturedThrough: capturedThrough,
                                         hasMore: false,
@@ -126,8 +126,8 @@ public final class AppLogStore: Sendable {
                 let filtered = state.entries.filter { Self.matches($0, sources: sources, minimumLevel: minimumLevel) }
                 let suffix = Array(filtered.suffix(boundedLimit))
                 let nextID = suffix.last?.id ?? latestID
-                return AppLogReadResult(entries: suffix,
-                                        nextCursor: AppLogCursor(captureSessionID: captureSessionID, id: nextID),
+                return ESAppLogReadResult(entries: suffix,
+                                        nextCursor: ESAppLogCursor(captureSessionID: captureSessionID, id: nextID),
                                         capturedThrough: capturedThrough,
                                         hasMore: false,
                                         gap: nil,
@@ -137,7 +137,7 @@ public final class AppLogStore: Sendable {
 
             let afterID = after?.id ?? 0
             let gap = Self.gap(afterID: afterID, oldestID: oldestID)
-            var entries: [AppLogEntry] = []
+            var entries: [ESAppLogEntry] = []
             var lastScannedID = afterID
             var hasMore = false
 
@@ -157,8 +157,8 @@ public final class AppLogStore: Sendable {
                 hasMore = false
             }
 
-            return AppLogReadResult(entries: entries,
-                                    nextCursor: AppLogCursor(captureSessionID: captureSessionID, id: lastScannedID),
+            return ESAppLogReadResult(entries: entries,
+                                    nextCursor: ESAppLogCursor(captureSessionID: captureSessionID, id: lastScannedID),
                                     capturedThrough: capturedThrough,
                                     hasMore: hasMore,
                                     gap: gap,
@@ -167,15 +167,15 @@ public final class AppLogStore: Sendable {
         }
     }
 
-    private static func matches(_ entry: AppLogEntry,
-                                sources: Set<AppLogSource>?,
-                                minimumLevel: AppLogLevel?) -> Bool {
+    private static func matches(_ entry: ESAppLogEntry,
+                                sources: Set<ESAppLogSource>?,
+                                minimumLevel: ESAppLogLevel?) -> Bool {
         if let sources, sources.contains(entry.source) == false { return false }
         if let minimumLevel, entry.level < minimumLevel { return false }
         return true
     }
 
-    private static func gap(afterID: UInt64, oldestID: UInt64?) -> AppLogGap? {
+    private static func gap(afterID: UInt64, oldestID: UInt64?) -> ESAppLogGap? {
         guard let oldestID, afterID + 1 < oldestID else { return nil }
         return .bufferOverrun(requestedAfterID: afterID,
                               oldestAvailableID: oldestID,

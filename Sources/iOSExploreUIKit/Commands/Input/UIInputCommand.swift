@@ -37,7 +37,7 @@ struct InputCommand: Command {
         } catch {
             // context 获取失败发生在批量执行入口之外，仍由 handler 统一兜底，避免裸异常穿到路由层。
             let e = UIKitCommandError.hierarchyUnavailable(action: InputCommand.actionName, reason: "\(error)")
-            UIKitCommandLogging.error("command", e.failure.logMessage)
+            UIKitCommandLogger.error("command", e.failure.logMessage)
             return e.result
         }
     }
@@ -51,20 +51,20 @@ struct InputCommand: Command {
     @MainActor
     static func execute(input: UIInputInput, context: UIKitContextProvider.Context) -> ExploreResult {
         // 顶层 start 只在命令层记录一次；executor 只记录字段级步骤。
-        UIKitCommandLogging.info("command", "command \(actionName) start fields=\(input.fields.count) stopOnFailure=\(input.stopOnFailure) viewSnapshot=\(input.viewSnapshotID ?? "nil")")
+        UIKitCommandLogger.info("command", "command \(actionName) start fields=\(input.fields.count) stopOnFailure=\(input.stopOnFailure) viewSnapshot=\(input.viewSnapshotID ?? "nil")")
         do {
             let data = try UITextInputExecutor.execute(input: input, context: context)
             let completed = data["completed"]?.boolValue ?? false
             let failedIndex = data["failedIndex"]?.doubleValue.map { String(Int($0)) } ?? "nil"
-            UIKitCommandLogging.info("command", "command \(actionName) completed fields=\(input.fields.count) completed=\(completed) failedIndex=\(failedIndex)")
+            UIKitCommandLogger.info("command", "command \(actionName) completed fields=\(input.fields.count) completed=\(completed) failedIndex=\(failedIndex)")
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         } catch {
             // executor 只 throw UIKitCommandError；这里兜底任何意外错误，避免裸异常穿到路由层。
             let e = UIKitCommandError.hierarchyUnavailable(action: actionName, reason: "\(error)")
-            UIKitCommandLogging.error("command", e.failure.logMessage)
+            UIKitCommandLogger.error("command", e.failure.logMessage)
             return e.result
         }
     }

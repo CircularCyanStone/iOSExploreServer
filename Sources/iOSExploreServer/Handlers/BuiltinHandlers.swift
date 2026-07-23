@@ -18,7 +18,7 @@ struct PingCommand: Command {
     /// - Parameter input: 空输入，ping 不读取请求 data。
     /// - Returns: `{ "pong": true }`。
     func handle(_ input: EmptyCommandInput) async throws -> ExploreResult {
-        ExploreLogger.debug(.command, "command ping handled")
+        ESLogger.debug(.command, "command ping handled")
         return .success(["pong": .bool(true)])
     }
 }
@@ -41,7 +41,7 @@ struct EchoCommand: Command {
     /// - Parameter input: 保留原始 data 的输入模型。
     /// - Returns: 与请求 data 完全一致的 JSON object。
     func handle(_ input: RawJSONInput) async throws -> ExploreResult {
-        ExploreLogger.debug(.command, "command echo handled keys=\(input.data.storage.count)")
+        ESLogger.debug(.command, "command echo handled keys=\(input.data.storage.count)")
         return .success(input.data)
     }
 }
@@ -65,7 +65,7 @@ struct InfoCommand: Command {
     /// - Parameter input: 空输入，info 不读取请求 data。
     /// - Returns: 系统、应用版本和 bundle identifier。
     func handle(_ input: EmptyCommandInput) async throws -> ExploreResult {
-        ExploreLogger.debug(.command, "command info handled")
+        ESLogger.debug(.command, "command info handled")
         let processInfo = ProcessInfo.processInfo
         let bundle = Bundle.main
         let info: JSON = [
@@ -105,7 +105,7 @@ struct HelpCommand: Command {
     /// - Returns: 包含所有已注册命令 metadata 的 JSON object，结构为
     ///   `{"commands": [{ action, description, inputSchema }, ...]}`。
     func handle(_ input: EmptyCommandInput) async throws -> ExploreResult {
-        ExploreLogger.debug(.command, "command help handled")
+        ESLogger.debug(.command, "command help handled")
         let entries: [JSONValue] = router.commandMetadata().map { entry in
             return .object(JSON([
                 "action": .string(entry.action),
@@ -123,7 +123,7 @@ struct HelpCommand: Command {
 enum BuiltinHandlers {
     /// 把内置命令注册进 router（同步）。
     static func registerAll(into router: Router) {
-        ExploreLogger.info(.command, "builtin handlers register all")
+        ESLogger.info(.command, "builtin handlers register all")
         router.register(PingCommand())
         router.register(EchoCommand())
         router.register(InfoCommand())

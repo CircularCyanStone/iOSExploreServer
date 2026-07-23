@@ -59,7 +59,7 @@ enum UIAlertRespondExecutor {
         }
         // dismissWaitMs 和 presentedAfterDismiss 由调用方 async 等待后通过
         // UIAlertRespondCommand.handle 的回填逻辑更新。这里只标记启动值。
-        UIKitCommandLogging.info("command", "ui alert respond part1 sync performed=true dismissed=\(dismissed) viaSystemDismiss=\(isPresented) selector=\(selectorDescription(input))")
+        UIKitCommandLogger.info("command", "ui alert respond part1 sync performed=true dismissed=\(dismissed) viaSystemDismiss=\(isPresented) selector=\(selectorDescription(input))")
         return [
             "performed": .bool(true),
             "dismissed": .bool(dismissed),

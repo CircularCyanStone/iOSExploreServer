@@ -25,7 +25,7 @@ enum UIKeyboardDismissExecutor {
 
         guard before != nil else {
             settle(milliseconds: input.waitAfterMs)
-            UIKitCommandLogging.info("command", "ui keyboard dismiss complete dismissed=false strategy=\(input.strategy.rawValue) before=nil after=nil")
+            UIKitCommandLogger.info("command", "ui keyboard dismiss complete dismissed=false strategy=\(input.strategy.rawValue) before=nil after=nil")
             return response(dismissed: false,
                             strategy: input.strategy,
                             firstResponderBefore: nil,
@@ -53,7 +53,7 @@ enum UIKeyboardDismissExecutor {
                                                          strategy: input.strategy.rawValue)
         }
 
-        UIKitCommandLogging.info("command", "ui keyboard dismiss complete dismissed=true strategy=\(input.strategy.rawValue) before=\(beforeType ?? "nil") after=nil")
+        UIKitCommandLogger.info("command", "ui keyboard dismiss complete dismissed=true strategy=\(input.strategy.rawValue) before=\(beforeType ?? "nil") after=nil")
         return response(dismissed: true,
                         strategy: input.strategy,
                         firstResponderBefore: beforeType,

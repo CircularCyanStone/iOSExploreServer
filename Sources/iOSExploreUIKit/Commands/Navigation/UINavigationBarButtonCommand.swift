@@ -24,7 +24,7 @@ struct NavigationBarButtonCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的导航栏按钮输入。
     /// - Returns: 成功时返回 performed 与 top 控制器变化；失败时返回业务失败 envelope。
     func handle(_ input: UINavigationBarButtonInput) async -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start \(input.selectorSummary) waitAfterMs=\(input.waitAfterMs)")
+        UIKitCommandLogger.info("command", "command \(action) start \(input.selectorSummary) waitAfterMs=\(input.waitAfterMs)")
         do {
             let data = try await MainActor.run {
                 let context = try UIKitContextProvider.currentContext(action: NavigationBarButtonCommand.actionName)
@@ -32,11 +32,11 @@ struct NavigationBarButtonCommand: Command {
             }
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         } catch {
             let wrapped = UIKitCommandError.hierarchyUnavailable(action: NavigationBarButtonCommand.actionName, reason: "\(error)")
-            UIKitCommandLogging.error("command", wrapped.failure.logMessage)
+            UIKitCommandLogger.error("command", wrapped.failure.logMessage)
             return wrapped.result
         }
     }

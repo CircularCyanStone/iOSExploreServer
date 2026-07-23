@@ -261,7 +261,7 @@ public final class UIKitSnapshotStore {
                        targets: [String: UIKitTargetFingerprint],
                        query: UIInspectInput) -> String? {
         if targets.count > Self.maxFingerprints {
-            UIKitCommandLogging.info("command", "ui snapshot skipped oversized fingerprints=\(targets.count) max=\(Self.maxFingerprints)")
+            UIKitCommandLogger.info("command", "ui snapshot skipped oversized fingerprints=\(targets.count) max=\(Self.maxFingerprints)")
             return nil
         }
         evictIfNeeded()
@@ -273,7 +273,7 @@ public final class UIKitSnapshotStore {
                             fingerprints: targets,
                             context: context,
                             query: query)
-        UIKitCommandLogging.info("command", "ui snapshot insert id=\(id) fingerprints=\(targets.count)")
+        UIKitCommandLogger.info("command", "ui snapshot insert id=\(id) fingerprints=\(targets.count)")
         return id
     }
 
@@ -308,26 +308,26 @@ public final class UIKitSnapshotStore {
                         context: UIKitSnapshotContext,
                         current: UIKitTargetFingerprint) -> Bool {
         guard var entry = entries[viewSnapshotID] else {
-            UIKitCommandLogging.info("command", "ui snapshot unknown id=\(viewSnapshotID) path=\(path)")
+            UIKitCommandLogger.info("command", "ui snapshot unknown id=\(viewSnapshotID) path=\(path)")
             return true
         }
         if isExpired(entry: entry) {
             entries.removeValue(forKey: viewSnapshotID)
-            UIKitCommandLogging.info("command", "ui snapshot expired id=\(viewSnapshotID) path=\(path)")
+            UIKitCommandLogger.info("command", "ui snapshot expired id=\(viewSnapshotID) path=\(path)")
             return true
         }
         entry.lastAccessedAt = now()
         entries[viewSnapshotID] = entry
         guard entry.context == context else {
-            UIKitCommandLogging.info("command", "ui snapshot context mismatch id=\(viewSnapshotID) path=\(path)")
+            UIKitCommandLogger.info("command", "ui snapshot context mismatch id=\(viewSnapshotID) path=\(path)")
             return true
         }
         guard let stored = entry.fingerprints[path] else {
-            UIKitCommandLogging.info("command", "ui snapshot path missing id=\(viewSnapshotID) path=\(path)")
+            UIKitCommandLogger.info("command", "ui snapshot path missing id=\(viewSnapshotID) path=\(path)")
             return true
         }
         if stored == current { return false }
-        UIKitCommandLogging.info("command", "ui snapshot fingerprint mismatch id=\(viewSnapshotID) path=\(path)")
+        UIKitCommandLogger.info("command", "ui snapshot fingerprint mismatch id=\(viewSnapshotID) path=\(path)")
         return true
     }
 
@@ -392,18 +392,18 @@ public final class UIKitSnapshotStore {
         guard var entry = entries[viewSnapshotID] else { return nil }
         if isExpired(entry: entry, ttl: Self.wholeTableTtlSeconds) {
             entries.removeValue(forKey: viewSnapshotID)
-            UIKitCommandLogging.info("command", "ui snapshot expired id=\(viewSnapshotID) wait=snapshotChanged")
+            UIKitCommandLogger.info("command", "ui snapshot expired id=\(viewSnapshotID) wait=snapshotChanged")
             return nil
         }
         entry.lastAccessedAt = now()
         entries[viewSnapshotID] = entry
         if entry.context != context {
-            UIKitCommandLogging.info("command", "ui snapshot context changed id=\(viewSnapshotID) wait=snapshotChanged")
+            UIKitCommandLogger.info("command", "ui snapshot context changed id=\(viewSnapshotID) wait=snapshotChanged")
             return false
         }
         let matches = entry.fingerprints == currentTable
         if !matches {
-            UIKitCommandLogging.info("command", "ui snapshot table changed id=\(viewSnapshotID) wait=snapshotChanged stored=\(entry.fingerprints.count) current=\(currentTable.count)")
+            UIKitCommandLogger.info("command", "ui snapshot table changed id=\(viewSnapshotID) wait=snapshotChanged stored=\(entry.fingerprints.count) current=\(currentTable.count)")
         }
         return matches
     }
@@ -434,7 +434,7 @@ public final class UIKitSnapshotStore {
                 break
             }
             entries.removeValue(forKey: lru.key)
-            UIKitCommandLogging.info("command", "ui snapshot evict lru id=\(lru.key) lastAccessedAgo=\(stamp.timeIntervalSince(lru.value.lastAccessedAt))")
+            UIKitCommandLogger.info("command", "ui snapshot evict lru id=\(lru.key) lastAccessedAgo=\(stamp.timeIntervalSince(lru.value.lastAccessedAt))")
         }
     }
 }

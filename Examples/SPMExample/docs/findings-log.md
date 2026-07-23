@@ -77,9 +77,9 @@
 - 建议：`:329` 改 `value: textField.isSecureTextEntry ? nil : textField.text`（一行，与 UIInspectCollector.textualValue:488 对齐）
 - 状态：🔴 待修复（动态确认 100%）
 
-### F-17【P1·示例App】预置密码明文进 os_log，LogRedactor 脱敏不掉
-- `AuthService.swift:31` `logger.info("...预置测试账号: test/123456")`，DEBUG 全开捕获 → app.logs.read 返回明文。LogRedactor 正则只认 key=value 格式，裸值不匹配（token=xxx 格式则被脱敏，依赖巧合）
-- 建议：删明文密码；库文档明确 LogRedactor 只覆盖 key=value/JSON key 格式
+### F-17【P1·示例App】预置密码明文进 os_log，ESLogRedactor 脱敏不掉
+- `AuthService.swift:31` `logger.info("...预置测试账号: test/123456")`，DEBUG 全开捕获 → app.logs.read 返回明文。ESLogRedactor 正则只认 key=value 格式，裸值不匹配（token=xxx 格式则被脱敏，依赖巧合）
+- 建议：删明文密码；库文档明确 ESLogRedactor 只覆盖 key=value/JSON key 格式
 - 状态：🔴 待修复
 
 ### F-18【P1·库bug】ui.tap 用 sendActions 不校验 isEnabled，禁用态按钮仍触发

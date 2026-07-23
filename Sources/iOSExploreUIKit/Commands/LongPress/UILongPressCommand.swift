@@ -39,17 +39,17 @@ struct LongPressCommand: Command {
     /// - Returns: 成功时返回长按结果；失败时返回业务失败 envelope。
     func handle(_ input: UILongPressInput) async -> ExploreResult {
         let durationDescription = input.duration.map { String(format: "%.2f", $0) } ?? "default"
-        UIKitCommandLogging.info("command", "command \(action) start duration=\(durationDescription) target=\(input.locator?.logSummary ?? "keyWindow")")
+        UIKitCommandLogger.info("command", "command \(action) start duration=\(durationDescription) target=\(input.locator?.logSummary ?? "keyWindow")")
         do {
             let data = try await executeOnMainActor(input: input)
-            UIKitCommandLogging.info("command", "command \(action) completed path=\(data["path"]?.stringValue ?? "nil") route=\(data["route"]?.stringValue ?? "unknown")")
+            UIKitCommandLogger.info("command", "command \(action) completed path=\(data["path"]?.stringValue ?? "nil") route=\(data["route"]?.stringValue ?? "unknown")")
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         } catch {
             let wrapped = UIKitCommandError.hierarchyUnavailable(action: LongPressCommand.actionName, reason: "\(error)")
-            UIKitCommandLogging.error("command", wrapped.failure.logMessage)
+            UIKitCommandLogger.error("command", wrapped.failure.logMessage)
             return wrapped.result
         }
     }

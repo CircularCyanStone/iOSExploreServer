@@ -24,7 +24,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // 启用日志
-        ExploreLogging.setEnabled(true)
+        ESLogger.setEnabled(true)
 
         // 注册所有命令
         registerCommands()
@@ -79,7 +79,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         server.register(action: "debug.emitAppLog",
                         description: "写入一条 SPMExample bridge 诊断日志",
                         input: ExampleStdIOMessageInput.self) { input in
-            ExploreAppLog.emit(.info,
+            ESAppLogger.emit(.info,
                                category: "spm.example",
                                message: input.message)
             return .success(["emitted": .bool(true)])
@@ -166,8 +166,8 @@ private struct ExampleStdIOMessageInput: CommandInput {
 
 extension AppDelegate {
     #if DEBUG
-    func exampleDiagnosticsConfiguration() -> DiagnosticsConfiguration {
-        DiagnosticsConfiguration(captureStdout: true,
+    func exampleDiagnosticsConfiguration() -> ESDiagnosticsConfiguration {
+        ESDiagnosticsConfiguration(captureStdout: true,
                                  captureStderr: true,
                                  captureNSLog: true,
                                  captureOSLog: true)
@@ -184,7 +184,7 @@ extension AppDelegate {
         default:
             return .failure(code: .invalidData, message: "unsupported stdio source")
         }
-        ExploreAppLog.emit(.info,
+        ESAppLogger.emit(.info,
                            category: "spm.example.stdio",
                            message: "SPMExample \(source) debug command wrote bytes=\(data.count)")
         return .success([
@@ -196,7 +196,7 @@ extension AppDelegate {
 
     nonisolated static func emitNSLogMessage(_ message: String) -> ExploreResult {
         NSLog("%@", message)
-        ExploreAppLog.emit(.info,
+        ESAppLogger.emit(.info,
                            category: "spm.example.nslog",
                            message: "SPMExample NSLog debug command emitted")
         return .success([
@@ -237,5 +237,4 @@ extension AppDelegate {
     }
     #endif
 }
-
 

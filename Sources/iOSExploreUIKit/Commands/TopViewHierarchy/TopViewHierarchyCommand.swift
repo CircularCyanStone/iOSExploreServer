@@ -47,15 +47,15 @@ struct TopViewHierarchyCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的层级查询参数。
     /// - Returns: 成功时返回 root 树或 matches 列表；参数非法时返回 `invalid_data`。
     func handle(_ input: UIViewHierarchyInput) async throws -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start input=typed")
+        UIKitCommandLogger.info("command", "command \(action) start input=typed")
         do {
             let data = try await UIViewHierarchyCollector.collectTopViewHierarchy(query: input)
             let nodeCount = data["nodeCount"]?.doubleValue ?? 0
             let matchCount = data["matchCount"]?.doubleValue
-            UIKitCommandLogging.info("command", "command \(action) completed nodeCount=\(nodeCount) matchCount=\(matchCount.map { String($0) } ?? "none")")
+            UIKitCommandLogger.info("command", "command \(action) completed nodeCount=\(nodeCount) matchCount=\(matchCount.map { String($0) } ?? "none")")
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         }
     }

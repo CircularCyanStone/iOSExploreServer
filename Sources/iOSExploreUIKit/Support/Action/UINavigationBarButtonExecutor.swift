@@ -36,7 +36,7 @@ enum UINavigationBarButtonExecutor {
 
         settle(milliseconds: input.waitAfterMs)
         let topAfter = describe(context.topViewController.navigationController?.topViewController ?? context.topViewController)
-        UIKitCommandLogging.info("command", "ui navigation bar button complete performed=true placement=\(placement.rawValue) index=\(index)")
+        UIKitCommandLogger.info("command", "ui navigation bar button complete performed=true placement=\(placement.rawValue) index=\(index)")
         return [
             "performed": .bool(true),
             "placement": .string(placement.rawValue),

@@ -25,26 +25,26 @@ enum UITabBarSelectExecutor {
         if let path = input.tabBarControllerPath {
             // 显式路径:解析 controller path
             guard let parsed = parseControllerPath(path) else {
-                UIKitCommandLogging.error("command", "\(action) invalid controller path path=\(path)")
+                UIKitCommandLogger.error("command", "\(action) invalid controller path path=\(path)")
                 throw UIKitCommandError.invalidData(action: action, message: "invalid controller path: \(path)")
             }
             let resolved = try UIControllerResolver.resolve(from: context.rootViewController, path: parsed)
             guard let tbc = resolved as? UITabBarController else {
                 let msg = "controller at path '\(path)' is not a UITabBarController"
-                UIKitCommandLogging.error("command", "\(action) controller type mismatch path=\(path) actualType=\(type(of: resolved))")
+                UIKitCommandLogger.error("command", "\(action) controller type mismatch path=\(path) actualType=\(type(of: resolved))")
                 throw UIKitCommandError.invalidData(action: action, message: msg)
             }
             tabBarController = tbc
-            UIKitCommandLogging.info("command", "\(action) resolved explicit tabBarController path=\(path)")
+            UIKitCommandLogger.info("command", "\(action) resolved explicit tabBarController path=\(path)")
         } else {
             // 自动查找:先沿 presented 链找最外层容器,若不是 UITabBarController 再从 topViewController 向上找
             tabBarController = try findTabBarController(context: context, action: action)
-            UIKitCommandLogging.info("command", "\(action) auto-found tabBarController")
+            UIKitCommandLogger.info("command", "\(action) auto-found tabBarController")
         }
 
         // 2. 读取当前状态
         guard let viewControllers = tabBarController.viewControllers, !viewControllers.isEmpty else {
-            UIKitCommandLogging.error("command", "\(action) tabBarController has no viewControllers")
+            UIKitCommandLogger.error("command", "\(action) tabBarController has no viewControllers")
             throw UIKitCommandError.targetNotFound(
                 action: action,
                 message: "UITabBarController has no tabs",
@@ -64,7 +64,7 @@ enum UITabBarSelectExecutor {
         } else if let title = input.title {
             // 按 title 查找(首个匹配)
             guard let matchedIndex = viewControllers.firstIndex(where: { $0.tabBarItem?.title == title }) else {
-                UIKitCommandLogging.error("command", "\(action) tab title not found title=\(title)")
+                UIKitCommandLogger.error("command", "\(action) tab title not found title=\(title)")
                 throw UIKitCommandError.targetNotFound(
                     action: action,
                     message: "tab with title '\(title)' not found",
@@ -80,7 +80,7 @@ enum UITabBarSelectExecutor {
         // 4. 索引范围校验
         guard targetIndex >= 0, targetIndex < viewControllers.count else {
             let msg = "tab index \(targetIndex) out of range (total: \(viewControllers.count))"
-            UIKitCommandLogging.error("command", "\(action) index out of range index=\(targetIndex) count=\(viewControllers.count)")
+            UIKitCommandLogger.error("command", "\(action) index out of range index=\(targetIndex) count=\(viewControllers.count)")
             throw UIKitCommandError.invalidData(action: action, message: msg)
         }
 
@@ -92,9 +92,9 @@ enum UITabBarSelectExecutor {
         // 6. 可选触发 delegate
         if input.triggerDelegate {
             tabBarController.delegate?.tabBarController?(tabBarController, didSelect: selectedVC)
-            UIKitCommandLogging.info("command", "\(action) delegate triggered previousIndex=\(previousIndex) selectedIndex=\(targetIndex)")
+            UIKitCommandLogger.info("command", "\(action) delegate triggered previousIndex=\(previousIndex) selectedIndex=\(targetIndex)")
         } else {
-            UIKitCommandLogging.info("command", "\(action) delegate not triggered previousIndex=\(previousIndex) selectedIndex=\(targetIndex)")
+            UIKitCommandLogger.info("command", "\(action) delegate not triggered previousIndex=\(previousIndex) selectedIndex=\(targetIndex)")
         }
 
         // 7. 返回结果
@@ -143,7 +143,7 @@ enum UITabBarSelectExecutor {
             }
         }
 
-        UIKitCommandLogging.error("command", "\(action) no UITabBarController found in hierarchy")
+        UIKitCommandLogger.error("command", "\(action) no UITabBarController found in hierarchy")
         throw UIKitCommandError.targetNotFound(
             action: action,
             message: "no UITabBarController found in current view hierarchy",

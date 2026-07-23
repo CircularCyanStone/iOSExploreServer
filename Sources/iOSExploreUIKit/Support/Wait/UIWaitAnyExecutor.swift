@@ -91,7 +91,7 @@ enum UIWaitAnyExecutor {
                                                snapshotUnavailableReason: &snapshotUnavailableReason) {
                         let elapsedMs = Int((now - start) / 1_000_000)
                         let matched = input.conditions[index]
-                        UIKitCommandLogging.info("command", "ui waitAny complete satisfied=true matchedID=\(matched.id) matchedIndex=\(index) mode=\(matched.mode.rawValue) attempts=\(attempts) elapsedMs=\(elapsedMs)")
+                        UIKitCommandLogger.info("command", "ui waitAny complete satisfied=true matchedID=\(matched.id) matchedIndex=\(index) mode=\(matched.mode.rawValue) attempts=\(attempts) elapsedMs=\(elapsedMs)")
                         return response(satisfied: true,
                                         matchedID: matched.id,
                                         matchedIndex: index,

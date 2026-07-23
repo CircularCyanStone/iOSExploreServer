@@ -20,8 +20,8 @@ struct DiagnosticsCommandTests {
     @Test("显式注册后 help 包含 app.logs action")
     func explicitRegistrationAddsDiagnosticsCommands() async {
         await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
                                                          captureStdout: false,
@@ -37,8 +37,8 @@ struct DiagnosticsCommandTests {
     @Test("app.logs.read help 暴露可查询字段")
     func readHelpIncludesInputSchemaFields() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
                                                          captureStdout: false,
@@ -61,8 +61,8 @@ struct DiagnosticsCommandTests {
     @Test("mark 响应包含各日志来源捕获状态")
     func markReturnsCaptureStatus() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
                                                          captureStdout: false,
@@ -83,18 +83,18 @@ struct DiagnosticsCommandTests {
         }
     }
 
-    @Test("ExploreAppLog 写入 bridge 日志并可被 read 读取")
+    @Test("ESAppLogger 写入 bridge 日志并可被 read 读取")
     func readReturnsBridgeLogs() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
                                                          captureStdout: false,
                                                          captureStderr: false))
             let mark = try cursor(from: await server.routerSnapshotRoute(ExploreRequest(action: "app.logs.mark")))
 
-            ExploreAppLog.emit(.error,
+            ESAppLogger.emit(.error,
                                category: "auth",
                                message: "login failed token=secret-token",
                                metadata: ["route": "login", "token": "secret-token"])
@@ -116,8 +116,8 @@ struct DiagnosticsCommandTests {
     @Test("app.logs.read 不等待 pending capture flush 完成")
     func readDoesNotWaitForPendingCaptureFlush() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
                                                          captureStdout: false,
@@ -125,10 +125,10 @@ struct DiagnosticsCommandTests {
                                                          captureOSLog: false))
             let mark = try cursor(from: await server.routerSnapshotRoute(ExploreRequest(action: "app.logs.mark")))
 
-            ExploreAppLog.emit(.info,
+            ESAppLogger.emit(.info,
                                category: "test.flush",
                                message: "flush should not block read")
-            ProcessDiagnosticsRuntime.shared.setPendingCaptureFlushOverrideForTesting {
+            ESDiagnosticsRuntime.shared.setPendingCaptureFlushOverrideForTesting {
                 Thread.sleep(forTimeInterval: 2)
             }
 
@@ -150,8 +150,8 @@ struct DiagnosticsCommandTests {
     @Test("captureSessionID 不匹配时 read 返回 stale_cursor")
     func readReturnsStaleCursorForDifferentCaptureSession() async {
         await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
                                                          captureStdout: false,
@@ -171,8 +171,8 @@ struct DiagnosticsCommandTests {
     @Test("stdout capture 打开后可按 stdout 来源读取到整行日志")
     func stdoutCaptureWritesLineIntoDiagnosticsStore() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let token = "stdout-capture-\(UUID().uuidString)"
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
@@ -196,9 +196,9 @@ struct DiagnosticsCommandTests {
     @Test("stdout capture 打开后可捕获 Swift print 输出")
     func stdoutCaptureRecordsSwiftPrintOutput() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
+            ESDiagnosticsRuntime.shared.resetForTesting()
             defer {
-                ProcessDiagnosticsRuntime.shared.resetForTesting()
+                ESDiagnosticsRuntime.shared.resetForTesting()
                 setvbuf(stdout, nil, _IOLBF, 0)
             }
             let token = "stdout-print-capture-\(UUID().uuidString)"
@@ -225,8 +225,8 @@ struct DiagnosticsCommandTests {
     @Test("stderr capture 打开后可按 stderr 来源读取到 error 日志")
     func stderrCaptureWritesLineIntoDiagnosticsStore() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let token = "stderr-capture-\(UUID().uuidString)"
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
@@ -250,8 +250,8 @@ struct DiagnosticsCommandTests {
     @Test("NSLog capture 打开后可按 nslog 来源读取到日志")
     func nslogCaptureWritesLineIntoDiagnosticsStore() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let token = "nslog-capture-\(UUID().uuidString)"
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
@@ -276,8 +276,8 @@ struct DiagnosticsCommandTests {
     @Test("NSLog capture 关闭时不会捕获 NSLog")
     func disabledNSLogCaptureDoesNotRecordOutput() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let token = "nslog-disabled-\(UUID().uuidString)"
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
@@ -301,8 +301,8 @@ struct DiagnosticsCommandTests {
     @Test("stdout capture 关闭时不会捕获标准输出")
     func disabledStdoutCaptureDoesNotRecordOutput() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let token = "stdout-disabled-\(UUID().uuidString)"
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
@@ -323,10 +323,10 @@ struct DiagnosticsCommandTests {
     }
 
     @Test("mark 响应在 stdout/stderr capture 安装成功时返回 enabled")
-    func markReportsEnabledStatusForInstalledStdIOCapture() async throws {
+    func markReportsEnabledStatusForInstalledESStdIOCapture() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
                                                          captureStdout: true,
@@ -347,8 +347,8 @@ struct DiagnosticsCommandTests {
     @Test("mark 响应在 NSLog capture 安装成功时返回 enabled")
     func markReportsEnabledStatusForInstalledNSLogCapture() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
                                                          captureStdout: false,
@@ -371,8 +371,8 @@ struct DiagnosticsCommandTests {
     func osLogCaptureWritesEntriesIntoDiagnosticsStore() async throws {
         guard #available(macOS 11.0, iOS 15.0, *) else { return }
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let token = "oslog-capture-\(UUID().uuidString)"
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
@@ -405,8 +405,8 @@ struct DiagnosticsCommandTests {
     func osLogCaptureFiltersAppleSystemSubsystem() async throws {
         guard #available(macOS 11.0, iOS 15.0, *) else { return }
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let systemToken = "apple-system-\(UUID().uuidString)"
             let appToken = "app-custom-\(UUID().uuidString)"
             let server = ExploreServer()
@@ -447,21 +447,21 @@ struct DiagnosticsCommandTests {
     @Test("stdout 无换行尾部会在 reset 停止捕获时 flush 成一条日志")
     func stdoutCaptureFlushesPendingLineOnReset() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let token = "stdout-tail-\(UUID().uuidString)"
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
                                                          captureStdout: true,
                                                          captureStderr: false,
                                                          teeToOriginalStreams: false))
-            guard let store = ProcessDiagnosticsRuntime.shared.currentStore() else {
+            guard let store = ESDiagnosticsRuntime.shared.currentStore() else {
                 throw TestFailure("missing diagnostics store")
             }
             let mark = store.mark()
 
             FileHandle.standardOutput.write(Data(token.utf8))
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
+            ESDiagnosticsRuntime.shared.resetForTesting()
 
             let result = store.read(after: mark.cursor, limit: 20, sources: [.stdout], minimumLevel: nil)
             #expect(result.entries.contains { $0.message == token && $0.source == .stdout })
@@ -471,20 +471,20 @@ struct DiagnosticsCommandTests {
     @Test("reset 后 stdout capture 不再写入旧 store")
     func resetStopsStdoutCaptureFromAppendingToPreviousStore() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let token = "stdout-after-reset-\(UUID().uuidString)"
             let server = ExploreServer()
             _ = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
                                                          captureStdout: true,
                                                          captureStderr: false,
                                                          teeToOriginalStreams: false))
-            guard let store = ProcessDiagnosticsRuntime.shared.currentStore() else {
+            guard let store = ESDiagnosticsRuntime.shared.currentStore() else {
                 throw TestFailure("missing diagnostics store")
             }
             let mark = store.mark()
 
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
+            ESDiagnosticsRuntime.shared.resetForTesting()
             writeLine(token, to: .standardOutput)
             try await Task.sleep(nanoseconds: 100_000_000)
 
@@ -494,7 +494,7 @@ struct DiagnosticsCommandTests {
     }
 }
 
-private extension AppLogCursor {
+private extension ESAppLogCursor {
     func toJSON() -> JSON {
         [
             "captureSessionID": .string(captureSessionID),
@@ -503,14 +503,14 @@ private extension AppLogCursor {
     }
 }
 
-private func cursor(from result: ExploreResult) throws -> AppLogCursor {
+private func cursor(from result: ExploreResult) throws -> ESAppLogCursor {
     guard case .success(let data) = result,
           let cursorObject = data["cursor"]?.objectValue,
           let session = cursorObject["captureSessionID"]?.stringValue,
           let id = cursorObject["id"]?.doubleValue else {
         throw TestFailure("missing cursor")
     }
-    return AppLogCursor(captureSessionID: session, id: UInt64(id))
+    return ESAppLogCursor(captureSessionID: session, id: UInt64(id))
 }
 
 private func entries(from result: ExploreResult) throws -> [JSON] {
@@ -521,14 +521,14 @@ private func entries(from result: ExploreResult) throws -> [JSON] {
     return values.compactMap(\.objectValue)
 }
 
-private func nextCursor(from result: ExploreResult) throws -> AppLogCursor {
+private func nextCursor(from result: ExploreResult) throws -> ESAppLogCursor {
     guard case .success(let data) = result,
           let cursorObject = data["nextCursor"]?.objectValue,
           let session = cursorObject["captureSessionID"]?.stringValue,
           let id = cursorObject["id"]?.doubleValue else {
         throw TestFailure("missing nextCursor")
     }
-    return AppLogCursor(captureSessionID: session, id: UInt64(id))
+    return ESAppLogCursor(captureSessionID: session, id: UInt64(id))
 }
 
 private func hasMore(from result: ExploreResult) throws -> Bool {
@@ -562,7 +562,7 @@ private func writeLine(_ line: String, to handle: FileHandle) {
     handle.write(Data(("\n" + line + "\n").utf8))
 }
 
-private func waitForEntry(after mark: AppLogCursor,
+private func waitForEntry(after mark: ESAppLogCursor,
                           source: String,
                           token: String,
                           server: ExploreServer,
@@ -577,7 +577,7 @@ private func waitForEntry(after mark: AppLogCursor,
     return try await pagedEntries(after: mark, source: source, token: token, server: server)
 }
 
-private func pagedEntries(after mark: AppLogCursor,
+private func pagedEntries(after mark: ESAppLogCursor,
                           source: String,
                           token: String,
                           server: ExploreServer) async throws -> [JSON] {

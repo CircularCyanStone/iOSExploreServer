@@ -30,7 +30,7 @@ server.registerDiagnosticsCommands(.init(
 
 ### NSLog
 
-`NSLog` 在不同系统环境中可能进入 stderr，也可能进入 Apple Unified Logging。Diagnostics 同时提供 stderr 行识别和 `OSLogStore` 读取路径，只要其中一条路径安装成功，`nslog` 的状态就可能是 `enabled`。
+`NSLog` 会同时尝试三条路径：stderr 行识别、当前进程内 fishhook 重绑定，以及 `OSLogStore` 读取。fishhook 路径会先捕获格式化后的 `NSLog` 文本，再调用原始系统实现保留控制台输出；它主要增强 Objective-C/C 调用点覆盖，Swift Foundation overlay 不保证命中。只要其中一条路径安装成功，`nslog` 的状态就可能是 `enabled`。
 
 不要根据日志格式假定它来自哪条底层路径，也不要假定同一条 NSLog 必然同时出现在 `nslog` 与 `oslog`。按返回 entry 的 `source` 判断即可。
 

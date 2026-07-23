@@ -57,7 +57,7 @@ enum UIScrollToElementExecutor {
         let path = UIKitLocatorResolver.locatedView(for: target, in: context.rootView)?.pathString
         let targetType = String(describing: type(of: target))
         let container = String(describing: type(of: scrollView))
-        UIKitCommandLogging.info("command", "ui scroll to element complete match=\(input.match.rawValue) found=true path=\(path ?? "nil") type=\(targetType) container=\(container)")
+        UIKitCommandLogger.info("command", "ui scroll to element complete match=\(input.match.rawValue) found=true path=\(path ?? "nil") type=\(targetType) container=\(container)")
 
         return [
             "found": .bool(true),
@@ -92,11 +92,11 @@ enum UIScrollToElementExecutor {
     ) throws -> UIView {
         // 1. 先扫 visibleCells
         if let found = findTargetInVisibleCells(match: match, value: value, in: scrollView) {
-            UIKitCommandLogging.info("command", "ui scroll to element found in visible cells")
+            UIKitCommandLogger.info("command", "ui scroll to element found in visible cells")
             return found
         }
 
-        UIKitCommandLogging.info("command", "ui scroll to element not in visible cells, starting progressive scroll")
+        UIKitCommandLogger.info("command", "ui scroll to element not in visible cells, starting progressive scroll")
 
         // 2. 检测滚动方向（UICollectionView 特有）
         let isHorizontal: Bool
@@ -149,7 +149,7 @@ enum UIScrollToElementExecutor {
 
                 // 到达边界未移动，退出这个方向
                 if nextValue == currentValue {
-                    UIKitCommandLogging.info("command", "ui scroll to element progressive reached \(forward ? (isHorizontal ? "right" : "bottom") : (isHorizontal ? "left" : "top")) step=\(step)")
+                    UIKitCommandLogger.info("command", "ui scroll to element progressive reached \(forward ? (isHorizontal ? "right" : "bottom") : (isHorizontal ? "left" : "top")) step=\(step)")
                     return nil
                 }
 
@@ -159,12 +159,12 @@ enum UIScrollToElementExecutor {
                 scrollView.layoutIfNeeded()
 
                 if let found = findTargetInVisibleCells(match: match, value: value, in: scrollView) {
-                    UIKitCommandLogging.info("command", "ui scroll to element found via progressive scroll direction=\(forward ? (isHorizontal ? "right" : "down") : (isHorizontal ? "left" : "up")) step=\(step)")
+                    UIKitCommandLogger.info("command", "ui scroll to element found via progressive scroll direction=\(forward ? (isHorizontal ? "right" : "down") : (isHorizontal ? "left" : "up")) step=\(step)")
                     return found
                 }
             }
 
-            UIKitCommandLogging.info("command", "ui scroll to element progressive exceeded maxStep=\(maxProgressiveScrolls) direction=\(forward ? (isHorizontal ? "right" : "down") : (isHorizontal ? "left" : "up"))")
+            UIKitCommandLogger.info("command", "ui scroll to element progressive exceeded maxStep=\(maxProgressiveScrolls) direction=\(forward ? (isHorizontal ? "right" : "down") : (isHorizontal ? "left" : "up"))")
             return nil
         }
 

@@ -30,7 +30,7 @@ struct ScrollCommand: Command {
     /// - Returns: 成功时返回 container/offset/extent/inset 摘要；失败时返回业务失败 envelope。
     func handle(_ input: UIScrollInput) async -> ExploreResult {
         let amountDescription = input.amount.map { "\($0)" } ?? "half"
-        UIKitCommandLogging.info("command", "command \(action) start direction=\(input.direction.rawValue) amount=\(amountDescription) animated=\(input.animated)")
+        UIKitCommandLogger.info("command", "command \(action) start direction=\(input.direction.rawValue) amount=\(amountDescription) animated=\(input.animated)")
         do {
             let data = try await MainActor.run {
                 let context = try UIKitContextProvider.currentContext(action: ScrollCommand.actionName)
@@ -38,11 +38,11 @@ struct ScrollCommand: Command {
             }
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         } catch {
             let wrapped = UIKitCommandError.hierarchyUnavailable(action: ScrollCommand.actionName, reason: "\(error)")
-            UIKitCommandLogging.error("command", wrapped.failure.logMessage)
+            UIKitCommandLogger.error("command", wrapped.failure.logMessage)
             return wrapped.result
         }
     }

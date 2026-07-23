@@ -32,7 +32,7 @@ curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ :38321 ──
 | `HTTPRequest.swift` / `HTTPResponse.swift` | HTTP 值类型 | `serialized()` 产出 `HTTP/1.1 ... \r\n\r\n body` |
 | `HTTPParser.swift` | 解析请求 + 构造 envelope 响应 | `parseRequestResult` 区分 complete/incomplete/invalid；`parseRequest` 保留兼容 |
 | `ExploreServerError.swift` | 统一错误模型 | HTTP status/reason、envelope code/message、日志文本的单一来源 |
-| `ExploreLogging.swift` | Apple Unified Logging 封装 | 默认关闭；`ExploreLogging.setEnabled(true)` 开启；category 区分 server/listener/http/router/command |
+| `ESLogger.swift` | Apple Unified Logging 封装 | 默认关闭；`ESLogger.setEnabled(true)` 开启；category 区分 server/listener/http/router/command |
 | `Router.swift` | `Mutex` 保护的 action→handler 注册表与分发 | 未命中→`.unknownAction`；handler 抛错→`.internalError`；不 rethrow |
 | `ClientSession.swift` | 单连接生命周期 | session id、receive buffer、读/命令超时、发送响应、统一 close |
 | `HTTPListener.swift` | `NWListener` 封装 | 串行 network queue；session map；连接上限；ready 后继续观测 listener 状态 |
@@ -48,7 +48,7 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 | 文件/目录 | 职责 | 关键点 |
 |---|---|---|
 | `UIKitCommandRegistrar.swift` | 显式注册入口 | `public extension ExploreServer`；注册前后打 `uikit.registrar` 日志（started/completed count） |
-| `UIKitCommandLogging.swift` | 日志入口 | 复用 core public 缝 `ExploreLogging.emitExtension`，category 统一 `command`；不暴露 core internal logger |
+| `UIKitCommandLogger.swift` | 日志入口 | 复用 core public 缝 `ESLogger.emitExtension`，category 统一 `command`；不暴露 core internal logger |
 | `UIKitCommandError.swift` | UIKit 错误工厂 | 生成 `invalid_data`/`internal_error`，单一来源 |
 | `Support/Context/UIKitContextProvider.swift` | `@MainActor` 上下文 | 取当前前台 window / 根控制器，并产出两种根：`topViewController`（`topViewController(from:)` 钻到叶子 VC，操作类命令 `ui.tap`/`ui.input`/`ui.control.sendAction` 用）与 `rootView`（最外层容器 VC.view = `hierarchyRootController(from:)` 的 view，采集类命令 `ui.inspect`/`ui.topViewHierarchy` 用，含 `UITabBar`/`UINavigationBar` 等 chrome）；`currentContext(action:) throws` 失败抛 `hierarchyUnavailable` |
 | `Support/Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` + `UIKitViewLookupModels.swift` | 目标定位 | `UIKitLocator` 是 Foundation-only 值类型（`identifier` / `path` 两种定位语义），resolver 仅 iOS 编译把 locator 解析为真实 `UIView`（`locate(...) throws`，失败由调用方工厂构造错误） |
@@ -60,7 +60,15 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 
 ## Diagnostics 扩展模块（`Sources/iOSExploreDiagnostics/`）
 
-Diagnostics 不依赖 UIKit，宿主通过 `server.registerDiagnosticsCommands()` 显式注册 `app.logs.mark` 和 `app.logs.read`。它提供进程内有界日志 store、`ExploreLogging` observer、宿主业务日志桥接 `ExploreAppLog.emit`、stdout/stderr fd capture、NSLog 行识别、Apple Unified Logging 当前进程轮询、cursor/gap/stale cursor 语义和 source 捕获状态。stdout/stderr/NSLog/os_log 默认不接管；当 Debug 配置打开 `captureStdout` / `captureStderr` / `captureNSLog` / `captureOSLog` 时，stdout 记为 `source=stdout level=info`，stderr 记为 `source=stderr level=error`，NSLog 记为 `source=nslog`，`os_log` 与 Swift `Logger` 通过 `OSLogStore(scope:.currentProcessIdentifier)` 记为 `source=oslog`。如果 OS 或沙箱不允许读取 unified logging，`capture.oslog` 会返回 `unavailable`。Release 构建下注册入口和 runtime 注册都会返回 disabled，不安装命令或捕获路径；bridge metadata 会先脱敏，再按数量与 key/value 字节上限裁剪，避免响应体被异常上下文撑大。
+Diagnostics 不依赖 UIKit，宿主通过 `server.registerDiagnosticsCommands()` 显式注册 `app.logs.mark` 和 `app.logs.read`。它提供进程内有界日志 store、`ESLogger` observer、宿主业务日志桥接 `ESAppLogger.emit`、stdout/stderr fd capture、NSLog 行识别、Apple Unified Logging 当前进程轮询、cursor/gap/stale cursor 语义和 source 捕获状态。stdout/stderr/NSLog/os_log 默认不接管；当 Debug 配置打开 `captureStdout` / `captureStderr` / `captureNSLog` / `captureOSLog` 时，stdout 记为 `source=stdout level=info`，stderr 记为 `source=stderr level=error`，NSLog 记为 `source=nslog`，`os_log` 与 Swift `Logger` 通过 `OSLogStore(scope:.currentProcessIdentifier)` 记为 `source=oslog`。如果 OS 或沙箱不允许读取 unified logging，`capture.oslog` 会返回 `unavailable`。Release 构建下注册入口和 runtime 注册都会返回 disabled，不安装命令或捕获路径；bridge metadata 会先脱敏，再按数量与 key/value 字节上限裁剪，避免响应体被异常上下文撑大。
+
+源码按调用对象分层：
+
+- `Sources/iOSExploreDiagnostics/AgentHTTP/`：给 Agent 通过 HTTP action 使用的协议层，包括 `app.logs.*` 命令、命令错误工厂，以及 `ESAppLogSource`、`ESAppLogCursor`、`ESAppLogEntry`、`ESAppLogGap`、`ESAppLogMarkSnapshot`、`ESAppLogReadResult` 这类 HTTP/store 模型。这里不放进程级状态和具体捕获实现。
+- `Sources/iOSExploreDiagnostics/Runtime/`：Diagnostics 进程级运行时，包括 store、bridge、`ESLogger` observer 连接、stdout/stderr/NSLog/os_log 捕获器和 session 管理。新增 capture/runtime 行为放这里。
+- `Sources/iOSExploreDiagnostics/DeveloperAPI/`：给宿主 iOS App 开发者直接 import 后使用的 public API，包括 `ESDiagnosticsConfiguration`、`ESDiagnosticsRegistration`、`ESAppLogger`、`ESAppLogLevel` 和 `ESLogRedactor`。新增宿主接入 API 放这里。
+
+开发者使用说明位于 `docs/diagnostics/README.md`，不放在 `Sources/` 下，避免 SwiftPM 把 Markdown 当作 target 未处理文件产生构建警告。
 
 ## 模块边界与共享源码
 
@@ -76,7 +84,7 @@ Diagnostics 不依赖 UIKit，宿主通过 `server.registerDiagnosticsCommands()
 ## 并发模型
 
 - `Router` 是 `final class`，handler 表共享可变状态由 `Mutex` 保护；`route` 锁内只取命令快照，锁外校验和 `await handle`。
-- `ExploreLogging` 的全局配置同样用 `Mutex` 保护；日志 sink 调用在锁外执行，避免锁内 I/O。
+- `ESLogger` 的全局配置同样用 `Mutex` 保护；日志 sink 调用在锁外执行，避免锁内 I/O。
 - `HTTPListener` 使用独立串行 `networkQueue` 承载 `NWListener`/`NWConnection` 回调；活跃 session map 由 `Mutex` 保护。
 - `ClientSession` 当前仍是短连接模型，一连接只处理一个 HTTP 请求；关闭路径统一走 `close(reason:)`，并回调 listener 移除 session。
 - listener 进入 `.ready` 后不会移除 `stateUpdateHandler`；后续 `.waiting`/`.failed`/`.cancelled` 会继续记录并通过事件暴露不可恢复失败。

@@ -18,7 +18,7 @@ public struct ExploreCommandFailure: Sendable, Equatable {
     /// 仅用于日志的详细说明，不会进入响应 envelope。
     ///
     /// 扩展 handler 的内部排障信息（定位失败的元素、截图尺寸、手势坐标摘要等）写在这里，
-    /// 由调用方决定是否调用 `ExploreLogging.emitExtension` 输出。
+    /// 由调用方决定是否调用 `ESLogger.emitExtension` 输出。
     public let logMessage: String
 
     /// 可选的结构化 data，随 envelope 顶层 `data` 返回。
@@ -56,21 +56,21 @@ public struct ExploreCommandFailure: Sendable, Equatable {
 
 /// 为扩展模块（UIKit 等）提供的日志入口。
 ///
-/// core 内部统一走 `ExploreLogger` + `ExploreLogCategory`，但这两个类型刻意保持
+/// core 内部统一走 `ESLogger` + `ESLogCategory`，但这两个类型刻意保持
 /// `internal`，不向扩展暴露库内部分类枚举。扩展模块用本扩展的 `emitExtension` 指定
 /// 自有 category 字符串（如 `"uikit.action"`），记录会进入同一套 sink 与等级过滤，
 /// 保证日志口径一致、便于排障。
-public extension ExploreLogging {
+public extension ESLogger {
     /// 派发一条扩展模块日志到既有 sink。
     ///
-    /// 内部直接调用 `ExploreLogging.emit(_:)`，复用其开关、最小等级过滤和 sink 配置，
+    /// 内部直接调用 `ESLogger.emit(_:)`，复用其开关、最小等级过滤和 sink 配置，
     /// 不引入新的输出通道。
     ///
     /// - Parameters:
     ///   - level: 日志等级。
     ///   - category: 扩展模块自定义分类字符串，建议以模块名为前缀（如 `"uikit.action"`）。
     ///   - message: 日志正文，应为大小/摘要/错误码等非敏感信息，不要写完整 payload。
-    static func emitExtension(level: ExploreLogLevel, category: String, message: String) {
-        emit(ExploreLogRecord(level: level, category: category, message: message))
+    static func emitExtension(level: ESLogLevel, category: String, message: String) {
+        emit(ESLogRecord(level: level, category: category, message: message))
     }
 }

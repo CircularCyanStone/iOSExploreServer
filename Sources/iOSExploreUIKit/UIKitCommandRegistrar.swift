@@ -13,7 +13,7 @@ import UIKit
 ///
 /// 该扩展整体位于 `#if canImport(UIKit)` 内：macOS 下不参与编译，iOS 下提供注册
 /// 实现。注册前会在 Debug 构建中安装 alert action handler 捕获；注册前后通过
-/// `UIKitCommandLogging` 记录进入与完成（含注册数量），便于排查「UIKit 命令未注册」类问题。
+/// `UIKitCommandLogger` 记录进入与完成（含注册数量），便于排查「UIKit 命令未注册」类问题。
 public extension ExploreServer {
     /// 注册全部 UIKit 命令。
     ///
@@ -23,12 +23,12 @@ public extension ExploreServer {
     /// - Parameter maxResponseBodyBytes: 响应 body 字节上限，透传给 `ui.screenshot`，
     ///   截图 base64 估算超限即返回 `responseTooLarge`。默认 6MB，与 `ExploreServer` 默认一致。
     func registerUIKitCommands(maxResponseBodyBytes: Int = 6 * 1024 * 1024) {
-        UIKitCommandLogging.info("uikit.registrar", "registration started")
+        UIKitCommandLogger.info("uikit.registrar", "registration started")
         #if DEBUG
         do {
             try UIAlertAction.explore_installHandlerCapture()
         } catch {
-            UIKitCommandLogging.error("uikit.registrar", "alert action handler capture install failed error=\(error)")
+            UIKitCommandLogger.error("uikit.registrar", "alert action handler capture install failed error=\(error)")
         }
         #endif
         register(TopViewHierarchyCommand(), logCategory: .extensionCommand(category: "command"))
@@ -53,7 +53,7 @@ public extension ExploreServer {
         register(UIDatePickerSetDateCommand(), logCategory: .extensionCommand(category: "command"))
         register(UIPickerSelectRowCommand(), logCategory: .extensionCommand(category: "command"))
         register(UIWebViewEvalCommand(), logCategory: .extensionCommand(category: "command"))
-        UIKitCommandLogging.info("uikit.registrar", "registration completed count=21")
+        UIKitCommandLogger.info("uikit.registrar", "registration completed count=21")
     }
 }
 #endif

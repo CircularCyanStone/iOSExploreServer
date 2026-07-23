@@ -14,7 +14,7 @@ import iOSExploreDiagnostics
 
 /// 日志诊断测试页。
 ///
-/// 页面提供多种业务场景模拟按钮，每个按钮触发后会通过不同路径写入日志到 `AppLogStore`：
+/// 页面提供多种业务场景模拟按钮，每个按钮触发后会通过不同路径写入 Diagnostics 内存 store：
 /// - 网络请求场景（bridge + stdout）
 /// - 认证流程场景（bridge + stderr + oslog）
 /// - 业务事件场景（bridge + explore）
@@ -230,11 +230,11 @@ final class DiagnosticsTestViewController: UIViewController {
         print("[Network] [\(requestID)] body: {\"id\": 1024, \"name\": \"Alice\", \"role\": \"admin\"}")
 
         // bridge: 业务埋点
-        ExploreAppLog.emit(.info, category: "network.api",
+        ESAppLogger.emit(.info, category: "network.api",
                            message: "API request completed action=getUserProfile status=200 latency=342ms")
-        ExploreAppLog.emit(.debug, category: "network.api",
+        ESAppLogger.emit(.debug, category: "network.api",
                            message: "API response decoded count=1 fields=[id,name,role]")
-        ExploreAppLog.emit(.info, category: "network.api",
+        ESAppLogger.emit(.info, category: "network.api",
                            message: "API request metadata recorded",
                            metadata: ["requestID": String(requestID),
                                       "endpoint": endpoint,
@@ -267,13 +267,13 @@ final class DiagnosticsTestViewController: UIViewController {
         fputs("[Auth] INFO: retry succeeded on attempt 2/3\n", stderr)
 
         // bridge: 认证业务埋点
-        ExploreAppLog.emit(.info, category: "auth.token",
+        ESAppLogger.emit(.info, category: "auth.token",
                            message: "Token refreshed session=abc-123 expiresIn=3600s")
-        ExploreAppLog.emit(.error, category: "auth.validation",
+        ESAppLogger.emit(.error, category: "auth.validation",
                            message: "Token validation failed endpoint=/api/v2/admin retryCount=1")
-        ExploreAppLog.emit(.info, category: "auth.validation",
+        ESAppLogger.emit(.info, category: "auth.validation",
                            message: "Token refresh succeeded endpoint=/api/v2/admin retryCount=2")
-        ExploreAppLog.emit(.fault, category: "auth.session",
+        ESAppLogger.emit(.fault, category: "auth.session",
                            message: "Session abc-123: refresh threshold exceeded, forcing re-login")
 
         // oslog
@@ -297,12 +297,12 @@ final class DiagnosticsTestViewController: UIViewController {
         let operations = ["PageView", "ButtonClick", "Swipe", "Scroll", "PullToRefresh"]
         for (i, op) in operations.enumerated() {
             let duration = Int.random(in: 10...500)
-            ExploreAppLog.emit(.info, category: "analytics.user",
+            ESAppLogger.emit(.info, category: "analytics.user",
                                message: "userEvent name=\(op) duration=\(duration)ms",
                                metadata: ["eventIndex": "\(i)", "duration": "\(duration)ms"])
 
             if op == "ButtonClick" {
-                ExploreAppLog.emit(.debug, category: "analytics.user",
+                ESAppLogger.emit(.debug, category: "analytics.user",
                                    message: "userEvent action=buttonTap target=example.controlTest position=(120,340)")
             }
         }
@@ -311,7 +311,7 @@ final class DiagnosticsTestViewController: UIViewController {
         fputs("[Analytics] INFO: rendering completed for page=UserProfile in 45ms\n", stderr)
         print("[Analytics] debug: touch event at (120, 340) on example.controlTest")
 
-        ExploreAppLog.emit(.info, category: "analytics.performance",
+        ESAppLogger.emit(.info, category: "analytics.performance",
                            message: "Page UserProfile rendered in 45ms domNodes=127")
 
         os_log("[Analytics] page=UserProfile impression recorded",
@@ -346,13 +346,13 @@ final class DiagnosticsTestViewController: UIViewController {
         fputs("[ConfigLoader] ERROR: fallback to default config (feature_flags disabled)\n", stderr)
 
         // bridge: 系统事件上报
-        ExploreAppLog.emit(.fault, category: "system.memory",
+        ESAppLogger.emit(.fault, category: "system.memory",
                            message: "Memory pressure warning footprint=145MB threshold=140MB")
-        ExploreAppLog.emit(.error, category: "system.cache",
+        ESAppLogger.emit(.error, category: "system.cache",
                            message: "ImageCache eviction failed count=12 error=disk_full")
-        ExploreAppLog.emit(.error, category: "system.config",
+        ESAppLogger.emit(.error, category: "system.config",
                            message: "Config load failed, using defaults path=app.config")
-        ExploreAppLog.emit(.info, category: "system.config",
+        ESAppLogger.emit(.info, category: "system.config",
                            message: "Fallback configuration applied features=0 (all disabled)")
 
         // Swift Logger
@@ -372,18 +372,18 @@ final class DiagnosticsTestViewController: UIViewController {
         let traceID = UUID().uuidString.prefix(6)
 
         // Step 1: 用户进入设置页
-        ExploreAppLog.emit(.info, category: "trace.step",
+        ESAppLogger.emit(.info, category: "trace.step",
                            message: "[\(traceID)] Step 1/5: User navigated to Settings")
         print("[Trace] [\(traceID)] User tapped 'Settings' from main menu (touch at (280, 500))")
 
         // Step 2: 加载本地配置
-        ExploreAppLog.emit(.debug, category: "trace.step",
+        ESAppLogger.emit(.debug, category: "trace.step",
                            message: "[\(traceID)] Step 2/5: Loading local config from UserDefaults")
         print("[Trace] [\(traceID)] UserDefaults keys loaded: 24 entries")
         NSLog("[Trace] [%@] Config loaded: theme=dark, fontSize=16, language=zh-Hans", String(traceID))
 
         // Step 3: 网络请求同步远程配置
-        ExploreAppLog.emit(.info, category: "trace.step",
+        ESAppLogger.emit(.info, category: "trace.step",
                            message: "[\(traceID)] Step 3/5: Fetching remote config from /api/v1/config")
         print("[Trace] [\(traceID)] → GET /api/v1/config (timeout=10s)")
         usleep(30_000)  // 模拟延迟
@@ -391,17 +391,17 @@ final class DiagnosticsTestViewController: UIViewController {
         print("[Trace] [\(traceID)] ← 200 OK (cache-control: max-age=300)")
 
         // Step 4: 应用配置，部分失效
-        ExploreAppLog.emit(.info, category: "trace.step",
+        ESAppLogger.emit(.info, category: "trace.step",
                            message: "[\(traceID)] Step 4/5: Applying remote config items=42")
         fputs("[Trace] [\(traceID)] ERROR: feature flag 'beta_experiment' has invalid value\n", stderr)
-        ExploreAppLog.emit(.error, category: "trace.step",
+        ESAppLogger.emit(.error, category: "trace.step",
                            message: "[\(traceID)] Invalid feature flag: beta_experiment=unknown (expected=true/false)")
         os_log("[Trace] [%{public}@] Feature flag validation error count=1",
                log: OSLog(subsystem: "com.coo.SPMExample", category: "trace"),
                type: .error, String(traceID))
 
         // Step 5: 完成
-        ExploreAppLog.emit(.info, category: "trace.step",
+        ESAppLogger.emit(.info, category: "trace.step",
                            message: "[\(traceID)] Step 5/5: Settings page rendered (latency=3.8s)")
         print("[Trace] [\(traceID)] Settings page fully rendered: 7 sections, 42 items")
         let logger = Logger(subsystem: "com.coo.SPMExample", category: "trace")
@@ -415,10 +415,10 @@ final class DiagnosticsTestViewController: UIViewController {
 
     /// 执行 app.logs.mark 并保存 cursor。
     private func updateMarkCursor() {
-        // 通过 ExploreAppLog 内部机制写入 mark — 但由于无法直接调 HTTP 命令，
+        // 通过 ESAppLogger 内部机制写入 mark — 但由于无法直接调 HTTP 命令，
         // 我们在本地记录一个模拟 cursor 供 UI 展示，实际 curl 验证用 Mac 侧 mark。
         // 此处通过 bridge 发一条分隔线，帮助在 app.logs.read 中识别场景边界。
-        ExploreAppLog.emit(.info, category: "diagnostics.scenario",
+        ESAppLogger.emit(.info, category: "diagnostics.scenario",
                            message: "--- SCENARIO BOUNDARY ---")
         lastMarkCursor = ""
         cursorLabel.text = "✅ 场景已写入（建议从 Mac 侧发 app.logs.mark 获取 cursor）"

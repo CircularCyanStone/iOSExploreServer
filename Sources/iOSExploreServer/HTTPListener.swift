@@ -82,11 +82,11 @@ final class HTTPListener: @unchecked Sendable {
         self.onEvent = onEvent
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
             let error = ExploreServerError.invalidPort(port)
-            ExploreLogger.error(.listener, error.logMessage)
+            ESLogger.error(.listener, error.logMessage)
             throw error.nsError
         }
         self.listener = try NWListener(using: .tcp, on: nwPort)
-        ExploreLogger.debug(.listener, "listener initialized port=\(port) maxConnections=\(configuration.maxConnections)")
+        ESLogger.debug(.listener, "listener initialized port=\(port) maxConnections=\(configuration.maxConnections)")
     }
 
     /// 启动监听并等待端口 ready。
@@ -95,13 +95,13 @@ final class HTTPListener: @unchecked Sendable {
     /// 调用方抛错。
     func start() async throws {
         guard let listener else { return }
-        ExploreLogger.info(.listener, "listener start requested port=\(port)")
+        ESLogger.info(.listener, "listener start requested port=\(port)")
         listener.newConnectionHandler = { [weak self] conn in
             self?.handle(conn)
         }
         try await startAndWaitUntilReady(listener)
         onEvent(.started(port: port))
-        ExploreLogger.info(.listener, "listener ready port=\(port)")
+        ESLogger.info(.listener, "listener ready port=\(port)")
     }
 
     /// 启动 `NWListener` 并等待它从 setup 进入 ready 状态。
@@ -115,7 +115,7 @@ final class HTTPListener: @unchecked Sendable {
             listener.stateUpdateHandler = { [weak self] state in
                 switch state {
                 case .ready:
-                    ExploreLogger.info(.listener, "listener state ready")
+                    ESLogger.info(.listener, "listener state ready")
                     if didResume.withLock({ value in
                         if value { return false }
                         value = true
@@ -125,7 +125,7 @@ final class HTTPListener: @unchecked Sendable {
                     }
                 case .failed(let err):
                     self?.isTerminated.withLock { $0 = true }
-                    ExploreLogger.error(.listener, "listener state failed error=\(err)")
+                    ESLogger.error(.listener, "listener state failed error=\(err)")
                     if didResume.withLock({ value in
                         if value { return false }
                         value = true
@@ -137,7 +137,7 @@ final class HTTPListener: @unchecked Sendable {
                     }
                 case .cancelled:
                     self?.isTerminated.withLock { $0 = true }
-                    ExploreLogger.error(.listener, "listener state cancelled before ready")
+                    ESLogger.error(.listener, "listener state cancelled before ready")
                     if didResume.withLock({ value in
                         if value { return false }
                         value = true
@@ -146,7 +146,7 @@ final class HTTPListener: @unchecked Sendable {
                         cont.resume(throwing: ExploreServerError.listenerCancelled().nsError)
                     }
                 case .waiting(let err):
-                    ExploreLogger.error(.listener, "listener state waiting error=\(err)")
+                    ESLogger.error(.listener, "listener state waiting error=\(err)")
                 default:
                     break   // .setup 等中间态忽略
                 }
@@ -157,7 +157,7 @@ final class HTTPListener: @unchecked Sendable {
 
     /// 停止监听并发送 stopped 事件。
     func stop() {
-        ExploreLogger.info(.listener, "listener stop requested")
+        ESLogger.info(.listener, "listener stop requested")
         let sessions = state.withLock { state -> [ClientSession] in
             let sessions = Array(state.sessions.values)
             state.sessions.removeAll()
@@ -168,7 +168,7 @@ final class HTTPListener: @unchecked Sendable {
         }
         listener?.cancel()
         onEvent(.stopped)
-        ExploreLogger.info(.listener, "listener stopped")
+        ESLogger.info(.listener, "listener stopped")
     }
 
     /// 停止 listener 并等待 Network.framework 报告终态，确保端口可安全复用。
@@ -193,11 +193,11 @@ final class HTTPListener: @unchecked Sendable {
         }
         guard let (sessionID, activeAfterAccept) = sessionInfo else {
             let error = ExploreServerError.tooManyConnections(limit: configuration.maxConnections)
-            ExploreLogger.error(.listener, error.logMessage)
+            ESLogger.error(.listener, error.logMessage)
             Self.reject(conn, queue: networkQueue, error: error)
             return
         }
-        ExploreLogger.debug(.listener, "connection accepted session=\(sessionID) active=\(activeAfterAccept) limit=\(configuration.maxConnections)")
+        ESLogger.debug(.listener, "connection accepted session=\(sessionID) active=\(activeAfterAccept) limit=\(configuration.maxConnections)")
         let session = ClientSession(sessionID: sessionID,
                                     connection: conn,
                                     router: router,
@@ -215,7 +215,7 @@ final class HTTPListener: @unchecked Sendable {
             state.sessions.removeValue(forKey: sessionID)
             return state.sessions.count
         }
-        ExploreLogger.debug(.listener, "session removed id=\(sessionID) active=\(remaining)")
+        ESLogger.debug(.listener, "session removed id=\(sessionID) active=\(remaining)")
     }
 
     private static func reject(_ conn: NWConnection, queue: DispatchQueue, error: ExploreServerError) {
@@ -223,7 +223,7 @@ final class HTTPListener: @unchecked Sendable {
         conn.start(queue: queue)
         conn.send(content: response.serialized(), completion: .contentProcessed { error in
             if let error {
-                ExploreLogger.error(.http, "http reject send error=\(error)")
+                ESLogger.error(.http, "http reject send error=\(error)")
             }
             conn.cancel()
         })

@@ -3,7 +3,7 @@ import Foundation
 /// 命令执行日志归属。
 ///
 /// core 内置命令使用 `.core`，扩展模块（如 UIKit 命令）使用自定义 category，把日志接入
-/// 同一套 `ExploreLogging` sink，同时避免 core 暴露内部 `ExploreLogCategory`。
+/// 同一套 `ESLogger` sink，同时避免 core 暴露内部 `ESLogCategory`。
 public enum CommandLogCategory: Sendable, Equatable {
     /// core 命令日志，最终进入内部 `command` category。
     case core
@@ -177,25 +177,25 @@ public struct AnyCommand: Sendable {
         }
     }
 
-    private func emit(_ level: ExploreLogLevel, _ message: String) {
+    private func emit(_ level: ESLogLevel, _ message: String) {
         switch logCategory {
         case .core:
             Self.emitCore(level, message)
         case .extensionCommand(let category):
-            ExploreLogging.emitExtension(level: level, category: category, message: message)
+            ESLogger.emitExtension(level: level, category: category, message: message)
         }
     }
 
-    private static func emitCore(_ level: ExploreLogLevel, _ message: String) {
+    private static func emitCore(_ level: ESLogLevel, _ message: String) {
         switch level {
         case .debug:
-            ExploreLogger.debug(.command, message)
+            ESLogger.debug(.command, message)
         case .info:
-            ExploreLogger.info(.command, message)
+            ESLogger.info(.command, message)
         case .error:
-            ExploreLogger.error(.command, message)
+            ESLogger.error(.command, message)
         case .fault:
-            ExploreLogger.fault(.command, message)
+            ESLogger.fault(.command, message)
         }
     }
 }

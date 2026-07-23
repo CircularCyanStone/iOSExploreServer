@@ -7,7 +7,7 @@ import os.lock
 ///
 /// Swift 6 严格并发要求共享可变状态跨边界时是安全的。本库把唯一的 `@unchecked`
 /// 边界收敛在这里：`Mutex` 手动保证内部值的互斥访问，库内 `Router` / `ExploreServer` /
-/// `HTTPListener` / `ClientSession` / `ExploreLogging` 等共享可变状态全部通过
+/// `HTTPListener` / `ClientSession` / `ESLogger` 等共享可变状态全部通过
 /// `withLock` 读写，从而保持各自的 `Sendable` 语义。
 ///
 /// 使用约束：传入 `withLock` 的闭包必须是同步闭包，锁内禁止 `await`，也不应执行耗时 I/O。

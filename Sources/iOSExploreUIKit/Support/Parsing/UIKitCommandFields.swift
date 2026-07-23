@@ -88,7 +88,7 @@ public enum UIKitLocatorInput {
                              pathField: CommandField<String?> = UIKitLocatorFields.path) throws -> UIKitViewLookupTarget {
         let identifier = try decoder.read(identifierField)
         let rawPath = try decoder.read(pathField)
-        UIKitCommandLogging.info("command", "UIKitLocatorInput.parse identifier=\(String(describing: identifier)) rawPath=\(String(describing: rawPath))")
+        UIKitCommandLogger.info("command", "UIKitLocatorInput.parse identifier=\(String(describing: identifier)) rawPath=\(String(describing: rawPath))")
         do {
             return try UIKitViewLookupTarget.parse(identifier: identifier, rawPath: rawPath)
         } catch let error as UIKitLocatorParseError {

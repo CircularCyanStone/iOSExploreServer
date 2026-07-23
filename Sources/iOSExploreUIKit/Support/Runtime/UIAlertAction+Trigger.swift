@@ -69,7 +69,7 @@ extension UIAlertAction {
         defer { exploreHandlerCaptureLock.unlock() }
 
         guard !exploreHandlerCaptureInstalled else {
-            UIKitCommandLogging.info("command", "ui alert action handler capture already installed")
+            UIKitCommandLogger.info("command", "ui alert action handler capture already installed")
             return
         }
 
@@ -78,7 +78,7 @@ extension UIAlertAction {
             let failure = ExploreTriggerFailure.captureInstallFailed(
                 "missing selector \(NSStringFromSelector(selector))"
             )
-            UIKitCommandLogging.error("command", failure.description)
+            UIKitCommandLogger.error("command", failure.description)
             throw failure
         }
 
@@ -102,10 +102,10 @@ extension UIAlertAction {
                                                 with: replacement)
             exploreOriginalActionFactoryIMP = originalIMP
             exploreHandlerCaptureInstalled = true
-            UIKitCommandLogging.info("command", "ui alert action handler capture installed selector=actionWithTitle:style:handler:")
+            UIKitCommandLogger.info("command", "ui alert action handler capture installed selector=actionWithTitle:style:handler:")
         } catch {
             let failure = ExploreTriggerFailure.captureInstallFailed("\(error)")
-            UIKitCommandLogging.error("command", failure.description)
+            UIKitCommandLogger.error("command", failure.description)
             throw failure
         }
     }
@@ -120,13 +120,13 @@ extension UIAlertAction {
     func explore_performHandler() throws {
         guard let handlerObject = explore_capturedHandler() ?? explore_kvcHandler() else {
             let failure = ExploreTriggerFailure.handlerUnavailable
-            UIKitCommandLogging.error("command", failure.description)
+            UIKitCommandLogger.error("command", failure.description)
             throw failure
         }
 
         let handler = unsafeBitCast(handlerObject, to: HandlerBlock.self)
         handler(self)
-        UIKitCommandLogging.info("command", "ui alert action handler performed")
+        UIKitCommandLogger.info("command", "ui alert action handler performed")
     }
 
     /// 读取 hook 创建 action 时保存的 handler。

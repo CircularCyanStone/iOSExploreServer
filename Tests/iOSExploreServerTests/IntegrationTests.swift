@@ -182,8 +182,8 @@ func connectionLimitRejectsAdditionalConnection() async throws {
     @Test("Diagnostics mark/read 经真实 TCP 读取 action 后增量日志")
     func diagnosticsMarkReadViaHTTP() async throws {
         try await withProcessDiagnosticsTestIsolation {
-            ProcessDiagnosticsRuntime.shared.resetForTesting()
-            defer { ProcessDiagnosticsRuntime.shared.resetForTesting() }
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let server = ExploreServer(port: testPort)
             server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
                                                      captureStdout: false,
@@ -195,7 +195,7 @@ func connectionLimitRejectsAdditionalConnection() async throws {
             let markEnvelope = try responseEnvelope(markText)
             let cursor = try cursorObject(from: markEnvelope)
 
-            ExploreAppLog.emit(.info, category: "tcp", message: "tcp bridge check")
+            ESAppLogger.emit(.info, category: "tcp", message: "tcp bridge check")
 
             let readText = try await send(action: "app.logs.read",
                                           data: ["after": .object(cursor),

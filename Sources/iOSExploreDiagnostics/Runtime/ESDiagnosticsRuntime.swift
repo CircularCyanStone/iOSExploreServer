@@ -1,28 +1,29 @@
 import Foundation
 import iOSExploreServer
 
-private struct ProcessDiagnosticsRuntimeState {
-    var store: AppLogStore?
+private struct ESDiagnosticsRuntimeState {
+    var store: ESAppLogStore?
     var bridgeEnabled: Bool = false
-    var observation: ExploreLogObservation?
-    var configuration: DiagnosticsConfiguration = .default
+    var observation: ESLogObservation?
+    var configuration: ESDiagnosticsConfiguration = .default
 #if DEBUG
-    var stdioCapture: StdIOCapture?
-    var unifiedLogCapture: UnifiedLogCapture?
+    var nslogHookCapture: ESNSLogHookCapture?
+    var stdioCapture: ESStdIOCapture?
+    var unifiedLogCapture: ESUnifiedLogCapture?
     var pendingCaptureFlushOverride: (@Sendable () -> Void)?
 #endif
 }
 
 /// 进程级 Diagnostics Runtime。
 ///
-/// 日志 store、bridge 和 `ExploreLogging` observer 都是进程级资源，而不是某个
+/// 日志 store、bridge 和 `ESLogger` observer 都是进程级资源，而不是某个
 /// `ExploreServer` 实例的私有资源。`server.stop()` 只停止 HTTP listener，不会清空这里的
 /// store。
-public final class ProcessDiagnosticsRuntime: Sendable {
+final class ESDiagnosticsRuntime: Sendable {
     /// 共享 runtime。
-    public static let shared = ProcessDiagnosticsRuntime()
+    static let shared = ESDiagnosticsRuntime()
 
-    private let state = Mutex(ProcessDiagnosticsRuntimeState())
+    private let state = Mutex(ESDiagnosticsRuntimeState())
 
     private init() {}
 
@@ -34,37 +35,38 @@ public final class ProcessDiagnosticsRuntime: Sendable {
     /// - Returns: 注册结果。
     @discardableResult
     func register(on server: ExploreServer,
-                  configuration: DiagnosticsConfiguration) -> DiagnosticsRegistration {
+                  configuration: ESDiagnosticsConfiguration) -> ESDiagnosticsRegistration {
 #if DEBUG
-        ExploreLogging.emitExtension(level: .info,
-                                     category: "diagnostics.runtime",
-                                     message: "diagnostics register started bufferCapacity=\(configuration.bufferCapacity) captureExploreLogs=\(configuration.captureExploreLogs) bridge=\(configuration.enableBridge) stdout=\(configuration.captureStdout) stderr=\(configuration.captureStderr) nslog=\(configuration.captureNSLog) oslog=\(configuration.captureOSLog)")
-        let previousCaptures = state.withLock { state -> (StdIOCapture?, UnifiedLogCapture?) in
+        ESLogger.emitExtension(level: .info,
+                               category: "diagnostics.runtime",
+                               message: "diagnostics register started bufferCapacity=\(configuration.bufferCapacity) captureExploreLogs=\(configuration.captureExploreLogs) bridge=\(configuration.enableBridge) stdout=\(configuration.captureStdout) stderr=\(configuration.captureStderr) nslog=\(configuration.captureNSLog) oslog=\(configuration.captureOSLog)")
+        let previousCaptures = state.withLock { state -> (ESNSLogHookCapture?, ESStdIOCapture?, ESUnifiedLogCapture?) in
             if let observation = state.observation {
-                ExploreLogging.removeObserver(observation)
+                ESLogger.removeObserver(observation)
             }
-            let captures = (state.stdioCapture, state.unifiedLogCapture)
-            state = ProcessDiagnosticsRuntimeState()
+            let captures = (state.nslogHookCapture, state.stdioCapture, state.unifiedLogCapture)
+            state = ESDiagnosticsRuntimeState()
             return captures
         }
         previousCaptures.0?.stop()
         previousCaptures.1?.stop()
+        previousCaptures.2?.stop()
 
-        let store = AppLogStore(captureSessionID: UUID().uuidString,
-                                capacity: configuration.bufferCapacity,
-                                maximumEntryBytes: configuration.maximumEntryBytes,
-                                maximumMetadataEntries: configuration.maximumMetadataEntries,
-                                maximumMetadataKeyBytes: configuration.maximumMetadataKeyBytes,
-                                maximumMetadataValueBytes: configuration.maximumMetadataValueBytes,
-                                redactor: configuration.redaction)
+        let store = ESAppLogStore(captureSessionID: UUID().uuidString,
+                                  capacity: configuration.bufferCapacity,
+                                  maximumEntryBytes: configuration.maximumEntryBytes,
+                                  maximumMetadataEntries: configuration.maximumMetadataEntries,
+                                  maximumMetadataKeyBytes: configuration.maximumMetadataKeyBytes,
+                                  maximumMetadataValueBytes: configuration.maximumMetadataValueBytes,
+                                  redactor: configuration.redaction)
         state.withLock { state in
             state.store = store
             state.bridgeEnabled = configuration.enableBridge
             state.configuration = configuration
             if configuration.captureExploreLogs {
-                state.observation = ExploreLogging.addObserver { record in
+                state.observation = ESLogger.addObserver { record in
                     store.append(source: .explore,
-                                 level: AppLogLevel(record.level),
+                                 level: ESAppLogLevel(record.level),
                                  category: record.category,
                                  message: record.message)
                 }
@@ -72,24 +74,31 @@ public final class ProcessDiagnosticsRuntime: Sendable {
                 state.observation = nil
             }
         }
-        let stdioCapture = StdIOCapture(configuration: configuration, store: store)
-        let unifiedLogCapture = UnifiedLogCapture(configuration: configuration, store: store)
+        let nslogHookCapture = ESNSLogHookCapture(configuration: configuration,
+                                                  store: store)
+        let stdioCapture = ESStdIOCapture(configuration: configuration,
+                                          store: store,
+                                          captureNSLogFromStderr: configuration.captureNSLog,
+                                          suppressNSLogStderrLines: false)
+        let unifiedLogCapture = ESUnifiedLogCapture(configuration: configuration,
+                                                    store: store)
         state.withLock { state in
+            state.nslogHookCapture = nslogHookCapture
             state.stdioCapture = stdioCapture
             state.unifiedLogCapture = unifiedLogCapture
         }
-        server.register(AppLogsMarkCommand(runtime: self))
-        server.register(AppLogsReadCommand(runtime: self))
-        ExploreLogging.emitExtension(level: .info,
-                                     category: "diagnostics.runtime",
-                                     message: "diagnostics register completed captureSessionID=\(store.mark().cursor.captureSessionID)")
+        server.register(ESAppLogsMarkCommand(runtime: self))
+        server.register(ESAppLogsReadCommand(runtime: self))
+        ESLogger.emitExtension(level: .info,
+                               category: "diagnostics.runtime",
+                               message: "diagnostics register completed captureSessionID=\(store.mark().cursor.captureSessionID)")
         return .enabled(captureSessionID: store.mark().cursor.captureSessionID)
 #else
         _ = server
         _ = configuration
-        ExploreLogging.emitExtension(level: .info,
-                                     category: "diagnostics.runtime",
-                                     message: "diagnostics register disabled reason=non-debug-build")
+        ESLogger.emitExtension(level: .info,
+                               category: "diagnostics.runtime",
+                               message: "diagnostics register disabled reason=non-debug-build")
         return .disabled(reason: "iOSExploreDiagnostics is disabled in non-Debug builds.")
 #endif
     }
@@ -101,11 +110,11 @@ public final class ProcessDiagnosticsRuntime: Sendable {
     ///   - category: 宿主分类。
     ///   - message: 日志正文。
     ///   - metadata: 轻量上下文。
-    func appendBridge(level: AppLogLevel,
+    func appendBridge(level: ESAppLogLevel,
                       category: String,
                       message: () -> String,
                       metadata: [String: String]?) {
-        let snapshot = state.withLock { state -> (Bool, AppLogStore?) in
+        let snapshot = state.withLock { state -> (Bool, ESAppLogStore?) in
             (state.bridgeEnabled, state.store)
         }
         guard snapshot.0, let store = snapshot.1 else { return }
@@ -115,14 +124,14 @@ public final class ProcessDiagnosticsRuntime: Sendable {
     /// 当前 store 快照。
     ///
     /// - Returns: 已安装 store；未安装时为 nil。
-    func currentStore() -> AppLogStore? {
+    func currentStore() -> ESAppLogStore? {
         state.withLock { $0.store }
     }
 
     /// 读取日志前请求刷新需要主动轮询的捕获来源。
     ///
-    /// stdout/stderr 由 fd read source 推送；NSLog 既有 fd 行识别路径，也有 `OSLogStore`
-    /// 读取路径；Apple Unified Logging 可能延迟落入 `OSLogStore`，因此在 `app.logs.read`
+    /// stdout/stderr 由 fd read source 推送；NSLog 由 stderr 行识别与 fishhook 增强路径推送。
+    /// os_log / Swift Logger 可能延迟落入 `OSLogStore`，因此在 `app.logs.read`
     /// 前发起一次后台拉取，降低 Agent 后续读到空结果的概率。
     /// 这里不能同步等待 `OSLogStore.getEntries`：真机日志量较大时该系统调用可能长时间不返回，
     /// 会阻塞 `app.logs.read` 响应并让 Agent 误判 MCP 服务不可用。
@@ -132,9 +141,9 @@ public final class ProcessDiagnosticsRuntime: Sendable {
             (state.pendingCaptureFlushOverride, state.unifiedLogCapture)
         }
         if let override = snapshot.0 {
-            ExploreLogging.emitExtension(level: .debug,
-                                         category: "diagnostics.runtime",
-                                         message: "pending capture flush requested mode=testOverride")
+            ESLogger.emitExtension(level: .debug,
+                                   category: "diagnostics.runtime",
+                                   message: "pending capture flush requested mode=testOverride")
             DispatchQueue.global(qos: .utility).async(execute: override)
             return
         }
@@ -160,15 +169,16 @@ public final class ProcessDiagnosticsRuntime: Sendable {
     func captureStatusJSON() -> JSON {
 #if DEBUG
         let snapshot = state.withLock { state in
-            (state.store != nil, state.bridgeEnabled, state.configuration, state.stdioCapture, state.unifiedLogCapture)
+            (state.store != nil, state.bridgeEnabled, state.configuration, state.nslogHookCapture, state.stdioCapture, state.unifiedLogCapture)
         }
         let installed = snapshot.0
         let bridgeEnabled = snapshot.1
         let configuration = snapshot.2
-        let stdioCapture = snapshot.3
-        let unifiedLogCapture = snapshot.4
-        let nslogCaptureStatus = combinedNSLogStatus(stdioStatus: stdioCapture?.nslog,
-                                                     unifiedStatus: unifiedLogCapture?.nslogStatus)
+        let nslogHookCapture = snapshot.3
+        let stdioCapture = snapshot.4
+        let unifiedLogCapture = snapshot.5
+        let nslogCaptureStatus = combinedNSLogStatus(hookStatus: nslogHookCapture?.status,
+                                                     stdioStatus: stdioCapture?.nslog)
         let oslogCaptureStatus = unifiedLogCapture?.oslogStatus
 #else
         let snapshot = state.withLock { state in
@@ -177,14 +187,14 @@ public final class ProcessDiagnosticsRuntime: Sendable {
         let installed = snapshot.0
         let bridgeEnabled = snapshot.1
         let configuration = snapshot.2
-        let nslogCaptureStatus: StdIOCaptureStatus? = .notCaptured(reason: "NSLog capture is disabled in non-Debug builds")
-        let oslogCaptureStatus: StdIOCaptureStatus? = .notCaptured(reason: "os_log capture is disabled in non-Debug builds")
+        let nslogCaptureStatus: ESLogCaptureStatus? = .notCaptured(reason: "NSLog capture is disabled in non-Debug builds")
+        let oslogCaptureStatus: ESLogCaptureStatus? = .notCaptured(reason: "os_log capture is disabled in non-Debug builds")
 #endif
         var capture: JSON = [
             "explore": .object(status(state: installed && configuration.captureExploreLogs ? "enabled" : "notCaptured",
                                       reason: installed ? nil : "Diagnostics Runtime is not installed")),
             "bridge": .object(status(state: installed && bridgeEnabled ? "enabled" : "notCaptured",
-                                     reason: bridgeEnabled ? nil : "ExploreAppLog bridge is disabled")),
+                                     reason: bridgeEnabled ? nil : "ESAppLogger bridge is disabled")),
             "nslog": .object(streamStatus(enabled: configuration.captureNSLog,
                                           installed: installed,
                                           status: nslogCaptureStatus,
@@ -219,29 +229,30 @@ public final class ProcessDiagnosticsRuntime: Sendable {
     /// 测试辅助：清空 runtime 并移除 observer。
     func resetForTesting() {
 #if DEBUG
-        let previousCaptures = state.withLock { state -> (StdIOCapture?, UnifiedLogCapture?) in
+        let previousCaptures = state.withLock { state -> (ESNSLogHookCapture?, ESStdIOCapture?, ESUnifiedLogCapture?) in
             if let observation = state.observation {
-                ExploreLogging.removeObserver(observation)
+                ESLogger.removeObserver(observation)
             }
-            let captures = (state.stdioCapture, state.unifiedLogCapture)
-            state = ProcessDiagnosticsRuntimeState()
+            let captures = (state.nslogHookCapture, state.stdioCapture, state.unifiedLogCapture)
+            state = ESDiagnosticsRuntimeState()
             return captures
         }
         previousCaptures.0?.stop()
         previousCaptures.1?.stop()
+        previousCaptures.2?.stop()
 #else
         state.withLock { state in
             if let observation = state.observation {
-                ExploreLogging.removeObserver(observation)
+                ESLogger.removeObserver(observation)
             }
-            state = ProcessDiagnosticsRuntimeState()
+            state = ESDiagnosticsRuntimeState()
         }
 #endif
     }
 
     private func streamStatus(enabled: Bool,
                               installed: Bool,
-                              status captureStatus: StdIOCaptureStatus?,
+                              status captureStatus: ESLogCaptureStatus?,
                               name: String) -> JSON {
         guard enabled else {
             return status(state: "notCaptured", reason: "\(name) capture is disabled")
@@ -264,18 +275,19 @@ public final class ProcessDiagnosticsRuntime: Sendable {
     }
 
 #if DEBUG
-    private func combinedNSLogStatus(stdioStatus: StdIOCaptureStatus?,
-                                     unifiedStatus: StdIOCaptureStatus?) -> StdIOCaptureStatus? {
-        if stdioStatus?.state == "enabled" || unifiedStatus?.state == "enabled" {
+    private func combinedNSLogStatus(hookStatus: ESLogCaptureStatus?,
+                                     stdioStatus: ESLogCaptureStatus?) -> ESLogCaptureStatus? {
+        if hookStatus?.state == "enabled"
+            || stdioStatus?.state == "enabled" {
             return .enabled
         }
-        return unifiedStatus ?? stdioStatus
+        return hookStatus ?? stdioStatus
     }
 #endif
 }
 
-private extension AppLogLevel {
-    init(_ level: ExploreLogLevel) {
+private extension ESAppLogLevel {
+    init(_ level: ESLogLevel) {
         switch level {
         case .debug: self = .debug
         case .info: self = .info

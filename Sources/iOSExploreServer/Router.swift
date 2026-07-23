@@ -30,7 +30,7 @@ public final class Router: Sendable {
     /// - Parameter command: 已完成 typed input 适配和日志归属配置的命令。
     public func register(_ command: AnyCommand) {
         handlers.withLock { $0[command.action] = command }
-        ExploreLogger.info(.router, "router registered action=\(command.action) schemaFields=\(command.inputSchema.fields.count) constraints=\(command.inputSchema.constraints.count)")
+        ESLogger.info(.router, "router registered action=\(command.action) schemaFields=\(command.inputSchema.fields.count) constraints=\(command.inputSchema.constraints.count)")
     }
 
     /// 注册一个 typed 闭包命令。
@@ -62,19 +62,19 @@ public final class Router: Sendable {
     /// `unknown_action`，输入解析失败和 handler 抛错由 `AnyCommand` 转换为业务失败
     /// envelope。
     func route(_ request: ExploreRequest) async -> ExploreResult {
-        ExploreLogger.debug(.router, "router route start action=\(request.action) payloadKeys=\(request.data.storage.count)")
+        ESLogger.debug(.router, "router route start action=\(request.action) payloadKeys=\(request.data.storage.count)")
         let command = handlers.withLock { $0[request.action] }
         guard let command else {
             let error = ExploreServerError.unknownAction(request.action)
-            ExploreLogger.error(.router, "router route failed category=\(error.category.rawValue) message=\(error.logMessage)")
+            ESLogger.error(.router, "router route failed category=\(error.category.rawValue) message=\(error.logMessage)")
             return .failure(code: error.code, message: error.message)
         }
         let result = await command.handle(request)
         switch result {
         case .success:
-            ExploreLogger.info(.router, "router route success action=\(request.action)")
+            ESLogger.info(.router, "router route success action=\(request.action)")
         case .failure(let code, let message, _):
-            ExploreLogger.error(.router, "router route business failure action=\(request.action) code=\(code.rawValue) message=\(message)")
+            ESLogger.error(.router, "router route business failure action=\(request.action) code=\(code.rawValue) message=\(message)")
         }
         return result
     }
@@ -104,7 +104,7 @@ public final class Router: Sendable {
             }
             return snapshot.sorted(by: { lhs, rhs in lhs.action < rhs.action })
         }
-        ExploreLogger.debug(.router, "router metadata snapshot count=\(metadata.count)")
+        ESLogger.debug(.router, "router metadata snapshot count=\(metadata.count)")
         return metadata
     }
 }

@@ -468,7 +468,7 @@ extension ViewController {
 // 这里只保留测试用例调用的入口，转发到 AppDelegate，避免逻辑分散。
 extension ViewController {
     #if DEBUG
-    static func exampleDiagnosticsConfiguration() -> DiagnosticsConfiguration {
+    static func exampleDiagnosticsConfiguration() -> ESDiagnosticsConfiguration {
         AppDelegate.shared.exampleDiagnosticsConfiguration()
     }
 

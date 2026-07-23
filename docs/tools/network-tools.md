@@ -48,7 +48,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"...","id":1},"limit":100}}'
 ```
 
-`app.logs.*` 只承诺返回当前 App 进程内、Diagnostics Runtime 启用后、iOSExplore 实际捕获并保留的日志。稳定来源包括 `explore`（内部命令/路由日志）、`bridge`（宿主 `ExploreAppLog.emit`），以及配置打开后的 stdout/stderr/NSLog/Apple Unified Logging 捕获。stdout/stderr 默认关闭；打开后 stdout 每行返回 `source="stdout"` / `level="info"`，stderr 每行返回 `source="stderr"` / `level="error"`。`NSLog` 通过 stderr 行识别进入 `source="nslog"`；`os_log` 与 Swift `Logger` 通过当前进程 `OSLogStore` 进入 `source="oslog"`，如果系统不允许读取会在 `capture.oslog` 返回 `unavailable`。
+`app.logs.*` 只承诺返回当前 App 进程内、Diagnostics Runtime 启用后、iOSExplore 实际捕获并保留的日志。稳定来源包括 `explore`（内部命令/路由日志）、`bridge`（宿主 `ESAppLogger.emit`），以及配置打开后的 stdout/stderr/NSLog/Apple Unified Logging 捕获。stdout/stderr 默认关闭；打开后 stdout 每行返回 `source="stdout"` / `level="info"`，stderr 每行返回 `source="stderr"` / `level="error"`。`NSLog` 通过 stderr 行识别和 fishhook Objective-C/C 增强路径进入 `source="nslog"`；`os_log` 与 Swift `Logger` 通过当前进程 `OSLogStore` best-effort 进入 `source="oslog"`，如果系统不允许读取会在 `capture.oslog` 返回 `unavailable`。
 
 `app.logs.read` 是按 cursor 向新日志方向读取的增量命令。省略 `after` 时只返回当前可见的最近 `limit` 条，并把 `nextCursor` 指到这次读到的最新 id；它不支持向更旧日志翻页，因此该场景下 `hasMore=false`。需要连续消费时，后续请求传入上一轮返回的 `nextCursor`。
 

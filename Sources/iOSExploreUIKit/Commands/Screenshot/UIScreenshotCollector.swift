@@ -29,7 +29,7 @@ enum UIScreenshotCollector {
     /// - Throws: `UIKitCommandError`——过渡态、渲染失败、PNG 编码失败、响应过大、上下文不可用。
     static func collect(input: UIScreenshotInput, maxResponseBodyBytes: Int) throws -> JSON {
         let action = ScreenshotCommand.actionName
-        UIKitCommandLogging.info("command", "ui screenshot start maxDimension=\(input.maxDimension)")
+        UIKitCommandLogger.info("command", "ui screenshot start maxDimension=\(input.maxDimension)")
         let context = try UIKitContextProvider.currentContext(action: action)
         return try collect(input: input, maxResponseBodyBytes: maxResponseBodyBytes, context: context)
     }
@@ -106,7 +106,7 @@ enum UIScreenshotCollector {
         let screenScale = window.screen.scale
         let scaledPxW = scaledImage.cgImage?.width ?? 0
         let scaledPxH = scaledImage.cgImage?.height ?? 0
-        UIKitCommandLogging.info("command", "ui screenshot completed pngBytes=\(pngData.count) pxW=\(scaledPxW) pxH=\(scaledPxH) pixelScale=\(pixelScale)")
+        UIKitCommandLogger.info("command", "ui screenshot completed pngBytes=\(pngData.count) pxW=\(scaledPxW) pxH=\(scaledPxH) pixelScale=\(pixelScale)")
 
         return [
             "image": .string(base64),

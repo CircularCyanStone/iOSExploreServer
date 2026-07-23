@@ -48,7 +48,7 @@ enum UIDatePickerSetDateExecutor {
         }
 
         guard let datePicker = located.view as? UIDatePicker else {
-            UIKitCommandLogging.error("command", "\(action) target is not UIDatePicker type=\(String(describing: type(of: located.view)))")
+            UIKitCommandLogger.error("command", "\(action) target is not UIDatePicker type=\(String(describing: type(of: located.view)))")
             throw UIKitCommandError.invalidData(
                 action: action,
                 message: "target is not a UIDatePicker (got \(String(describing: type(of: located.view))))"
@@ -71,7 +71,7 @@ enum UIDatePickerSetDateExecutor {
         datePicker.setDate(resolvedDate, animated: input.animated)
         datePicker.sendActions(for: .valueChanged)
 
-        UIKitCommandLogging.info("command", "\(action) completed mode=\(modeString(datePicker.datePickerMode)) animated=\(input.animated)")
+        UIKitCommandLogger.info("command", "\(action) completed mode=\(modeString(datePicker.datePickerMode)) animated=\(input.animated)")
 
         return [
             "type": .string("UIDatePicker"),

@@ -71,7 +71,7 @@
 ### 第 0 步：骨架（5 分钟，~60 行）
 先建立整体印象，**不要纠结细节**：
 - `UIKitCommandRegistrar.swift`——入口，看 14 个命令怎么被注册。
-- `UIKitCommandLogging.swift`（29 行）——日志怎么复用 core 的缝。
+- `UIKitCommandLogger.swift`（29 行）——日志怎么复用 core 的缝。
 
 > 目标：知道“14 个命令 + 一套日志”。
 

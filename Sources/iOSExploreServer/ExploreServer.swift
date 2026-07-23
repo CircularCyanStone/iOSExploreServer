@@ -88,7 +88,7 @@ public final class ExploreServer: Sendable {
         self.eventStream = AsyncStream { continuation = $0 }
         self.eventContinuation = continuation
         BuiltinHandlers.registerAll(into: router)
-        ExploreLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil) maxResponseBodyBytes=\(maxResponseBodyBytes)")
+        ESLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil) maxResponseBodyBytes=\(maxResponseBodyBytes)")
     }
 
     /// 测试/内部入口：允许注入 listener 资源限制配置。
@@ -103,7 +103,7 @@ public final class ExploreServer: Sendable {
         self.eventStream = AsyncStream { continuation = $0 }
         self.eventContinuation = continuation
         BuiltinHandlers.registerAll(into: router)
-        ExploreLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil)")
+        ESLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil)")
     }
 
     /// 注册一个 typed 协议命令对象。
@@ -114,7 +114,7 @@ public final class ExploreServer: Sendable {
     ///   - command: 具体命令对象。
     ///   - logCategory: 命令执行日志归属。
     public func register<C: Command>(_ command: C, logCategory: CommandLogCategory = .core) {
-        ExploreLogger.info(.server, "server register command action=\(command.action) schemaFields=\(C.Input.inputSchema.fields.count)")
+        ESLogger.info(.server, "server register command action=\(command.action) schemaFields=\(C.Input.inputSchema.fields.count)")
         router.register(command, logCategory: logCategory)
     }
 
@@ -135,7 +135,7 @@ public final class ExploreServer: Sendable {
                                               input: Input.Type,
                                               logCategory: CommandLogCategory = .core,
                                               _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
-        ExploreLogger.info(.server, "server register closure action=\(action) schemaFields=\(Input.inputSchema.fields.count)")
+        ESLogger.info(.server, "server register closure action=\(action) schemaFields=\(Input.inputSchema.fields.count)")
         router.register(action: action,
                         description: description,
                         input: input,
@@ -149,7 +149,7 @@ public final class ExploreServer: Sendable {
     /// Network 错误。调用方应避免并发调用 `start()`/`stop()`，常见用法是在 App 主线程
     /// 按钮事件中串行触发。
     public func start() async throws {
-        ExploreLogger.info(.server, "server start requested port=\(port)")
+        ESLogger.info(.server, "server start requested port=\(port)")
         if let stopping = stoppingListener.withLock({ value -> HTTPListener? in
             let pending = value
             value = nil
@@ -164,18 +164,18 @@ public final class ExploreServer: Sendable {
         }
         try await l.start()
         listener.withLock { $0 = l }
-        ExploreLogger.info(.server, "server start completed port=\(port)")
+        ESLogger.info(.server, "server start completed port=\(port)")
     }
 
     /// 停止 TCP HTTP server。
     ///
     /// 方法是幂等的：如果当前没有 listener，调用也不会报错。
     public func stop() {
-        ExploreLogger.info(.server, "server stop requested")
+        ESLogger.info(.server, "server stop requested")
         let previous = listener.withLock { let prev = $0; $0 = nil; return prev }
         previous?.stop()
         if let previous { stoppingListener.withLock { $0 = previous } }
-        ExploreLogger.info(.server, "server stop completed hadListener=\(previous != nil)")
+        ESLogger.info(.server, "server stop completed hadListener=\(previous != nil)")
     }
 
     /// 测试内部停止屏障：等待底层 listener 终态后返回。
@@ -215,7 +215,7 @@ public final class ExploreServer: Sendable {
     /// 与 `ClientSession.process` 中真实网络路径下的 `withTimeout` 行为不一致，
     /// 仅用于测试在不发 HTTP 时驱动命令解析与执行。
     func routerSnapshotRoute(_ request: ExploreRequest) async -> ExploreResult {
-        ExploreLogger.debug(.server, "server snapshot route action=\(request.action)")
+        ESLogger.debug(.server, "server snapshot route action=\(request.action)")
         return await router.route(request)
     }
 }

@@ -8,7 +8,7 @@ private struct ProcessDiagnosticsTestGateState {
 /// 串行化会修改进程级 Diagnostics runtime 的测试。
 ///
 /// Swift Testing 的 `.serialized` 只保证同一 suite 内串行，不保证不同 suite 之间串行。
-/// Diagnostics runtime、stdout/stderr fd capture 和 `ExploreLogging` observer 都是进程级资源，
+/// Diagnostics runtime、stdout/stderr fd capture 和 `ESLogger` observer 都是进程级资源，
 /// 因此相关测试需要共享同一个异步 gate，避免一个 suite 在另一个 suite 读取时 reset runtime。
 final class ProcessDiagnosticsTestGate: Sendable {
     private let state = Mutex(ProcessDiagnosticsTestGateState())

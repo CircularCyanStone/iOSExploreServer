@@ -78,7 +78,7 @@ enum UINavigationBackExecutor {
             topAfter = topBefore
         }
         let topAfterDescription = describe(topAfter)
-        UIKitCommandLogging.info("command", "ui navigation back complete performed=true strategy=\(usedStrategy.rawValue) animated=\(input.animated)")
+        UIKitCommandLogger.info("command", "ui navigation back complete performed=true strategy=\(usedStrategy.rawValue) animated=\(input.animated)")
         return response(strategy: usedStrategy,
                         topBefore: topBeforeDescription,
                         topAfter: topAfterDescription)

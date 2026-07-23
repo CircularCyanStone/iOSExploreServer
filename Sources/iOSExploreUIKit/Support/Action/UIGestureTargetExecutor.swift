@@ -76,7 +76,7 @@ enum UIGestureTargetExecutor {
                     action: NSStringFromSelector(pair.action)))
             }
         }
-        UIKitCommandLogging.info("command",
+        UIKitCommandLogger.info("command",
             "ui tap gesture adapter path-type=UIView gestures=\(gestures.count) triggered=\(triggered.count)")
         return triggered
         #else
@@ -159,7 +159,7 @@ extension UIGestureTargetExecutor {
 
         // 1. 向上找 cell 祖先
         guard let cell = view.explore_cellAncestor else {
-            UIKitCommandLogging.info("command",
+            UIKitCommandLogger.info("command",
                 "cell selection skip: view not in cell subtree viewType=\(viewType)")
             return nil
         }
@@ -167,7 +167,7 @@ extension UIGestureTargetExecutor {
 
         // 2. 向上找 containerView 祖先
         guard let container = cell.explore_containerViewAncestor else {
-            UIKitCommandLogging.info("command",
+            UIKitCommandLogger.info("command",
                 "cell selection skip: cell without tableView ancestor cellType=\(cellType) viewType=\(viewType)")
             return nil
         }
@@ -184,13 +184,13 @@ extension UIGestureTargetExecutor {
                 let targetType = String(describing: Swift.type(of: pair.target))
                 if actionName == "selectGestureHandler:" {
                     foundSelectGestureHandler = true
-                    UIKitCommandLogging.info("command",
+                    UIKitCommandLogger.info("command",
                         "cell selection observed selectGestureHandler: on container=\(containerType) gesture[\(i)]=\(gestureType) target=\(targetType) — bypassed (B scenario)")
                 }
             }
         }
         if !foundSelectGestureHandler {
-            UIKitCommandLogging.info("command",
+            UIKitCommandLogger.info("command",
                 "cell selection no selectGestureHandler: found on container=\(containerType) viewType=\(viewType)")
         }
         #endif
@@ -201,7 +201,7 @@ extension UIGestureTargetExecutor {
         } else if let collectionView = container as? UICollectionView {
             return trySelectCollectionViewItem(collectionView: collectionView, cell: cell, viewType: viewType, cellType: cellType, containerType: containerType)
         } else {
-            UIKitCommandLogging.info("command",
+            UIKitCommandLogger.info("command",
                 "cell selection unsupported container type=\(containerType) viewType=\(viewType)")
             return UICellSelectionAttempt(
                 activated: false,
@@ -219,7 +219,7 @@ extension UIGestureTargetExecutor {
     /// 先 `indexPath(for:)` 定位 cell 的 indexPath，再调 `delegate.tableView?(tableView, didSelectRowAt:)`。
     private static func trySelectTableViewRow(tableView: UITableView, cell: UIView, viewType: String, cellType: String, containerType: String) -> UICellSelectionAttempt? {
         guard let typedCell = cell as? UITableViewCell else {
-            UIKitCommandLogging.info("command",
+            UIKitCommandLogger.info("command",
                 "cell selection cell not UITableViewCell actual=\(cellType)")
             return UICellSelectionAttempt(
                 activated: false,
@@ -231,7 +231,7 @@ extension UIGestureTargetExecutor {
             )
         }
         guard let indexPath = tableView.indexPath(for: typedCell) else {
-            UIKitCommandLogging.info("command",
+            UIKitCommandLogger.info("command",
                 "cell selection indexPath(for:) returned nil for cell=\(cellType)")
             return UICellSelectionAttempt(
                 activated: false,
@@ -247,7 +247,7 @@ extension UIGestureTargetExecutor {
         // 调 delegate.didSelectRow
         tableView.delegate?.tableView?(tableView, didSelectRowAt: indexPath)
 
-        UIKitCommandLogging.info("command",
+        UIKitCommandLogger.info("command",
             "cell selection public API path activated tableView=\(containerType) section=\(indexPath.section) row=\(indexPath.row)")
         return UICellSelectionAttempt(
             activated: true,
@@ -262,7 +262,7 @@ extension UIGestureTargetExecutor {
     /// 通过 UICollectionView 公有 API 触发 cell selection。
     private static func trySelectCollectionViewItem(collectionView: UICollectionView, cell: UIView, viewType: String, cellType: String, containerType: String) -> UICellSelectionAttempt? {
         guard let typedCell = cell as? UICollectionViewCell else {
-            UIKitCommandLogging.info("command",
+            UIKitCommandLogger.info("command",
                 "cell selection cell not UICollectionViewCell actual=\(cellType)")
             return UICellSelectionAttempt(
                 activated: false,
@@ -274,7 +274,7 @@ extension UIGestureTargetExecutor {
             )
         }
         guard let indexPath = collectionView.indexPath(for: typedCell) else {
-            UIKitCommandLogging.info("command",
+            UIKitCommandLogger.info("command",
                 "cell selection indexPath(for:) returned nil for cell=\(cellType)")
             return UICellSelectionAttempt(
                 activated: false,
@@ -290,7 +290,7 @@ extension UIGestureTargetExecutor {
         // 调 delegate.didSelectItem
         collectionView.delegate?.collectionView?(collectionView, didSelectItemAt: indexPath)
 
-        UIKitCommandLogging.info("command",
+        UIKitCommandLogger.info("command",
             "cell selection public API path activated collectionView=\(containerType) section=\(indexPath.section) item=\(indexPath.item)")
         return UICellSelectionAttempt(
             activated: true,

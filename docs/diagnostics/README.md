@@ -46,7 +46,7 @@ server.registerDiagnosticsCommands(.init(
 四个 capture 都为 `false` 时，只启用两类低风险日志：
 
 - `explore`：iOSExploreServer 自己的内部日志，例如命令注册、请求路由、命令开始和结束。
-- `bridge`：宿主 App 主动调用 `ExploreAppLog.emit(...)` 写入的业务日志。
+- `bridge`：宿主 App 主动调用 `ESAppLogger.emit(...)` 写入的业务日志。
 
 需要排查 `print`、stderr、`NSLog`、`os_log` 或 Swift `Logger` 时，再按需打开对应开关。
 
@@ -57,7 +57,7 @@ server.registerDiagnosticsCommands(.init(
 | source | 开发者平时怎么产生 | 是否默认开启 | 打开方式 | 读到后的典型用途 |
 | --- | --- | --- | --- | --- |
 | `explore` | iOSExploreServer 内部自己写的日志 | 是 | `captureExploreLogs: true`，默认就是 true | 看 HTTP 请求有没有进来、命令有没有注册、执行是成功还是失败 |
-| `bridge` | 宿主 App 调用 `ExploreAppLog.emit(...)` | 是 | `enableBridge: true`，默认就是 true | App 自己在关键业务点主动打日志，最稳定、最推荐 |
+| `bridge` | 宿主 App 调用 `ESAppLogger.emit(...)` | 是 | `enableBridge: true`，默认就是 true | App 自己在关键业务点主动打日志，最稳定、最推荐 |
 | `stdout` | `print(...)`、`FileHandle.standardOutput.write(...)`、部分 C stdout 输出 | 否 | `captureStdout: true` | 看开发临时 `print` 是否真的执行 |
 | `stderr` | `FileHandle.standardError.write(...)`、`fprintf(stderr, ...)`、`fputs(..., stderr)` | 否 | `captureStderr: true` | 看错误输出，返回 level 固定为 `error` |
 | `nslog` | `NSLog(...)` | 否 | `captureNSLog: true` | 看老代码、Objective-C 代码或第三方调试代码里的 `NSLog` |
@@ -70,7 +70,7 @@ server.registerDiagnosticsCommands(.init(
 - `stdout` 常用于普通输出。Swift 的 `print(...)` 大多会走这里。
 - `stderr` 常用于错误输出。C 的 `fprintf(stderr, ...)` 会走这里。
 
-Diagnostics 打开 `captureStdout` 或 `captureStderr` 后，会在 Debug 环境里临时接管这两根管道，把写进去的文本按行复制到 `AppLogStore`，然后 `app.logs.read` 就能读到。
+Diagnostics 打开 `captureStdout` 或 `captureStderr` 后，会在 Debug 环境里临时接管这两根管道，把写进去的文本按行复制到 `ESAppLogStore`，然后 `app.logs.read` 就能读到。
 
 实际效果：
 
@@ -89,15 +89,10 @@ Diagnostics 打开 `captureStdout` 或 `captureStderr` 后，会在 Debug 环境
 
 `NSLog(...)` 是 Foundation 提供的老式日志 API。很多 Objective-C 代码、老项目或第三方库还会用它。
 
-不同系统版本和运行环境里，`NSLog` 的输出路径不完全一样：
+Diagnostics 打开 `captureNSLog` 后，会同时启用两条路径：
 
-1. 有些环境会把 `NSLog` 文本写到 stderr。
-2. iOS 上很多时候会把 `NSLog` 送进 Apple 的系统日志体系。
-
-所以 Diagnostics 打开 `captureNSLog` 后做了两件事：
-
-- 如果 `NSLog` 最终写到了 stderr，`StdIOCapture` 会识别这种行，并写成 `source:"nslog"`。
-- 如果系统允许读取当前 App 进程的系统日志，`UnifiedLogCapture` 会读取其中像 `NSLog` 的记录，并写成 `source:"nslog"`。
+- 可控路径：如果 `NSLog` 最终写到了 stderr，`ESStdIOCapture` 会识别这种行，并写成 `source:"nslog"`。Swift `NSLog(...)` 在当前 macOS SPM 测试中走的是这条路径。
+- 增强路径：通过 fishhook 重绑定当前进程里的 `NSLog`/`NSLogv`，先把格式化后的文本写入 `ESAppLogStore`，再调用原始 `NSLog`/`NSLogv` 保留系统控制台输出。这个做法与 DoKit 的 NSLog 查看插件一致，主要覆盖 Objective-C/C 调用点。
 
 实际效果：
 
@@ -107,9 +102,9 @@ Diagnostics 打开 `captureStdout` 或 `captureStderr` 后，会在 Debug 环境
 
 限制：
 
-- 当前没有做 DoKit 那类 fishhook/interpose，也就是没有替换 `NSLog` 这个函数本身。
-- 如果系统既不把 `NSLog` 写到 stderr，又不允许当前进程读取系统日志，那么 capture 状态会是 `unavailable`，不是“日志一定没发生”。
-- 由于 `NSLog` 的系统实现会变，后续如果要追求更强覆盖率，可以再加符号级 hook；那会是另一层更侵入的 Debug-only 实现。
+- fishhook 是当前进程内的全局符号重绑定，只在 Debug Diagnostics 注册且 `captureNSLog: true` 时启用；Swift Foundation overlay 不保证经过可被 fishhook 改写的 C 符号。
+- hook 安装成功后不反复卸载；Runtime 重置或关闭 capture 时只移除 active store，后续 `NSLog` 会继续走原始系统输出但不会写入 Diagnostics。
+- 如果 stderr 行识别和 fishhook 都不可用，capture 状态会是 `unavailable`，不是“日志一定没发生”。
 
 ## os_log 和 Swift Logger 到底是什么，本模块做了什么
 
@@ -122,7 +117,7 @@ Diagnostics 打开 `captureStdout` 或 `captureStderr` 后，会在 Debug 环境
 - `level`：debug、info、error、fault 等等级。
 - `message`：日志正文。
 
-Diagnostics 打开 `captureOSLog` 后，会通过 Apple 提供的 `OSLogStore(scope: .currentProcessIdentifier)` 读取“当前 App 进程”里新增的系统日志 entry，然后写入 `AppLogStore`，让 Agent 可以用 HTTP 读到。
+Diagnostics 打开 `captureOSLog` 后，会通过 Apple 提供的 `OSLogStore(scope: .currentProcessIdentifier)` 读取“当前 App 进程”里新增的 os_log / Swift Logger entry，然后写入 `ESAppLogStore`，让 Agent 可以用 HTTP 读到。
 
 实际效果：
 
@@ -152,14 +147,14 @@ Diagnostics 打开 `captureOSLog` 后，会通过 Apple 提供的 `OSLogStore(sc
 
 Diagnostics 当前覆盖的是前五类里可被当前进程读到的部分。它不会扫描你的业务对象，不会读取第三方 SDK 私有日志文件，不会从线上日志平台拉数据，也不会读取其他进程。
 
-最稳定的方式仍然是：在关键业务点主动调用 `ExploreAppLog.emit(...)`。这条路径由宿主 App 自己决定写什么，进入 `source:"bridge"`，不会依赖系统日志实现。
+最稳定的方式仍然是：在关键业务点主动调用 `ESAppLogger.emit(...)`。这条路径由宿主 App 自己决定写什么，进入 `source:"bridge"`，不会依赖系统日志实现。
 
 ## 推荐的使用策略
 
 开发阶段建议按这个顺序使用：
 
 1. 先看 `explore`：确认 HTTP 请求有没有进 App，命令是否注册，命令是否执行失败。
-2. 关键业务点加 `ExploreAppLog.emit(...)`：让 Agent 能看到明确的业务状态。
+2. 关键业务点加 `ESAppLogger.emit(...)`：让 Agent 能看到明确的业务状态。
 3. 临时排查 `print` 时打开 `captureStdout`。
 4. 临时排查错误输出时打开 `captureStderr`。
 5. 项目里有老 Objective-C 或第三方 `NSLog` 时打开 `captureNSLog`。
@@ -355,9 +350,9 @@ Diagnostics 是 Debug-only 能力。非 Debug 构建里：
 
 确认打开的是 `captureStderr`，读取时 `sources` 写的是 `["stderr"]`。stderr 返回 level 是 `error`，如果你设置了更高的 `minimumLevel`，可能会被过滤掉。
 
-### 为什么 NSLog 有时像 stdout/stderr，有时像系统日志？
+### 为什么 NSLog 还会和 stderr 或系统日志有关？
 
-这是系统实现差异。`NSLog` 不是 iOSExplore 自己实现的函数，系统可以选择把它写到 stderr，也可以写进 Apple 系统日志。Diagnostics 同时尝试这两条路径，但不做函数替换。
+Diagnostics 会安装 fishhook 增强 Objective-C/C `NSLog` 覆盖；但原始 `NSLog` 仍会被调用，系统之后可能继续把同一条文本写到 stderr 或 Apple Unified Logging。Swift Foundation overlay 不保证命中 fishhook，因此 stderr 行识别仍是本模块对 Swift `NSLog` 的可控路径。
 
 ### 为什么 os_log / Logger 不是立刻出现？
 

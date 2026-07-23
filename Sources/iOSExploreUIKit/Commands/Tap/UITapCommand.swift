@@ -32,15 +32,15 @@ struct UITapCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的 tap 输入。
     /// - Returns: 成功时返回 activationRoute/type 等；失败时返回明确原因。
     func handle(_ input: UITapInput) async throws -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start target=\(input.target.logSummary)")
+        UIKitCommandLogger.info("command", "command \(action) start target=\(input.target.logSummary)")
         do {
             let plan = UIKitActionPlan.tap(locator: input.target.locator,
                                             viewSnapshotID: input.viewSnapshotID)
             let data = try await UIKitActionExecutor.execute(plan)
-            UIKitCommandLogging.info("command", "command \(action) completed target=\(input.target.logSummary) activationRoute=\(data["activationRoute"]?.stringValue ?? "unknown")")
+            UIKitCommandLogger.info("command", "command \(action) completed target=\(input.target.logSummary) activationRoute=\(data["activationRoute"]?.stringValue ?? "unknown")")
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         }
     }

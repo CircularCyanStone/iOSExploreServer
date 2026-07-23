@@ -48,18 +48,18 @@ struct ScreenshotCommand: Command {
     /// - Parameter input: 已通过 typed schema 校验的截图参数。
     /// - Returns: 成功时返回 base64 图像与像素尺寸；失败时返回明确原因 envelope。
     func handle(_ input: UIScreenshotInput) async -> ExploreResult {
-        UIKitCommandLogging.info("command", "command \(action) start maxDimension=\(input.maxDimension)")
+        UIKitCommandLogger.info("command", "command \(action) start maxDimension=\(input.maxDimension)")
         do {
             let data = try await MainActor.run {
                 try UIScreenshotCollector.collect(input: input, maxResponseBodyBytes: maxResponseBodyBytes)
             }
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         } catch {
             let wrapped = UIKitCommandError.renderingFailed(action: action, reason: "\(error)")
-            UIKitCommandLogging.error("command", wrapped.failure.logMessage)
+            UIKitCommandLogger.error("command", wrapped.failure.logMessage)
             return wrapped.result
         }
     }

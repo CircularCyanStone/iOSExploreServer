@@ -34,8 +34,8 @@ lsof -iTCP:38321 -sTCP:LISTEN -n -P # 应看到 iproxy 在监听 *:38321
 库默认不输出内部日志。调试时在 App 启动阶段开启：
 
 ```swift
-ExploreLogging.setEnabled(true)
-ExploreLogging.setMinimumLevel(.debug)
+ESLogger.setEnabled(true)
+ESLogger.setMinimumLevel(.debug)
 ```
 
 日志使用 Apple Unified Logging，subsystem 为 `iOSExploreServer`。常用 category：

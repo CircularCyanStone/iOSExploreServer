@@ -21,7 +21,7 @@ enum UIInspectCollector {
     /// - Returns: screen、targetCount、visitedNodeCount、targets、viewSnapshotID 的 JSON。
     /// - Throws: `UIKitCommandError.hierarchyUnavailable`——UIKit 上下文不可用时。
     static func collect(query: UIInspectInput) throws -> JSON {
-        UIKitCommandLogging.info("command", "ui.inspect collect mainactor start includeHidden=\(query.includeHidden) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit) maxTargets=\(query.maxTargets) maxVisitedNodes=\(query.maxVisitedNodes)")
+        UIKitCommandLogger.info("command", "ui.inspect collect mainactor start includeHidden=\(query.includeHidden) maxDepth=\(query.maxDepth.map(String.init) ?? "none") hasFilter=\(query.hasIdentifierFilter) textLimit=\(query.textLimit) maxTargets=\(query.maxTargets) maxVisitedNodes=\(query.maxVisitedNodes)")
         let context = try UIKitContextProvider.currentContext(action: InspectCommand.actionName)
         return collect(query: query, context: context)
     }
@@ -115,7 +115,7 @@ enum UIInspectCollector {
                 )
             )
         )
-        UIKitCommandLogging.info("command", "ui.inspect collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(collected.count) fullCount=\(fullCount) minimalCount=\(minimalCount) fingerprints=\(fingerprints.count) topViewController=\(String(describing: type(of: context.topViewController)))")
+        UIKitCommandLogger.info("command", "ui.inspect collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(collected.count) fullCount=\(fullCount) minimalCount=\(minimalCount) fingerprints=\(fingerprints.count) topViewController=\(String(describing: type(of: context.topViewController)))")
         return data
     }
 
@@ -294,7 +294,7 @@ enum UIInspectCollector {
         // rollup 命中日志：控件内嵌展示节点被 rollup 到父 control，不独立 full。
         // 仅在命中 rollup 排除时记录，帮助定位"按钮内 label 为何不在 targets"的疑问。
         if !full, candidate.hasStaticText, candidate.isInControlSubtree {
-            UIKitCommandLogging.info("command", "ui.inspect rollup: static-text node in UIControl subtree (\(String(describing: type(of: view)))) rolled up to parent control, not emitted as full target")
+            UIKitCommandLogger.info("command", "ui.inspect rollup: static-text node in UIControl subtree (\(String(describing: type(of: view)))) rolled up to parent control, not emitted as full target")
         }
         return full
     }

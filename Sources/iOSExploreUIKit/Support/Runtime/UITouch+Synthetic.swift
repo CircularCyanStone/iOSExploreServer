@@ -80,7 +80,7 @@ enum SyntheticTouch {
 
         guard let touch = makeInstance(of: UITouch.self) as? UITouch else {
             diagnostics.recordMissing("alloc(UITouch)")
-            UIKitCommandLogging.error("command", "synthetic tap failed alloc UITouch")
+            UIKitCommandLogger.error("command", "synthetic tap failed alloc UITouch")
             return diagnostics
         }
 
@@ -110,7 +110,7 @@ enum SyntheticTouch {
         }
         spinRunLoop(seconds: 0.05)
 
-        UIKitCommandLogging.info("command",
+        UIKitCommandLogger.info("command",
             "synthetic tap sent point=(\(point.x),\(point.y)) hitTest=\(diagnostics.hitTestViewDescription ?? "nil") "
             + "sendEventCalls=\(diagnostics.sendEventCalls) setFields=\(diagnostics.setFields) "
             + "missing=\(diagnostics.missingFields)")

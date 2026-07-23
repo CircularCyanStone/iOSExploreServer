@@ -46,7 +46,7 @@ enum UILongPressExecutor {
         // 策略 1: UILongPressGestureRecognizer
         #if DEBUG
         if let triggered = try await tryLongPressGesture(on: view, duration: duration, path: path), triggered {
-            UIKitCommandLogging.info("command", "ui longPress UILongPressGestureRecognizer triggered duration=\(duration) path=\(path)")
+            UIKitCommandLogger.info("command", "ui longPress UILongPressGestureRecognizer triggered duration=\(duration) path=\(path)")
             return [
                 "path": .string(path),
                 "route": .string("longPressGesture.targetAction"),
@@ -59,7 +59,7 @@ enum UILongPressExecutor {
 
         // 所有策略都未触发
         let targetType = String(describing: Swift.type(of: view))
-        UIKitCommandLogging.info("command", "ui longPress no UILongPressGestureRecognizer found path=\(path) type=\(targetType)")
+        UIKitCommandLogger.info("command", "ui longPress no UILongPressGestureRecognizer found path=\(path) type=\(targetType)")
         throw UIKitCommandError.unsupportedTarget(
             action: action,
             targetDescription: path,
@@ -97,7 +97,7 @@ enum UILongPressExecutor {
                 // 先触发 began 状态（长按开始）
                 longPressGesture.state = .began
                 UIGestureTargetExecutor.invokeGestureAction(target: pair.target, action: pair.action, sender: longPressGesture)
-                UIKitCommandLogging.info("command", "ui longPress triggered UILongPressGestureRecognizer.began path=\(path) action=\(NSStringFromSelector(pair.action))")
+                UIKitCommandLogger.info("command", "ui longPress triggered UILongPressGestureRecognizer.began path=\(path) action=\(NSStringFromSelector(pair.action))")
 
                 // 按 duration 等待后触发 ended 状态（长按结束）。
                 // 用 await Task.sleep 而非同步 RunLoop.current.run(until:)：两者都在 MainActor 上等待，
@@ -112,7 +112,7 @@ enum UILongPressExecutor {
                 try await Task.sleep(nanoseconds: UInt64(max(duration, 0.1) * 1_000_000_000))
                 longPressGesture.state = .ended
                 UIGestureTargetExecutor.invokeGestureAction(target: pair.target, action: pair.action, sender: longPressGesture)
-                UIKitCommandLogging.info("command", "ui longPress triggered UILongPressGestureRecognizer.ended duration=\(duration) path=\(path) action=\(NSStringFromSelector(pair.action))")
+                UIKitCommandLogger.info("command", "ui longPress triggered UILongPressGestureRecognizer.ended duration=\(duration) path=\(path) action=\(NSStringFromSelector(pair.action))")
             }
             return !targets.isEmpty
         }

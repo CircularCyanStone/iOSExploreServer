@@ -43,7 +43,7 @@ enum UIScrollExecutor {
             animated: input.animated
         )
         let container = String(describing: type(of: scrollView))
-        UIKitCommandLogging.info("command", "ui scroll completed container=\(container) beforeX=\(result.offsetBefore.x) beforeY=\(result.offsetBefore.y) afterX=\(result.offsetAfter.x) afterY=\(result.offsetAfter.y) extent=\(result.reachedExtent?.rawValue ?? "nil")")
+        UIKitCommandLogger.info("command", "ui scroll completed container=\(container) beforeX=\(result.offsetBefore.x) beforeY=\(result.offsetBefore.y) afterX=\(result.offsetAfter.x) afterY=\(result.offsetAfter.y) extent=\(result.reachedExtent?.rawValue ?? "nil")")
         return result.toJSON(container: container)
     }
 }

@@ -29,18 +29,18 @@ struct WaitAnyCommand: Command {
     ///   超时返回 `wait_timeout` 业务失败 envelope。
     func handle(_ input: UIWaitAnyInput) async -> ExploreResult {
         let action = WaitAnyCommand.actionName
-        UIKitCommandLogging.info("command", "command \(action) start conditions=\(input.conditions.count) timeoutMs=\(input.timeoutMs) intervalMs=\(input.intervalMs)")
+        UIKitCommandLogger.info("command", "command \(action) start conditions=\(input.conditions.count) timeoutMs=\(input.timeoutMs) intervalMs=\(input.intervalMs)")
         do {
             let data = try await UIWaitAnyExecutor.execute(input: input) {
                 try UIKitContextProvider.currentContext(action: action)
             }
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         } catch {
             let wrapped = UIKitCommandError.hierarchyUnavailable(action: action, reason: "\(error)")
-            UIKitCommandLogging.error("command", wrapped.failure.logMessage)
+            UIKitCommandLogger.error("command", wrapped.failure.logMessage)
             return wrapped.result
         }
     }

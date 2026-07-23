@@ -58,7 +58,7 @@ enum UISwipeExecutor {
                         }
                         return "cell"
                     } ?? "N/A"
-                    UIKitCommandLogging.info("command", "ui swipe scrollView swipe actions triggered direction=\(input.direction.rawValue) scrollViewPath=\(path) cellPath=\(cellPath)")
+                    UIKitCommandLogger.info("command", "ui swipe scrollView swipe actions triggered direction=\(input.direction.rawValue) scrollViewPath=\(path) cellPath=\(cellPath)")
                     return [
                         "path": .string(path),
                         "cellPath": .string(cellPath),
@@ -76,7 +76,7 @@ enum UISwipeExecutor {
         // 策略 2: UISwipeGestureRecognizer
         #if DEBUG
         if let triggered = trySwipeGesture(on: view, direction: input.direction, path: path), triggered {
-            UIKitCommandLogging.info("command", "ui swipe UISwipeGestureRecognizer triggered direction=\(input.direction.rawValue) path=\(path)")
+            UIKitCommandLogger.info("command", "ui swipe UISwipeGestureRecognizer triggered direction=\(input.direction.rawValue) path=\(path)")
             return [
                 "path": .string(path),
                 "route": .string("swipeGesture.targetAction"),
@@ -90,7 +90,7 @@ enum UISwipeExecutor {
         // 策略 3: UIPanGestureRecognizer (Debug only)
         #if DEBUG
         if let triggered = tryPanGesture(on: view, direction: input.direction, distance: distance, path: path), triggered {
-            UIKitCommandLogging.info("command", "ui swipe UIPanGestureRecognizer triggered direction=\(input.direction.rawValue) path=\(path)")
+            UIKitCommandLogger.info("command", "ui swipe UIPanGestureRecognizer triggered direction=\(input.direction.rawValue) path=\(path)")
             return [
                 "path": .string(path),
                 "route": .string("panGesture.targetAction"),
@@ -104,7 +104,7 @@ enum UISwipeExecutor {
 
         // 所有策略都未触发
         let targetType = String(describing: Swift.type(of: view))
-        UIKitCommandLogging.info("command", "ui swipe no gesture found direction=\(input.direction.rawValue) path=\(path) type=\(targetType)")
+        UIKitCommandLogger.info("command", "ui swipe no gesture found direction=\(input.direction.rawValue) path=\(path) type=\(targetType)")
         throw UIKitCommandError.unsupportedTarget(
             action: action,
             targetDescription: path,
@@ -139,11 +139,11 @@ enum UISwipeExecutor {
         // 模式 1：真正触发 per-cell swipe actions
         guard let cellLocator = input.cellLocator else {
             // 模式 2：对 scrollView 本身滑动，不实现（诚实返回 false）
-            UIKitCommandLogging.info("command", "ui swipe scrollView swipe actions not implemented (no public API to synthesize touch sequence) direction=\(direction.rawValue) path=\(path)")
+            UIKitCommandLogger.info("command", "ui swipe scrollView swipe actions not implemented (no public API to synthesize touch sequence) direction=\(direction.rawValue) path=\(path)")
             return false
         }
 
-        UIKitCommandLogging.info("command", "ui swipe cell-based swipe actions mode: locating cell direction=\(direction.rawValue) scrollViewPath=\(path)")
+        UIKitCommandLogger.info("command", "ui swipe cell-based swipe actions mode: locating cell direction=\(direction.rawValue) scrollViewPath=\(path)")
 
         // 定位 cell（在 scrollView 子树内）
         let cellLocated = try UIKitLocatorResolver.locate(
@@ -167,7 +167,7 @@ enum UISwipeExecutor {
         let cell = cellLocated.view
         let cellPath = cellLocated.pathString
 
-        UIKitCommandLogging.info("command", "ui swipe cell located: cellPath=\(cellPath) cellType=\(String(describing: type(of: cell)))")
+        UIKitCommandLogger.info("command", "ui swipe cell located: cellPath=\(cellPath) cellType=\(String(describing: type(of: cell)))")
 
         // 判断 cell 类型并获取 indexPath
         if let tableView = scrollView as? UITableView, let tableCell = cell as? UITableViewCell {
@@ -257,7 +257,7 @@ enum UISwipeExecutor {
             )
         }
 
-        UIKitCommandLogging.info("command", "ui swipe found \(config.actions.count) \(isTrailing ? "trailing" : "leading") actions: \(config.actions.map { $0.title })")
+        UIKitCommandLogger.info("command", "ui swipe found \(config.actions.count) \(isTrailing ? "trailing" : "leading") actions: \(config.actions.map { $0.title })")
 
         // 选择要触发的 action
         let targetAction: UIContextualAction
@@ -275,13 +275,13 @@ enum UISwipeExecutor {
             targetAction = config.actions[0]
         }
 
-        UIKitCommandLogging.info("command", "ui swipe triggering action='\(targetAction.title)' cellPath=\(cellPath)")
+        UIKitCommandLogger.info("command", "ui swipe triggering action='\(targetAction.title)' cellPath=\(cellPath)")
 
         // 调用 action handler
         var handlerCompleted = false
         targetAction.handler(targetAction, cell) { performed in
             handlerCompleted = true
-            UIKitCommandLogging.info("command", "ui swipe action handler completed performed=\(performed) action='\(targetAction.title)'")
+            UIKitCommandLogger.info("command", "ui swipe action handler completed performed=\(performed) action='\(targetAction.title)'")
         }
 
         // handler 是同步还是异步取决于 App 实现，这里假设同步完成（多数场景如此）
@@ -354,7 +354,7 @@ enum UISwipeExecutor {
             let targets = swipeGesture.explore_targetActionPairs()
             for pair in targets {
                 UIGestureTargetExecutor.invokeGestureAction(target: pair.target, action: pair.action, sender: swipeGesture)
-                UIKitCommandLogging.info("command", "ui swipe triggered UISwipeGestureRecognizer direction=\(direction.rawValue) path=\(path) action=\(NSStringFromSelector(pair.action))")
+                UIKitCommandLogger.info("command", "ui swipe triggered UISwipeGestureRecognizer direction=\(direction.rawValue) path=\(path) action=\(NSStringFromSelector(pair.action))")
             }
             return !targets.isEmpty
             }
@@ -380,7 +380,7 @@ enum UISwipeExecutor {
         //（UIScrollViewPanGestureRecognizer）用于滚动——它需要完整触摸序列才能滚动，单次 invoke
         // 不会产生滚动却会让本策略假阳性返回 true。故对 scrollView 直接跳过，落到 unsupported_target。
         if view is UIScrollView {
-            UIKitCommandLogging.info("command", "ui swipe pan gesture skipped: target is UIScrollView (system pan not actionable) path=\(path)")
+            UIKitCommandLogger.info("command", "ui swipe pan gesture skipped: target is UIScrollView (system pan not actionable) path=\(path)")
             return nil
         }
 
@@ -400,11 +400,11 @@ enum UISwipeExecutor {
                 // 此处赋值在 Debug 模拟器上能让 handler 观察到 state 变化（端到端验证）。
                 panGesture.state = .began
                 UIGestureTargetExecutor.invokeGestureAction(target: pair.target, action: pair.action, sender: panGesture)
-                UIKitCommandLogging.info("command", "ui swipe triggered UIPanGestureRecognizer.began direction=\(direction.rawValue) path=\(path) action=\(NSStringFromSelector(pair.action))")
+                UIKitCommandLogger.info("command", "ui swipe triggered UIPanGestureRecognizer.began direction=\(direction.rawValue) path=\(path) action=\(NSStringFromSelector(pair.action))")
 
                 panGesture.state = .ended
                 UIGestureTargetExecutor.invokeGestureAction(target: pair.target, action: pair.action, sender: panGesture)
-                UIKitCommandLogging.info("command", "ui swipe triggered UIPanGestureRecognizer.ended direction=\(direction.rawValue) path=\(path) action=\(NSStringFromSelector(pair.action))")
+                UIKitCommandLogger.info("command", "ui swipe triggered UIPanGestureRecognizer.ended direction=\(direction.rawValue) path=\(path) action=\(NSStringFromSelector(pair.action))")
             }
             return !targets.isEmpty
         }

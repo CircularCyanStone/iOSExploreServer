@@ -26,7 +26,7 @@ struct UITabBarSelectCommand: Command {
     /// - Returns: 切换结果(previousIndex / selectedIndex / previousTitle / selectedTitle / tabCount)。
     func handle(_ input: UITabBarSelectInput) async throws -> ExploreResult {
         let logSummary = input.index.map { "index=\($0)" } ?? input.title.map { "title=\($0)" } ?? "unknown"
-        UIKitCommandLogging.info("command", "command \(action) start \(logSummary) triggerDelegate=\(input.triggerDelegate)")
+        UIKitCommandLogger.info("command", "command \(action) start \(logSummary) triggerDelegate=\(input.triggerDelegate)")
 
         do {
             let context = try await MainActor.run {
@@ -35,10 +35,10 @@ struct UITabBarSelectCommand: Command {
             let data = try await MainActor.run {
                 try UITabBarSelectExecutor.execute(input: input, context: context)
             }
-            UIKitCommandLogging.info("command", "command \(action) completed \(logSummary) selectedIndex=\(data["selectedIndex"]?.doubleValue ?? -1)")
+            UIKitCommandLogger.info("command", "command \(action) completed \(logSummary) selectedIndex=\(data["selectedIndex"]?.doubleValue ?? -1)")
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         }
     }

@@ -25,7 +25,7 @@ struct UIPickerSelectRowCommand: Command {
     /// 执行行选择。
     func handle(_ input: UIPickerSelectRowInput) async -> ExploreResult {
         let source = input.row.map { _ in "row" } ?? "title"
-        UIKitCommandLogging.info("command", "command \(action) start target=\(input.target.logSummary) component=\(input.component) source=\(source) animated=\(input.animated)")
+        UIKitCommandLogger.info("command", "command \(action) start target=\(input.target.logSummary) component=\(input.component) source=\(source) animated=\(input.animated)")
         do {
             let data = try await MainActor.run {
                 let context = try UIKitContextProvider.currentContext(action: UIPickerSelectRowCommand.actionName)
@@ -33,12 +33,12 @@ struct UIPickerSelectRowCommand: Command {
             }
             return .success(data)
         } catch let error as UIKitCommandError {
-            UIKitCommandLogging.error("command", error.failure.logMessage)
+            UIKitCommandLogger.error("command", error.failure.logMessage)
             return error.result
         } catch {
             // executor 只 throw UIKitCommandError;兜底任何意外错误,避免裸异常穿到路由层。
             let e = UIKitCommandError.hierarchyUnavailable(action: UIPickerSelectRowCommand.actionName, reason: "\(error)")
-            UIKitCommandLogging.error("command", e.failure.logMessage)
+            UIKitCommandLogger.error("command", e.failure.logMessage)
             return e.result
         }
     }

@@ -85,7 +85,7 @@ enum UIWaitExecutor {
 
             if satisfied {
                 let elapsedMs = Int((now - start) / 1_000_000)
-                UIKitCommandLogging.info("command", "ui wait complete satisfied=true mode=\(input.mode.rawValue) attempts=\(attempts) elapsedMs=\(elapsedMs)")
+                UIKitCommandLogger.info("command", "ui wait complete satisfied=true mode=\(input.mode.rawValue) attempts=\(attempts) elapsedMs=\(elapsedMs)")
                 return response(satisfied: true,
                                 mode: input.mode,
                                 elapsedMs: elapsedMs,
