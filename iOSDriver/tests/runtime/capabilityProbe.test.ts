@@ -7,7 +7,11 @@ import type { InvocationResult } from "../../src/runtime/types.js";
 
 const ok = (data: Record<string, unknown>): InvocationResult => ({ ok: true, data, artifacts: [], elapsedMs: 0, attempts: 1 });
 const failure = (source: DriverError["source"] = "transport"): InvocationResult => ({ ok: false, error: { source, code: source === "transport" ? "transport_unavailable" : "protocol_error", message: "failed" }, elapsedMs: 0, attempts: 1 });
-const command = (action: string, inputSchema: Record<string, unknown> = { type: "object", properties: {}, required: [], additionalProperties: false }) => ({ action, inputSchema });
+const command = (
+  action: string,
+  inputSchema: Record<string, unknown> = { type: "object", properties: {}, required: [], additionalProperties: false },
+  metadata: Record<string, unknown> = {}
+) => ({ action, inputSchema, ...metadata });
 
 function fake(outcomes: Record<string, InvocationResult>): CapabilityInvoker & { calls: string[] } {
   const calls: string[] = [];
@@ -73,5 +77,41 @@ describe("CapabilityProbe", () => {
     })).health();
     expect(unregistered.modules.uikit.status).toBe("not_registered");
     expect(unregistered.modules.diagnostics.status).toBe("not_registered");
+  });
+
+  test("只缓存同时合法且不重复的 help action policy", async () => {
+    const runtime = fake({
+      ping: ok({ pong: true }),
+      help: ok({ commands: [
+        command("extension.wait", undefined, { idempotency: "readOnly", timeoutClass: "wait" }),
+        command("extension.bad-idempotency", undefined, { idempotency: "maybe", timeoutClass: "standard" }),
+        command("extension.bad-timeout", undefined, { idempotency: "readOnly", timeoutClass: "slow" }),
+        command("extension.duplicate", undefined, { idempotency: "readOnly", timeoutClass: "standard" }),
+        command("extension.duplicate", undefined, { idempotency: "sideEffecting", timeoutClass: "standard" })
+      ] })
+    });
+    const probe = new CapabilityProbe(runtime);
+
+    await probe.capabilities();
+
+    expect(probe.invocationPolicy("extension.wait")).toEqual({ idempotency: "readOnly", timeoutClass: "wait" });
+    expect(probe.invocationPolicy("extension.bad-idempotency")).toBeUndefined();
+    expect(probe.invocationPolicy("extension.bad-timeout")).toBeUndefined();
+    expect(probe.invocationPolicy("extension.duplicate")).toBeUndefined();
+  });
+
+  test("后续显式 probe 失败会清除旧 help policy", async () => {
+    const outcomes: Record<string, InvocationResult> = {
+      ping: ok({ pong: true }),
+      help: ok({ commands: [command("extension.wait", undefined, { idempotency: "readOnly", timeoutClass: "wait" })] })
+    };
+    const probe = new CapabilityProbe(fake(outcomes));
+    await probe.health();
+    expect(probe.invocationPolicy("extension.wait")).toBeDefined();
+
+    outcomes.ping = failure();
+    outcomes.help = failure();
+    await probe.capabilities();
+    expect(probe.invocationPolicy("extension.wait")).toBeUndefined();
   });
 });

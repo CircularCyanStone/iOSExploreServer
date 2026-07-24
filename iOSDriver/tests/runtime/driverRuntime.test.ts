@@ -137,6 +137,32 @@ describe("DriverRuntime", () => {
 
     expect(receivedSignal).toBe(controller.signal);
   });
+
+  test("已验证 per-call policy 可为 extension 决定 wait timeout 和 runtime retry", async () => {
+    const transport = new FakeTransport([
+      transportFailure("connect", false),
+      { httpStatus: 200, envelope: { code: "ok", data: { recovered: true } } }
+    ]);
+    const runtime = new DriverRuntime({ transport, configuredRequestTimeoutMs: 1_000 });
+
+    await expect(runtime.invoke("extension.wait", { timeoutMs: 4_000 }, {
+      policy: { idempotency: "readOnly", timeoutClass: "wait" }
+    })).resolves.toMatchObject({ ok: true, attempts: 2 });
+
+    expect(transport.calls.map(call => call.timeoutMs)).toEqual([9_000, 9_000]);
+  });
+
+  test("非法 per-call policy 对未知 extension 保持保守策略", async () => {
+    const transport = new FakeTransport([transportFailure("connect", false)]);
+    const runtime = new DriverRuntime({ transport, configuredRequestTimeoutMs: 1_000 });
+
+    const result = await runtime.invoke("extension.invalid", { timeoutMs: 99_000 }, {
+      policy: { idempotency: "unsafe", timeoutClass: "wait" } as never
+    });
+
+    expect(result).toMatchObject({ ok: false, attempts: 1 });
+    expect(transport.calls).toEqual([{ action: "extension.invalid", data: { timeoutMs: 99_000 }, timeoutMs: 1_000 }]);
+  });
 });
 
 function transportFailure(phase: "connect" | "reset", responseReceived: boolean): DriverFailure {

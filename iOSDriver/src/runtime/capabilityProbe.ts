@@ -2,6 +2,7 @@ import { DEVICE_ACTION_CONTRACTS, type DeviceActionContract } from "../generated
 import { CONTRACT_BUNDLE_METADATA } from "../generated/contractBundle.js";
 import type { JSONObject } from "../types.js";
 import type { DriverError } from "./driverErrors.js";
+import type { InvocationPolicy } from "./driverRuntime.js";
 import type { InvocationResult } from "./types.js";
 import { compareContractSchemas, type ActionSchemaCompatibility, type SchemaCompatibility } from "./schemaCompatibility.js";
 
@@ -69,6 +70,7 @@ export interface CapabilityReport {
 /** 调用 ping/help 并将 App 能力投影为 adapter 可消费的稳定报告。 */
 export class CapabilityProbe {
   private readonly expectedContracts: readonly DeviceActionContract[];
+  private readonly actionPolicies = new Map<string, InvocationPolicy>();
 
   /**
    * 创建能力探针；构造过程是纯配置，不发出任何 action。
@@ -82,6 +84,7 @@ export class CapabilityProbe {
 
   /** 显式执行 doctor/health/capabilities 检查。 */
   async probe(mode: CapabilityProbeMode = "capabilities"): Promise<CapabilityReport> {
+    this.actionPolicies.clear();
     const pingResult = await this.runtime.invoke("ping", {});
     const ping = pingStatus(pingResult);
     const helpResult = await this.runtime.invoke("help", {});
@@ -104,6 +107,9 @@ export class CapabilityProbe {
       };
     }
     const commands = help.commands;
+    for (const [action, policy] of validatedActionPolicies(commands)) {
+      this.actionPolicies.set(action, policy);
+    }
     const registeredActions = commands.map(command => command.action).filter((action): action is string => typeof action === "string");
     const registered = new Set(registeredActions);
     const missingActions = this.expectedContracts.map(contract => contract.action).filter(action => !registered.has(action));
@@ -134,9 +140,24 @@ export class CapabilityProbe {
   async health(): Promise<CapabilityReport> { return this.probe("health"); }
   /** capabilities 的显式别名。 */
   async capabilities(): Promise<CapabilityReport> { return this.probe("capabilities"); }
+
+  /**
+   * 返回最近一次成功 help 中严格校验过的 action 策略。
+   *
+   * @param action action 名称。
+   * @returns 同时具有合法 idempotency/timeoutClass 的策略；其他情况返回 undefined。
+   */
+  invocationPolicy(action: string): InvocationPolicy | undefined {
+    return this.actionPolicies.get(action);
+  }
 }
 
-type HelpCommand = { readonly action?: unknown; readonly inputSchema?: unknown };
+type HelpCommand = {
+  readonly action?: unknown;
+  readonly inputSchema?: unknown;
+  readonly idempotency?: unknown;
+  readonly timeoutClass?: unknown;
+};
 type HelpData = { readonly commands: readonly HelpCommand[]; readonly metadata?: CapabilityReport["metadata"] };
 
 function pingStatus(result: InvocationResult): CapabilityReport["ping"] {
@@ -167,3 +188,25 @@ function summarizeSchema(results: readonly ActionSchemaCompatibility[]): SchemaC
   return "exact";
 }
 function isObject(value: unknown): value is HelpCommand { return typeof value === "object" && value !== null && !Array.isArray(value); }
+
+function validatedActionPolicies(commands: readonly HelpCommand[]): ReadonlyMap<string, InvocationPolicy> {
+  const policies = new Map<string, InvocationPolicy>();
+  const rejected = new Set<string>();
+  for (const command of commands) {
+    if (typeof command.action !== "string" || rejected.has(command.action)) continue;
+    const policy = policyValue(command.idempotency, command.timeoutClass);
+    if (policy === undefined || policies.has(command.action)) {
+      policies.delete(command.action);
+      rejected.add(command.action);
+      continue;
+    }
+    policies.set(command.action, policy);
+  }
+  return policies;
+}
+
+function policyValue(idempotency: unknown, timeoutClass: unknown): InvocationPolicy | undefined {
+  if (idempotency !== "readOnly" && idempotency !== "idempotent" && idempotency !== "sideEffecting") return undefined;
+  if (timeoutClass !== "standard" && timeoutClass !== "wait" && timeoutClass !== "screenshot") return undefined;
+  return { idempotency, timeoutClass };
+}

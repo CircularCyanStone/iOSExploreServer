@@ -1,64 +1,12 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { errorResult } from "./result.js";
-import type { JSONObject, MCPToolResult } from "./types.js";
-
-type StaticToolLike = {
-  name: string;
-  description: string;
-  inputSchema: JSONObject;
-  handler(input: JSONObject): Promise<MCPToolResult>;
-};
-
-export function createToolHandlers(options: {
-  staticTools: Record<string, StaticToolLike>;
-}) {
-  return {
-    async listTools() {
-      return {
-        tools: [
-          ...Object.values(options.staticTools).map(toMCPTool)
-        ]
-      };
-    },
-    async callTool(name: string, args: JSONObject = {}): Promise<MCPToolResult> {
-      const fixed = options.staticTools[name];
-      if (fixed) {
-        return fixed.handler(args);
-      }
-      return errorResult({
-        source: "mcp_server",
-        code: "unknown_tool",
-        message: `Unknown tool '${name}'`
-      });
-    }
-  };
-}
-
-export async function startStdioServer(options: {
-  staticTools: Record<string, StaticToolLike>;
-}) {
-  const server = new Server(
-    { name: "ios-explore-mcp-server", version: "0.1.0" },
-    { capabilities: { tools: {} } }
-  );
-  const handlers = createToolHandlers(options);
-
-  server.setRequestHandler(ListToolsRequestSchema, async () => handlers.listTools());
-  server.setRequestHandler(CallToolRequestSchema, async request => {
-    const name = request.params.name;
-    const args = (request.params.arguments ?? {}) as JSONObject;
-    return handlers.callTool(name, args);
-  });
-
-  await server.connect(new StdioServerTransport());
-}
-
-function toMCPTool(tool: StaticToolLike) {
-  return {
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputSchema
-  };
-}
+/** 新 MCP adapter handler 工厂的兼容入口。 */
+export { createMCPToolHandlers as createToolHandlers } from "./adapters/mcp/server.js";
+/** 新 stdio MCP server 启动函数的兼容入口。 */
+export { startMCPStdioServer as startStdioServer } from "./adapters/mcp/server.js";
+/** MCP adapter 公开类型的兼容导出。 */
+export type {
+  MCPAdapterOptions,
+  MCPCapabilityProbe,
+  MCPRuntime,
+  MCPToolHandlers,
+  MCPWorkflowRunner
+} from "./adapters/mcp/server.js";

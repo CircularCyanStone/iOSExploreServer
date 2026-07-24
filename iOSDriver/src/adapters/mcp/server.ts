@@ -1,0 +1,214 @@
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  type CallToolResult,
+  type Tool
+} from "@modelcontextprotocol/sdk/types.js";
+import { HOST_OPERATION_SPECS } from "../../generated/hostOperationSpecs.js";
+import type { CapabilityReport } from "../../runtime/capabilityProbe.js";
+import type { InvocationOptions, InvocationPolicy } from "../../runtime/driverRuntime.js";
+import type { InvocationResult } from "../../runtime/types.js";
+import type { JSONObject } from "../../types.js";
+import type { WorkflowOperation } from "../../workflows/types.js";
+import { renderAdapterError, renderInvocationResult, renderJSONData } from "./resultRenderer.js";
+import { TOOL_CATALOG, type ToolCatalogEntry } from "./toolCatalog.js";
+
+const WORKFLOW_FIXED_MARGIN_MS = 5_000;
+const WORKFLOW_INSPECT_BUDGET_MS = 5_000;
+
+/** MCP adapter 调用 DriverRuntime 所需的最小边界。 */
+export interface MCPRuntime {
+  /**
+   * 调用一个 device action。
+   *
+   * @param action action 名称。
+   * @param data 原始 JSON data。
+   * @param options 可选取消信号和已验证的 per-call 策略。
+   * @returns runtime 统一结果。
+   */
+  invoke(action: string, data?: JSONObject, options?: InvocationOptions): Promise<InvocationResult>;
+}
+
+/** MCP adapter 调用显式 capability 探针所需的最小边界。 */
+export interface MCPCapabilityProbe {
+  /** @returns health 模式的显式探针报告。 */
+  health(): Promise<CapabilityReport>;
+  /** @returns capabilities 模式的显式探针报告。 */
+  capabilities(): Promise<CapabilityReport>;
+  /**
+   * 读取最近一次合法 help 为 action 提供的策略。
+   *
+   * @param action action 名称。
+   * @returns 严格校验过的策略；未知或非法 metadata 返回 undefined。
+   */
+  invocationPolicy(action: string): InvocationPolicy | undefined;
+}
+
+/** MCP adapter 调用 WorkflowRunner 所需的最小边界。 */
+export interface MCPWorkflowRunner {
+  /**
+   * 在绝对截止时间内运行 workflow。
+   *
+   * @param operation workflow 名称。
+   * @param input host contract 输入。
+   * @param options 总 deadline。
+   * @returns workflow 统一结果。
+   */
+  run(
+    operation: WorkflowOperation,
+    input: JSONObject,
+    options: { readonly deadlineAtMs: number }
+  ): Promise<InvocationResult>;
+}
+
+/** MCP adapter 的依赖；均为 SDK 无关 runtime/workflow 接口。 */
+export interface MCPAdapterOptions {
+  readonly runtime: MCPRuntime;
+  readonly capabilityProbe: MCPCapabilityProbe;
+  readonly workflowRunner: MCPWorkflowRunner;
+  readonly now?: () => number;
+}
+
+/** 可直接绑定 SDK 或供单元测试调用的 MCP handlers。 */
+export interface MCPToolHandlers {
+  /** @returns 不访问网络的固定 tools/list 响应。 */
+  listTools(): Promise<{ tools: Tool[] }>;
+  /**
+   * 调用一个固定 MCP 工具。
+   *
+   * @param name 历史工具名。
+   * @param args 工具参数。
+   * @returns 渲染后的 MCP tool result。
+   */
+  callTool(name: string, args?: JSONObject): Promise<CallToolResult>;
+}
+
+/**
+ * 创建静态 MCP handlers；构造和 listTools 都不会执行 ping/help 或其他 runtime 调用。
+ *
+ * @param options runtime、capability probe 与 workflow runner。
+ * @returns 只处理 tools/list 和 tools/call 语义的 handlers。
+ */
+export function createMCPToolHandlers(options: MCPAdapterOptions): MCPToolHandlers {
+  const entries = new Map(TOOL_CATALOG.map(entry => [entry.name, entry] as const));
+  const now = options.now ?? Date.now;
+  return {
+    async listTools() {
+      return { tools: TOOL_CATALOG.map(toMCPTool) };
+    },
+    async callTool(name: string, args: JSONObject = {}) {
+      const entry = entries.get(name);
+      if (entry === undefined) {
+        return renderAdapterError("unknown_tool", "Unknown MCP tool");
+      }
+      return invokeEntry(entry, args, options, now);
+    }
+  };
+}
+
+/**
+ * 创建并启动 stdio MCP server。
+ *
+ * @param options runtime、capability probe 与 workflow runner。
+ * @returns server transport 连接完成后的 Promise。
+ */
+export async function startMCPStdioServer(options: MCPAdapterOptions): Promise<void> {
+  const server = new Server(
+    { name: "ios-explore-mcp-server", version: "0.1.0" },
+    { capabilities: { tools: {} } }
+  );
+  const handlers = createMCPToolHandlers(options);
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => handlers.listTools());
+  server.setRequestHandler(CallToolRequestSchema, async request => {
+    const args = (request.params.arguments ?? {}) as JSONObject;
+    return handlers.callTool(request.params.name, args);
+  });
+
+  await server.connect(new StdioServerTransport());
+}
+
+async function invokeEntry(
+  entry: ToolCatalogEntry,
+  input: JSONObject,
+  options: MCPAdapterOptions,
+  now: () => number
+): Promise<CallToolResult> {
+  if (entry.mapping.kind === "deviceAction") {
+    return renderInvocationResult(
+      await options.runtime.invoke(entry.mapping.action, input),
+      "deviceAction"
+    );
+  }
+
+  switch (entry.mapping.operation) {
+    case "health":
+      return renderJSONData(await options.capabilityProbe.health() as unknown as JSONObject);
+    case "capabilities":
+      return renderJSONData(await options.capabilityProbe.capabilities() as unknown as JSONObject);
+    case "call_action": {
+      const action = typeof input.action === "string" ? input.action : "";
+      if (action.length === 0) {
+        return renderAdapterError("missing_action", "call_action requires a non-empty action field");
+      }
+      const data = objectValue(input.data) ?? {};
+      const policy = options.capabilityProbe.invocationPolicy(action);
+      return renderInvocationResult(
+        await options.runtime.invoke(action, data, policy === undefined ? {} : { policy }),
+        "callAction"
+      );
+    }
+    case "wait_and_inspect":
+    case "tap_and_inspect":
+      return renderInvocationResult(
+        await options.workflowRunner.run(entry.mapping.operation, input, {
+          deadlineAtMs: now() + workflowBudgetMs(entry.mapping.operation, input)
+        }),
+        "workflow"
+      );
+  }
+}
+
+function toMCPTool(entry: ToolCatalogEntry): Tool {
+  return {
+    name: entry.name,
+    description: entry.description,
+    inputSchema: entry.inputSchema as Tool["inputSchema"]
+  };
+}
+
+function workflowBudgetMs(operation: WorkflowOperation, input: JSONObject): number {
+  const spec = HOST_OPERATION_SPECS.find(candidate => candidate.operation === operation);
+  if (spec === undefined) throw new Error(`Missing generated workflow contract: ${operation}`);
+  const schema = spec.inputSchema as unknown as {
+    readonly properties: Readonly<Record<string, { readonly default?: unknown }>>;
+  };
+  if (operation === "wait_and_inspect") {
+    const businessTimeoutMs = numberOrGeneratedDefault(input.timeoutMs, schema.properties.timeoutMs?.default, "timeoutMs");
+    return businessTimeoutMs + WORKFLOW_FIXED_MARGIN_MS + WORKFLOW_INSPECT_BUDGET_MS;
+  }
+  const stableTimeMs = numberOrGeneratedDefault(input.stableTimeMs, schema.properties.stableTimeMs?.default, "stableTimeMs");
+  const waitForStable = booleanOrGeneratedDefault(input.waitForStable, schema.properties.waitForStable?.default, "waitForStable");
+  const stableWaitBudgetMs = waitForStable ? stableTimeMs + 1_000 : 0;
+  return stableWaitBudgetMs + WORKFLOW_FIXED_MARGIN_MS + WORKFLOW_INSPECT_BUDGET_MS;
+}
+
+function numberOrGeneratedDefault(value: unknown, defaultValue: unknown, field: string): number {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+  if (typeof defaultValue === "number") return defaultValue;
+  throw new Error(`Generated workflow contract is missing numeric default for ${field}`);
+}
+
+function booleanOrGeneratedDefault(value: unknown, defaultValue: unknown, field: string): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof defaultValue === "boolean") return defaultValue;
+  throw new Error(`Generated workflow contract is missing boolean default for ${field}`);
+}
+
+function objectValue(value: unknown): JSONObject | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as JSONObject
+    : undefined;
+}

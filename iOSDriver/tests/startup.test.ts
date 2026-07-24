@@ -2,7 +2,7 @@ import { createServer, type Server as HTTPServer } from "node:http";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterEach, describe, expect, test } from "vitest";
-import { STATIC_TOOL_NAMES } from "../src/staticTools.js";
+import { STATIC_TOOL_NAMES } from "../src/adapters/mcp/toolMappings.js";
 
 const clients: Client[] = [];
 const httpServers: HTTPServer[] = [];

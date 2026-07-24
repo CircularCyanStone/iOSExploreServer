@@ -19,6 +19,16 @@ export interface DriverRuntimeOptions {
 /** 单次 invoke 的调用参数。 */
 export interface InvocationOptions {
   readonly signal?: AbortSignal;
+  /** 仅供已严格验证的 help metadata 覆盖未知 action 的保守默认策略。 */
+  readonly policy?: InvocationPolicy;
+}
+
+/** 单次 action 的 timeout 与重试安全属性。 */
+export interface InvocationPolicy {
+  /** readOnly/idempotent 才允许 runtime 对安全 transport 阶段自动重试。 */
+  readonly idempotency: "readOnly" | "idempotent" | "sideEffecting";
+  /** timeoutClass 决定是否为业务等待 timeout 预留 transport 余量。 */
+  readonly timeoutClass: "standard" | "wait" | "screenshot";
 }
 
 /** 把 transport 返回值归一化为稳定 InvocationResult 的 Host runtime。 */
@@ -48,7 +58,8 @@ export class DriverRuntime {
    */
   async invoke(action: string, data: JSONObject = {}, options: InvocationOptions = {}): Promise<InvocationResult> {
     const startedAt = Date.now();
-    const timeoutMs = requestTimeout(action, data, this.configuredRequestTimeoutMs);
+    const policy = invocationPolicy(action, options.policy);
+    const timeoutMs = requestTimeout(policy, data, this.configuredRequestTimeoutMs);
     let attempts = 0;
 
     while (true) {
@@ -70,7 +81,7 @@ export class DriverRuntime {
         return this.fromEnvelope(action, response.envelope, startedAt, attempts);
       } catch (error) {
         if (!(error instanceof DriverFailure)) throw error;
-        if (this.shouldRetry(action, error, attempts)) continue;
+        if (this.shouldRetry(policy, error, attempts)) continue;
         return this.failure(error.driverError, startedAt, attempts);
       }
     }
@@ -124,10 +135,9 @@ export class DriverRuntime {
     }, startedAt, attempts, decoded.data, decoded.artifacts);
   }
 
-  private shouldRetry(action: string, failure: DriverFailure, attempts: number): boolean {
+  private shouldRetry(policy: InvocationPolicy | undefined, failure: DriverFailure, attempts: number): boolean {
     if (attempts >= 2 || failure.responseReceived) return false;
-    const metadata = ACTION_METADATA.get(action);
-    const idempotency: string | undefined = metadata?.idempotency;
+    const idempotency = policy?.idempotency;
     if (idempotency !== "readOnly" && idempotency !== "idempotent") {
       return false;
     }
@@ -153,10 +163,24 @@ export class DriverRuntime {
   }
 }
 
-function requestTimeout(action: string, data: JSONObject, configuredRequestTimeoutMs: number): number {
-  if (ACTION_METADATA.get(action)?.timeoutClass !== "wait") return configuredRequestTimeoutMs;
+function requestTimeout(policy: InvocationPolicy | undefined, data: JSONObject, configuredRequestTimeoutMs: number): number {
+  if (policy?.timeoutClass !== "wait") return configuredRequestTimeoutMs;
   const businessTimeoutMs = typeof data.timeoutMs === "number" ? data.timeoutMs : 0;
   return Math.max(configuredRequestTimeoutMs, businessTimeoutMs + 5000);
+}
+
+function invocationPolicy(action: string, perCallPolicy: InvocationPolicy | undefined): InvocationPolicy | undefined {
+  if (isInvocationPolicy(perCallPolicy)) return perCallPolicy;
+  const generated = ACTION_METADATA.get(action);
+  return generated === undefined
+    ? undefined
+    : { idempotency: generated.idempotency, timeoutClass: generated.timeoutClass };
+}
+
+function isInvocationPolicy(value: InvocationPolicy | undefined): value is InvocationPolicy {
+  return value !== undefined
+    && (value.idempotency === "readOnly" || value.idempotency === "idempotent" || value.idempotency === "sideEffecting")
+    && (value.timeoutClass === "standard" || value.timeoutClass === "wait" || value.timeoutClass === "screenshot");
 }
 
 function objectValue(value: unknown): JSONObject | undefined {

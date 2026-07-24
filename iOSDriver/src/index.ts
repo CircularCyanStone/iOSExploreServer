@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 
 import { loadConfig } from "./config.js";
-import { IOSExploreClient } from "./iosExploreClient.js";
+import { CapabilityProbe } from "./runtime/capabilityProbe.js";
+import { DriverRuntime } from "./runtime/driverRuntime.js";
+import { HttpActionTransport } from "./runtime/httpActionTransport.js";
 import { startStdioServer } from "./server.js";
-import { createStaticTools } from "./staticTools.js";
+import { WorkflowRunner } from "./workflows/workflowRunner.js";
 
 const config = loadConfig();
-const client = new IOSExploreClient(config);
-const staticTools = createStaticTools({ client });
+const transport = new HttpActionTransport(config.baseURL);
+const runtime = new DriverRuntime({
+  transport,
+  configuredRequestTimeoutMs: config.requestTimeoutMs
+});
+const capabilityProbe = new CapabilityProbe(runtime);
+const workflowRunner = new WorkflowRunner({ runtime });
 
-await startStdioServer({ staticTools });
+await startStdioServer({ runtime, capabilityProbe, workflowRunner });
