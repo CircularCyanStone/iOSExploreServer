@@ -5,6 +5,7 @@
   "private": false,
   "type": "module",
   "bin": {
+    "iosdriver": "./dist/adapters/cli/main.js",
     "ios-explore-mcp-server": "./dist/index.js"
   },
   "main": "./dist/index.js",
