@@ -8,6 +8,11 @@
 
 **Tech Stack:** Swift 6.2、Swift Package Manager、Foundation/Network、TypeScript 5.x、Node.js 20+、`@modelcontextprotocol/sdk`、Vitest。
 
+**后续验证约定（2026-07-25）：** 本计划剩余任务默认只验证 SPM 库（按影响范围运行
+`swift build` 和定向 `swift test`）以及对应 Node/TypeScript 测试，不再运行 framework 工程的
+`xcodebuild` 测试。framework 路径后续尚未处理，除非用户明确要求，或任务直接修改
+`iOSExploreServer.xcodeproj`/framework target，否则其构建问题不作为本计划任务的完成阻塞项。
+
 ---
 
 ## Task 1: 建立合同目录和受控 JSON Schema 校验器
