@@ -1,78 +1,92 @@
-import { requestTimeoutForAction, type MCPServerConfig } from "./config.js";
-import { bodySnippet, IOSExploreStructuredError } from "./errors.js";
-import { isFailureEnvelope, type IOSExploreEnvelope, type JSONObject } from "./types.js";
+import type { MCPServerConfig } from "./config.js";
+import { IOSExploreStructuredError } from "./errors.js";
+import { DriverRuntime } from "./runtime/driverRuntime.js";
+import type { DriverError } from "./runtime/driverErrors.js";
+import { HttpActionTransport } from "./runtime/httpActionTransport.js";
+import type { Artifact } from "./runtime/types.js";
+import type { JSONObject, StructuredError } from "./types.js";
 
+/**
+ * @deprecated 请直接使用 `DriverRuntime.invoke`；本类只为现有调用方保留旧 `call` 行为。
+ */
 export class IOSExploreClient {
-  constructor(private readonly config: MCPServerConfig) {}
+  private readonly runtime: DriverRuntime;
 
+  /**
+   * 创建兼容客户端。
+   *
+   * @param config 现有 MCP server 的 baseURL 与请求 timeout 配置。
+   */
+  constructor(private readonly config: MCPServerConfig) {
+    this.runtime = new DriverRuntime({
+      transport: new HttpActionTransport(config.baseURL),
+      configuredRequestTimeoutMs: config.requestTimeoutMs
+    });
+  }
+
+  /**
+   * 使用旧接口调用 action。
+   *
+   * @param action action 名。
+   * @param data action JSON data。
+   * @returns 旧接口所需的 JSONObject；截图 artifact 会还原为原 base64 字段。
+   * @throws `IOSExploreStructuredError`，保持现有调用方的错误处理语义。
+   */
   async call(action: string, data: JSONObject = {}): Promise<JSONObject> {
-    const timeoutMs = requestTimeoutForAction(this.config, action, data);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    let response: Response;
-
-    try {
-      response = await fetch(this.config.baseURL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, data }),
-        signal: controller.signal
-      });
-    } catch (error) {
-      const code = error instanceof Error && error.name === "AbortError" ? "request_timeout" : "connection_failed";
-      throw new IOSExploreStructuredError({
-        source: "transport",
-        code,
-        message: error instanceof Error ? error.message : String(error),
-        action,
-        baseURL: this.config.baseURL,
-        timeoutMs
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-
-    const text = await response.text();
-    if (!response.ok) {
-      throw new IOSExploreStructuredError({
-        source: "http",
-        status: response.status,
-        message: `HTTP ${response.status}`,
-        action,
-        bodySnippet: bodySnippet(text)
-      });
-    }
-
-    let envelope: IOSExploreEnvelope;
-    try {
-      envelope = JSON.parse(text) as IOSExploreEnvelope;
-    } catch {
-      throw new IOSExploreStructuredError({
-        source: "http",
-        code: "invalid_json",
-        message: "HTTP response was not valid JSON",
-        action,
-        bodySnippet: bodySnippet(text)
-      });
-    }
-
-    if (isFailureEnvelope(envelope)) {
-      const structured = {
-        source: "ios_envelope",
-        code: envelope.code,
-        message: envelope.message,
-        action
-      } as const;
-      const data = objectValue(envelope.data);
-      throw new IOSExploreStructuredError(data ? { ...structured, data } : structured);
-    }
-
-    return envelope.data ?? {};
+    const result = await this.runtime.invoke(action, data);
+    if (!result.ok) throw new IOSExploreStructuredError(legacyError(result.error, this.config.baseURL));
+    return restoreLegacyArtifacts(result.data, result.artifacts);
   }
 }
 
-function objectValue(value: unknown): JSONObject | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as JSONObject)
-    : undefined;
+function restoreLegacyArtifacts(data: JSONObject, artifacts: readonly Artifact[]): JSONObject {
+  const image = artifacts.find(artifact => artifact.kind === "image" && artifact.mimeType === "image/png");
+  return image === undefined ? data : { ...data, image: Buffer.from(image.data).toString("base64") };
+}
+
+function legacyError(error: DriverError, baseURL: string): StructuredError {
+  if (error.source === "appEnvelope") {
+    return {
+      source: "ios_envelope",
+      code: error.code,
+      message: error.message,
+      ...(error.action === undefined ? {} : { action: error.action }),
+      ...(error.data === undefined ? {} : { data: error.data })
+    };
+  }
+  if (error.source === "http") {
+    return {
+      source: "http",
+      message: error.message,
+      ...(error.action === undefined ? {} : { action: error.action }),
+      ...(error.status === undefined ? {} : { status: error.status }),
+      ...(error.bodySnippet === undefined ? {} : { bodySnippet: error.bodySnippet })
+    };
+  }
+  if (error.source === "protocol") {
+    return {
+      source: "http",
+      code: error.protocolIssue === "invalid_json" ? "invalid_json" : "protocol_error",
+      message: error.message,
+      ...(error.action === undefined ? {} : { action: error.action }),
+      ...(error.bodySnippet === undefined ? {} : { bodySnippet: error.bodySnippet })
+    };
+  }
+  if (error.source === "transport") {
+    return {
+      source: "transport",
+      code: error.code === "transport_timeout" ? "request_timeout" : "connection_failed",
+      message: error.message,
+      ...(error.action === undefined ? {} : { action: error.action }),
+      baseURL: error.baseURL ?? baseURL,
+      ...(error.timeoutMs === undefined ? {} : { timeoutMs: error.timeoutMs })
+    };
+  }
+  return {
+    source: "ios_envelope",
+    code: error.code,
+    message: error.message,
+    ...(error.action === undefined ? {} : { action: error.action }),
+    ...(error.data === undefined ? {} : { data: error.data })
+  };
 }

@@ -1,87 +1,74 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { IOSExploreClient } from "../src/iosExploreClient.js";
-import { withMockIOSExploreServer } from "./support/mockIOSExploreServer.js";
 
-describe("IOSExploreClient", () => {
-  test("posts action and data to POST /", async () => {
-    await withMockIOSExploreServer(
-      request => ({ body: { code: "ok", data: { echoed: request.data } } }),
-      async ({ baseURL, requests }) => {
-        const client = new IOSExploreClient({ baseURL, requestTimeoutMs: 10000 });
-        const result = await client.call("echo", { name: "Ada" });
-        expect(result).toEqual({ echoed: { name: "Ada" } });
-        expect(requests).toEqual([{ action: "echo", data: { name: "Ada" } }]);
-      }
-    );
+describe("IOSExploreClient compatibility facade", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  test("保留 constructor(config) 与 call(action, data) 成功行为", async () => {
+    const fetchImpl = vi.fn(async () => response({ code: "ok", data: { pong: true } }));
+    vi.stubGlobal("fetch", fetchImpl);
+    const client = new IOSExploreClient({ baseURL: "http://localhost:38321/", requestTimeoutMs: 1000 });
+
+    await expect(client.call("ping", {})).resolves.toEqual({ pong: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  test("throws structured iOS envelope error", async () => {
-    await withMockIOSExploreServer(
-      () => ({ body: { code: "invalid_data", message: "bad field", data: { field: "path" } } }),
-      async ({ baseURL }) => {
-        const client = new IOSExploreClient({ baseURL, requestTimeoutMs: 10000 });
-        await expect(client.call("ui.tap", {})).rejects.toMatchObject({
-          source: "ios_envelope",
-          code: "invalid_data",
-          action: "ui.tap",
-          message: "bad field",
-          data: { field: "path" }
-        });
-      }
-    );
+  test("App failure 转回既有 IOSExploreStructuredError 语义并保留 data", async () => {
+    vi.stubGlobal("fetch", async () => response({
+      code: "wait_timeout",
+      message: "not ready",
+      data: { elapsedMs: 1200, attempts: 12 }
+    }));
+    const client = new IOSExploreClient({ baseURL: "http://localhost:38321/", requestTimeoutMs: 1000 });
+
+    await expect(client.call("ui.waitAny", {})).rejects.toMatchObject({
+      source: "ios_envelope",
+      code: "wait_timeout",
+      message: "not ready",
+      action: "ui.waitAny",
+      data: { elapsedMs: 1200, attempts: 12 }
+    });
   });
 
-  test("throws structured HTTP error with body snippet", async () => {
-    await withMockIOSExploreServer(
-      () => ({ status: 500, body: "server exploded" }),
-      async ({ baseURL }) => {
-        const client = new IOSExploreClient({ baseURL, requestTimeoutMs: 10000 });
-        await expect(client.call("ping", {})).rejects.toMatchObject({
-          source: "http",
-          status: 500,
-          action: "ping",
-          bodySnippet: "server exploded"
-        });
-      }
-    );
+  test("HTTP 与非法 JSON 转回既有结构化错误", async () => {
+    vi.stubGlobal("fetch", async () => new Response("server exploded", { status: 500 }));
+    const httpClient = new IOSExploreClient({ baseURL: "http://localhost:38321/", requestTimeoutMs: 1000 });
+    await expect(httpClient.call("ping", {})).rejects.toMatchObject({
+      source: "http", status: 500, action: "ping", bodySnippet: "server exploded"
+    });
+
+    vi.stubGlobal("fetch", async () => new Response("not-json"));
+    const jsonClient = new IOSExploreClient({ baseURL: "http://localhost:38321/", requestTimeoutMs: 1000 });
+    await expect(jsonClient.call("ping", {})).rejects.toMatchObject({
+      source: "http", code: "invalid_json", action: "ping", bodySnippet: "not-json"
+    });
   });
 
-  test("wait action timeout uses command timeout plus grace", async () => {
-    await withMockIOSExploreServer(
-      () => ({ delayMs: 50, body: { code: "wait_timeout", message: "timeout" } }),
-      async ({ baseURL }) => {
-        const client = new IOSExploreClient({ baseURL, requestTimeoutMs: 10 });
-        await expect(client.call("ui.waitAny", { timeoutMs: 40 })).rejects.toMatchObject({
-          source: "ios_envelope",
-          code: "wait_timeout",
-          action: "ui.waitAny"
-        });
-      }
-    );
+  test("transport failure 不在 facade 额外重试", async () => {
+    const fetchImpl = vi.fn(async () => { throw new TypeError("offline"); });
+    vi.stubGlobal("fetch", fetchImpl);
+    const client = new IOSExploreClient({ baseURL: "http://localhost:38321/", requestTimeoutMs: 1000 });
+
+    await expect(client.call("ui.tap", {})).rejects.toMatchObject({
+      source: "transport", code: "connection_failed", action: "ui.tap"
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  test("preserves structured failure data from iOS envelope", async () => {
-    await withMockIOSExploreServer(
-      () => ({
-        body: {
-          code: "wait_timeout",
-          message: "wait timed out mode=any",
-          data: { elapsedMs: 1200, attempts: 12, snapshotUnavailableReason: "view snapshot unknown or expired" }
-        }
-      }),
-      async ({ baseURL }) => {
-        const client = new IOSExploreClient({ baseURL, requestTimeoutMs: 10000 });
-        await expect(client.call("ui.waitAny", { conditions: [] })).rejects.toMatchObject({
-          source: "ios_envelope",
-          code: "wait_timeout",
-          action: "ui.waitAny",
-          data: {
-            elapsedMs: 1200,
-            attempts: 12,
-            snapshotUnavailableReason: "view snapshot unknown or expired"
-          }
-        });
-      }
-    );
+  test("截图仍返回旧的 base64 data 形态", async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    vi.stubGlobal("fetch", async () => response({
+      code: "ok",
+      data: { image: png.toString("base64"), format: "png", width: 1, height: 1 }
+    }));
+    const client = new IOSExploreClient({ baseURL: "http://localhost:38321/", requestTimeoutMs: 1000 });
+
+    await expect(client.call("ui.screenshot", {})).resolves.toEqual({
+      image: png.toString("base64"), format: "png", width: 1, height: 1
+    });
   });
 });
+
+function response(body: unknown): Response {
+  return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+}
