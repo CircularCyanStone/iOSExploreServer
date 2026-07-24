@@ -1,7 +1,7 @@
 # iOSDriver Contract Runtime Refactor Design
 
 - 日期: 2026-07-24
-- 状态: 设计已批准，待实施计划
+- 状态: 已按首轮评审修订，待用户复审
 - 关联决策: [`docs/cli/README.md`](../../cli/README.md)
 
 ## 1. 目标
@@ -17,17 +17,74 @@
 5. 现有 `POST /`、JSON envelope、`call_action` 和公共 MCP 工具名称保持兼容。
 6. 每个阶段都能独立编译、测试和回滚，不允许最后阶段才暴露跨语言集成问题。
 
-## 2. 非目标
+## 2. 约束、首期范围与未来演进
 
-本次重构不做以下事情：
+原先把所有“现在不做”的事项放在非目标中，会混淆长期架构边界和首期范围控制。本节明确区分三类决策：不能突破的长期不变量、首期刻意收窄的范围，以及未来可以在满足条件后增加的能力。
 
-- 不改变 iPhone App 的 HTTP endpoint、请求 body 结构和基础 envelope。
-- 不把 MCP 协议下沉到 Swift App；App 仍只执行 action。
-- 不把 UIKit 类型放入 core public boundary。
-- 不实现任意 JSON Schema 方言的通用验证器；合同只支持项目实际使用的受控子集。
-- 不让 host runtime 自动启动、停止或管理 `iproxy`、XcodeBuildMCP 或设备生命周期。
-- 不把 skills 变成协议事实源；skills 继续描述工作流策略和失败分诊。
-- 不为未纳入公共合同的宿主扩展 action 自动生成 MCP 工具。
+### 2.1 长期架构不变量
+
+以下不是待办事项，也不是“以后有时间再优化”的能力，而是整个设计成立的前提：
+
+- **HTTP wire contract 保持兼容**：本次重构不改变 iPhone App 的 HTTP endpoint、请求 body `{ action, data }` 和基础 JSON envelope。若未来需要改变它，必须另立 protocol v2 设计，不得混入本次 host runtime 重构。
+- **MCP 不下沉到 Swift App**：Swift App 只执行 action、返回 App envelope 和运行时 help；MCP stdio 生命周期、tool schema 和 image content 永远属于 Mac 侧 adapter。
+- **core 不依赖 UIKit**：UIKit 类型不能进入 `iOSExploreServer` 的 public boundary；UIKit 信息和行为由 `iOSExploreUIKit` 或宿主注入。
+- **skills 不定义协议**：skills 只能描述工作流策略、调用顺序、失败分诊和验证方法；字段、默认值、错误码和结果结构必须来自合同生成结果。
+
+这些不变量即使重构完成也继续有效，不应在未来优化清单中被重新打开。
+
+### 2.2 首期范围限制
+
+以下是为了让第一版重构可验证而刻意收窄的范围，不代表它们在理论上永远不能做：
+
+- 合同只实现项目实际使用的受控 JSON Schema 子集，不实现任意 JSON Schema 方言的通用验证器。
+- host runtime 不自动启动、停止或管理 `iproxy`、XcodeBuildMCP 或设备生命周期；本期只提供端点、端口和代理状态诊断。
+- 未纳入公共合同的宿主扩展 action 不自动生成 MCP 工具，只通过 `call_action` 调用。
+
+首期限制必须有测试覆盖，确保收窄范围是可观察、可解释的行为，而不是遗漏实现。
+
+### 2.3 未来演进与优化点
+
+以下能力可以在本次重构完成后单独立项。每项都必须满足触发条件，不能因为“架构上可能支持”就提前增加复杂度。
+
+#### A. 标准 JSON Schema 方言和更强验证
+
+触发条件：合同需要 `if/then/else`、`dependentSchemas`、格式校验，或外部消费者要求完整 Draft 2020-12 兼容。
+
+可能方案：引入经过验证的 JSON Schema library，或将合同生成器升级为完整方言编译器；Swift 和 TypeScript 仍使用同一合同源。
+
+代价：增加依赖、方言兼容矩阵、生成器维护成本和 MCP 客户端差异测试。没有真实合同需求前，保持当前受控子集。
+
+#### B. 可选的设备生命周期/代理管理模块
+
+触发条件：多个调用方反复实现 `iproxy` 启停、端口分配、真机/模拟器选择或 App 启动重试，且这些行为需要统一诊断。
+
+可能方案：新增独立的 `DeviceSession`/`ProxyManager` 模块，由 CLI 或专用 adapter 显式启用；它不能进入 `DriverRuntime` 的默认核心接口，也不能让 MCP server 隐式接管设备。
+
+代价：引入进程管理、设备 ID 体系、权限、并发占用和平台差异。该模块必须有明确的 ownership 和 opt-in 生命周期。
+
+#### C. 扩展 action 的显式发现
+
+触发条件：宿主扩展 action 数量增加，调用方不再接受只通过 `call_action` 猜 action 名，并且需要工具级 schema、权限和版本管理。
+
+可能方案：定义独立的 extension registry namespace，让宿主在注册时提供合同、来源和稳定版本；MCP 通过显式 capability 或版本协商决定是否暴露扩展工具。
+
+代价：工具列表动态性、`listChanged`、权限隔离、扩展合同冲突和客户端兼容性都会重新出现。默认公共工具列表仍保持静态。
+
+#### D. 流式和文件型 artifact
+
+触发条件：截图、录屏、日志导出或其他产物超过当前 JSON/base64 响应上限，或者调用方需要直接下载文件而不是内存中传输。
+
+可能方案：为 Host runtime 增加文件 artifact store、临时 URL 或分块传输协议；MCP 和 CLI 分别实现引用/落盘渲染。
+
+代价：生命周期清理、权限、大小限制、失败恢复和新的传输协议。当前只实现 JSON 与 PNG image artifact，不预留虚假的 `file` 支持。
+
+#### E. 协议 v2
+
+触发条件：需要改变 App endpoint、请求 body、认证方式、流式传输或 envelope 语义，并且无法通过向后兼容字段完成。
+
+可能方案：并行实现明确版本的 v2 transport，host runtime 按 protocol version 协商；v1 继续保留到迁移完成。
+
+代价：双协议测试、App/host 版本矩阵和迁移窗口。协议 v2 不属于本次重构的隐含后门。
 
 ## 3. 设计词汇
 
