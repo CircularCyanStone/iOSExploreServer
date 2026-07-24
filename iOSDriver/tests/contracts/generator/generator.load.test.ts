@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
-import { loadContractBundle } from "../../../src/contracts/generator/loadBundle.js";
+import { loadAndValidateContractBundle, loadContractBundle } from "../../../src/contracts/generator/loadBundle.js";
 
 const temporaryRoots: string[] = [];
 
@@ -13,7 +13,7 @@ afterEach(() => {
 
 describe("contract bundle loader", () => {
   test("loads the repository bundle metadata and its minimum real fixtures", () => {
-    const bundle = loadContractBundle();
+    const bundle = loadAndValidateContractBundle();
 
     expect(bundle.protocolVersion).toBe("1");
     expect(bundle.contractVersion).toBe("1.0.0");
