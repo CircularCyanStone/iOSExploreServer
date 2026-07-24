@@ -54,11 +54,14 @@
         "additionalProperties": true
       },
       "timeout": {
-        "type": "number",
+        "type": [
+          "number",
+          "null"
+        ],
         "minimum": 1,
         "maximum": 30,
         "default": 5,
-        "description": "超时时间（秒）。"
+        "description": "超时时间（秒）；省略或传 null 时使用 5 秒。"
       }
     },
     "required": [],
@@ -71,7 +74,8 @@
       "exactlyOneOf": [
         "accessibilityIdentifier",
         "path"
-      ]
+      ],
+      "note": "script/function 必须且只能提供一个；arguments 只能与 function 一起提供。"
     }
   },
   "result": {

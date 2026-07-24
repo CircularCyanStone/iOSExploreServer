@@ -34,42 +34,52 @@
           "string",
           "null"
         ],
-        "description": "ISO 8601 日期时间字符串。"
+        "description": "ISO 8601 日期时间字符串（可带毫秒/时区）或 yyyy-MM-dd。"
       },
       "year": {
         "type": [
           "integer",
           "null"
         ],
-        "description": "年份分量。"
+        "minimum": 0,
+        "maximum": 9007199254740991,
+        "description": "非负整数年份分量。"
       },
       "month": {
         "type": [
           "integer",
           "null"
         ],
-        "description": "月份分量。"
+        "minimum": 0,
+        "maximum": 9007199254740991,
+        "description": "非负整数月份分量；parser 不限制为 1...12，Calendar 可规整超出常规范围的值。"
       },
       "day": {
         "type": [
           "integer",
           "null"
         ],
-        "description": "日期分量。"
+        "minimum": 0,
+        "maximum": 9007199254740991,
+        "description": "非负整数日期分量；parser 不限制为 1...31，Calendar 可规整超出常规范围的值。"
       },
       "hour": {
         "type": [
           "integer",
           "null"
         ],
-        "description": "小时分量。"
+        "minimum": 0,
+        "maximum": 9007199254740991,
+        "description": "非负整数小时分量；parser 不限制为 0...23，Calendar 可规整超出常规范围的值。"
       },
       "minute": {
         "type": [
           "integer",
           "null"
         ],
-        "description": "分钟分量。"
+        "minimum": 0,
+        "maximum": 9007199254740991,
+        "description": "非负整数分钟分量；parser 不限制为 0...59，Calendar 可规整超出常规范围的值。"
       },
       "animated": {
         "type": "boolean",
@@ -80,18 +90,11 @@
     "required": [],
     "additionalProperties": false,
     "x-iosExplore-constraints": {
-      "mutuallyExclusive": [
-        "date",
-        "year",
-        "month",
-        "day",
-        "hour",
-        "minute"
-      ],
       "exactlyOneOf": [
         "accessibilityIdentifier",
         "path"
-      ]
+      ],
+      "note": "定位字段按非 null、非空值计算且 path 文法由 UIKit locator parser 校验；必须提供非 null 的 date，或至少一个非 null 日期分量；date 与整个分量组互斥，但 year/month/day/hour/minute 可同时组合。date 的实际格式解析继续由手写 parser 强制。"
     }
   },
   "result": {

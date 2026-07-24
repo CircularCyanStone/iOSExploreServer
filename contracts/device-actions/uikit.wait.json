@@ -76,7 +76,14 @@
       }
     },
     "required": [],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "x-iosExplore-constraints": {
+      "mutuallyExclusive": [
+        "accessibilityIdentifier",
+        "path"
+      ],
+      "note": "mode=targetExists/targetGone 时 accessibilityIdentifier/path 必须且只能提供一个；mode=textExists 时 text 必须为非空字符串；mode=snapshotChanged 时必须提供 viewSnapshotID；mode=idle 无额外必填字段。"
+    }
   },
   "result": {
     "kind": "json"

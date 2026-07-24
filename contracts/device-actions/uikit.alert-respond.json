@@ -20,7 +20,9 @@
           "integer",
           "null"
         ],
-        "description": "要触发的按钮下标。"
+        "description": "要触发的按钮下标。",
+        "minimum": 0,
+        "maximum": 9007199254740991
       },
       "role": {
         "type": [

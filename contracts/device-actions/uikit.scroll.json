@@ -23,7 +23,8 @@
           "number",
           "null"
         ],
-        "description": "滚动距离。"
+        "exclusiveMinimum": 0,
+        "description": "滚动距离（pt），必须 > 0；省略或传 null 时按目标可见区的一半计算。"
       },
       "accessibilityIdentifier": {
         "type": [
@@ -57,7 +58,11 @@
     ],
     "additionalProperties": false,
     "x-iosExplore-constraints": {
-      "note": "accessibilityIdentifier/path 都缺时滚动 keyWindow 最前 scrollView"
+      "mutuallyExclusive": [
+        "accessibilityIdentifier",
+        "path"
+      ],
+      "note": "accessibilityIdentifier/path 都缺时滚动 keyWindow 最前 scrollView；提供定位时按非 null、非空值计算，path 文法由 UIKit locator parser 校验。"
     }
   },
   "result": {

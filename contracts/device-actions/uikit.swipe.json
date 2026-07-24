@@ -23,7 +23,10 @@
           "number",
           "null"
         ],
-        "description": "滑动距离比例。"
+        "exclusiveMinimum": 0,
+        "maximum": 1,
+        "default": 0.8,
+        "description": "滑动距离比例；省略或传 null 时使用 0.8，范围 (0, 1]。"
       },
       "accessibilityIdentifier": {
         "type": [
@@ -71,7 +74,14 @@
     "required": [
       "direction"
     ],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "x-iosExplore-constraints": {
+      "mutuallyExclusive": [
+        "accessibilityIdentifier",
+        "path"
+      ],
+      "note": "主 locator 与 cell locator 相互独立且都可省略；主 accessibilityIdentifier/path 互斥，cellAccessibilityIdentifier/cellPath 也互斥；非空值和 path 文法由 UIKit locator parser 校验。"
+    }
   },
   "result": {
     "kind": "json"

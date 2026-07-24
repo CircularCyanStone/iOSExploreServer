@@ -41,9 +41,10 @@
       "value": {
         "type": [
           "number",
+          "boolean",
           "null"
         ],
-        "description": "可选目标值。"
+        "description": "可选目标值；number 用于 UISlider/UISegmentedControl/UIStepper，UISwitch 同时接受 boolean 和 number 0/1。"
       }
     },
     "required": [
@@ -55,7 +56,8 @@
       "exactlyOneOf": [
         "accessibilityIdentifier",
         "path"
-      ]
+      ],
+      "note": "定位字段按非 null、非空值计算；path 文法继续由 UIKit locator parser 校验。"
     }
   },
   "result": {

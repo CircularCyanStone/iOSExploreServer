@@ -130,6 +130,53 @@ describe("contract bundle validator", () => {
 
     expect(() => validateContractBundle(loadContractBundle(root))).not.toThrow();
   });
+
+  test.each([
+    {
+      schema: { type: ["integer", "null"], minimum: 0, maximum: 10 },
+      description: "integer union with inclusive bounds"
+    },
+    {
+      schema: { type: ["number", "null"], exclusiveMinimum: 0, exclusiveMaximum: 1 },
+      description: "number union with exclusive bounds"
+    }
+  ])("accepts numeric keywords for $description", ({ schema }) => {
+    const root = makeBundle({ inputSchema: schema });
+
+    expect(() => validateContractBundle(loadContractBundle(root))).not.toThrow();
+  });
+
+  test.each(["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"] as const)(
+    "rejects %s when a type union has no numeric type",
+    keyword => {
+      const root = makeBundle({
+        inputSchema: { type: ["string", "null"], [keyword]: 0 }
+      });
+
+      expectValidationCode(root, "invalid_contract");
+    }
+  );
+
+  test("rejects a non-finite numeric bound for a numeric type union", () => {
+    const root = makeBundle({
+      inputSchema: { type: ["number", "null"], minimum: 0 }
+    });
+    const bundle = loadContractBundle(root);
+    bundle.deviceActions[0]!.inputSchema.minimum = Number.POSITIVE_INFINITY;
+
+    expect(() => validateContractBundle(bundle)).toThrow(
+      expect.objectContaining({ code: "invalid_contract" })
+    );
+  });
+
+  test.each([
+    { type: ["integer", "null"], minimum: 2, maximum: 1 },
+    { type: ["number", "null"], exclusiveMinimum: 1, exclusiveMaximum: 1 }
+  ])("rejects numeric union schemas with reversed bounds", inputSchema => {
+    const root = makeBundle({ inputSchema });
+
+    expectValidationCode(root, "invalid_contract");
+  });
 });
 
 type JSONValue = null | boolean | number | string | JSONValue[] | { [key: string]: JSONValue };

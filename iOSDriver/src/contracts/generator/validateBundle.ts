@@ -271,10 +271,12 @@ function validateSchema(
     fail("invalid_contract", `${path}.default`, `value does not match type ${type}`);
   }
 
+  const hasNumericType = type === "number" || type === "integer" ||
+    (Array.isArray(type) && (type.includes("number") || type.includes("integer")));
   for (const keyword of ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"] as const) {
     const value = typedSchema[keyword];
     if (value !== undefined) {
-      if (type !== "number" && type !== "integer") fail("invalid_contract", `${path}.${keyword}`, "requires number or integer type");
+      if (!hasNumericType) fail("invalid_contract", `${path}.${keyword}`, "requires number or integer type");
       if (typeof value !== "number" || !Number.isFinite(value)) fail("invalid_contract", `${path}.${keyword}`, "must be a finite number");
     }
   }

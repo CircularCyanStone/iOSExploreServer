@@ -68,7 +68,8 @@
             "exactlyOneOf": [
               "accessibilityIdentifier",
               "path"
-            ]
+            ],
+            "note": "定位字段按非 null、非空值计算；path 文法继续由 UIKit locator parser 校验。"
           }
         },
         "minItems": 1,

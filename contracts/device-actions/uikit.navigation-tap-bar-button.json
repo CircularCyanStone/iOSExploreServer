@@ -13,14 +13,21 @@
           "string",
           "null"
         ],
-        "description": "导航栏按钮位置。"
+        "description": "导航栏按钮位置。",
+        "enum": [
+          "left",
+          "right",
+          null
+        ]
       },
       "index": {
         "type": [
           "integer",
           "null"
         ],
-        "description": "按钮在当前侧的下标。"
+        "description": "按钮在当前侧的下标。",
+        "minimum": 0,
+        "maximum": 20
       },
       "title": {
         "type": [

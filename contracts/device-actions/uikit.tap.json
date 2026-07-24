@@ -35,7 +35,8 @@
       "exactlyOneOf": [
         "accessibilityIdentifier",
         "path"
-      ]
+      ],
+      "note": "定位字段按非 null、非空值计算，path 文法由 UIKit locator parser 校验；命令不接受 x/y/coordinateSpace，且 viewSnapshotID 必填。"
     }
   },
   "result": {

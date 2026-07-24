@@ -28,7 +28,9 @@
           "integer",
           "null"
         ],
-        "description": "最大递归深度。"
+        "description": "最大递归深度。",
+        "minimum": 0,
+        "maximum": 9007199254740991
       },
       "accessibilityIdentifier": {
         "type": [

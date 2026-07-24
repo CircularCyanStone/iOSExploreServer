@@ -4,7 +4,7 @@
 - Protocol version: `1`
 - Contract version: `1.0.0`
 - Generator version: `1`
-- Contract hash: `sha256:b01cc367dd008502662d322da1b09a2d832e0bb8f35f187ace1921ebbd2d9096`
+- Contract hash: `sha256:6077da3314052391a3407141faeab53982762be6175ad8fe845dfcda2366ab87`
 - Device actions: 27
 - Host operations: 5
 
@@ -128,7 +128,7 @@ Input fields: none.
 | `accessibilityIdentifier` | `string \| null` | no | - | 按 accessibilityIdentifier 定位。 |
 | `event` | `string` | yes | - | 事件名。 |
 | `path` | `string \| null` | no | - | 按 path 定位。 |
-| `value` | `number \| null` | no | - | 可选目标值。 |
+| `value` | `number \| boolean \| null` | no | - | 可选目标值；number 用于 UISlider/UISegmentedControl/UIStepper，UISwitch 同时接受 boolean 和 number 0/1。 |
 | `viewSnapshotID` | `string` | yes | - | ui.inspect 签发的快照标识。 |
 
 ### `ui.controllers`
@@ -161,14 +161,14 @@ Input fields: none.
 | --- | --- | --- | --- | --- |
 | `accessibilityIdentifier` | `string \| null` | no | - | 按 accessibilityIdentifier 定位。 |
 | `animated` | `boolean` | no | `false` | 是否动画。 |
-| `date` | `string \| null` | no | - | ISO 8601 日期时间字符串。 |
-| `day` | `integer \| null` | no | - | 日期分量。 |
-| `hour` | `integer \| null` | no | - | 小时分量。 |
-| `minute` | `integer \| null` | no | - | 分钟分量。 |
-| `month` | `integer \| null` | no | - | 月份分量。 |
+| `date` | `string \| null` | no | - | ISO 8601 日期时间字符串（可带毫秒/时区）或 yyyy-MM-dd。 |
+| `day` | `integer \| null` | no | - | 非负整数日期分量；parser 不限制为 1...31，Calendar 可规整超出常规范围的值。 |
+| `hour` | `integer \| null` | no | - | 非负整数小时分量；parser 不限制为 0...23，Calendar 可规整超出常规范围的值。 |
+| `minute` | `integer \| null` | no | - | 非负整数分钟分量；parser 不限制为 0...59，Calendar 可规整超出常规范围的值。 |
+| `month` | `integer \| null` | no | - | 非负整数月份分量；parser 不限制为 1...12，Calendar 可规整超出常规范围的值。 |
 | `path` | `string \| null` | no | - | 按 path 定位。 |
 | `viewSnapshotID` | `string \| null` | no | - | ui.inspect 签发的快照标识。 |
-| `year` | `integer \| null` | no | - | 年份分量。 |
+| `year` | `integer \| null` | no | - | 非负整数年份分量。 |
 
 ### `ui.input`
 
@@ -243,7 +243,7 @@ Input fields: none.
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `accessibilityIdentifier` | `string \| null` | no | - | 按 accessibilityIdentifier 定位。 |
-| `duration` | `number \| null` | no | - | 长按持续时间。 |
+| `duration` | `number \| null` | no | `0.5` | 长按持续时间（秒）；省略或传 null 时使用 0.5，范围 (0, 10]。 |
 | `path` | `string \| null` | no | - | 按 path 定位。 |
 | `viewSnapshotID` | `string \| null` | no | - | ui.inspect 签发的快照标识。 |
 
@@ -333,7 +333,7 @@ Input fields: none.
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `accessibilityIdentifier` | `string \| null` | no | - | 按 accessibilityIdentifier 定位。 |
-| `amount` | `number \| null` | no | - | 滚动距离。 |
+| `amount` | `number \| null` | no | - | 滚动距离（pt），必须 > 0；省略或传 null 时按目标可见区的一半计算。 |
 | `animated` | `boolean` | no | `false` | 是否动画。 |
 | `direction` | `string` | yes | - | 滚动方向。 |
 | `path` | `string \| null` | no | - | 按 path 定位。 |
@@ -376,7 +376,7 @@ Input fields: none.
 | `cellAccessibilityIdentifier` | `string \| null` | no | - | swipe action 目标 cell 的 identifier。 |
 | `cellPath` | `string \| null` | no | - | swipe action 目标 cell 的 path。 |
 | `direction` | `string` | yes | - | 滑动方向。 |
-| `distance` | `number \| null` | no | - | 滑动距离比例。 |
+| `distance` | `number \| null` | no | `0.8` | 滑动距离比例；省略或传 null 时使用 0.8，范围 (0, 1]。 |
 | `path` | `string \| null` | no | - | 按 path 定位。 |
 | `viewSnapshotID` | `string \| null` | no | - | ui.inspect 签发的快照标识。 |
 
@@ -501,7 +501,7 @@ Input fields: none.
 | `function` | `string \| null` | no | - | 异步模式 JS 函数体。 |
 | `path` | `string \| null` | no | - | 按 path 定位。 |
 | `script` | `string \| null` | no | - | 同步模式 JS 代码。 |
-| `timeout` | `number` | no | `5` | 超时时间（秒）。 |
+| `timeout` | `number \| null` | no | `5` | 超时时间（秒）；省略或传 null 时使用 5 秒。 |
 | `viewSnapshotID` | `string \| null` | no | - | ui.inspect 签发的快照标识。 |
 
 ## Host Operations

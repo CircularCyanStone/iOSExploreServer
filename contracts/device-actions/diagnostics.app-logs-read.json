@@ -29,7 +29,7 @@
           "captureSessionID",
           "id"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "limit": {
         "type": "integer",
@@ -55,8 +55,7 @@
             "oslog"
           ],
           "description": "日志来源。"
-        },
-        "uniqueItems": true
+        }
       },
       "minimumLevel": {
         "type": [
@@ -68,7 +67,8 @@
           "info",
           "error",
           "fault",
-          "unknown"
+          "unknown",
+          null
         ],
         "description": "最低日志等级。"
       }

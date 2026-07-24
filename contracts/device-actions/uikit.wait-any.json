@@ -63,10 +63,20 @@
             "id",
             "mode"
           ],
-          "additionalProperties": false
+          "additionalProperties": false,
+          "x-iosExplore-constraints": {
+            "mutuallyExclusive": [
+              "accessibilityIdentifier",
+              "path"
+            ],
+            "note": "id 必须为非空字符串；mode=targetExists/targetGone 时 accessibilityIdentifier/path 必须且只能提供一个；mode=textExists 时 text 必须为非空字符串；mode=snapshotChanged 时必须提供 viewSnapshotID；mode=idle 无额外必填字段。"
+          }
         },
         "minItems": 1,
-        "maxItems": 16
+        "maxItems": 16,
+        "x-iosExplore-constraints": {
+          "note": "conditions[].id 在同一次请求中必须唯一；该规则按 id 而不是完整对象判重，由复杂 parser 校验。"
+        }
       },
       "timeoutMs": {
         "type": "integer",

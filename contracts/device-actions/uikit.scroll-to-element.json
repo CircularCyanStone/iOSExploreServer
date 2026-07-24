@@ -44,7 +44,14 @@
     "required": [
       "value"
     ],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "x-iosExplore-constraints": {
+      "mutuallyExclusive": [
+        "accessibilityIdentifier",
+        "path"
+      ],
+      "note": "定位字段指向滚动容器而不是目标元素；两者都缺时回退到 keyWindow 最前 scrollView，提供定位时按非 null、非空值计算，path 文法由 UIKit locator parser 校验。"
+    }
   },
   "result": {
     "kind": "json"
