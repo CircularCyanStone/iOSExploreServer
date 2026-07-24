@@ -4,8 +4,7 @@ import iOSExploreServer
 struct ESAppLogsMarkCommand: Command {
     typealias Input = EmptyCommandInput
 
-    let action = "app.logs.mark"
-    let description = "建立当前进程日志检查点"
+    let contract = DiagnosticsActionContracts.appLogsMarkContract
 
     private let runtime: ESDiagnosticsRuntime
 
@@ -33,8 +32,7 @@ struct ESAppLogsMarkCommand: Command {
 struct ESAppLogsReadCommand: Command {
     typealias Input = ESAppLogsReadInput
 
-    let action = "app.logs.read"
-    let description = "读取当前进程内已捕获的日志"
+    let contract = DiagnosticsActionContracts.appLogsReadContract
 
     private let runtime: ESDiagnosticsRuntime
 

@@ -14,13 +14,10 @@ struct UIPickerSelectRowCommand: Command {
     typealias Input = UIPickerSelectRowInput
 
     /// 固定 action 名。
-    static let actionName = "ui.picker.selectRow"
+    static let actionName = UIKitActionContracts.uiPickerSelectRowContract.action
 
-    /// 命令名。
-    let action = UIPickerSelectRowCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "选择 UIPickerView 指定列的某一行。目标用 accessibilityIdentifier 或 path 定位;行用 row(0-based 索引)或 title(读 dataSource/delegate 的 titleForRow 比对首个匹配)二选一;component 必填(列索引)。选行后触发 didSelectRow delegate。viewSnapshotID 可选,支持陈旧校验"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiPickerSelectRowContract
 
     /// 执行行选择。
     func handle(_ input: UIPickerSelectRowInput) async -> ExploreResult {

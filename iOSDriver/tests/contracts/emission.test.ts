@@ -58,18 +58,22 @@ describe("contract emission", () => {
     expect(metadata).toContain("CONTRACT_BUNDLE_METADATA");
     expect(metadata).toContain("CONTRACT_ERROR_INDEX");
 
-    for (const swift of [core, uikit, diagnostics]) expect(swift).not.toContain("import UIKit");
-    expect(core).toContain("JSON([:])");
-    expect(core).not.toContain("JSON([])");
+    for (const swift of [core, uikit, diagnostics]) {
+      expect(swift).toContain("CommandContract(");
+      expect(swift).toContain('protocolVersion = "1"');
+      expect(swift).not.toContain("import UIKit");
+      expect(swift).not.toContain("JSON([])");
+    }
+    expect(uikit).toContain("JSON([:])");
     expect(uikit).toContain("CommandFields.bool");
     expect(uikit).toContain("CommandFields.requiredArray");
     expect(uikit).toContain(".erased");
-    expect(core).toContain('.string("ping")');
-    expect(core).not.toContain('.string("ui.inspect")');
-    expect(uikit).toContain('.string("ui.inspect")');
-    expect(uikit).not.toContain('.string("app.logs.read")');
-    expect(diagnostics).toContain('.string("app.logs.read")');
-    expect(diagnostics).not.toContain('.string("ui.inspect")');
+    expect(core).toContain('action: "ping"');
+    expect(core).not.toContain('action: "ui.inspect"');
+    expect(uikit).toContain('action: "ui.inspect"');
+    expect(uikit).not.toContain('action: "app.logs.read"');
+    expect(diagnostics).toContain('action: "app.logs.read"');
+    expect(diagnostics).not.toContain('action: "ui.inspect"');
 
     expect(docs).toContain("## Device Actions");
     expect(docs).toContain("## Host Operations");

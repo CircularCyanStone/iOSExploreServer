@@ -7,11 +7,8 @@ struct PingCommand: Command {
     /// 无参数输入。
     typealias Input = EmptyCommandInput
 
-    /// 固定 action 名。
-    let action = "ping"
-
-    /// `help` 命令展示的说明。
-    let description = "健康检查,返回 pong"
+    /// 由 canonical bundle 生成的 core 合同。
+    let contract = CoreActionContracts.pingContract
 
     /// 返回 `{ "pong": true }`。
     ///
@@ -30,11 +27,8 @@ struct EchoCommand: Command {
     /// 原始 JSON 输入，允许任意字段并完整透传。
     typealias Input = RawJSONInput
 
-    /// 固定 action 名。
-    let action = "echo"
-
-    /// `help` 命令展示的说明。
-    let description = "原样回显 data"
+    /// 由 canonical bundle 生成的 core 合同。
+    let contract = CoreActionContracts.echoContract
 
     /// 原样返回请求中的 `data`。
     ///
@@ -54,11 +48,8 @@ struct InfoCommand: Command {
     /// 无参数输入。
     typealias Input = EmptyCommandInput
 
-    /// 固定 action 名。
-    let action = "info"
-
-    /// `help` 命令展示的说明。
-    let description = "返回系统/应用/Bundle 信息"
+    /// 由 canonical bundle 生成的 core 合同。
+    let contract = CoreActionContracts.infoContract
 
     /// 返回 `ProcessInfo` 和 `Bundle.main` 可取得的基础信息。
     ///
@@ -85,11 +76,8 @@ struct HelpCommand: Command {
     /// 无参数输入。
     typealias Input = EmptyCommandInput
 
-    /// 固定 action 名。
-    let action = "help"
-
-    /// `help` 命令展示的说明。
-    let description = "列出所有已注册命令及其参数说明"
+    /// 由 canonical bundle 生成的 core 合同。
+    let contract = CoreActionContracts.helpContract
 
     /// 用于读取命令元数据快照的路由器。
     private let router: Router
@@ -99,21 +87,38 @@ struct HelpCommand: Command {
     /// - Parameter router: 用于读取命令元数据快照的路由器。
     init(router: Router) { self.router = router }
 
-    /// 读取当前命令元数据并构造成 `{"commands": [...]}` JSON object。
+    /// 读取当前命令合同并构造成包含公共 bundle metadata 的 JSON object。
     ///
     /// - Parameter input: 空输入，help 不读取请求 data。
-    /// - Returns: 包含所有已注册命令 metadata 的 JSON object，结构为
-    ///   `{"commands": [{ action, description, inputSchema }, ...]}`。
+    /// - Returns: 包含协议版本、合同版本/哈希和所有已注册命令完整 metadata 的 JSON object。
     func handle(_ input: EmptyCommandInput) async throws -> ExploreResult {
-        ESLogger.debug(.command, "command help handled")
-        let entries: [JSONValue] = router.commandMetadata().map { entry in
+        let contracts = router.commandMetadata()
+        ESLogger.debug(.command,
+                       "command help metadata projection count=\(contracts.count) protocolVersion=\(CoreActionContracts.protocolVersion) contractVersion=\(CoreActionContracts.contractVersion)")
+        let entries: [JSONValue] = contracts.map { contract in
             return .object(JSON([
-                "action": .string(entry.action),
-                "description": .string(entry.description),
-                "inputSchema": .object(entry.inputSchema.toJSON()),
+                "action": .string(contract.action),
+                "description": .string(contract.description),
+                "inputSchema": .object(contract.inputSchema.toJSON()),
+                "provider": .string(contract.provider.rawValue),
+                "stability": .string(contract.stability.rawValue),
+                "result": .object([
+                    "kind": .string(contract.resultKind.rawValue),
+                ]),
+                "errors": .array(contract.declaredErrors.map { .string($0) }),
+                "idempotency": .string(contract.idempotency.rawValue),
+                "timeoutClass": .string(contract.timeoutClass.rawValue),
+                "contractVersion": .string(contract.contractVersion),
+                "contractHash": .string(contract.contractHash),
+                "contractSource": .string(contract.contractSource.rawValue),
             ]))
         }
-        return .success(JSON(["commands": .array(entries)]))
+        return .success(JSON([
+            "protocolVersion": .string(CoreActionContracts.protocolVersion),
+            "contractVersion": .string(CoreActionContracts.contractVersion),
+            "contractHash": .string(CoreActionContracts.contractHash),
+            "commands": .array(entries),
+        ]))
     }
 }
 

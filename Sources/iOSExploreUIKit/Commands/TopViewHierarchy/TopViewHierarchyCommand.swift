@@ -34,13 +34,10 @@ struct TopViewHierarchyCommand: Command {
     typealias Input = UIViewHierarchyInput
 
     /// 固定 action 名，供注册、日志和错误工厂复用。
-    static let actionName = "ui.topViewHierarchy"
+    static let actionName = UIKitActionContracts.uiTopViewHierarchyContract.action
 
-    /// 命令名。
-    let action = TopViewHierarchyCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "返回当前顶部控制器的完整视图层级树（结构 + accessibility + 文本 + 颜色等观察字段），cell 节点带 indexPath；不签发 viewSnapshotID，要 tap/sendAction 请先用 ui.inspect"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiTopViewHierarchyContract
 
     /// 执行顶部视图层级采集。
     ///

@@ -131,8 +131,8 @@ struct ESLoggerTests {
         _ = await router.route(ExploreRequest(action: "boom"))
 
         let messages = records.withLock { $0.map(\.message) }
-        #expect(messages.contains("router registered action=ok schemaFields=0 constraints=0"))
-        #expect(messages.contains("router registered action=boom schemaFields=0 constraints=0"))
+        #expect(messages.contains("router registered action=ok provider=extension stability=internal source=runtime schemaFields=0 constraints=0"))
+        #expect(messages.contains("router registered action=boom provider=extension stability=internal source=runtime schemaFields=0 constraints=0"))
         #expect(messages.contains("router route start action=ok payloadKeys=0"))
         #expect(messages.contains("router route success action=ok"))
         #expect(messages.contains("router route failed category=command message=unknown action=missing"))

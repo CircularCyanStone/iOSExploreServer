@@ -13,18 +13,15 @@ public enum CommandLogCategory: Sendable, Equatable {
 
 /// 可被 `ExploreServer` 注册和路由的 typed 命令协议。
 ///
-/// 每个新增能力都应该实现为一个新的 `action`，并通过 `register` 注入，而不是修改 HTTP
-/// 协议。命令输入先由 `Input` 从动态 JSON 解析成 Swift 值，再进入业务逻辑；`help`
-/// 通过 `Input.inputSchema` 暴露工具可读 schema。
+/// 每个新增能力都应该提供完整 `CommandContract` 并通过 `register` 注入，而不是修改 HTTP
+/// 协议。合同负责对外 metadata；命令输入仍由 `Input` 从动态 JSON 解析成 Swift 值，再进入
+/// 业务逻辑，确保合同迁移不会改变现有 parser 行为。
 public protocol Command: Sendable {
     /// 命令输入类型，负责 schema 暴露与 JSON data 解析。
     associatedtype Input: CommandInput
 
-    /// 命令名，也是 HTTP body 中 `action` 字段的匹配键。
-    var action: String { get }
-
-    /// 命令人类可读描述，由 `help` 输出给调用方。
-    var description: String { get }
+    /// 命令的完整 wire-level 合同。
+    var contract: CommandContract { get }
 
     /// 执行命令。
     ///
@@ -43,6 +40,12 @@ public protocol Command: Sendable {
 }
 
 public extension Command {
+    /// 命令名，由 `contract.action` 派生。
+    var action: String { contract.action }
+
+    /// 命令人类可读描述，由 `contract.description` 派生。
+    var description: String { contract.description }
+
     /// 默认不自声明超时，所有命令沿用全局 `commandTimeoutNanoseconds`。
     var timeoutNanoseconds: UInt64? { nil }
 }
@@ -60,14 +63,17 @@ private enum CommandExecutionOutcome: Sendable {
 /// typed input 解析、handler 异常兜底和命令级日志，确保协议对象注册与闭包注册走同一条
 /// 执行路径。
 public struct AnyCommand: Sendable {
+    /// 命令的完整 wire-level 合同。
+    public let contract: CommandContract
+
     /// 命令名，也是 HTTP body 中 `action` 字段的匹配键。
-    public let action: String
+    public var action: String { contract.action }
 
     /// 命令人类可读描述，由 `help` 输出给调用方。
-    public let description: String
+    public var description: String { contract.description }
 
     /// 命令输入 schema，由 `help` 输出给调用方和工具客户端。
-    public let inputSchema: CommandInputSchema
+    public var inputSchema: CommandInputSchema { contract.inputSchema }
 
     /// 命令执行日志归属。
     public let logCategory: CommandLogCategory
@@ -86,9 +92,7 @@ public struct AnyCommand: Sendable {
     ///   - command: 具体命令对象。
     ///   - logCategory: 命令日志归属；core 命令默认走内部 `command` category。
     public init<C: Command>(_ command: C, logCategory: CommandLogCategory = .core) {
-        self.action = command.action
-        self.description = command.description
-        self.inputSchema = C.Input.inputSchema
+        self.contract = command.contract
         self.logCategory = logCategory
         self.timeoutNanoseconds = command.timeoutNanoseconds
         self.executor = { request in
@@ -108,7 +112,45 @@ public struct AnyCommand: Sendable {
         }
     }
 
-    /// 创建一个 typed 闭包命令。
+    /// 使用显式合同创建一个 typed 闭包命令。
+    ///
+    /// `contract.inputSchema` 用于 metadata 输出，实际执行仍调用 `Input.parse(from:)`，因此
+    /// generated schema 接入不会在 Task 5 之前改变现有手写 parser。
+    ///
+    /// - Parameters:
+    ///   - contract: 命令的完整 wire-level 合同。
+    ///   - input: 命令输入类型，负责实际 JSON 解析。
+    ///   - logCategory: 命令日志归属；core 命令默认走内部 `command` category。
+    ///   - handler: 已拿到 typed 输入后的业务处理闭包。
+    public init<Input: CommandInput>(contract: CommandContract,
+                                     input: Input.Type,
+                                     logCategory: CommandLogCategory = .core,
+                                     handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
+        self.contract = contract
+        self.logCategory = logCategory
+        self.timeoutNanoseconds = nil
+        self.executor = { request in
+            let inputValue: Input
+            do {
+                inputValue = try Input.parse(from: request.data)
+            } catch let error as CommandInputParseError {
+                return .parseFailed(ExploreServerError.invalidData(action: contract.action, message: error.message))
+            } catch {
+                return .parseUnexpected(ExploreServerError.unexpectedInputParseError(action: contract.action,
+                                                                                     error: error))
+            }
+            do {
+                return .completed(try await handler(inputValue))
+            } catch {
+                return .handlerFailed(ExploreServerError.handlerThrown(action: contract.action, error: error))
+            }
+        }
+    }
+
+    /// 创建一个 runtime extension typed 闭包命令。
+    ///
+    /// 该兼容入口会使用 `Input.inputSchema` 构造保守合同：命令属于 runtime extension，按
+    /// side-effecting 处理且不声明错误码；合同版本和哈希沿用公共 core bundle。
     ///
     /// - Parameters:
     ///   - action: 命令名，也是 HTTP body 中 `action` 字段的匹配键。
@@ -121,26 +163,22 @@ public struct AnyCommand: Sendable {
                                      input: Input.Type,
                                      logCategory: CommandLogCategory = .core,
                                      handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
-        self.action = action
-        self.description = description
-        self.inputSchema = Input.inputSchema
-        self.logCategory = logCategory
-        self.timeoutNanoseconds = nil
-        self.executor = { request in
-            let inputValue: Input
-            do {
-                inputValue = try Input.parse(from: request.data)
-            } catch let error as CommandInputParseError {
-                return .parseFailed(ExploreServerError.invalidData(action: action, message: error.message))
-            } catch {
-                return .parseUnexpected(ExploreServerError.unexpectedInputParseError(action: action, error: error))
-            }
-            do {
-                return .completed(try await handler(inputValue))
-            } catch {
-                return .handlerFailed(ExploreServerError.handlerThrown(action: action, error: error))
-            }
-        }
+        let contract = CommandContract(action: action,
+                                       description: description,
+                                       inputSchema: Input.inputSchema,
+                                       provider: .extension,
+                                       stability: .`internal`,
+                                       resultKind: .json,
+                                       declaredErrors: [],
+                                       idempotency: .sideEffecting,
+                                       timeoutClass: .standard,
+                                       contractVersion: CoreActionContracts.contractVersion,
+                                       contractHash: CoreActionContracts.contractHash,
+                                       contractSource: .runtime)
+        self.init(contract: contract,
+                  input: input,
+                  logCategory: logCategory,
+                  handler: handler)
     }
 
     /// 解析请求 data 并执行命令。

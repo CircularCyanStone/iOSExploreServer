@@ -4,21 +4,22 @@
 import Foundation
 /// Core provider 的 Foundation-only wire contract 元数据。
 public enum CoreActionContracts {
+    /// HTTP action 协议版本。
+    public static let protocolVersion = "1"
     /// 源合同 bundle 的版本。
     public static let contractVersion = "1.0.0"
     /// 规范化源合同 bundle 的 SHA-256。
     public static let contractHash = "sha256:b01cc367dd008502662d322da1b09a2d832e0bb8f35f187ace1921ebbd2d9096"
-    /// 当前 provider 的完整 wire contract 对象。
-    public static let all: [JSON] = [
-        JSON(["action": .string("echo"), "description": .string("原样回显 data。"), "errors": .array([.string("internal_error")]), "idempotency": .string("readOnly"), "inputSchema": .object(JSON(["additionalProperties": .bool(true), "properties": .object(JSON([:])), "required": .array([]), "type": .string("object")])), "kind": .string("deviceAction"), "provider": .string("core"), "result": .object(JSON(["kind": .string("json")])), "stability": .string("public"), "timeoutClass": .string("standard")]),
-        JSON(["action": .string("help"), "description": .string("列出所有已注册命令及其参数说明。"), "errors": .array([.string("internal_error")]), "idempotency": .string("readOnly"), "inputSchema": .object(JSON(["additionalProperties": .bool(false), "properties": .object(JSON([:])), "required": .array([]), "type": .string("object")])), "kind": .string("deviceAction"), "provider": .string("core"), "result": .object(JSON(["kind": .string("json")])), "stability": .string("public"), "timeoutClass": .string("standard")]),
-        JSON(["action": .string("info"), "description": .string("返回系统、应用和 Bundle 信息。"), "errors": .array([.string("internal_error")]), "idempotency": .string("readOnly"), "inputSchema": .object(JSON(["additionalProperties": .bool(false), "properties": .object(JSON([:])), "required": .array([]), "type": .string("object")])), "kind": .string("deviceAction"), "provider": .string("core"), "result": .object(JSON(["kind": .string("json")])), "stability": .string("public"), "timeoutClass": .string("standard")]),
-        JSON(["action": .string("ping"), "description": .string("检查 iOSExploreServer 是否可达。"), "errors": .array([.string("internal_error")]), "idempotency": .string("readOnly"), "inputSchema": .object(JSON(["additionalProperties": .bool(false), "properties": .object(JSON([:])), "required": .array([]), "type": .string("object")])), "kind": .string("deviceAction"), "provider": .string("core"), "result": .object(JSON(["kind": .string("json")])), "stability": .string("public"), "timeoutClass": .string("standard")])
+    /// 当前 provider 的完整命令合同。
+    public static let all: [CommandContract] = [
+        echoContract,
+        helpContract,
+        infoContract,
+        pingContract
     ]
-    /// 按 action 名查询 wire contract。
-    public static let byAction: [String: JSON] = Dictionary(uniqueKeysWithValues: all.compactMap { contract in
-        guard let action = contract["action"]?.stringValue else { return nil }
-        return (action, contract)
+    /// 按 action 名查询完整命令合同。
+    public static let byAction: [String: CommandContract] = Dictionary(uniqueKeysWithValues: all.map { contract in
+        (contract.action, contract)
     })
     /// 按 action 名查询 typed 字段 schema。
     public static let inputSchemas: [String: CommandInputSchema] = [
@@ -27,6 +28,62 @@ public enum CoreActionContracts {
         "info": infoInputSchema,
         "ping": pingInputSchema
     ]
+    static let echoContract = CommandContract(
+        action: "echo",
+        description: "原样回显 data。",
+        inputSchema: echoInputSchema,
+        provider: .core,
+        stability: .public,
+        resultKind: .json,
+        declaredErrors: ["internal_error"],
+        idempotency: .readOnly,
+        timeoutClass: .standard,
+        contractVersion: contractVersion,
+        contractHash: contractHash,
+        contractSource: .generated
+    )
+    static let helpContract = CommandContract(
+        action: "help",
+        description: "列出所有已注册命令及其参数说明。",
+        inputSchema: helpInputSchema,
+        provider: .core,
+        stability: .public,
+        resultKind: .json,
+        declaredErrors: ["internal_error"],
+        idempotency: .readOnly,
+        timeoutClass: .standard,
+        contractVersion: contractVersion,
+        contractHash: contractHash,
+        contractSource: .generated
+    )
+    static let infoContract = CommandContract(
+        action: "info",
+        description: "返回系统、应用和 Bundle 信息。",
+        inputSchema: infoInputSchema,
+        provider: .core,
+        stability: .public,
+        resultKind: .json,
+        declaredErrors: ["internal_error"],
+        idempotency: .readOnly,
+        timeoutClass: .standard,
+        contractVersion: contractVersion,
+        contractHash: contractHash,
+        contractSource: .generated
+    )
+    static let pingContract = CommandContract(
+        action: "ping",
+        description: "检查 iOSExploreServer 是否可达。",
+        inputSchema: pingInputSchema,
+        provider: .core,
+        stability: .public,
+        resultKind: .json,
+        declaredErrors: ["internal_error"],
+        idempotency: .readOnly,
+        timeoutClass: .standard,
+        contractVersion: contractVersion,
+        contractHash: contractHash,
+        contractSource: .generated
+    )
     static let echoInputSchema = CommandInputSchema(fields: [], additionalProperties: true)
     static let helpInputSchema = CommandInputSchema(fields: [], additionalProperties: false)
     static let infoInputSchema = CommandInputSchema(fields: [], additionalProperties: false)

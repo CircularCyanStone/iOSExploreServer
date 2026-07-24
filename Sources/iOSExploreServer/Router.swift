@@ -17,6 +17,7 @@ public final class Router: Sendable {
     /// 注册一个协议命令对象。
     ///
     /// 如果同名 action 已存在，新命令会覆盖旧命令。注册过程同步完成，不会触发 handler。
+    /// 非法 action 会被拒绝并记录错误日志；方法不抛错，后续请求按未注册 action 处理。
     ///
     /// - Parameters:
     ///   - command: 具体命令对象。
@@ -27,16 +28,49 @@ public final class Router: Sendable {
 
     /// 注册一个已类型擦除的命令。
     ///
+    /// 非法 action 会被拒绝并记录错误日志；方法不抛错，后续请求按未注册 action 处理。
+    ///
     /// - Parameter command: 已完成 typed input 适配和日志归属配置的命令。
     public func register(_ command: AnyCommand) {
+        do {
+            try CommandContract.validateAction(command.action)
+        } catch {
+            ESLogger.error(.router,
+                           "router registration rejected action=\(command.action) reason=invalid_action")
+            return
+        }
         handlers.withLock { $0[command.action] = command }
-        ESLogger.info(.router, "router registered action=\(command.action) schemaFields=\(command.inputSchema.fields.count) constraints=\(command.inputSchema.constraints.count)")
+        ESLogger.info(.router,
+                      "router registered action=\(command.action) provider=\(command.contract.provider.rawValue) stability=\(command.contract.stability.rawValue) source=\(command.contract.contractSource.rawValue) schemaFields=\(command.inputSchema.fields.count) constraints=\(command.inputSchema.constraints.count)")
+    }
+
+    /// 使用显式合同注册一个 typed 闭包命令。
+    ///
+    /// 如果同名 action 已存在，新命令会覆盖旧命令。合同用于 metadata 输出，输入仍由
+    /// `Input.parse(from:)` 解析。非法 action 会被拒绝并记录错误日志；方法不抛错，后续
+    /// 请求按未注册 action 处理。
+    ///
+    /// - Parameters:
+    ///   - contract: 命令的完整 wire-level 合同。
+    ///   - input: 命令输入类型，负责实际 JSON 解析。
+    ///   - logCategory: 命令执行日志归属。
+    ///   - handler: 实际业务处理闭包，入参已经是 typed input。
+    public func register<Input: CommandInput>(contract: CommandContract,
+                                              input: Input.Type,
+                                              logCategory: CommandLogCategory = .core,
+                                              _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
+        register(AnyCommand(contract: contract,
+                            input: input,
+                            logCategory: logCategory,
+                            handler: handler))
     }
 
     /// 注册一个 typed 闭包命令。
     ///
-    /// 这是集成方最轻量的扩展入口，适合在 App 启动时注册少量命令。内部会适配成
-    /// `AnyCommand`，因此它和协议命令共享同一条路由路径。
+    /// 这是集成方最轻量的扩展入口，适合在 App 启动时注册少量命令。内部会构造
+    /// `provider=extension`、`stability=internal`、`contractSource=runtime` 的保守合同，
+    /// 并适配成 `AnyCommand`，因此它和协议命令共享同一条路由路径。非法 action 会被拒绝
+    /// 并记录错误日志；方法不抛错，后续请求按未注册 action 处理。
     ///
     /// - Parameters:
     ///   - action: 命令名。
@@ -95,14 +129,13 @@ public final class Router: Sendable {
 
     /// 返回当前已注册命令的元数据快照。
     ///
-    /// `help` 命令用它生成工具列表。方法只在锁内读取字典并生成轻量元组，不执行任何
+    /// `help` 命令用它生成工具列表。方法只在锁内读取字典并复制不可变合同，不执行任何
     /// handler，并按 action 排序，保证 `help` 输出和工具发现结果稳定。
-    func commandMetadata() -> [(action: String, description: String, inputSchema: CommandInputSchema)] {
+    ///
+    /// - Returns: 按 action 排序的当前注册合同快照。
+    func commandMetadata() -> [CommandContract] {
         let metadata = handlers.withLock { dict in
-            let snapshot: [(action: String, description: String, inputSchema: CommandInputSchema)] = dict.values.map {
-                ($0.action, $0.description, $0.inputSchema)
-            }
-            return snapshot.sorted(by: { lhs, rhs in lhs.action < rhs.action })
+            dict.values.map(\.contract).sorted(by: { lhs, rhs in lhs.action < rhs.action })
         }
         ESLogger.debug(.router, "router metadata snapshot count=\(metadata.count)")
         return metadata

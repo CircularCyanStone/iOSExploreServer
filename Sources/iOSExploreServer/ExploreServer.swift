@@ -108,21 +108,48 @@ public final class ExploreServer: Sendable {
 
     /// 注册一个 typed 协议命令对象。
     ///
-    /// 适合把能力封装成独立 `Command` struct，便于复用、测试和被 `help` 自省。
+    /// 适合把能力封装成独立 `Command` struct，便于复用、测试和被 `help` 自省。非法
+    /// action 会被拒绝并记录错误日志；方法不抛错，后续请求按未注册 action 处理。
     ///
     /// - Parameters:
     ///   - command: 具体命令对象。
     ///   - logCategory: 命令执行日志归属。
     public func register<C: Command>(_ command: C, logCategory: CommandLogCategory = .core) {
-        ESLogger.info(.server, "server register command action=\(command.action) schemaFields=\(C.Input.inputSchema.fields.count)")
+        ESLogger.info(.server,
+                      "server register command action=\(command.action) provider=\(command.contract.provider.rawValue) stability=\(command.contract.stability.rawValue) source=\(command.contract.contractSource.rawValue) schemaFields=\(command.contract.inputSchema.fields.count)")
         router.register(command, logCategory: logCategory)
     }
 
-    /// 注册一个 typed 闭包命令。
+    /// 使用显式合同注册一个 typed 闭包命令。
+    ///
+    /// 合同用于 help 和 metadata 输出，实际请求仍由 `Input.parse(from:)` 解析。适用于宿主
+    /// 明确管理版本、错误集合和稳定性策略的公开扩展命令。非法 action 会被拒绝并记录
+    /// 错误日志；方法不抛错，后续请求按未注册 action 处理。
+    ///
+    /// - Parameters:
+    ///   - contract: 命令的完整 wire-level 合同。
+    ///   - input: 命令输入类型，负责实际 JSON 解析。
+    ///   - logCategory: 命令执行日志归属。
+    ///   - handler: 实际业务处理闭包，入参已经是 typed input。
+    public func register<Input: CommandInput>(contract: CommandContract,
+                                              input: Input.Type,
+                                              logCategory: CommandLogCategory = .core,
+                                              _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
+        ESLogger.info(.server,
+                      "server register contract action=\(contract.action) provider=\(contract.provider.rawValue) stability=\(contract.stability.rawValue) source=\(contract.contractSource.rawValue) schemaFields=\(contract.inputSchema.fields.count)")
+        router.register(contract: contract,
+                        input: input,
+                        logCategory: logCategory,
+                        handler)
+    }
+
+    /// 注册一个 runtime extension typed 闭包命令。
     ///
     /// 适合宿主 App 在启动时快速注入能力，例如需要 UIKit 的设备信息 handler。库本身不
     /// 依赖 UIKit；如果 handler 需要访问 UIKit API，应由宿主 App 在闭包内切换到
-    /// `MainActor`。
+    /// `MainActor`。该兼容入口自动创建 `provider=extension`、`stability=internal`、
+    /// `contractSource=runtime` 的保守合同，公共 bundle 的版本和哈希保持不变。非法 action
+    /// 会被拒绝并记录错误日志；方法不抛错，后续请求按未注册 action 处理。
     ///
     /// - Parameters:
     ///   - action: 命令名，也是请求 body 中 `action` 的匹配键。
@@ -135,7 +162,6 @@ public final class ExploreServer: Sendable {
                                               input: Input.Type,
                                               logCategory: CommandLogCategory = .core,
                                               _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
-        ESLogger.info(.server, "server register closure action=\(action) schemaFields=\(Input.inputSchema.fields.count)")
         router.register(action: action,
                         description: description,
                         input: input,
@@ -201,11 +227,11 @@ public final class ExploreServer: Sendable {
     /// 返回当前已注册命令的元数据快照。
     ///
     /// 该方法与 `help` 命令读取同一份 router metadata，用于宿主 App 或测试在不发起 HTTP
-    /// 请求时确认显式注册结果。它只读取 action、description 与 input schema，不执行任何
-    /// handler，也不会暴露 router 的可变存储。
+    /// 请求时确认显式注册结果。它复制完整不可变合同，不执行任何 handler，也不会暴露
+    /// router 的可变存储。
     ///
-    /// - Returns: 按 action 排序的命令元数据列表。
-    public func commandMetadata() -> [(action: String, description: String, inputSchema: CommandInputSchema)] {
+    /// - Returns: 按 action 排序的当前注册合同快照。
+    public func commandMetadata() -> [CommandContract] {
         router.commandMetadata()
     }
 

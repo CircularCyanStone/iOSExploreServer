@@ -16,13 +16,10 @@ struct UITapCommand: Command {
     typealias Input = UITapInput
 
     /// 固定 action 名。
-    static let actionName = "ui.tap"
+    static let actionName = UIKitActionContracts.uiTapContract.action
 
-    /// 命令名。
-    let action = UITapCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "对已发现的目标执行默认激活动作 (按钮/开关/输入框)。调用前必须先调 ui.inspect，并把同响应返回的 viewSnapshotID 原样传入"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiTapContract
 
     /// 执行 tap 默认激活。
     ///

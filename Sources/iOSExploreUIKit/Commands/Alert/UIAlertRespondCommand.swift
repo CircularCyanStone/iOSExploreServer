@@ -13,13 +13,10 @@ struct AlertRespondCommand: Command {
     typealias Input = UIAlertRespondInput
 
     /// 固定 action 名。
-    static let actionName = "ui.alert.respond"
+    static let actionName = UIKitActionContracts.uiAlertRespondContract.action
 
-    /// 命令名。
-    let action = AlertRespondCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "响应当前 UIAlertController：按 buttonTitle/buttonIndex/role 触发按钮并关闭。查询 alert 结构（标题/按钮/输入框）用 ui.inspect。"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiAlertRespondContract
 
     /// 执行 alert 查询/响应。
     ///

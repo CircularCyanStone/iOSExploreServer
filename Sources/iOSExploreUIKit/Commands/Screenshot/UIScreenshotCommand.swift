@@ -15,17 +15,10 @@ struct ScreenshotCommand: Command {
     typealias Input = UIScreenshotInput
 
     /// 固定 action 名，供注册、日志和错误工厂复用。
-    static let actionName = "ui.screenshot"
+    static let actionName = UIKitActionContracts.uiScreenshotContract.action
 
-    /// 命令名。
-    let action = ScreenshotCommand.actionName
-
-    /// `help` 命令展示的说明。
-    ///
-    /// 说明里刻意不提"签发 snapshot"：`ui.screenshot` 只是可选视觉证据，不再签发、不刷新、
-    /// 不返回 `viewSnapshotID`（viewSnapshotID 唯一签发来源是 `ui.inspect`），与
-    /// `UIScreenshotCollector` 的实际返回一致，避免 help schema 误导调用方。
-    let description = "截屏 (PNG base64) + 降采样（可选视觉证据，不签发 viewSnapshotID）"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiScreenshotContract
 
     /// 截图高耗时，自声明 30s 超时（覆盖全局 commandTimeout）。
     var timeoutNanoseconds: UInt64? { 30_000_000_000 }

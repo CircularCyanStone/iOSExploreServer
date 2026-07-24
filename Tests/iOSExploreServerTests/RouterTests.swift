@@ -14,6 +14,23 @@ private struct RouterGreetingInput: CommandInput, Equatable {
     }
 }
 
+private func routerTestContract(action: String,
+                                description: String = "",
+                                inputSchema: CommandInputSchema = .empty) -> CommandContract {
+    CommandContract(action: action,
+                    description: description,
+                    inputSchema: inputSchema,
+                    provider: .extension,
+                    stability: .`internal`,
+                    resultKind: .json,
+                    declaredErrors: [],
+                    idempotency: .sideEffecting,
+                    timeoutClass: .standard,
+                    contractVersion: CoreActionContracts.contractVersion,
+                    contractHash: CoreActionContracts.contractHash,
+                    contractSource: .runtime)
+}
+
 @Test("注册的 action 被命中并返回 success")
 func routeHitsRegistered() async {
     let router = Router()
@@ -35,6 +52,20 @@ func routeUnknown() async {
     } else {
         Issue.record("expected failure")
     }
+}
+
+@Test("注册拒绝非法 action 且不污染 metadata")
+func registrationRejectsInvalidAction() async {
+    let router = Router()
+    router.register(action: "bad action", input: EmptyCommandInput.self) { _ in .success([:]) }
+
+    #expect(router.commandMetadata().isEmpty)
+    let result = await router.route(ExploreRequest(action: "bad action"))
+    guard case .failure(let code, _, _) = result else {
+        Issue.record("expected unknown action")
+        return
+    }
+    #expect(code == .unknownAction)
 }
 
 @Test("handler 抛异常转为 internal_error")
@@ -98,8 +129,7 @@ func routeProtocolRegistration() async {
     let router = Router()
     struct Ping: Command {
         typealias Input = EmptyCommandInput
-        let action = "ping2"
-        let description = ""
+        let contract = routerTestContract(action: "ping2")
         func handle(_ input: EmptyCommandInput) async throws -> ExploreResult { .success(["ok": .bool(true)]) }
     }
     router.register(Ping())
@@ -124,6 +154,15 @@ func commandMetadataIncludesInputSchemaProperties() {
         return
     }
     #expect(greet.description == "打招呼")
+    #expect(greet.provider == .extension)
+    #expect(greet.stability == .`internal`)
+    #expect(greet.resultKind == .json)
+    #expect(greet.declaredErrors.isEmpty)
+    #expect(greet.idempotency == .sideEffecting)
+    #expect(greet.timeoutClass == .standard)
+    #expect(greet.contractVersion == CoreActionContracts.contractVersion)
+    #expect(greet.contractHash == CoreActionContracts.contractHash)
+    #expect(greet.contractSource == .runtime)
     let schemaJSON = greet.inputSchema.toJSON()
     guard case .object(let properties) = schemaJSON["properties"] else {
         Issue.record("properties not object")
@@ -135,6 +174,42 @@ func commandMetadataIncludesInputSchemaProperties() {
         return
     }
     #expect(order == [JSONValue.string("name")])
+}
+
+@Test("显式合同注册保留 metadata 且执行仍使用 typed parser")
+func explicitContractRegistrationPreservesMetadataAndTypedParser() async {
+    let contract = CommandContract(action: "contract.greet",
+                                   description: "显式合同问候",
+                                   inputSchema: .empty,
+                                   provider: .extension,
+                                   stability: .experimental,
+                                   resultKind: .text,
+                                   declaredErrors: ["invalid_data"],
+                                   idempotency: .idempotent,
+                                   timeoutClass: .wait,
+                                   contractVersion: "2.0.0",
+                                   contractHash: "sha256:" + String(repeating: "a", count: 64),
+                                   contractSource: .generated)
+    let router = Router()
+    router.register(contract: contract, input: RouterGreetingInput.self) { input in
+        .success(["message": .string(input.name)])
+    }
+
+    #expect(router.commandMetadata() == [contract])
+
+    let missingName = await router.route(ExploreRequest(action: contract.action))
+    guard case .failure(let code, _, _) = missingName else {
+        Issue.record("expected typed parser failure")
+        return
+    }
+    #expect(code == .invalidData)
+
+    let success = await router.route(ExploreRequest(action: contract.action, data: ["name": "Ada"]))
+    guard case .success(let data) = success else {
+        Issue.record("expected explicit contract command success")
+        return
+    }
+    #expect(data["message"] == .string("Ada"))
 }
 
 @Test("Router.commandTimeout 返回命令自声明 timeoutNanoseconds，缺省 nil")
@@ -149,8 +224,7 @@ func commandTimeoutLookup() async {
 func commandTimeoutLookupForProtocolCommand() async {
     struct SlowCommand: Command {
         typealias Input = EmptyCommandInput
-        let action = "slow"
-        let description = ""
+        let contract = routerTestContract(action: "slow")
         var timeoutNanoseconds: UInt64? { thirtySecondCommandTimeoutNanoseconds }
         func handle(_ input: EmptyCommandInput) async throws -> ExploreResult { .success([:]) }
     }

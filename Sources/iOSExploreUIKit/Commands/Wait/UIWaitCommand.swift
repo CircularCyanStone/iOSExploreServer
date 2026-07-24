@@ -12,13 +12,10 @@ struct WaitCommand: Command {
     typealias Input = UIWaitInput
 
     /// 固定 action 名。
-    static let actionName = "ui.wait"
+    static let actionName = UIKitActionContracts.uiWaitContract.action
 
-    /// 命令名。
-    let action = WaitCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "等待 UI 稳定或等待目标/文本/快照变化"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiWaitContract
 
     /// 命令级超时兜底，高于最大业务 timeoutMs（30000），让业务 waitTimeout 先生效。
     var timeoutNanoseconds: UInt64? { 35_000_000_000 }

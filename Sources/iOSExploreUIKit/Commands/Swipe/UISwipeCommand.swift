@@ -17,13 +17,10 @@ struct SwipeCommand: Command {
     typealias Input = UISwipeInput
 
     /// 固定 action 名。
-    static let actionName = "ui.swipe"
+    static let actionName = UIKitActionContracts.uiSwipeContract.action
 
-    /// 命令名。
-    let action = SwipeCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "在 UIScrollView 上触发 swipe actions (swipe to delete)，或触发 view 上的 swipe gesture"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiSwipeContract
 
     /// 执行滑动操作。
     ///

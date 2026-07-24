@@ -11,13 +11,10 @@ struct NavigationBarButtonCommand: Command {
     typealias Input = UINavigationBarButtonInput
 
     /// 固定 action 名。
-    static let actionName = "ui.navigation.tapBarButton"
+    static let actionName = UIKitActionContracts.uiNavigationTapBarButtonContract.action
 
-    /// 命令名。
-    let action = NavigationBarButtonCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "触发导航栏按钮: 按 left/right + index 定位, 可用 title/identifier 防误点"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiNavigationTapBarButtonContract
 
     /// 执行导航栏按钮触发。
     ///

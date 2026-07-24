@@ -107,12 +107,8 @@ func longPressDurationNonPositiveRejected() {
     }
 }
 
-@Test("ui.input 命令 description 写明 fields 批量形态")
-func inputCommandDescriptionExplainsBatchShape() {
-    let description = InputCommand().description
-    #expect(description.contains("fields 数组"))
-    #expect(description.contains("单字段输入也必须放进数组"))
-    #expect(description.contains("stopOnFailure 默认 true"))
-    #expect(description.contains("text 字段必填") == false)
+@Test("ui.input 命令 description 来自 generated contract")
+func inputCommandDescriptionMatchesContract() {
+    #expect(InputCommand().description == UIKitActionContracts.uiInputContract.description)
 }
 #endif

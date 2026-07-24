@@ -37,13 +37,10 @@ struct InspectCommand: Command {
     typealias Input = UIInspectInput
 
     /// 固定 action 名，供注册、日志和错误工厂复用。
-    static let actionName = "ui.inspect"
+    static let actionName = UIKitActionContracts.uiInspectContract.action
 
-    /// 命令名。
-    let action = InspectCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "返回可被 ui.tap / ui.control.sendAction / ui.input 直接操作的 canonical target 列表，签发 viewSnapshotID；调用方按 indexPath 字段选 cell，不依赖 subviews 顺序或 y 坐标"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiInspectContract
 
     /// 执行轻量目标查询。
     ///

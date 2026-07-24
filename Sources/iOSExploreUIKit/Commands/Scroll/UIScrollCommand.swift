@@ -13,13 +13,10 @@ struct ScrollCommand: Command {
     typealias Input = UIScrollInput
 
     /// 固定 action 名。
-    static let actionName = "ui.scroll"
+    static let actionName = UIKitActionContracts.uiScrollContract.action
 
-    /// 命令名。
-    let action = ScrollCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "在 UIScrollView 系(排除 UITextView)上按方向+距离滚动"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiScrollContract
 
     /// 执行滚动。
     ///

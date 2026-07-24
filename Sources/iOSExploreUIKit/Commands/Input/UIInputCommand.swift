@@ -16,13 +16,10 @@ struct InputCommand: Command {
     typealias Input = UIInputInput
 
     /// 固定 action 名。
-    static let actionName = "ui.input"
+    static let actionName = UIKitActionContracts.uiInputContract.action
 
-    /// 命令名。
-    let action = InputCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "按顺序向多个 UITextField/UITextView/UISearchTextField 注入文本 (UITextInput.insertText)。顶层传 fields 数组，单字段输入也必须放进数组；viewSnapshotID 可选，stopOnFailure 默认 true。"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiInputContract
 
     /// 执行文本注入。
     ///

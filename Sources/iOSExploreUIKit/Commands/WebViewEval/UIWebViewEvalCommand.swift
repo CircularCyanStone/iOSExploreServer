@@ -13,13 +13,10 @@ struct UIWebViewEvalCommand: Command {
     typealias Input = UIWebViewEvalInput
 
     /// 固定 action 名。
-    static let actionName = "ui.webView.eval"
+    static let actionName = UIKitActionContracts.uiWebViewEvalContract.action
 
-    /// 命令名。
-    let action = UIWebViewEvalCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "在 WKWebView 中执行 JavaScript。支持 script（同步）和 function（异步，iOS 14+）两种模式。通过 accessibilityIdentifier 或 path 定位 WKWebView，返回执行结果及类型信息。支持 timeout（1-30s）和 viewSnapshotID 陈旧校验"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiWebViewEvalContract
 
     /// 执行 JS。
     func handle(_ input: UIWebViewEvalInput) async -> ExploreResult {

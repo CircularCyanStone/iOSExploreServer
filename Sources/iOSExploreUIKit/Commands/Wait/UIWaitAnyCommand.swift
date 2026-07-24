@@ -11,13 +11,10 @@ struct WaitAnyCommand: Command {
     typealias Input = UIWaitAnyInput
 
     /// 固定 action 名。
-    static let actionName = "ui.waitAny"
+    static let actionName = UIKitActionContracts.uiWaitAnyContract.action
 
-    /// 命令名。
-    let action = WaitAnyCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "在一个轮询循环内等待多个条件, 第一个满足立即返回(matchedID/matchedIndex)"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiWaitAnyContract
 
     /// 命令级超时兜底，高于最大业务 timeoutMs（30000），让业务 waitTimeout 先生效。
     var timeoutNanoseconds: UInt64? { 35_000_000_000 }

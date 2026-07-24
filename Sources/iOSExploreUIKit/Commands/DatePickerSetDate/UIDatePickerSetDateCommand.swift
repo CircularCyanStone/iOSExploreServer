@@ -14,13 +14,10 @@ struct UIDatePickerSetDateCommand: Command {
     typealias Input = UIDatePickerSetDateInput
 
     /// 固定 action 名。
-    static let actionName = "ui.datePicker.setDate"
+    static let actionName = UIKitActionContracts.uiDatePickerSetDateContract.action
 
-    /// 命令名。
-    let action = UIDatePickerSetDateCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "设置 UIDatePicker 的日期。目标用 accessibilityIdentifier 或 path 定位;日期用 date(ISO 8601,如 '1990-01-01T00:00:00Z' 或 '1990-01-01')或 year/month/day/hour/minute 分量(未提供的分量沿用 picker 当前值),二选一。设值后触发 .valueChanged。viewSnapshotID 可选,支持陈旧校验"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiDatePickerSetDateContract
 
     /// 执行日期设置。
     func handle(_ input: UIDatePickerSetDateInput) async -> ExploreResult {

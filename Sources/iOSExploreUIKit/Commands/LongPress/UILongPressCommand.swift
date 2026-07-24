@@ -18,13 +18,10 @@ struct LongPressCommand: Command {
     typealias Input = UILongPressInput
 
     /// 固定 action 名。
-    static let actionName = "ui.longPress"
+    static let actionName = UIKitActionContracts.uiLongPressContract.action
 
-    /// 命令名。
-    let action = LongPressCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "在 view 上触发长按手势(UILongPressGestureRecognizer), 用于触发 context menu、长按拖拽等"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiLongPressContract
 
     /// 执行长按操作。
     ///

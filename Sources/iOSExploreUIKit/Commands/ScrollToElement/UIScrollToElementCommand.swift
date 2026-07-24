@@ -12,13 +12,10 @@ struct ScrollToElementCommand: Command {
     typealias Input = UIScrollToElementInput
 
     /// 固定 action 名。
-    static let actionName = "ui.scrollToElement"
+    static let actionName = UIKitActionContracts.uiScrollToElementContract.action
 
-    /// 命令名。
-    let action = ScrollToElementCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "滚动到包含指定文本/identifier 的元素可见"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiScrollToElementContract
 
     /// 执行滚动到目标。
     ///

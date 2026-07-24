@@ -39,12 +39,15 @@ function renderProviderFile(
   contracts: readonly DeviceActionContract[],
   prepared: PreparedContractBundle
 ): string {
-  const privateSchemas = contracts.flatMap(contract => renderInputSchemaMembers(contract));
+  const schemaMembers = contracts.flatMap(contract => renderInputSchemaMembers(contract));
   const schemaMap = contracts
     .map(contract => `        ${swiftString(contract.action)}: ${actionIdentifier(contract.action)}InputSchema`)
     .join(",\n");
-  const wireContracts = contracts
-    .map(contract => `        ${swiftJSONObject(contractToJSON(contract))}`)
+  const contractMembers = contracts
+    .map(contract => renderContractMember(contract))
+    .join("\n");
+  const contractReferences = contracts
+    .map(contract => `        ${actionIdentifier(contract.action)}Contract`)
     .join(",\n");
 
   return [
@@ -56,27 +59,50 @@ function renderProviderFile(
     "",
     `/// ${providerLabel(typeName)} provider 的 Foundation-only wire contract 元数据。`,
     `public enum ${typeName} {`,
+    "    /// HTTP action 协议版本。",
+    `    public static let protocolVersion = ${swiftString(prepared.bundle.protocolVersion)}`,
     "    /// 源合同 bundle 的版本。",
     `    public static let contractVersion = ${swiftString(prepared.bundle.contractVersion)}`,
     "    /// 规范化源合同 bundle 的 SHA-256。",
     `    public static let contractHash = ${swiftString(prepared.hash)}`,
-    "    /// 当前 provider 的完整 wire contract 对象。",
-    "    public static let all: [JSON] = [",
-    wireContracts,
+    "    /// 当前 provider 的完整命令合同。",
+    "    public static let all: [CommandContract] = [",
+    contractReferences,
     "    ]",
-    "    /// 按 action 名查询 wire contract。",
-    "    public static let byAction: [String: JSON] = Dictionary(uniqueKeysWithValues: all.compactMap { contract in",
-    "        guard let action = contract[\"action\"]?.stringValue else { return nil }",
-    "        return (action, contract)",
+    "    /// 按 action 名查询完整命令合同。",
+    "    public static let byAction: [String: CommandContract] = Dictionary(uniqueKeysWithValues: all.map { contract in",
+    "        (contract.action, contract)",
     "    })",
     "    /// 按 action 名查询 typed 字段 schema。",
     "    public static let inputSchemas: [String: CommandInputSchema] = [",
     schemaMap,
     "    ]",
-    ...privateSchemas,
+    contractMembers,
+    ...schemaMembers,
     "}",
     ""
   ].filter(line => line.length > 0).join("\n");
+}
+
+function renderContractMember(contract: DeviceActionContract): string {
+  const identifier = actionIdentifier(contract.action);
+  const errors = contract.errors.map(error => swiftString(error)).join(", ");
+  return [
+    `    static let ${identifier}Contract = CommandContract(`,
+    `        action: ${swiftString(contract.action)},`,
+    `        description: ${swiftString(contract.description)},`,
+    `        inputSchema: ${identifier}InputSchema,`,
+    `        provider: .${contract.provider},`,
+    `        stability: .${contract.stability},`,
+    `        resultKind: .${contract.result.kind},`,
+    `        declaredErrors: [${errors}],`,
+    `        idempotency: .${contract.idempotency},`,
+    `        timeoutClass: .${contract.timeoutClass},`,
+    "        contractVersion: contractVersion,",
+    "        contractHash: contractHash,",
+    "        contractSource: .generated",
+    "    )"
+  ].join("\n");
 }
 
 function renderInputSchemaMembers(contract: DeviceActionContract): string[] {
@@ -260,21 +286,6 @@ function swiftConstraints(value: Record<string, ContractJSONValue> | undefined):
   }
   if (typeof value.note === "string") constraints.push(`.extensionMessage(${swiftString(value.note)})`);
   return constraints;
-}
-
-function contractToJSON(contract: DeviceActionContract): Record<string, ContractJSONValue> {
-  return {
-    action: contract.action,
-    description: contract.description,
-    errors: contract.errors,
-    idempotency: contract.idempotency,
-    inputSchema: contract.inputSchema as unknown as ContractJSONValue,
-    kind: contract.kind,
-    provider: contract.provider,
-    result: contract.result as unknown as ContractJSONValue,
-    stability: contract.stability,
-    timeoutClass: contract.timeoutClass
-  };
 }
 
 function swiftJSON(value: ContractJSONValue): string {

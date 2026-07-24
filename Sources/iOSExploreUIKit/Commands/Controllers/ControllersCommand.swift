@@ -18,13 +18,10 @@ struct ControllersCommand: Command {
     typealias Input = UIControllersInput
 
     /// 固定 action 名，供注册、日志和错误工厂复用。
-    static let actionName = "ui.controllers"
+    static let actionName = UIKitActionContracts.uiControllersContract.action
 
-    /// 命令名。
-    let action = ControllersCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "返回从 window.rootViewController 出发的完整 controller 结构树（navigation stack / presented 链 / tab / split / child），每个节点带唯一定位 path 与 topPath 摘要"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiControllersContract
 
     /// 执行 controller 结构骨架采集。
     ///

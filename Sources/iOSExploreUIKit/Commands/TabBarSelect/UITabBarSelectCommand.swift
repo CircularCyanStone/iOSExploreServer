@@ -12,13 +12,10 @@ struct UITabBarSelectCommand: Command {
     typealias Input = UITabBarSelectInput
 
     /// 固定 action 名。
-    static let actionName = "ui.tabBar.selectTab"
+    static let actionName = UIKitActionContracts.uiTabBarSelectTabContract.action
 
-    /// 命令名。
-    let action = UITabBarSelectCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "切换 UITabBarController 选中的 tab。通过 index(索引)或 title(标题)定位目标 tab,设置 selectedIndex,并可选触发 delegate 回调(默认触发)。完全走 controller 层,不依赖 view 遍历"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiTabBarSelectTabContract
 
     /// 执行 tab 切换。
     ///

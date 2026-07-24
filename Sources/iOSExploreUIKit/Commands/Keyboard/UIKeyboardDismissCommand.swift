@@ -12,13 +12,10 @@ struct KeyboardDismissCommand: Command {
     typealias Input = UIKeyboardDismissInput
 
     /// 固定 action 名。
-    static let actionName = "ui.keyboard.dismiss"
+    static let actionName = UIKitActionContracts.uiKeyboardDismissContract.action
 
-    /// 命令名。
-    let action = KeyboardDismissCommand.actionName
-
-    /// `help` 命令展示的说明。
-    let description = "收起当前 first responder / 键盘"
+    /// 由 contracts 唯一事实源生成的命令元数据。
+    let contract = UIKitActionContracts.uiKeyboardDismissContract
 
     /// 执行键盘收起。
     ///
