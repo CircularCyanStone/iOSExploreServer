@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { loadAndValidateContractBundle } from "../../src/contracts/generator/loadBundle.js";
-import { STATIC_ACTIONS } from "../../src/staticTools.js";
+import { TOOL_MAPPINGS } from "../../src/adapters/mcp/toolMappings.js";
 
 const expectedDeviceActions = [
   "ping",
@@ -114,8 +114,8 @@ describe("contract baseline", () => {
     expect(toolMapping("wait_and_inspect")).toBe("wait_and_inspect");
     expect(toolMapping("ui_tap_and_inspect")).toBe("tap_and_inspect");
 
-    expect(STATIC_ACTIONS.ui_inspect).toBe("ui.inspect");
-    expect(STATIC_ACTIONS.app_logs_read).toBe("app.logs.read");
+    expect(toolMappingFromCatalog("ui_inspect")).toBe("ui.inspect");
+    expect(toolMappingFromCatalog("app_logs_read")).toBe("app.logs.read");
   });
 });
 
@@ -131,4 +131,10 @@ function toolMapping(name: string): string {
     throw new Error(`unknown mapping: ${name}`);
   }
   return mapping;
+}
+
+function toolMappingFromCatalog(name: string): string {
+  const mapping = TOOL_MAPPINGS.find(candidate => candidate.toolName === name);
+  if (mapping === undefined) throw new Error(`unknown mapping: ${name}`);
+  return mapping.kind === "deviceAction" ? mapping.action : mapping.operation;
 }

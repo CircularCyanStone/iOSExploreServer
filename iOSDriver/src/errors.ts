@@ -1,4 +1,18 @@
-import type { StructuredError } from "./types.js";
+import type { JSONObject } from "./types.js";
+
+/** 旧 `IOSExploreClient` facade 使用的结构化错误形态；MCP SDK 类型不在此层定义。 */
+export type StructuredError = {
+  source: "mcp_server" | "transport" | "http" | "ios_envelope";
+  code?: string;
+  message: string;
+  action?: string;
+  baseURL?: string;
+  status?: number;
+  timeoutMs?: number;
+  bodySnippet?: string;
+  data?: JSONObject;
+  nextSteps?: readonly string[];
+};
 
 export class IOSExploreStructuredError extends Error {
   readonly source: StructuredError["source"];

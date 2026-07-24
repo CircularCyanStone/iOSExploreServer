@@ -1,10 +1,10 @@
 import type { MCPServerConfig } from "./config.js";
-import { IOSExploreStructuredError } from "./errors.js";
+import { IOSExploreStructuredError, type StructuredError } from "./errors.js";
 import { DriverRuntime } from "./runtime/driverRuntime.js";
 import type { DriverError } from "./runtime/driverErrors.js";
 import { HttpActionTransport } from "./runtime/httpActionTransport.js";
 import type { Artifact } from "./runtime/types.js";
-import type { JSONObject, StructuredError } from "./types.js";
+import type { JSONObject } from "./types.js";
 
 /**
  * @deprecated 请直接使用 `DriverRuntime.invoke`；本类只为现有调用方保留旧 `call` 行为。
