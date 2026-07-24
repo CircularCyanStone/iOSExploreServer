@@ -33,9 +33,10 @@ L1 UI 或日志任务必须有 iOSDriver MCP。只有任务还需要构建、安
 
 1. 调用 iOSDriver `health_check`。
 2. 工具不存在或调用无法发起：转 `ios-mcp-setup`，修复 iOSDriver 配置后重连客户端。
-3. 返回 `connection.status == "app_endpoint_unreachable"`，或 `connection.error` / `app.ping.error` 显示 transport `connection_failed`：iOSDriver 已加载，App 端点不可达；把原始结果和已知设备上下文交给 `ios-connection`，不要在入口展开端口分诊。
-4. 返回 `ok:true`：按用户目标路由到一个主场景 skill。
-5. 任务需要构建、启动或设备选择时，再检查构建/设备管理 MCP；工具缺失或所需 workflow 未加载时转 `ios-mcp-setup`。
+3. 顶层 `connection == "unreachable"`：iOSDriver 已加载，但 App 端点不可达；把原始结果和已知设备上下文交给 `ios-connection`，不要在入口展开端口分诊。
+4. 顶层 `connection == "malformed"`：端点有响应，但 `ping` 响应不符合协议；保留 `ping.status` 与错误详情，按 App 端点协议或集成问题处理，不进入端口分诊。
+5. 顶层 `connection == "reachable"` 且 `ping.status == "ok"`：连接可用；`help.status == "available"` 时能力自省也可用，按用户目标路由到一个主场景 skill。其他 ping/help 状态按原始错误修复 App 集成，不把端点可达误判为能力完整。
+6. 任务需要构建、启动或设备选择时，再检查构建/设备管理 MCP；工具缺失或所需 workflow 未加载时转 `ios-mcp-setup`。
 
 当检测到 MCP 不可用时,**不要尝试使用 curl 等底层命令或脚本替代 MCP 工具**。MCP 配置必须由用户手动完成,Agent 无法代劳。
 

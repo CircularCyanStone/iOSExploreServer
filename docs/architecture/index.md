@@ -5,6 +5,22 @@
 > MCP 工具架构决策、静态工具集合、能力检查和 `call_action` 边界见 [`dynamic-mcp-tools.md`](dynamic-mcp-tools.md)。
 > iOSDriver CLI 入口、MCP adapter、schema 归属和迁移取舍见 [`../cli/README.md`](../cli/README.md)。
 
+## iOSDriver 合同/runtime 边界
+
+`contracts/` 是跨语言 wire contract 的唯一事实源，只有两个业务命名空间：`DeviceActionContract`（App action）和 `HostOperationSpec`（Mac 侧探测及跨 action workflow）。生成器把同一 bundle 投影为 TypeScript contracts、Swift wire-level metadata/fields 和 [`generated/contracts.md`](../generated/contracts.md)；工具名、字段、结果和错误摘要不在架构文档中另建 schema。
+
+Mac 侧 `DriverRuntime` 负责 transport、timeout、App envelope/错误归一化、capability probe 和 artifact 解码；`WorkflowRunner` 组合 `wait_and_inspect`、`tap_and_inspect` 等 HostOperationSpec。MCP 与 CLI 是平级薄 adapter：MCP 静态暴露合同工具列表，CLI 提供 `init`、`doctor`、`call`、`mcp`，两者不复制 action handler 或字段定义。
+
+能力是运行时事实而非合同内容：端点或 `help` 不可达/不可解析为 `unknown`，模块部分注册为 `partial`，完全未注册为 `not_registered`。Host runtime 不启动、停止或管理 `iproxy`、XcodeBuildMCP、设备或 App 生命周期；外部设备工具和现有 runbook 保持 ownership。
+
+HTTP wire contract 仍是 `POST /` 加 `{ action, data }`，通信失败使用 HTTP 400/500，业务失败使用 HTTP 200 envelope。可用 curl 做最小连通性检查：
+
+```bash
+curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
+```
+
+成功响应为 `{"code":"ok","data":{"pong":true}}`。合同生成/漂移检查在 `iOSDriver/` 执行 `npm run contracts:generate` 与 `npm run contracts:check`。
+
 ## 通信链路
 
 ```

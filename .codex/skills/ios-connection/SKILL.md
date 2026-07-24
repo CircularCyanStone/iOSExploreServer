@@ -20,10 +20,12 @@ description: iOS App 连接管理与诊断。当用户说"连不上 App"、"ipro
 
 1. 调用 iOSDriver `health_check`。
 2. 工具不存在或调用无法发起：MCP server 未加载，转 `ios-mcp-setup`。
-3. 返回 `ok:true`：连接正常，转回 `ios-automation` 处理用户任务。
-4. 返回 `ok:false`，且 `connection.status == "app_endpoint_unreachable"`，或 `connection.error` / `app.ping.error` 显示 transport `connection_failed`：iOSDriver MCP 已运行，但 App 端点当前不可达；继续判断设备上下文。
-5. 通过当前构建/设备管理工具的真实设备列表、会话配置和工具清单判断目标环境。多台可用设备时让用户选择，不猜测设备。
-6. 启动或重启目标 App 后重试 `health_check`。重试仍失败时，模拟器检查 App 是否启动 HTTP server；真机继续检查 `iproxy` 和端口占用。
+3. 顶层 `connection == "reachable"` 且 `ping.status == "ok"`：连接正常，转回 `ios-automation` 处理用户任务。`help.status`、`actions.status`、模块状态和 schema 兼容性不用于判断端口是否连通。
+4. 顶层 `connection == "malformed"`：端点有响应，但 ping 响应不符合协议；这是 App 端点协议或集成问题，不启动 `iproxy`，也不继续端口分诊。
+5. 顶层 `connection == "reachable"` 但 `ping.status != "ok"`：HTTP 端点可达，但 ping 执行失败；按 `ping` 错误修复 App 行为，不继续端口分诊。
+6. 顶层 `connection == "unreachable"`：iOSDriver MCP 已运行，但 App 端点当前不可达；继续判断设备上下文。
+7. 通过当前构建/设备管理工具的真实设备列表、会话配置和工具清单判断目标环境。多台可用设备时让用户选择，不猜测设备。
+8. 启动或重启目标 App 后重试 `health_check`。重试仍失败时，模拟器检查 App 是否启动 HTTP server；真机继续检查 `iproxy` 和端口占用。
 
 `ui_inspect` 可调用但返回 `unknown_action` 表示 App 未注册 UIKit 命令，不是连接失败。连接 skill 到此给出模块注册结论，再把具体修复交给宿主集成或相应 UI skill。
 
@@ -63,7 +65,7 @@ description: iOS App 连接管理与诊断。当用户说"连不上 App"、"ipro
 
 | 现象 | 结论 | 下一步 |
 |---|---|---|
-| `health_check.connection.status` 是 `app_endpoint_unreachable` | MCP server 可调用，App 端点不可达 | 启动 App；真机再检查 `iproxy status` |
+| `health_check` 顶层 `connection` 是 `unreachable` | MCP server 可调用，App 端点不可达 | 启动 App；真机再检查 `iproxy status` |
 | `health_check` 先失败、启动 App 后成功 | 早期失败发生在端点 ready 前 | 记录为启动时序，不再诊断连接 |
 | 真机任务只有 `*_sim` 工具 | 真机 workflow 未加载 | 转 `ios-mcp-setup`，重连后复查工具清单 |
 | 端口由非 `iproxy` 进程监听 | 当前不是预期真机转发链路 | 停止已知冲突进程；未知进程不自动清理 |

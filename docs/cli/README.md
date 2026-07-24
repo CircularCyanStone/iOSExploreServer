@@ -30,6 +30,29 @@ DriverContractBundle
 
 CLI 是开发者、脚本和诊断的一等入口，MCP 是 Agent 的结构化入口。不能把 CLI 定义成唯一语义入口，也不能让 MCP 自己维护另一套业务实现。
 
+## 合同与生成产物
+
+跨语言 wire contract 的唯一事实源是仓库根目录的 `contracts/`：
+
+```text
+contracts/
+  ├── definitions/       # 共享 JSON Schema 定义
+  ├── device-actions/    # DeviceActionContract
+  ├── host-operations/   # HostOperationSpec
+  └── errors.json        # 稳定错误索引
+```
+
+合同只有两个业务命名空间：`DeviceActionContract` 描述 App 的 `{ action, data }` 输入、结果和稳定业务错误；`HostOperationSpec` 描述 Mac 侧探测与跨 action workflow。`init`、`doctor`、`mcp` 是 CLI 适配器命令，不是第三个合同命名空间。
+
+生成器从合同展开本地引用并生成 TypeScript metadata/schema、Swift wire-level fields/metadata 以及协议文档片段。完整 action、字段、结果和错误摘要只维护在 [`generated/contracts.md`](../generated/contracts.md)；本文不复制 per-action schema。合同源变更后，在 `iOSDriver/` 运行：
+
+```bash
+npm run contracts:generate
+npm run contracts:check
+```
+
+`contracts:check` 比较确定性生成结果并在 drift 时失败；不得手写 `docs/generated/contracts.md` 或其他 generated 文件。
+
 ## 为什么需要调整现状
 
 当前系统已经形成两个运行时：
@@ -202,6 +225,8 @@ App action 的稳定业务错误码属于 `DeviceActionContract`；配置、网�
 
 副作用 action 默认禁止自动重试。合同应至少声明 `readOnly`、`idempotent`、`sideEffecting` 三种幂等级别，host runtime 只对明确安全的 action 做 transport-only retry。
 
+只有明确标记为 `readOnly` 或 `idempotent`，且请求尚未收到 App response 的连接阶段失败，才允许最多重试一次；收到 HTTP response（包括业务失败）后不重放。`sideEffecting` action 不自动重试。
+
 ## 能力探测与兼容性
 
 MCP 工具列表始终来自构建时合同和 HostOperationSpec，不依赖 App 是否在线。运行时能力通过 `help`、`ping` 和 capability probe 判断：
@@ -216,6 +241,8 @@ MCP 工具列表始终来自构建时合同和 HostOperationSpec，不依赖 App
 - 必填字段、enum 或范围收窄：破坏性变更；
 - 新增可选字段：兼容；
 - hash 不同：报告具体差异和版本，而不是直接隐藏工具。
+
+能力状态使用可区分的终态：App 不可达或 `help` 无法解析时为 `unknown`；模块只注册了部分要求 action 时为 `partial`；模块完全未注册时为 `not_registered`。这些是运行时诊断，不改变构建时静态 MCP `tools/list`。
 
 ## CLI 入口
 
@@ -235,7 +262,44 @@ iosdriver mcp
 - `call`：调用任意 action；默认提供稳定 JSON 输出，可支持 `--data @file`，不复制 per-action handler。
 - `mcp`：启动 stdio MCP adapter。stdout 只能输出 MCP 协议帧，日志必须写 stderr。
 
-CLI 还需要单独定义配置文件路径、权限、安装方式、JSON/人类可读输出和 exit code。仅把 `dist/index.js` 包成 `iosdriver` 命令不能解决分发问题，npm 全局安装、`npx` 或其他安装方式必须在实现文档中明确。
+### 配置、输出与退出码
+
+配置解析优先级为：命令行参数（`--base-url`、`--timeout`、`--config`）> 环境变量（`IOS_EXPLORE_BASE_URL`、`IOS_EXPLORE_REQUEST_TIMEOUT_MS`）> 配置文件 > 默认值。配置路径优先级为 `IOSDRIVER_CONFIG` > `XDG_CONFIG_HOME/iosdriver/config.json` > `~/.config/iosdriver/config.json`。`init` 原子、幂等地写入配置，保留未知字段和已有值，不覆盖用户配置。
+
+固定退出码如下：
+
+| code | 含义 |
+| ---: | --- |
+| `0` | 成功 |
+| `1` | App 业务、workflow 或合同不兼容失败 |
+| `2` | 配置、参数或 Node 版本错误 |
+| `3` | transport、HTTP、protocol 或 artifact 失败 |
+
+`call` 默认把 JSON 结果写 stdout、错误对象写 stderr；`--human` 只改变诊断呈现，不改变退出码。截图等 image artifact 默认只在结果中返回 MIME、字节数等 metadata；传入 `--output <path>` 才落盘，MCP 则渲染为 image content。当前协议只实现 JSON 与 PNG，不宣称 `file` artifact。
+
+host runtime 只负责 HTTP transport、超时、错误归一化、能力探测和 artifact 解码，不启动、停止或管理 `iproxy`、XcodeBuildMCP、设备或 App 生命周期；`doctor` 只能诊断这些外部条件。
+
+HTTP 端点仍保持单一 `POST /`：
+
+```bash
+curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
+```
+
+成功 envelope 仍为 `{"code":"ok","data":{"pong":true}}`。字段、工具映射和错误列表请以 [`generated/contracts.md`](../generated/contracts.md) 为准。
+
+仅把 `dist/index.js` 包成 `iosdriver` 命令不能解决分发问题；npm 全局安装、`npx` 或其他安装方式必须在实际发行说明中明确。
+
+## 未来演进
+
+下表记录首期范围之外、需要单独立项的方向；它们不改变当前合同/runtime/adapter 边界，也不会让 runtime 隐式接管外部生命周期。
+
+| 方向 | 触发条件 | 方向与兼容要求 | 主要成本 |
+| --- | --- | --- | --- |
+| 完整 JSON Schema 方言 | 需要 `if/then/else`、`dependentSchemas`、格式校验或 Draft 2020-12 兼容 | 升级生成器/验证器并保持 Swift、TypeScript 共用合同源；现有受控子集继续兼容 | 新依赖、方言矩阵、MCP 客户端差异测试 |
+| 可选 `DeviceSession` / `ProxyManager` | 多个调用方重复实现代理启停、端口分配或设备选择 | 作为 CLI/专用 adapter 的显式 opt-in 模块，不能进入默认 `DriverRuntime`，MCP 不隐式管理设备 | 进程管理、权限、设备 ID、并发占用和平台差异 |
+| extension tool discovery | 扩展 action 增多且需要工具级 schema、权限和版本 | 新增独立 extension registry 与显式 capability/version 协商；默认公共工具列表保持静态 | 动态列表、`listChanged`、权限隔离、合同冲突和客户端兼容 |
+| stream/file artifact | 产物超过 JSON/base64 上限或需要直接下载 | 增加 artifact store、临时 URL 或分块协议；MCP/CLI 分别引用或落盘，旧 JSON/PNG 行为保持 | 清理、权限、大小限制、失败恢复和新传输协议 |
+| protocol v2 | 必须改变 endpoint、请求体、认证、流式传输或 envelope，且无法用兼容字段完成 | 并行实现显式版本并协商；v1 保留到迁移完成，不能暗中改变 v1 | 双协议测试、App/host 版本矩阵和迁移窗口 |
 
 ## 迁移顺序
 
