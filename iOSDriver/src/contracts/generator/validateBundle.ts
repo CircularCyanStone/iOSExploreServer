@@ -291,7 +291,7 @@ function validateSchemaArray(
 }
 
 function resolveReference(sourceFile: string, reference: string): string {
-  if (reference.includes("://") || reference.startsWith("/") || reference.includes("#")) {
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(reference) || reference.startsWith("/") || reference.includes("#")) {
     fail("unknown_ref", `${sourceFile}.$ref`, "only local definition file refs are supported");
   }
   const normalized = reference.startsWith("definitions/")

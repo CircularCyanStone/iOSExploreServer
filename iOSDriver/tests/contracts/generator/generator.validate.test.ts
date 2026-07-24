@@ -17,6 +17,17 @@ describe("contract bundle validator", () => {
     expectValidationCode(root, "unknown_ref");
   });
 
+  test("rejects an external URI-scheme ref even when a matching definition exists", () => {
+    const root = makeBundle({
+      inputSchema: { $ref: "definitions/root.json" },
+      definitions: {
+        "root.json": { $ref: "urn:other.json" },
+        "urn:other.json": { type: "string" }
+      }
+    });
+    expectValidationCode(root, "unknown_ref");
+  });
+
   test("rejects a required field absent from properties", () => {
     const root = makeBundle({
       inputSchema: {
@@ -42,6 +53,16 @@ describe("contract bundle validator", () => {
   test("rejects an error code absent from errors.json", () => {
     const root = makeBundle({ errors: ["not_registered"] });
     expectValidationCode(root, "unknown_error_code");
+  });
+
+  test("rejects duplicate device actions", () => {
+    const root = makeBundle({ additionalDeviceActions: [{ action: "test.action" }] });
+    expectValidationCode(root, "duplicate_action");
+  });
+
+  test("rejects duplicate host operations", () => {
+    const root = makeBundle({ hostOperations: [{ operation: "health" }, { operation: "health" }] });
+    expectValidationCode(root, "duplicate_operation");
   });
 
   test("rejects a cycle across local definition refs", () => {
@@ -112,16 +133,26 @@ function makeBundle(overrides: {
   inputSchema?: Record<string, JSONValue>;
   errors?: string[];
   definitions?: Record<string, Record<string, JSONValue>>;
+  additionalDeviceActions?: Array<{ action: string }>;
+  hostOperations?: Array<{ operation: string }>;
 }): string {
   const root = mkdtempSync(join(tmpdir(), "ios-driver-contract-"));
   temporaryRoots.push(root);
   mkdirSync(join(root, "contracts", "device-actions"), { recursive: true });
   mkdirSync(join(root, "contracts", "definitions"), { recursive: true });
+  mkdirSync(join(root, "contracts", "host-operations"), { recursive: true });
+  const files = ["device-actions/test.json"];
+  for (const [index] of (overrides.additionalDeviceActions ?? []).entries()) {
+    files.push(`device-actions/additional-${index}.json`);
+  }
+  for (const [index] of (overrides.hostOperations ?? []).entries()) {
+    files.push(`host-operations/additional-${index}.json`);
+  }
   writeJSON(join(root, "contracts", "bundle.json"), {
     protocolVersion: "1",
     contractVersion: "1.0.0",
     generatorVersion: "1",
-    files: ["device-actions/test.json"]
+    files
   });
   writeJSON(join(root, "contracts", "errors.json"), {
     invalid_data: { source: "appEnvelope", retryable: false, terminal: true }
@@ -143,6 +174,30 @@ function makeBundle(overrides: {
     idempotency: "readOnly",
     timeoutClass: "standard"
   });
+  for (const [index, deviceAction] of (overrides.additionalDeviceActions ?? []).entries()) {
+    writeJSON(join(root, "contracts", "device-actions", `additional-${index}.json`), {
+      kind: "deviceAction",
+      action: deviceAction.action,
+      description: "Additional test action",
+      provider: "core",
+      stability: "internal",
+      inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
+      result: { kind: "json" },
+      errors: ["invalid_data"],
+      idempotency: "readOnly",
+      timeoutClass: "standard"
+    });
+  }
+  for (const [index, hostOperation] of (overrides.hostOperations ?? []).entries()) {
+    writeJSON(join(root, "contracts", "host-operations", `additional-${index}.json`), {
+      kind: "hostOperation",
+      operation: hostOperation.operation,
+      description: "Additional host operation",
+      inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
+      result: { kind: "json" },
+      errors: ["invalid_data"]
+    });
+  }
   for (const [name, schema] of Object.entries(overrides.definitions ?? {})) {
     writeJSON(join(root, "contracts", "definitions", name), schema);
   }
