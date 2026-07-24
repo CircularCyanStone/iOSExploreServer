@@ -13,6 +13,45 @@ func commandInputDecoderReadsFields() throws {
     #expect(try decoder.read(enabled) == true)
 }
 
+@Test("CommandInputDecoder 原样读取类型擦除字段")
+func commandInputDecoderReadsRawField() throws {
+    let payload = AnyCommandField(
+        name: "payload",
+        schema: CommandFieldSchema(
+            type: .object,
+            required: false,
+            description: "原始对象",
+            allowsNull: true
+        )
+    )
+    let schema = CommandInputSchema(fields: [payload])
+    var decoder = CommandInputDecoder(
+        ["payload": .object(["nested": .string("value")])],
+        schema: schema
+    )
+
+    #expect(try decoder.readRaw(payload) == .object(["nested": .string("value")]))
+    try decoder.assertAllDeclaredFieldsRead()
+}
+
+@Test("CommandInputDecoder 拒绝同名但 schema 不一致的类型擦除字段")
+func commandInputDecoderRejectsSchemaMismatchForRawField() throws {
+    let declared = AnyCommandField(
+        name: "payload",
+        schema: CommandFieldSchema(type: .object, required: false, description: "声明对象")
+    )
+    let mismatched = AnyCommandField(
+        name: "payload",
+        schema: CommandFieldSchema(type: .object, required: false, description: "其他对象")
+    )
+    let schema = CommandInputSchema(fields: [declared])
+    var decoder = CommandInputDecoder(["payload": .object([:])], schema: schema)
+
+    #expect(throws: CommandInputParseError.self) {
+        _ = try decoder.readRaw(mismatched)
+    }
+}
+
 @Test("CommandInputDecoder 拒绝未知字段和未声明字段读取")
 func commandInputDecoderRejectsUnknownAndUndeclaredFields() throws {
     let declared = CommandFields.optionalString("declared", description: "声明字段")

@@ -18,32 +18,8 @@ public enum AlertButtonRole: String, Sendable, Equatable, CaseIterable {
 /// 查询 alert 结构（标题/消息/按钮/输入框）请用 `ui.inspect`——其顶层 `alert` 区块含每个按钮
 /// 与输入框的 `path` / `availableActions`，信息更全；本命令只负责「触发」，不再承担查询职责。
 public struct UIAlertRespondInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let buttonTitle = CommandFields.optionalString(
-            "buttonTitle",
-            description: "要触发的按钮标题"
-        )
-        static let buttonIndex = CommandFields.optionalNonNegativeInt(
-            "buttonIndex",
-            description: "要触发的按钮下标"
-        )
-        static let role = CommandFields.optionalString(
-            "role",
-            description: "按钮角色: default / cancel / destructive"
-        )
-
-        static let all: [AnyCommandField] = [
-            buttonTitle.erased,
-            buttonIndex.erased,
-            role.erased,
-        ]
-    }
-
     /// `ui.alert.respond` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(
-        fields: Fields.all,
-        constraints: [.extensionMessage("buttonTitle/buttonIndex/role 最多提供一个")]
-    )
+    public static let inputSchema = UIKitActionContracts.uiAlertRespondInputSchema
 
     /// 按钮标题选择器。
     public let buttonTitle: String?
@@ -67,9 +43,9 @@ public struct UIAlertRespondInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已解析的 alert respond 输入。
     /// - Throws: 字段类型非法或选择器多于一个时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIAlertRespondInput {
-        let buttonTitle = try decoder.read(Fields.buttonTitle)
-        let buttonIndex = try decoder.read(Fields.buttonIndex)
-        let role = try decoder.read(Fields.role)
+        let buttonTitle = try decoder.read(UIKitActionContracts.uiAlertRespondButtonTitleField)
+        let buttonIndex = try decoder.read(UIKitActionContracts.uiAlertRespondButtonIndexField)
+        let role = try decoder.read(UIKitActionContracts.uiAlertRespondRoleField)
 
         let selectorCount = [buttonTitle != nil, buttonIndex != nil, role != nil].filter { $0 }.count
         if selectorCount > 1 {

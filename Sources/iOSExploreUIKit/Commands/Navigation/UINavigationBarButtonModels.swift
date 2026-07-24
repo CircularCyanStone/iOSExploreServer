@@ -20,41 +20,8 @@ public enum NavigationBarPlacement: String, Sendable, Equatable, CaseIterable {
 /// - `placement` + `accessibilityIdentifier`: 只在指定侧搜索（防误点）
 /// - `placement` + `index` + `accessibilityIdentifier`: 精确定位 + 二次确认
 public struct UINavigationBarButtonInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let placement = CommandFields.optionalString(
-            "placement",
-            description: "导航栏按钮位置: left / right; 省略时配合 accessibilityIdentifier 全局搜索"
-        )
-        static let index = CommandFields.optionalFiniteNumber(
-            "index",
-            description: "按钮在当前侧的下标, 从 0 开始; 省略时配合 accessibilityIdentifier 搜索"
-        )
-        static let title = CommandFields.optionalString(
-            "title",
-            description: "观察时看到的按钮标题; 传入时执行前必须一致"
-        )
-        static let accessibilityIdentifier = CommandFields.optionalString(
-            "accessibilityIdentifier",
-            description: "观察时看到的按钮 accessibilityIdentifier; 可单独用于全局搜索或配合 placement/index 做二次确认"
-        )
-        static let waitAfterMs = CommandFields.int(
-            "waitAfterMs",
-            range: 0...3000,
-            default: 300,
-            description: "执行后等待毫秒数, 范围 0...3000, 默认 300"
-        )
-
-        static let all: [AnyCommandField] = [
-            placement.erased,
-            index.erased,
-            title.erased,
-            accessibilityIdentifier.erased,
-            waitAfterMs.erased,
-        ]
-    }
-
     /// `ui.navigation.tapBarButton` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(fields: Fields.all)
+    public static let inputSchema = UIKitActionContracts.uiNavigationTapBarButtonInputSchema
 
     /// 按钮位置（可选，与 `accessibilityIdentifier` 配合使用）。
     public let placement: NavigationBarPlacement?
@@ -93,13 +60,11 @@ public struct UINavigationBarButtonInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已解析的 navigationBar 按钮输入。
     /// - Throws: 必填缺失、枚举值非法或数值越界时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UINavigationBarButtonInput {
-        let placementString: String? = try decoder.read(Fields.placement)
-        let indexNumber: Double? = try decoder.read(Fields.index)
+        let placementValue = try decoder.read(UIKitActionContracts.uiNavigationTapBarButtonPlacementField)
 
-        // 解析 placement string 为 enum
         let placement: NavigationBarPlacement?
-        if let placementString = placementString {
-            guard let parsed = NavigationBarPlacement(rawValue: placementString) else {
+        if let placementValue {
+            guard let parsed = NavigationBarPlacement(rawValue: placementValue) else {
                 throw CommandInputParseError("placement must be 'left' or 'right'")
             }
             placement = parsed
@@ -107,24 +72,14 @@ public struct UINavigationBarButtonInput: CommandInput, Sendable, Equatable {
             placement = nil
         }
 
-        // 解析 index number 为 Int
-        let index: Int?
-        if let indexNumber = indexNumber {
-            guard indexNumber.isFinite, indexNumber >= 0, indexNumber <= 20,
-                  indexNumber == floor(indexNumber) else {
-                throw CommandInputParseError("index must be an integer between 0 and 20")
-            }
-            index = Int(indexNumber)
-        } else {
-            index = nil
-        }
-
         return UINavigationBarButtonInput(
             placement: placement,
-            index: index,
-            title: try decoder.read(Fields.title),
-            accessibilityIdentifier: try decoder.read(Fields.accessibilityIdentifier),
-            waitAfterMs: try decoder.read(Fields.waitAfterMs)
+            index: try decoder.read(UIKitActionContracts.uiNavigationTapBarButtonIndexField),
+            title: try decoder.read(UIKitActionContracts.uiNavigationTapBarButtonTitleField),
+            accessibilityIdentifier: try decoder.read(
+                UIKitActionContracts.uiNavigationTapBarButtonAccessibilityIdentifierField
+            ),
+            waitAfterMs: try decoder.read(UIKitActionContracts.uiNavigationTapBarButtonWaitAfterMsField)
         )
     }
 
@@ -137,4 +92,3 @@ public struct UINavigationBarButtonInput: CommandInput, Sendable, Equatable {
         return "placement=\(placementStr) index=\(indexStr) titleLength=\(titleLength) identifierLength=\(identifierLength)"
     }
 }
-

@@ -13,48 +13,6 @@ import iOSExploreServer
 /// 该类型整体 Foundation-only:ISO 解析与分量拼装不依赖 UIKit,便于 macOS schema 单测;UIKit 类型
 /// 只在 executor 内部出现,不穿过 public 边界。
 public struct UIDatePickerSetDateInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
-        static let path = UIKitLocatorFields.path
-        static let viewSnapshotID = UIKitLocatorFields.viewSnapshotID
-
-        static let date = CommandFields.optionalString(
-            "date",
-            description: "目标日期,ISO 8601 字符串。完整 datetime 如 '1990-01-01T00:00:00Z'(可带时区/毫秒),或仅日期 '1990-01-01'。与 year/month/day/hour/minute 分量互斥"
-        )
-        static let year = CommandFields.optionalNonNegativeInt(
-            "year", description: "年份分量(如 1990),与 date 互斥;未提供的分量沿用 picker 当前值"
-        )
-        static let month = CommandFields.optionalNonNegativeInt(
-            "month", description: "月份分量(1-12,超出由 Calendar 自动规整)"
-        )
-        static let day = CommandFields.optionalNonNegativeInt(
-            "day", description: "日期分量(1-31)"
-        )
-        static let hour = CommandFields.optionalNonNegativeInt(
-            "hour", description: "小时分量(0-23)"
-        )
-        static let minute = CommandFields.optionalNonNegativeInt(
-            "minute", description: "分钟分量(0-59)"
-        )
-        static let animated = CommandFields.bool(
-            "animated", default: false, description: "是否动画过渡到新日期(默认 false)"
-        )
-
-        static let all: [AnyCommandField] = [
-            accessibilityIdentifier.erased,
-            path.erased,
-            viewSnapshotID.erased,
-            date.erased,
-            year.erased,
-            month.erased,
-            day.erased,
-            hour.erased,
-            minute.erased,
-            animated.erased,
-        ]
-    }
-
     /// 目标 UIDatePicker 定位方式(accessibilityIdentifier / path)。
     public let target: UIKitViewLookupTarget
     /// `ui.inspect` 签发的结构化快照标识,可选;identifier / path 两种定位方式都接受陈旧校验。
@@ -80,24 +38,24 @@ public struct UIDatePickerSetDateInput: CommandInput, Sendable, Equatable {
     }
 
     /// 输入 schema(暴露给 MCP 客户端)。
-    public static let inputSchema = CommandInputSchema(fields: Fields.all, constraints: [])
+    public static let inputSchema = UIKitActionContracts.uiDatePickerSetDateInputSchema
 
     /// 从声明式 decoder 解析输入。
     ///
     /// 读取定位字段、日期来源(date 或分量)与 animated,执行互斥校验后产出 typed 输入。
     /// - Throws: 字段类型/互斥/ISO 解析失败时抛 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIDatePickerSetDateInput {
-        let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
-        let animated = try decoder.read(Fields.animated)
-        let rawDate = try decoder.read(Fields.date)
-        let year = try decoder.read(Fields.year)
-        let month = try decoder.read(Fields.month)
-        let day = try decoder.read(Fields.day)
-        let hour = try decoder.read(Fields.hour)
-        let minute = try decoder.read(Fields.minute)
+        let viewSnapshotID = try decoder.read(UIKitActionContracts.uiDatePickerSetDateViewSnapshotIDField)
+        let animated = try decoder.read(UIKitActionContracts.uiDatePickerSetDateAnimatedField)
+        let rawDate = try decoder.read(UIKitActionContracts.uiDatePickerSetDateDateField)
+        let year = try decoder.read(UIKitActionContracts.uiDatePickerSetDateYearField)
+        let month = try decoder.read(UIKitActionContracts.uiDatePickerSetDateMonthField)
+        let day = try decoder.read(UIKitActionContracts.uiDatePickerSetDateDayField)
+        let hour = try decoder.read(UIKitActionContracts.uiDatePickerSetDateHourField)
+        let minute = try decoder.read(UIKitActionContracts.uiDatePickerSetDateMinuteField)
         let target = try UIKitLocatorInput.parse(decoder: &decoder,
-                                                  identifierField: Fields.accessibilityIdentifier,
-                                                  pathField: Fields.path)
+                                                  identifierField: UIKitActionContracts.uiDatePickerSetDateAccessibilityIdentifierField,
+                                                  pathField: UIKitActionContracts.uiDatePickerSetDatePathField)
 
         let hasDate = rawDate != nil
         let hasComponents = [year, month, day, hour, minute].contains { $0 != nil }

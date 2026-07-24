@@ -16,43 +16,6 @@ import iOSExploreServer
 /// 但实际上只包含 JSON 可序列化类型（String/Double/Bool/NSNull/Array/Dictionary），
 /// 且所有属性不可变，跨 actor 传递安全。
 public struct UIWebViewEvalInput: CommandInput, @unchecked Sendable {
-    private enum Fields {
-        static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
-        static let path = UIKitLocatorFields.path
-        static let viewSnapshotID = UIKitLocatorFields.viewSnapshotID
-
-        static let script = CommandFields.optionalString(
-            "script", description: "JS 代码字符串（同步模式），与 function 互斥"
-        )
-        static let function = CommandFields.optionalString(
-            "function", description: "JS 函数体（异步模式），与 script 互斥"
-        )
-
-        /// arguments 是 JSON object，无法用标量 `CommandField<Value>` 表达，故只用 `AnyCommandField`
-        /// 声明 schema；实际解析在 `parse(from:)` 手写。
-        static let arguments = AnyCommandField(
-            name: "arguments",
-            schema: CommandFieldSchema(type: .object,
-                                       required: false,
-                                       description: "传递给 function 的参数，只能与 function 一起使用",
-                                       allowsNull: true)
-        )
-
-        static let timeout = CommandFields.optionalFiniteNumber(
-            "timeout", description: "超时时间（秒），范围 1-30，默认 5.0"
-        )
-
-        static let all: [AnyCommandField] = [
-            accessibilityIdentifier.erased,
-            path.erased,
-            viewSnapshotID.erased,
-            script.erased,
-            function.erased,
-            arguments,
-            timeout.erased,
-        ]
-    }
-
     /// 目标 WKWebView 定位方式。
     public let target: UIKitViewLookupTarget
     /// 陈旧校验快照 ID（来自 `ui.inspect`）。
@@ -82,15 +45,13 @@ public struct UIWebViewEvalInput: CommandInput, @unchecked Sendable {
     }
 
     /// 输入 schema（暴露给 MCP 客户端）。
-    public static let inputSchema = CommandInputSchema(
-        fields: Fields.all,
-        constraints: []
-    )
+    public static let inputSchema = UIKitActionContracts.uiWebViewEvalInputSchema
 
     /// 从原始 JSON data 解析输入。
     ///
-    /// arguments 是 JSON object，无法走 `CommandField<Value>` + `decoder.read` 的标量机制，故在此手写：
-    /// 先用 decoder 拒绝未知顶层字段并读取标量字段，再从 data 手写解析 arguments。
+    /// arguments 是 JSON object，无法走 `CommandField<Value>` 的 typed decode，故通过 generated
+    /// `AnyCommandField` 读取原始值后手写转换；顶层未知字段和 generated 字段读取完整性仍由
+    /// decoder 统一守卫。
     ///
     /// - Parameter data: `ExploreRequest.data` 中的原始参数对象。
     /// - Returns: 已解析的 webView.eval 输入。
@@ -98,16 +59,18 @@ public struct UIWebViewEvalInput: CommandInput, @unchecked Sendable {
     public static func parse(from data: JSON) throws -> UIWebViewEvalInput {
         var decoder = CommandInputDecoder(data, schema: inputSchema)
         try decoder.validateNoUnknownFields()
-        let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
-        let script = try decoder.read(Fields.script)
-        let function = try decoder.read(Fields.function)
-        let timeout = try decoder.read(Fields.timeout) ?? 5.0
-        let target = try UIKitLocatorInput.parse(decoder: &decoder,
-                                                  identifierField: Fields.accessibilityIdentifier,
-                                                  pathField: Fields.path)
+        let viewSnapshotID = try decoder.read(UIKitActionContracts.uiWebViewEvalViewSnapshotIDField)
+        let script = try decoder.read(UIKitActionContracts.uiWebViewEvalScriptField)
+        let function = try decoder.read(UIKitActionContracts.uiWebViewEvalFunctionField)
+        let timeout = try decoder.read(UIKitActionContracts.uiWebViewEvalTimeoutField)
+        let target = try UIKitLocatorInput.parse(
+            decoder: &decoder,
+            identifierField: UIKitActionContracts.uiWebViewEvalAccessibilityIdentifierField,
+            pathField: UIKitActionContracts.uiWebViewEvalPathField
+        )
 
         // 手动解析 arguments（object 类型无法用 CommandField<Value> 表达）
-        let argumentsRaw = data["arguments"]
+        let argumentsRaw = try decoder.readRaw(UIKitActionContracts.uiWebViewEvalArgumentsField)
         let arguments: [String: Any]?
         if let raw = argumentsRaw, raw != JSONValue.null {
             guard case .object(let dict) = raw else {
@@ -132,12 +95,7 @@ public struct UIWebViewEvalInput: CommandInput, @unchecked Sendable {
             )
         }
 
-        // 约束：timeout 范围 1-30
-        guard timeout >= 1.0 && timeout <= 30.0 else {
-            throw CommandInputParseError(
-                "timeout 必须在 1-30 秒范围内（当前 \(timeout)）"
-            )
-        }
+        try decoder.assertAllDeclaredFieldsRead()
 
         return UIWebViewEvalInput(
             target: target,
@@ -151,9 +109,9 @@ public struct UIWebViewEvalInput: CommandInput, @unchecked Sendable {
 
     /// 协议要求的 decoder 入口。
     ///
-    /// webView.eval 的 arguments object 只能整体从原始 data 解析，而 `CommandInputDecoder` 不向
-    /// 扩展模块暴露原始 data，故真实解析在 `parse(from:)`。`AnyCommand` 始终走 `parse(from:)`，
-    /// 本方法不会被调用，仅满足协议签名；若被调用则明确报错而非静默。
+    /// webView.eval 需要在同一入口显式执行顶层未知字段校验、arguments 转换、跨字段约束和
+    /// generated 字段完整读取断言，故真实解析收敛在 `parse(from:)`。`AnyCommand` 始终走
+    /// `parse(from:)`，本方法不会被调用，仅满足协议签名；若被调用则明确报错而非静默。
     ///
     /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
     /// - Returns: 已解析的 webView.eval 输入。

@@ -26,62 +26,8 @@ public enum WaitMode: String, Sendable, Equatable, CaseIterable {
 /// `textExists` 需 `text`，`snapshotChanged` 需 `viewSnapshotID`（来源必须是 `ui.inspect`），
 /// `idle` 无额外要求。
 public struct UIWaitInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let mode = CommandFields.enumValue(
-            "mode",
-            type: WaitMode.self,
-            default: .idle,
-            description: "等待模式: idle / targetExists / targetGone / textExists / snapshotChanged"
-        )
-        static let timeoutMs = CommandFields.int(
-            "timeoutMs",
-            range: 0...30_000,
-            default: 3000,
-            description: "业务超时毫秒数, 范围 0...30000, 默认 3000"
-        )
-        static let intervalMs = CommandFields.int(
-            "intervalMs",
-            range: 50...5000,
-            default: 100,
-            description: "轮询间隔毫秒数, 范围 50...5000, 默认 100"
-        )
-        static let stableMs = CommandFields.int(
-            "stableMs",
-            range: 0...10_000,
-            default: 300,
-            description: "idle 模式下连续稳定的毫秒数, 范围 0...10000, 默认 300"
-        )
-        static let text = CommandFields.optionalString(
-            "text",
-            description: "textExists 模式要等待的文本片段"
-        )
-        static let viewSnapshotID = CommandFields.optionalString(
-            "viewSnapshotID",
-            description: "snapshotChanged 模式参照的 viewSnapshotID (由 ui.inspect 签发)"
-        )
-        static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
-        static let path = UIKitLocatorFields.path
-        static let includeHidden = CommandFields.bool(
-            "includeHidden",
-            default: false,
-            description: "idle/textExists/targetExists/targetGone 是否考虑隐藏 view, 默认 false"
-        )
-
-        static let all: [AnyCommandField] = [
-            mode.erased,
-            timeoutMs.erased,
-            intervalMs.erased,
-            stableMs.erased,
-            text.erased,
-            viewSnapshotID.erased,
-            accessibilityIdentifier.erased,
-            path.erased,
-            includeHidden.erased,
-        ]
-    }
-
     /// `ui.wait` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(fields: Fields.all)
+    public static let inputSchema = UIKitActionContracts.uiWaitInputSchema
 
     /// 等待模式。
     public let mode: WaitMode
@@ -127,14 +73,21 @@ public struct UIWaitInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已解析的 wait 输入。
     /// - Throws: 字段类型/范围非法，或模式所需字段缺失时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIWaitInput {
-        let mode = try decoder.read(Fields.mode)
-        let timeoutMs = try decoder.read(Fields.timeoutMs)
-        let intervalMs = try decoder.read(Fields.intervalMs)
-        let stableMs = try decoder.read(Fields.stableMs)
-        let text = try decoder.read(Fields.text)
-        let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
-        let target = try UIKitLocatorInput.parseOptional(decoder: &decoder)
-        let includeHidden = try decoder.read(Fields.includeHidden)
+        let modeRaw = try decoder.read(UIKitActionContracts.uiWaitModeField)
+        guard let mode = WaitMode(rawValue: modeRaw) else {
+            throw CommandInputParseError("unknown wait mode '\(modeRaw)'")
+        }
+        let timeoutMs = try decoder.read(UIKitActionContracts.uiWaitTimeoutMsField)
+        let intervalMs = try decoder.read(UIKitActionContracts.uiWaitIntervalMsField)
+        let stableMs = try decoder.read(UIKitActionContracts.uiWaitStableMsField)
+        let text = try decoder.read(UIKitActionContracts.uiWaitTextField)
+        let viewSnapshotID = try decoder.read(UIKitActionContracts.uiWaitViewSnapshotIDField)
+        let target = try UIKitLocatorInput.parseOptional(
+            decoder: &decoder,
+            identifierField: UIKitActionContracts.uiWaitAccessibilityIdentifierField,
+            pathField: UIKitActionContracts.uiWaitPathField
+        )
+        let includeHidden = try decoder.read(UIKitActionContracts.uiWaitIncludeHiddenField)
 
         switch mode {
         case .targetExists, .targetGone:

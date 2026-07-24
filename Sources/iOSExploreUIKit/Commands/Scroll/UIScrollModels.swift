@@ -44,42 +44,8 @@ public enum ScrollExtent: String, Sendable, Equatable {
 /// 最前的 scrollView。`viewSnapshotID` 可选，identifier / path 两种定位方式都支持陈旧校验
 /// （与 ui.tap 一致）；缺省时不做陈旧校验。
 public struct UIScrollInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let direction = CommandFields.requiredEnum(
-            "direction",
-            type: ScrollDirection.self,
-            description: "滚动方向: up / down / left / right"
-        )
-        static let amount = CommandFields.optionalFiniteNumber(
-            "amount",
-            description: "滚动距离(pt), 必须 > 0; 缺省 = 可见区 × 0.5"
-        )
-        static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
-        static let path = UIKitLocatorFields.path
-        static let viewSnapshotID = UIKitLocatorFields.viewSnapshotID
-        static let animated = CommandFields.bool(
-            "animated",
-            default: false,
-            description: "是否动画(默认 false, 确定性)"
-        )
-
-        static let all: [AnyCommandField] = [
-            direction.erased,
-            amount.erased,
-            accessibilityIdentifier.erased,
-            path.erased,
-            viewSnapshotID.erased,
-            animated.erased,
-        ]
-    }
-
     /// `ui.scroll` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(
-        fields: Fields.all,
-        constraints: [
-            .extensionMessage("accessibilityIdentifier/path 都缺时滚动 keyWindow 最前 scrollView"),
-        ]
-    )
+    public static let inputSchema = UIKitActionContracts.uiScrollInputSchema
 
     /// 滚动方向。
     public let direction: ScrollDirection
@@ -122,16 +88,17 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
     ///   统一在 executor 内经 `UIKitActionExecutor.validateViewSnapshot` 完成，parse
     ///   阶段不再以"viewSnapshotID 仅与 path 搭配"为由 reject。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIScrollInput {
-        let direction = try decoder.read(Fields.direction)
-        let amountRaw = try decoder.read(Fields.amount)
-        let animated = try decoder.read(Fields.animated)
-        let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
-        let locator = try UIKitLocatorInput.parseOptional(decoder: &decoder)
-        if let amount = amountRaw, amount <= 0 {
-            throw CommandInputParseError("amount must be > 0")
-        }
+        let direction = ScrollDirection(rawValue: try decoder.read(UIKitActionContracts.uiScrollDirectionField))!
+        let amount = try decoder.read(UIKitActionContracts.uiScrollAmountField)
+        let animated = try decoder.read(UIKitActionContracts.uiScrollAnimatedField)
+        let viewSnapshotID = try decoder.read(UIKitActionContracts.uiScrollViewSnapshotIDField)
+        let locator = try UIKitLocatorInput.parseOptional(
+            decoder: &decoder,
+            identifierField: UIKitActionContracts.uiScrollAccessibilityIdentifierField,
+            pathField: UIKitActionContracts.uiScrollPathField
+        )
         return UIScrollInput(direction: direction,
-                             amount: amountRaw,
+                             amount: amount,
                              locator: locator,
                              viewSnapshotID: viewSnapshotID,
                              animated: animated)

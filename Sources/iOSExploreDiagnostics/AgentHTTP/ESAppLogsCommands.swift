@@ -75,50 +75,28 @@ struct ESAppLogsReadInput: CommandInput {
     let sources: Set<ESAppLogSource>?
     let minimumLevel: ESAppLogLevel?
 
-    static let inputSchema = CommandInputSchema(fields: [
-        AnyCommandField(name: "after",
-                        schema: CommandFieldSchema(type: .object,
-                                                   required: false,
-                                                   description: "增量读取起点 cursor；省略时返回当前可见的最近 limit 条。",
-                                                   allowsNull: true)),
-        AnyCommandField(name: "limit",
-                        schema: CommandFieldSchema(type: .integer,
-                                                   required: false,
-                                                   description: "最多返回 entry 数量。",
-                                                   defaultValue: .double(100),
-                                                   minimum: 1,
-                                                   maximum: 500)),
-        AnyCommandField(name: "sources",
-                        schema: CommandFieldSchema(type: .array,
-                                                   required: false,
-                                                   description: "可选日志来源过滤，支持 explore、bridge、stdout、stderr、nslog、oslog。",
-                                                   allowsNull: true,
-                                                   enumValues: ESAppLogSource.allCases.map(\.rawValue))),
-        AnyCommandField(name: "minimumLevel",
-                        schema: CommandFieldSchema(type: .string,
-                                                   required: false,
-                                                   description: "可选最低日志等级过滤。",
-                                                   allowsNull: true,
-                                                   enumValues: ESAppLogLevel.allCases.map(\.rawValue))),
-    ])
+    static let inputSchema = DiagnosticsActionContracts.appLogsReadInputSchema
 
     static func parse(from data: JSON) throws -> ESAppLogsReadInput {
-        try rejectUnknownFields(data, allowed: ["after", "limit", "sources", "minimumLevel"])
-        return ESAppLogsReadInput(after: try parseCursor(data["after"]),
-                                limit: try parseLimit(data["limit"]),
-                                sources: try parseSources(data["sources"]),
-                                minimumLevel: try parseMinimumLevel(data["minimumLevel"]))
+        var decoder = CommandInputDecoder(data, schema: inputSchema)
+        try decoder.validateNoUnknownFields()
+
+        let after = try parseCursor(decoder.readRaw(DiagnosticsActionContracts.appLogsReadAfterField))
+        let limit = try decoder.read(DiagnosticsActionContracts.appLogsReadLimitField)
+        let rawSources = try decoder.read(DiagnosticsActionContracts.appLogsReadSourcesField)
+        let rawMinimumLevel = try decoder.read(DiagnosticsActionContracts.appLogsReadMinimumLevelField)
+        let sources = try parseSources(rawSources)
+        let minimumLevel = try parseMinimumLevel(rawMinimumLevel)
+
+        try decoder.assertAllDeclaredFieldsRead()
+        return ESAppLogsReadInput(after: after,
+                                  limit: limit,
+                                  sources: sources,
+                                  minimumLevel: minimumLevel)
     }
 
     static func parse(decoding decoder: inout CommandInputDecoder) throws -> ESAppLogsReadInput {
         throw CommandInputParseError("app.logs.read uses a custom parser")
-    }
-
-    private static func rejectUnknownFields(_ data: JSON, allowed: Set<String>) throws {
-        let unknown = data.storage.keys.first { allowed.contains($0) == false }
-        if let unknown {
-            throw CommandInputParseError("unknown parameter '\(unknown)'")
-        }
     }
 
     private static func parseCursor(_ raw: JSONValue?) throws -> ESAppLogCursor? {
@@ -134,27 +112,11 @@ struct ESAppLogsReadInput: CommandInput {
         return ESAppLogCursor(captureSessionID: captureSessionID, id: UInt64(idDouble))
     }
 
-    private static func parseLimit(_ raw: JSONValue?) throws -> Int {
-        guard let raw, raw != .null else { return 100 }
-        guard let limit = raw.doubleValue,
-              limit.isFinite,
-              limit.rounded(.towardZero) == limit,
-              limit >= 1,
-              limit <= 500 else {
-            throw CommandInputParseError("limit must be an integer between 1 and 500")
-        }
-        return Int(limit)
-    }
-
-    private static func parseSources(_ raw: JSONValue?) throws -> Set<ESAppLogSource>? {
-        guard let raw, raw != .null else { return nil }
-        guard let values = raw.arrayValue else {
-            throw CommandInputParseError("sources must be an array")
-        }
+    private static func parseSources(_ values: [String]?) throws -> Set<ESAppLogSource>? {
+        guard let values else { return nil }
         var sources = Set<ESAppLogSource>()
         for value in values {
-            guard let rawSource = value.stringValue,
-                  let source = ESAppLogSource(rawValue: rawSource) else {
+            guard let source = ESAppLogSource(rawValue: value) else {
                 throw CommandInputParseError("sources contains unsupported value")
             }
             sources.insert(source)
@@ -162,10 +124,9 @@ struct ESAppLogsReadInput: CommandInput {
         return sources
     }
 
-    private static func parseMinimumLevel(_ raw: JSONValue?) throws -> ESAppLogLevel? {
-        guard let raw, raw != .null else { return nil }
-        guard let rawLevel = raw.stringValue,
-              let level = ESAppLogLevel(rawValue: rawLevel) else {
+    private static func parseMinimumLevel(_ rawLevel: String?) throws -> ESAppLogLevel? {
+        guard let rawLevel else { return nil }
+        guard let level = ESAppLogLevel(rawValue: rawLevel) else {
             throw CommandInputParseError("minimumLevel must be a valid log level")
         }
         return level

@@ -5,8 +5,8 @@ import iOSExploreServer
 ///
 /// 保持 Foundation-only，UIKit 平台据此决定是先清空再写（`replace`）还是追加（`append`）。
 ///
-/// - Note: case 声明顺序即 `CaseIterable.allCases` 顺序，被 `CommandFields.enumValue`
-///   的 "must be one of ..." 错误文案依赖，勿随意重排。
+/// - Note: raw value 必须与 canonical contract 的 `fields.items.mode` 枚举保持一致；
+///   generated field 先校验 wire 值，本类型只负责转换为领域枚举。
 public enum InputMode: String, Sendable, Equatable, CaseIterable {
     /// 先清空原内容（selectAll + deleteBackward），再写入新文本。
     case replace
@@ -22,44 +22,8 @@ public enum InputMode: String, Sendable, Equatable, CaseIterable {
 ///
 /// 该类型整体 Foundation-only：字段声明与解析不依赖 UIKit，便于在 macOS 上做 schema 单测。
 public struct UIInputField: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
-        static let path = UIKitLocatorFields.path
-        // 设计特性 F-27: text 经 UIKit insertText 字面量写入，无转义/不求值/无注入防护
-        // （UITextField/UITextView 预期行为，非 HTML 渲染）。宿主把该文本拼进 SQL/HTML/Shell
-        // 时必须自行参数化/转义。详见 UITextInputExecutor.execute 第 7 步注释。
-        static let text = CommandFields.requiredString(
-            "text",
-            description: "要输入的文本 (任意 Unicode, 含中文/emoji)"
-        )
-        static let mode = CommandFields.enumValue(
-            "mode",
-            type: InputMode.self,
-            default: .replace,
-            description: "replace(默认, 先清空原内容) / append(在末尾追加)"
-        )
-        static let submit = CommandFields.bool(
-            "submit",
-            default: false,
-            description: "输入完成后是否 resignFirstResponder / 触发结束编辑语义 (默认 false)"
-        )
-
-        static let all: [AnyCommandField] = [
-            accessibilityIdentifier.erased,
-            path.erased,
-            text.erased,
-            mode.erased,
-            submit.erased,
-        ]
-    }
-
     /// 单个字段暴露给顶层 `fields.items` 的输入 schema。
-    public static let inputSchema = CommandInputSchema(
-        fields: Fields.all,
-        constraints: [
-            .exactlyOneOf(["accessibilityIdentifier", "path"]),
-        ]
-    )
+    public static let inputSchema = UIKitActionContracts.uiInputFieldsItemInputSchema
 
     /// 目标控件定位方式。
     public let target: UIKitViewLookupTarget
@@ -93,12 +57,19 @@ public struct UIInputField: CommandInput, Sendable, Equatable {
     /// - Returns: 已解析的字段输入。
     /// - Throws: 字段类型或定位互斥关系非法时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIInputField {
-        let mode = try decoder.read(Fields.mode)
-        let submit = try decoder.read(Fields.submit)
-        let text = try decoder.read(Fields.text)
+        let modeValue = try decoder.read(UIKitActionContracts.uiInputFieldsItemModeField)
+        guard let mode = InputMode(rawValue: modeValue) else {
+            // generated enum field 已拦截未知值；保留显式转换守卫，避免领域 enum 与合同
+            // 漂移时把非法 wire 值静默映射成默认模式。
+            throw CommandInputParseError("generated mode '\(modeValue)' has no matching InputMode")
+        }
+        let submit = try decoder.read(UIKitActionContracts.uiInputFieldsItemSubmitField)
+        // text 经 UIKit insertText 字面量写入，不做求值或转义；宿主若把文本继续拼入
+        // SQL/HTML/Shell，仍必须在自己的业务边界参数化或转义。
+        let text = try decoder.read(UIKitActionContracts.uiInputFieldsItemTextField)
         let target = try UIKitLocatorInput.parse(decoder: &decoder,
-                                                  identifierField: Fields.accessibilityIdentifier,
-                                                  pathField: Fields.path)
+                                                  identifierField: UIKitActionContracts.uiInputFieldsItemAccessibilityIdentifierField,
+                                                  pathField: UIKitActionContracts.uiInputFieldsItemPathField)
         return UIInputField(target: target, text: text, mode: mode, submit: submit)
     }
 }
@@ -112,30 +83,8 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
     /// 单次 `ui.input` 最多处理的字段数，避免一次命令持有主线程过久。
     public static let maxFields = 16
 
-    private enum Fields {
-        static let fields = CommandFields.requiredArray(
-            "fields",
-            description: "要按顺序输入的字段数组；单字段输入也必须放在数组里",
-            itemsSchema: UIInputField.inputSchema.toJSON(),
-            minimumCount: 1,
-            maximumCount: UIInputInput.maxFields
-        )
-        static let viewSnapshotID = UIKitLocatorFields.viewSnapshotID
-        static let stopOnFailure = CommandFields.bool(
-            "stopOnFailure",
-            default: true,
-            description: "某个字段失败后是否停止执行后续字段 (默认 true)"
-        )
-
-        static let all: [AnyCommandField] = [
-            fields.erased,
-            viewSnapshotID.erased,
-            stopOnFailure.erased,
-        ]
-    }
-
     /// `ui.input` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(fields: Fields.all)
+    public static let inputSchema = UIKitActionContracts.uiInputInputSchema
 
     /// 按顺序执行的字段输入列表。
     public let fields: [UIInputField]
@@ -169,9 +118,9 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
     public static func parse(from data: JSON) throws -> UIInputInput {
         var decoder = CommandInputDecoder(data, schema: inputSchema)
         try decoder.validateNoUnknownFields()
-        let rawFields = try decoder.read(Fields.fields)
-        let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
-        let stopOnFailure = try decoder.read(Fields.stopOnFailure)
+        let rawFields = try decoder.read(UIKitActionContracts.uiInputFieldsField)
+        let viewSnapshotID = try decoder.read(UIKitActionContracts.uiInputViewSnapshotIDField)
+        let stopOnFailure = try decoder.read(UIKitActionContracts.uiInputStopOnFailureField)
         try decoder.assertAllDeclaredFieldsRead()
 
         let parsedFields = try rawFields.enumerated().map { index, raw -> UIInputField in

@@ -197,16 +197,8 @@ public struct UIControllerNode: Sendable, Equatable {
 /// 限制递归深度，防止容器嵌套过深时输出过大。presented 链（alert/sheet）始终展开，是高频
 /// 关键信息，不设开关。
 public struct UIControllersInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let maxDepth = UIKitFilterFields.maxDepth
-
-        static let all: [AnyCommandField] = [
-            maxDepth.erased,
-        ]
-    }
-
     /// `ui.controllers` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(fields: Fields.all)
+    public static let inputSchema = UIKitActionContracts.uiControllersInputSchema
 
     /// 最大递归深度，`nil` 表示不限制（遍历器另有硬上限兜底防坏状态）。
     public let maxDepth: Int?
@@ -227,6 +219,6 @@ public struct UIControllersInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已完成默认值填充和范围校验的 controller 查询参数。
     /// - Throws: `maxDepth` 非非负整数时抛出 `CommandInputParseError`（→ `invalid_data`）。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIControllersInput {
-        UIControllersInput(maxDepth: try decoder.read(Fields.maxDepth))
+        UIControllersInput(maxDepth: try decoder.read(UIKitActionContracts.uiControllersMaxDepthField))
     }
 }

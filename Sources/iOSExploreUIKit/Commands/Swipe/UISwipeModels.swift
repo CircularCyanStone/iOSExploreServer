@@ -22,54 +22,8 @@ public typealias SwipeDirection = ScrollDirection
 /// 定位参数（`accessibilityIdentifier`/`path`）可缺省——此时 executor 回退到 keyWindow 最前的
 /// scrollView。`viewSnapshotID` 可选，支持 identifier / path 两种定位方式的陈旧校验。
 public struct UISwipeInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let direction = CommandFields.requiredEnum(
-            "direction",
-            type: SwipeDirection.self,
-            description: "滑动方向: up / down / left / right"
-        )
-        static let distance = CommandFields.optionalFiniteNumber(
-            "distance",
-            description: "滑动距离比例(0-1], 缺省=0.8。距离越大滑动越远"
-        )
-        static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
-        static let path = UIKitLocatorFields.path
-        static let viewSnapshotID = UIKitLocatorFields.viewSnapshotID
-
-        // 新增：cell 定位和 action 选择参数
-        static let cellAccessibilityIdentifier = CommandFields.optionalString(
-            "cellAccessibilityIdentifier",
-            description: "定位 swipe actions 的目标 cell（与 cellPath 互斥）"
-        )
-        static let cellPath = CommandFields.optionalString(
-            "cellPath",
-            description: "定位 swipe actions 的目标 cell 路径（与 cellAccessibilityIdentifier 互斥）"
-        )
-        static let actionTitle = CommandFields.optionalString(
-            "actionTitle",
-            description: "要触发的 swipe action 标题（如 '删除'/'归档'），nil 时触发第一个"
-        )
-
-        static let all: [AnyCommandField] = [
-            direction.erased,
-            distance.erased,
-            accessibilityIdentifier.erased,
-            path.erased,
-            viewSnapshotID.erased,
-            cellAccessibilityIdentifier.erased,
-            cellPath.erased,
-            actionTitle.erased,
-        ]
-    }
-
     /// `ui.swipe` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(
-        fields: Fields.all,
-        constraints: [
-            .extensionMessage("accessibilityIdentifier/path 都缺时滑动 keyWindow 最前的 scrollView"),
-            .extensionMessage("cellAccessibilityIdentifier/cellPath 用于定位 UITableView/UICollectionView 的 cell 以触发 swipe actions"),
-        ]
-    )
+    public static let inputSchema = UIKitActionContracts.uiSwipeInputSchema
 
     /// 滑动方向。
     public let direction: SwipeDirection
@@ -114,14 +68,18 @@ public struct UISwipeInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已解析的 swipe 输入。
     /// - Throws: 字段类型、方向枚举、distance 越界、cell 定位规则违规时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UISwipeInput {
-        let direction = try decoder.read(Fields.direction)
-        let distanceRaw = try decoder.read(Fields.distance)
-        let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
-        let locator = try UIKitLocatorInput.parseOptional(decoder: &decoder)
+        let direction = SwipeDirection(rawValue: try decoder.read(UIKitActionContracts.uiSwipeDirectionField))!
+        let distance = try decoder.read(UIKitActionContracts.uiSwipeDistanceField)
+        let viewSnapshotID = try decoder.read(UIKitActionContracts.uiSwipeViewSnapshotIDField)
+        let locator = try UIKitLocatorInput.parseOptional(
+            decoder: &decoder,
+            identifierField: UIKitActionContracts.uiSwipeAccessibilityIdentifierField,
+            pathField: UIKitActionContracts.uiSwipePathField
+        )
 
         // 解析 cell 定位参数（与 scrollView locator 独立，两者都缺时返回 nil）
-        let cellIdentifier = try decoder.read(Fields.cellAccessibilityIdentifier)
-        let cellPathRaw = try decoder.read(Fields.cellPath)
+        let cellIdentifier = try decoder.read(UIKitActionContracts.uiSwipeCellAccessibilityIdentifierField)
+        let cellPathRaw = try decoder.read(UIKitActionContracts.uiSwipeCellPathField)
         let cellLocator: UIKitViewLookupTarget?
         if cellIdentifier == nil && cellPathRaw == nil {
             cellLocator = nil
@@ -133,13 +91,9 @@ public struct UISwipeInput: CommandInput, Sendable, Equatable {
             }
         }
 
-        let actionTitle = try decoder.read(Fields.actionTitle)
-
-        if let distance = distanceRaw, distance <= 0 || distance > 1 {
-            throw CommandInputParseError("distance must be in range (0, 1]")
-        }
+        let actionTitle = try decoder.read(UIKitActionContracts.uiSwipeActionTitleField)
         return UISwipeInput(direction: direction,
-                            distance: distanceRaw,
+                            distance: distance,
                             locator: locator,
                             viewSnapshotID: viewSnapshotID,
                             cellLocator: cellLocator,

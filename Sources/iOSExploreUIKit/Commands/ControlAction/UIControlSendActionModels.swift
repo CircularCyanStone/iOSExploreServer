@@ -44,38 +44,8 @@ public enum UIControlSendActionEvent: String, Sendable, Equatable, CaseIterable 
 /// 它不做 hit-test、不接受坐标、不找祖先 control、不承担默认激活。成功只表示已向该
 /// UIControl 发出指定 event。
 public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
-        static let path = UIKitLocatorFields.path
-        static let viewSnapshotID = UIKitLocatorFields.viewSnapshotID
-        static let event = CommandFields.requiredEnum(
-            "event",
-            type: UIControlSendActionEvent.self,
-            description: "事件名: touchDown / touchUpInside / valueChanged / editingChanged / editingDidBegin / editingDidEnd"
-        )
-        static let value = CommandFields.number(
-            "value",
-            required: false,
-            description: "可选目标值；对 UISlider/UISegmentedControl/UIStepper/UISwitch 有效，缺省则只发事件不改值"
-        )
-
-        static let all: [AnyCommandField] = [
-            accessibilityIdentifier.erased,
-            path.erased,
-            viewSnapshotID.erased,
-            event.erased,
-            value.erased,
-        ]
-    }
-
     /// `ui.control.sendAction` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(
-        fields: Fields.all,
-        constraints: [
-            .exactlyOneOf(["accessibilityIdentifier", "path"]),
-            .extensionMessage("viewSnapshotID is required and must come from ui.inspect"),
-        ]
-    )
+    public static let inputSchema = UIKitActionContracts.uiControlSendActionInputSchema
 
     /// 目标控件定位方式。
     public let target: UIKitViewLookupTarget
@@ -116,15 +86,14 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     /// - Throws: 字段类型、事件枚举、定位互斥关系或 viewSnapshotID 缺失时抛出
     ///   `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIControlSendActionInput {
-        let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
-        let event = try decoder.read(Fields.event)
+        let viewSnapshotID = try decoder.read(UIKitActionContracts.uiControlSendActionViewSnapshotIDField)
+        let event = UIControlSendActionEvent(
+            rawValue: try decoder.read(UIKitActionContracts.uiControlSendActionEventField)
+        )!
         let value = try readValue(decoder: &decoder, for: event)
         let target = try UIKitLocatorInput.parse(decoder: &decoder,
-                                                 identifierField: Fields.accessibilityIdentifier,
-                                                 pathField: Fields.path)
-        guard let viewSnapshotID else {
-            throw CommandInputParseError("viewSnapshotID is required")
-        }
+                                                 identifierField: UIKitActionContracts.uiControlSendActionAccessibilityIdentifierField,
+                                                 pathField: UIKitActionContracts.uiControlSendActionPathField)
         return UIControlSendActionInput(target: target, event: event, viewSnapshotID: viewSnapshotID, value: value)
     }
 
@@ -136,7 +105,17 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
     private static func readValue(decoder: inout CommandInputDecoder,
                                   for event: UIControlSendActionEvent) throws -> JSONValue? {
         do {
-            return try decoder.read(Fields.value)
+            guard let rawValue = try decoder.readRaw(UIKitActionContracts.uiControlSendActionValueField),
+                  rawValue != .null else {
+                return nil
+            }
+            if let number = rawValue.doubleValue, number.isFinite {
+                return .double(number)
+            }
+            if let boolean = rawValue.boolValue {
+                return .bool(boolean)
+            }
+            throw CommandInputParseError("value must be a finite number")
         } catch {
             guard event.isEditingEvent else { throw error }
             throw CommandInputParseError(

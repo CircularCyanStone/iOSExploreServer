@@ -97,16 +97,18 @@ func sendActionInputRejectsMixedPathAndIdentifier() {
 func sendActionInputSchemaUsesViewSnapshotID() throws {
     #expect(UIControlSendActionInput.inputSchema.fields.map(\.name) == [
         "accessibilityIdentifier",
-        "path",
-        "viewSnapshotID",
         "event",
+        "path",
         "value",
+        "viewSnapshotID",
     ])
     let valueField = try #require(UIControlSendActionInput.inputSchema.fields.first { $0.name == "value" })
     #expect(valueField.schema.type == .number)
     #expect(valueField.schema.required == false)
     #expect(valueField.schema.allowsNull == true)
-    #expect(valueField.schema.description.contains("UISlider/UISegmentedControl/UIStepper/UISwitch"))
+    for controlName in ["UISlider", "UISegmentedControl", "UIStepper", "UISwitch"] {
+        #expect(valueField.schema.description.contains(controlName))
+    }
 }
 
 @Test("UIControlSendActionEvent 支持常用 UIControl 事件名")

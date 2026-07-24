@@ -116,6 +116,13 @@ function renderInputSchemaMembers(contract: DeviceActionContract): string[] {
 
   for (const name of fields) {
     const fieldIdentifier = `${identifier}${fieldIdentifierPart(name)}Field`;
+    const itemMembers = renderObjectArrayItemMembers(
+      identifier,
+      name,
+      properties[name]!,
+      required.has(name)
+    );
+    fieldMembers.push(...itemMembers.members);
     const emission = emitField(name, properties[name]!, required.has(name));
     fieldMembers.push(`    static let ${fieldIdentifier} = ${emission.expression}`);
     fieldReferences.push(emission.typed ? `${fieldIdentifier}.erased` : fieldIdentifier);
@@ -130,6 +137,58 @@ function renderInputSchemaMembers(contract: DeviceActionContract): string[] {
   return fieldMembers;
 }
 
+interface ObjectArrayItemEmission {
+  readonly members: string[];
+}
+
+/**
+ * 为可由 typed parser 逐项读取的 object-array item 生成独立字段与 schema。
+ *
+ * 顶层数组字段仍由 `emitField` 从 canonical `items` 原样发射；这里的额外声明只为
+ * Foundation-only parser 提供稳定的 `CommandField` 引用，避免 parser 再次手写 scalar schema。
+ */
+function renderObjectArrayItemMembers(
+  actionIdentifierValue: string,
+  fieldName: string,
+  schema: JsonSchema,
+  isRequiredField: boolean
+): ObjectArrayItemEmission {
+  const item = schema.items;
+  if (!isRequiredArray(schema, isRequiredField) || !isObjectArrayItemSchema(schema, item)) {
+    return { members: [] };
+  }
+
+  const itemIdentifier = `${actionIdentifierValue}${fieldIdentifierPart(fieldName)}Item`;
+  const properties = item.properties ?? {};
+  const required = new Set(item.required ?? []);
+  const fieldMembers: string[] = [];
+  const fieldReferences: string[] = [];
+
+  for (const name of Object.keys(properties).sort()) {
+    const fieldIdentifier = `${itemIdentifier}${fieldIdentifierPart(name)}Field`;
+    const emission = emitField(name, properties[name]!, required.has(name));
+    fieldMembers.push(`    static let ${fieldIdentifier} = ${emission.expression}`);
+    fieldReferences.push(emission.typed ? `${fieldIdentifier}.erased` : fieldIdentifier);
+  }
+
+  const constraints = swiftConstraints(item["x-iosExplore-constraints"]);
+  const constraintArgument = constraints.length === 0 ? "" : `,\n        constraints: [${constraints.join(", ")}]`;
+  const fieldsExpression = fieldReferences.length === 0 ? "[]" : `[${fieldReferences.join(", ")}]`;
+  fieldMembers.push(
+    `    static let ${itemIdentifier}InputSchema = CommandInputSchema(fields: ${fieldsExpression}, additionalProperties: ${item.additionalProperties === true}${constraintArgument})`
+  );
+
+  return { members: fieldMembers };
+}
+
+function isObjectArrayItemSchema(schema: JsonSchema, item: JsonSchema | undefined): item is JsonSchema & {
+  type: "object";
+  properties: Record<string, JsonSchema>;
+} {
+  const isArray = schema.type === "array" || (Array.isArray(schema.type) && schema.type.includes("array"));
+  return isArray && item?.type === "object" && item.properties !== undefined;
+}
+
 interface SwiftFieldEmission {
   readonly expression: string;
   readonly typed: boolean;
@@ -141,6 +200,24 @@ function emitField(name: string, schema: JsonSchema, required: boolean): SwiftFi
     return {
       typed: true,
       expression: `CommandFields.bool(${swiftString(name)}, default: ${schema.default}, description: ${swiftString(description)})`
+    };
+  }
+  if (isRequiredStringEnum(schema, required)) {
+    return {
+      typed: true,
+      expression: `CommandFields.requiredStringEnum(${swiftString(name)}, values: ${swiftStringArray(stringEnumValues(schema))}, description: ${swiftString(description)})`
+    };
+  }
+  if (isDefaultStringEnum(schema, required)) {
+    return {
+      typed: true,
+      expression: `CommandFields.stringEnum(${swiftString(name)}, values: ${swiftStringArray(stringEnumValues(schema))}, default: ${swiftString(schema.default as string)}, description: ${swiftString(description)})`
+    };
+  }
+  if (isNullableStringEnum(schema, required)) {
+    return {
+      typed: true,
+      expression: `CommandFields.optionalStringEnum(${swiftString(name)}, values: ${swiftStringArray(stringEnumValues(schema))}, description: ${swiftString(description)})`
     };
   }
   if (isRequiredString(schema, required)) {
@@ -164,6 +241,43 @@ function emitField(name: string, schema: JsonSchema, required: boolean): SwiftFi
     if (schema.minItems !== undefined) argumentsList.push(`minimumCount: ${schema.minItems}`);
     if (schema.maxItems !== undefined) argumentsList.push(`maximumCount: ${schema.maxItems}`);
     return { typed: true, expression: `CommandFields.requiredArray(${argumentsList.join(", ")})` };
+  }
+  if (isNullableStringEnumArray(schema, required)) {
+    const items = schema.items!;
+    const argumentsList = [
+      swiftString(name),
+      `values: ${swiftStringArray(stringEnumValues(items))}`
+    ];
+    if (items.description !== undefined) {
+      argumentsList.push(`itemDescription: ${swiftString(items.description)}`);
+    }
+    argumentsList.push(`description: ${swiftString(description)}`);
+    return {
+      typed: true,
+      expression: `CommandFields.optionalStringEnumArray(${argumentsList.join(", ")})`
+    };
+  }
+  if (isNullableBoundedInt(schema, required)) {
+    const argumentsList = [swiftString(name)];
+    if (schema.minimum !== undefined) argumentsList.push(`minimum: ${schema.minimum}`);
+    if (schema.maximum !== undefined) argumentsList.push(`maximum: ${schema.maximum}`);
+    argumentsList.push(`description: ${swiftString(description)}`);
+    return {
+      typed: true,
+      expression: `CommandFields.optionalInt(${argumentsList.join(", ")})`
+    };
+  }
+  if (isDefaultBoundedFiniteNumber(schema, required)) {
+    return {
+      typed: true,
+      expression: `CommandFields.finiteNumber(${finiteNumberArguments(name, schema, true)})`
+    };
+  }
+  if (isNullableBoundedFiniteNumber(schema, required)) {
+    return {
+      typed: true,
+      expression: `CommandFields.optionalFiniteNumber(${finiteNumberArguments(name, schema, false)})`
+    };
   }
   if (isNullableFiniteNumber(schema, required)) {
     return {
@@ -193,6 +307,22 @@ function isBooleanWithDefault(schema: JsonSchema, required: boolean): boolean {
   return !required && schema.type === "boolean" && typeof schema.default === "boolean" && hasOnlyKeys(schema, ["type", "description", "default"]);
 }
 
+function isRequiredStringEnum(schema: JsonSchema, required: boolean): boolean {
+  return required && schema.type === "string" && hasStringEnum(schema, false) &&
+    hasOnlyKeys(schema, ["type", "description", "enum"]);
+}
+
+function isDefaultStringEnum(schema: JsonSchema, required: boolean): boolean {
+  return !required && schema.type === "string" && typeof schema.default === "string" &&
+    hasStringEnum(schema, false) && stringEnumValues(schema).includes(schema.default) &&
+    hasOnlyKeys(schema, ["type", "description", "enum", "default"]);
+}
+
+function isNullableStringEnum(schema: JsonSchema, required: boolean): boolean {
+  return !required && isNullableType(schema, "string") && hasStringEnum(schema, true) &&
+    hasOnlyKeys(schema, ["type", "description", "enum"]);
+}
+
 function isRequiredString(schema: JsonSchema, required: boolean): boolean {
   return required && schema.type === "string" && hasOnlyKeys(schema, ["type", "description"]);
 }
@@ -204,6 +334,28 @@ function isNullableString(schema: JsonSchema, required: boolean): boolean {
 function isRequiredArray(schema: JsonSchema, required: boolean): boolean {
   return required && schema.type === "array" && schema.uniqueItems === undefined &&
     hasOnlyKeys(schema, ["type", "description", "items", "minItems", "maxItems"]);
+}
+
+function isNullableStringEnumArray(schema: JsonSchema, required: boolean): boolean {
+  return !required && isNullableType(schema, "array") && schema.items !== undefined &&
+    schema.items.type === "string" && hasStringEnum(schema.items, false) &&
+    hasOnlyKeys(schema, ["type", "description", "items"]) &&
+    hasOnlyKeys(schema.items, ["type", "description", "enum"]);
+}
+
+function isNullableBoundedInt(schema: JsonSchema, required: boolean): boolean {
+  return !required && isNullableType(schema, "integer") && hasSafeIntegerBound(schema) &&
+    hasOnlyKeys(schema, ["type", "description", "minimum", "maximum"]);
+}
+
+function isDefaultBoundedFiniteNumber(schema: JsonSchema, required: boolean): boolean {
+  return isNullableBoundedNumberShape(schema, required) && typeof schema.default === "number" &&
+    Number.isFinite(schema.default) && hasOnlyKeys(schema, numericFieldKeys(true));
+}
+
+function isNullableBoundedFiniteNumber(schema: JsonSchema, required: boolean): boolean {
+  return isNullableBoundedNumberShape(schema, required) && schema.default === undefined &&
+    hasOnlyKeys(schema, numericFieldKeys(false));
 }
 
 function isNullableFiniteNumber(schema: JsonSchema, required: boolean): boolean {
@@ -220,8 +372,72 @@ function isDefaultBoundedInt(schema: JsonSchema, required: boolean): boolean {
     isSafeInteger(schema.default) && hasOnlyKeys(schema, ["type", "description", "default", "minimum", "maximum"]);
 }
 
-function isNullableType(schema: JsonSchema, type: "string" | "number"): boolean {
+function isNullableType(schema: JsonSchema, type: "string" | "number" | "integer" | "array"): boolean {
   return Array.isArray(schema.type) && schema.type.length === 2 && schema.type.includes(type) && schema.type.includes("null");
+}
+
+function hasStringEnum(schema: JsonSchema, nullable: boolean): boolean {
+  if (schema.enum === undefined || schema.enum.length === 0) return false;
+  if (!schema.enum.every(value => typeof value === "string" || (nullable && value === null))) return false;
+  if (nullable && !schema.enum.includes(null)) return false;
+  return schema.enum.some(value => typeof value === "string");
+}
+
+function stringEnumValues(schema: JsonSchema): string[] {
+  return (schema.enum ?? []).filter((value): value is string => typeof value === "string");
+}
+
+function hasSafeIntegerBound(schema: JsonSchema): boolean {
+  const bounds = [schema.minimum, schema.maximum].filter(value => value !== undefined);
+  return bounds.length > 0 && bounds.every(isSafeInteger);
+}
+
+function isNullableBoundedNumberShape(schema: JsonSchema, required: boolean): boolean {
+  if (required || !isNullableType(schema, "number") || !hasFiniteNumberBound(schema)) return false;
+  if (schema.minimum !== undefined && schema.exclusiveMinimum !== undefined) return false;
+  if (schema.maximum !== undefined && schema.exclusiveMaximum !== undefined) return false;
+  return true;
+}
+
+function hasFiniteNumberBound(schema: JsonSchema): boolean {
+  const bounds = [schema.minimum, schema.maximum, schema.exclusiveMinimum, schema.exclusiveMaximum]
+    .filter(value => value !== undefined);
+  return bounds.length > 0 && bounds.every(value => typeof value === "number" && Number.isFinite(value));
+}
+
+function numericFieldKeys(hasDefault: boolean): string[] {
+  return [
+    "type",
+    "description",
+    ...(hasDefault ? ["default"] : []),
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum"
+  ];
+}
+
+function finiteNumberArguments(name: string, schema: JsonSchema, hasDefault: boolean): string {
+  const argumentsList = [swiftString(name)];
+  if (hasDefault) argumentsList.push(`default: ${schema.default}`);
+  if (schema.exclusiveMinimum !== undefined) {
+    argumentsList.push(`minimum: ${schema.exclusiveMinimum}`);
+  } else if (schema.minimum !== undefined) {
+    argumentsList.push(`minimum: ${schema.minimum}`);
+  }
+  if (schema.exclusiveMaximum !== undefined) {
+    argumentsList.push(`maximum: ${schema.exclusiveMaximum}`);
+  } else if (schema.maximum !== undefined) {
+    argumentsList.push(`maximum: ${schema.maximum}`);
+  }
+  if (schema.exclusiveMinimum !== undefined) argumentsList.push("exclusiveMinimum: true");
+  if (schema.exclusiveMaximum !== undefined) argumentsList.push("exclusiveMaximum: true");
+  argumentsList.push(`description: ${swiftString(schema.description ?? "")}`);
+  return argumentsList.join(", ");
+}
+
+function swiftStringArray(values: readonly string[]): string {
+  return `[${values.map(swiftString).join(", ")}]`;
 }
 
 function isSafeInteger(value: unknown): value is number {

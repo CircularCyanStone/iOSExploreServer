@@ -19,28 +19,8 @@ public enum KeyboardDismissStrategy: String, Sendable, Equatable, CaseIterable {
 /// 命令可在无参数时按自动策略收起键盘；`waitAfterMs` 用于执行后短暂等待，让 UIKit first
 /// responder 状态稳定，便于 agent 紧接着读取 UI 状态。
 public struct UIKeyboardDismissInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let strategy = CommandFields.enumValue(
-            "strategy",
-            type: KeyboardDismissStrategy.self,
-            default: .auto,
-            description: "键盘收起策略: auto / resignFirstResponder / endEditing"
-        )
-        static let waitAfterMs = CommandFields.int(
-            "waitAfterMs",
-            range: 0...3000,
-            default: 200,
-            description: "执行后等待毫秒数，范围 0...3000，默认 200"
-        )
-
-        static let all: [AnyCommandField] = [
-            strategy.erased,
-            waitAfterMs.erased,
-        ]
-    }
-
     /// `ui.keyboard.dismiss` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(fields: Fields.all)
+    public static let inputSchema = UIKitActionContracts.uiKeyboardDismissInputSchema
 
     /// 键盘收起策略。
     public let strategy: KeyboardDismissStrategy
@@ -63,8 +43,11 @@ public struct UIKeyboardDismissInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已解析的 keyboard dismiss 输入。
     /// - Throws: 字段类型、枚举值或 `waitAfterMs` 范围非法时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIKeyboardDismissInput {
-        let strategy = try decoder.read(Fields.strategy)
-        let waitAfterMs = try decoder.read(Fields.waitAfterMs)
+        let strategyValue = try decoder.read(UIKitActionContracts.uiKeyboardDismissStrategyField)
+        guard let strategy = KeyboardDismissStrategy(rawValue: strategyValue) else {
+            throw CommandInputParseError("unsupported keyboard dismiss strategy '\(strategyValue)'")
+        }
+        let waitAfterMs = try decoder.read(UIKitActionContracts.uiKeyboardDismissWaitAfterMsField)
         return UIKeyboardDismissInput(strategy: strategy, waitAfterMs: waitAfterMs)
     }
 }

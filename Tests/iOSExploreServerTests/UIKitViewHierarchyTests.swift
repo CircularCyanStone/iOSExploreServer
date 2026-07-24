@@ -218,12 +218,12 @@ func viewHierarchyQueryControllerDefaultsToNil() throws {
 @Test("UIViewHierarchyInput schema 按工具展示顺序声明字段")
 func viewHierarchyInputSchemaUsesExpectedFieldOrder() {
     #expect(UIViewHierarchyInput.inputSchema.fields.map(\.name) == [
-        "detailLevel",
-        "maxDepth",
-        "includeHidden",
         "accessibilityIdentifier",
         "accessibilityIdentifierPrefix",
         "controller",
+        "detailLevel",
+        "includeHidden",
+        "maxDepth",
     ])
 }
 

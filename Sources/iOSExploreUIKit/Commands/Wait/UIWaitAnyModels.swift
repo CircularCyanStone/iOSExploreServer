@@ -45,56 +45,8 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
     /// conditions 数组长度上限，避免请求体过大。
     static let maxConditions = 16
 
-    private enum Fields {
-        static let timeoutMs = CommandFields.int(
-            "timeoutMs",
-            range: 0...30_000,
-            default: 3000,
-            description: "业务超时毫秒数(共享), 范围 0...30000, 默认 3000"
-        )
-        static let intervalMs = CommandFields.int(
-            "intervalMs",
-            range: 50...5000,
-            default: 100,
-            description: "轮询间隔毫秒数(共享), 范围 50...5000, 默认 100"
-        )
-        static let stableMs = CommandFields.int(
-            "stableMs",
-            range: 0...10_000,
-            default: 300,
-            description: "idle 条件连续稳定的毫秒数(共享), 范围 0...10000, 默认 300"
-        )
-        static let includeHidden = CommandFields.bool(
-            "includeHidden",
-            default: false,
-            description: "idle/textExists 条件是否考虑隐藏 view(共享), 默认 false"
-        )
-
-        /// conditions 是对象数组，无法用标量 `CommandField<Value>` 表达，故只用 `AnyCommandField`
-        /// 声明 schema（help 自省可见为 array）；实际解析在 `parse(from:)` 手写。
-        static let conditionsField = AnyCommandField(
-            name: "conditions",
-            schema: CommandFieldSchema(type: .array,
-                                       required: true,
-                                       description: "等待条件数组(1...16); 每项为对象含 id/mode 及该模式所需字段, 顺序即命中优先级")
-        )
-
-        static let all: [AnyCommandField] = [
-            conditionsField,
-            timeoutMs.erased,
-            intervalMs.erased,
-            stableMs.erased,
-            includeHidden.erased,
-        ]
-    }
-
     /// `ui.waitAny` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(
-        fields: Fields.all,
-        constraints: [
-            .extensionMessage("conditions[].mode 必填字段: targetExists/targetGone 需 accessibilityIdentifier 或 path; textExists 需 text; snapshotChanged 需 viewSnapshotID; idle 无额外字段; stableMs/includeHidden 为顶层共享")
-        ]
-    )
+    public static let inputSchema = UIKitActionContracts.uiWaitAnyInputSchema
 
     /// 等待条件列表（顺序即命中优先级）。
     public let conditions: [UIWaitAnyCondition]
@@ -122,10 +74,10 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
 
     /// 从原始 JSON data 解析 waitAny 输入。
     ///
-    /// conditions 是对象数组，无法走 `CommandField<Value>` + `decoder.read` 的标量机制，故在此手写：
-    /// 先用 decoder 拒绝未知顶层字段并读取共享标量，再从 data 手写解析 conditions（含 id 唯一、
-    /// mode 合法、各模式必填字段校验）。所有失败统一抛 `CommandInputParseError`，由 `AnyCommand`
-    /// 映射为 `invalid_data` envelope。
+    /// conditions 是对象数组，无法走 `CommandField<Value>` 的 typed decode，故通过 generated
+    /// `AnyCommandField` 读取原始值后手写解析（含 id 唯一、mode 合法、各模式必填字段校验）。
+    /// 顶层未知字段和 generated 字段读取完整性仍由 decoder 统一守卫。所有失败统一抛
+    /// `CommandInputParseError`，由 `AnyCommand` 映射为 `invalid_data` envelope。
     ///
     /// - Parameter data: `ExploreRequest.data` 中的原始参数对象。
     /// - Returns: 已解析的 waitAny 输入。
@@ -135,11 +87,13 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
     public static func parse(from data: JSON) throws -> UIWaitAnyInput {
         var decoder = CommandInputDecoder(data, schema: inputSchema)
         try decoder.validateNoUnknownFields()
-        let timeoutMs = try decoder.read(Fields.timeoutMs)
-        let intervalMs = try decoder.read(Fields.intervalMs)
-        let stableMs = try decoder.read(Fields.stableMs)
-        let includeHidden = try decoder.read(Fields.includeHidden)
-        let conditions = try parseConditions(from: data)
+        let rawConditions = try decoder.readRaw(UIKitActionContracts.uiWaitAnyConditionsField)
+        let timeoutMs = try decoder.read(UIKitActionContracts.uiWaitAnyTimeoutMsField)
+        let intervalMs = try decoder.read(UIKitActionContracts.uiWaitAnyIntervalMsField)
+        let stableMs = try decoder.read(UIKitActionContracts.uiWaitAnyStableMsField)
+        let includeHidden = try decoder.read(UIKitActionContracts.uiWaitAnyIncludeHiddenField)
+        let conditions = try parseConditions(from: rawConditions)
+        try decoder.assertAllDeclaredFieldsRead()
         return UIWaitAnyInput(conditions: conditions,
                               timeoutMs: timeoutMs,
                               intervalMs: intervalMs,
@@ -149,9 +103,9 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
 
     /// 协议要求的 decoder 入口。
     ///
-    /// waitAny 的 conditions 嵌套数组只能整体从原始 data 解析，而 `CommandInputDecoder` 不向
-    /// 扩展模块暴露原始 data，故真实解析在 `parse(from:)`。`AnyCommand` 始终走 `parse(from:)`，
-    /// 本方法不会被调用，仅满足协议签名；若被调用则明确报错而非静默。
+    /// waitAny 需要在同一入口显式执行顶层未知字段校验、复杂数组解析和 generated 字段完整读取
+    /// 断言，故真实解析收敛在 `parse(from:)`。`AnyCommand` 始终走 `parse(from:)`，本方法不会
+    /// 被调用，仅满足协议签名；若被调用则明确报错而非静默。
     ///
     /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
     /// - Returns: 已解析的 waitAny 输入。
@@ -160,14 +114,14 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
         throw CommandInputParseError("UIWaitAnyInput must be parsed via parse(from:)")
     }
 
-    /// 从原始 data 手写解析 conditions 数组。
+    /// 从 decoder 读取的原始字段值手写解析 conditions 数组。
     ///
-    /// - Parameter data: 原始命令 data。
+    /// - Parameter raw: `conditions` 的原始字段值。
     /// - Returns: 按顺序解析出的条件列表。
     /// - Throws: conditions 缺失/非数组/空/超 16、任一条件非对象、id 缺失/为空/重复、condition 内
     ///   未知字段、mode 缺失/未知、定位字段非法、mode 必填字段缺失时抛出 `CommandInputParseError`。
-    private static func parseConditions(from data: JSON) throws -> [UIWaitAnyCondition] {
-        guard let raw = data["conditions"] else {
+    private static func parseConditions(from raw: JSONValue?) throws -> [UIWaitAnyCondition] {
+        guard let raw else {
             throw CommandInputParseError("conditions is required")
         }
         guard case .array(let elements) = raw else {

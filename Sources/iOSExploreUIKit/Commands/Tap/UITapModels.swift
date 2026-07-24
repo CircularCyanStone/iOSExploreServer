@@ -12,26 +12,8 @@ import iOSExploreServer
 /// `viewSnapshotID`（由 `ui.inspect` 签发）。identifier 与 path 都走同一 freshness 校验，
 /// identifier 不再是绕过陈旧校验的后门。
 public struct UITapInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let accessibilityIdentifier = UIKitLocatorFields.accessibilityIdentifier
-        static let path = UIKitLocatorFields.path
-        static let viewSnapshotID = UIKitLocatorFields.viewSnapshotID
-
-        static let all: [AnyCommandField] = [
-            accessibilityIdentifier.erased,
-            path.erased,
-            viewSnapshotID.erased,
-        ]
-    }
-
     /// `ui.tap` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(
-        fields: Fields.all,
-        constraints: [
-            .exactlyOneOf(["accessibilityIdentifier", "path"]),
-            .extensionMessage("viewSnapshotID is required and must come from ui.inspect"),
-        ]
-    )
+    public static let inputSchema = UIKitActionContracts.uiTapInputSchema
 
     /// canonical target 定位方式（identifier 或 path）。
     public let target: UIKitViewLookupTarget
@@ -54,13 +36,10 @@ public struct UITapInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已解析的 tap 命令输入。
     /// - Throws: 字段类型、定位互斥关系或 viewSnapshotID 缺失时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UITapInput {
-        let viewSnapshotID = try decoder.read(Fields.viewSnapshotID)
+        let viewSnapshotID = try decoder.read(UIKitActionContracts.uiTapViewSnapshotIDField)
         let target = try UIKitLocatorInput.parse(decoder: &decoder,
-                                                  identifierField: Fields.accessibilityIdentifier,
-                                                  pathField: Fields.path)
-        guard let viewSnapshotID else {
-            throw CommandInputParseError("viewSnapshotID is required")
-        }
+                                                  identifierField: UIKitActionContracts.uiTapAccessibilityIdentifierField,
+                                                  pathField: UIKitActionContracts.uiTapPathField)
         return UITapInput(target: target, viewSnapshotID: viewSnapshotID)
     }
 }

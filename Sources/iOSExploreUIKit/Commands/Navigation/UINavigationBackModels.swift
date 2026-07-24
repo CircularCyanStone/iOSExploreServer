@@ -23,34 +23,8 @@ public enum NavigationBackStrategy: String, Sendable, Equatable, CaseIterable {
 /// （auto/dismiss/pop）从未被实现。实际已存在的字段是 `strategy`
 /// （NavigationBackStrategy 枚举，含 auto / navigationController / dismiss 三个值）。
 public struct UINavigationBackInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let strategy = CommandFields.enumValue(
-            "strategy",
-            type: NavigationBackStrategy.self,
-            default: .auto,
-            description: "返回策略: auto / navigationController / dismiss"
-        )
-        static let animated = CommandFields.bool(
-            "animated",
-            default: false,
-            description: "是否动画, 默认 false"
-        )
-        static let waitAfterMs = CommandFields.int(
-            "waitAfterMs",
-            range: 0...3000,
-            default: 300,
-            description: "执行后等待毫秒数, 范围 0...3000, 默认 300"
-        )
-
-        static let all: [AnyCommandField] = [
-            strategy.erased,
-            animated.erased,
-            waitAfterMs.erased,
-        ]
-    }
-
     /// `ui.navigation.back` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(fields: Fields.all)
+    public static let inputSchema = UIKitActionContracts.uiNavigationBackInputSchema
 
     /// 返回策略。
     public let strategy: NavigationBackStrategy
@@ -79,9 +53,12 @@ public struct UINavigationBackInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已解析的 navigation back 输入。
     /// - Throws: 字段类型、枚举值或 `waitAfterMs` 范围非法时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UINavigationBackInput {
-        let strategy = try decoder.read(Fields.strategy)
-        let animated = try decoder.read(Fields.animated)
-        let waitAfterMs = try decoder.read(Fields.waitAfterMs)
+        let strategyValue = try decoder.read(UIKitActionContracts.uiNavigationBackStrategyField)
+        guard let strategy = NavigationBackStrategy(rawValue: strategyValue) else {
+            throw CommandInputParseError("unsupported navigation back strategy '\(strategyValue)'")
+        }
+        let animated = try decoder.read(UIKitActionContracts.uiNavigationBackAnimatedField)
+        let waitAfterMs = try decoder.read(UIKitActionContracts.uiNavigationBackWaitAfterMsField)
         return UINavigationBackInput(strategy: strategy, animated: animated, waitAfterMs: waitAfterMs)
     }
 }

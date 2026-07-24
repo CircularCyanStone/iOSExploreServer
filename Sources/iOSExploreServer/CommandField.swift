@@ -99,7 +99,11 @@ public struct CommandFieldSchema: Sendable, Equatable {
             json["maximum"] = .double(maximum)
         }
         if let enumValues = enumValues {
-            json["enum"] = .array(enumValues.map { .string($0) })
+            var values = enumValues.map { JSONValue.string($0) }
+            if allowsNull {
+                values.append(.null)
+            }
+            json["enum"] = .array(values)
         }
         for (key, value) in extraSchema.storage {
             json[key] = value
@@ -164,11 +168,15 @@ public struct CommandField<Value: Sendable>: Sendable {
 ///
 /// 工厂集中定义字段 schema 与运行时解析规则，后续命令只组合这些字段即可得到一致的
 /// JSON Schema 输出、默认值处理和错误类型。
+///
+/// 带默认值的布尔、整数和字符串枚举在公共 schema 中保持单一非 null 类型；新客户端应省略
+/// 字段来使用默认值。decoder 仍把显式 null 当作缺失，是对既有调用方的运行时兼容，不代表
+/// canonical schema 鼓励发送 null。有限数字是否公开 nullable 则直接遵循对应合同声明。
 public enum CommandFields {
     /// JSON/JavaScript 可精确表达的最大安全整数，避免 Double 承载协议数字时接受已失真的整数。
     private static let jsonSafeIntegerLimit = 9_007_199_254_740_991
 
-    /// 布尔字段：缺失使用默认值，存在但非布尔抛出解析错误。
+    /// 布尔字段：缺失或兼容性 null 使用默认值，存在但非布尔抛出解析错误。
     ///
     /// - Important (设计特性 F-26，勿当 bug 重提): 本工厂对"布尔"采用**严格**判定——只接受
     ///   JSON `true`/`false`，JSON number 一律拒绝。例如 `"submit": 1` 或 `"animated": 0`
@@ -237,6 +245,87 @@ public enum CommandFields {
         }
     }
 
+    /// 必填 raw string 枚举字段：返回 wire 字符串，不引入领域枚举类型。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - values: 合同允许的字符串值。
+    ///   - description: 字段说明。
+    /// - Returns: 解析为 `String` 的命令字段。
+    public static func requiredStringEnum(_ name: String,
+                                          values: [String],
+                                          description: String) -> CommandField<String> {
+        precondition(!values.isEmpty, "\(name) enum values must not be empty")
+        return CommandField(name: name,
+                            schema: CommandFieldSchema(type: .string,
+                                                       required: true,
+                                                       description: description,
+                                                       enumValues: values)) { raw in
+            guard let raw, raw != .null else {
+                throw CommandInputParseError("missing required parameter '\(name)'")
+            }
+            guard let parsed = raw.stringValue, values.contains(parsed) else {
+                throw CommandInputParseError("\(name) must be one of \(values.joined(separator: ", "))")
+            }
+            return parsed
+        }
+    }
+
+    /// 带默认值的 raw string 枚举字段：缺失或兼容性 null 时返回合同默认字符串。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - values: 合同允许的字符串值。
+    ///   - default: 字段缺失或显式为 null 时使用的默认值。
+    ///   - description: 字段说明。
+    /// - Returns: 解析为 `String` 的命令字段。
+    public static func stringEnum(_ name: String,
+                                  values: [String],
+                                  default value: String,
+                                  description: String) -> CommandField<String> {
+        precondition(!values.isEmpty, "\(name) enum values must not be empty")
+        precondition(values.contains(value), "\(name) default must be one of the enum values")
+        return CommandField(name: name,
+                            schema: CommandFieldSchema(type: .string,
+                                                       required: false,
+                                                       description: description,
+                                                       defaultValue: .string(value),
+                                                       enumValues: values)) { raw in
+            guard let raw, raw != .null else { return value }
+            guard let parsed = raw.stringValue, values.contains(parsed) else {
+                throw CommandInputParseError("\(name) must be one of \(values.joined(separator: ", "))")
+            }
+            return parsed
+        }
+    }
+
+    /// 可选 raw string 枚举字段：缺失或 null 返回 nil，其余值必须属于合同枚举。
+    ///
+    /// nullable schema 的 `enum` 会同步包含 JSON null，使 schema 与运行时可接受值一致。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - values: 合同允许的字符串值。
+    ///   - description: 字段说明。
+    /// - Returns: 解析为 `String?` 的命令字段。
+    public static func optionalStringEnum(_ name: String,
+                                          values: [String],
+                                          description: String) -> CommandField<String?> {
+        precondition(!values.isEmpty, "\(name) enum values must not be empty")
+        return CommandField(name: name,
+                            schema: CommandFieldSchema(type: .string,
+                                                       required: false,
+                                                       description: description,
+                                                       allowsNull: true,
+                                                       enumValues: values)) { raw in
+            guard let raw, raw != .null else { return nil }
+            guard let parsed = raw.stringValue, values.contains(parsed) else {
+                throw CommandInputParseError("\(name) must be one of \(values.joined(separator: ", "))")
+            }
+            return parsed
+        }
+    }
+
     /// 必填数组字段：缺失或 null 抛出解析错误，存在但非数组也抛出解析错误。
     ///
     /// 该工厂用于需要在 schema 里声明 `items` 的命令输入，例如批量字段数组。调用方可以通过
@@ -290,21 +379,142 @@ public enum CommandFields {
         }
     }
 
-    /// 可选有限数字字段：缺失或 null 返回 nil，存在但非有限数字抛出解析错误。
+    /// 可选 nullable 字符串枚举数组：缺失或 null 返回 nil，数组元素必须属于合同枚举。
+    ///
+    /// 该工厂有意保留重复元素，不输出 `uniqueItems`；需要去重的领域行为应由对应合同和 parser
+    /// 单独声明，不能在通用 wire 字段中隐式改变输入顺序或数量。
     ///
     /// - Parameters:
     ///   - name: 字段名。
+    ///   - values: 每个字符串元素允许的枚举值。
+    ///   - itemDescription: 数组元素的可选 schema 说明。
+    ///   - description: 字段说明。
+    /// - Returns: 解析为 `[String]?` 的命令字段。
+    public static func optionalStringEnumArray(_ name: String,
+                                               values: [String],
+                                               itemDescription: String? = nil,
+                                               description: String) -> CommandField<[String]?> {
+        precondition(!values.isEmpty, "\(name) item enum values must not be empty")
+        var itemsSchema: JSON = [
+            "type": .string("string"),
+            "enum": .array(values.map(JSONValue.string)),
+        ]
+        if let itemDescription {
+            itemsSchema["description"] = .string(itemDescription)
+        }
+        return CommandField(name: name,
+                            schema: CommandFieldSchema(type: .array,
+                                                       required: false,
+                                                       description: description,
+                                                       allowsNull: true,
+                                                       extraSchema: ["items": .object(itemsSchema)])) { raw in
+            guard let raw, raw != .null else { return nil }
+            guard case .array(let items) = raw else {
+                throw CommandInputParseError("\(name) must be an array")
+            }
+            return try items.map { item in
+                guard let parsed = item.stringValue, values.contains(parsed) else {
+                    throw CommandInputParseError("\(name) items must be one of \(values.joined(separator: ", "))")
+                }
+                return parsed
+            }
+        }
+    }
+
+    /// 可选有限数字字段：缺失或 null 返回 nil，非有限数字或越界时抛出解析错误。
+    ///
+    /// `minimum` / `maximum` 与对应的 exclusive 开关同时驱动 schema 输出和运行时比较；
+    /// exclusive 边界按 JSON Schema 数值关键字 `exclusiveMinimum` / `exclusiveMaximum` 输出。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - minimum: 可选下界。
+    ///   - maximum: 可选上界。
+    ///   - exclusiveMinimum: 是否排除下界值；仅在提供 `minimum` 时可设为 true。
+    ///   - exclusiveMaximum: 是否排除上界值；仅在提供 `maximum` 时可设为 true。
     ///   - description: 字段说明。
     /// - Returns: 解析为 `Double?` 的命令字段。
-    public static func optionalFiniteNumber(_ name: String, description: String) -> CommandField<Double?> {
-        CommandField(name: name,
-                     schema: CommandFieldSchema(type: .number,
-                                                required: false,
-                                                description: description,
-                                                allowsNull: true)) { raw in
+    public static func optionalFiniteNumber(_ name: String,
+                                            minimum: Double? = nil,
+                                            maximum: Double? = nil,
+                                            exclusiveMinimum: Bool = false,
+                                            exclusiveMaximum: Bool = false,
+                                            description: String) -> CommandField<Double?> {
+        validateFiniteNumberBounds(name: name,
+                                   minimum: minimum,
+                                   maximum: maximum,
+                                   exclusiveMinimum: exclusiveMinimum,
+                                   exclusiveMaximum: exclusiveMaximum)
+        return CommandField(name: name,
+                            schema: finiteNumberSchema(description: description,
+                                                       defaultValue: nil,
+                                                       minimum: minimum,
+                                                       maximum: maximum,
+                                                       exclusiveMinimum: exclusiveMinimum,
+                                                       exclusiveMaximum: exclusiveMaximum)) { raw in
             guard let raw = raw, raw != .null else { return nil }
-            guard let parsed = raw.doubleValue, parsed.isFinite else {
-                throw CommandInputParseError("\(name) must be a finite number")
+            let errorMessage = minimum == nil && maximum == nil
+                ? "\(name) must be a finite number"
+                : "\(name) must be a finite number within the declared range"
+            guard let parsed = raw.doubleValue,
+                  finiteNumberIsWithinBounds(parsed,
+                                             minimum: minimum,
+                                             maximum: maximum,
+                                             exclusiveMinimum: exclusiveMinimum,
+                                             exclusiveMaximum: exclusiveMaximum) else {
+                throw CommandInputParseError(errorMessage)
+            }
+            return parsed
+        }
+    }
+
+    /// 带默认值的有限数字字段：缺失或 null 返回默认值，非有限数字或越界时抛出解析错误。
+    ///
+    /// 默认值、inclusive/exclusive 边界和运行时校验来自同一声明；默认值必须为有限数且落在
+    /// 声明范围内，否则在字段初始化时触发开发期断言。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - default: 字段缺失或显式为 null 时使用的默认值。
+    ///   - minimum: 可选下界。
+    ///   - maximum: 可选上界。
+    ///   - exclusiveMinimum: 是否排除下界值；仅在提供 `minimum` 时可设为 true。
+    ///   - exclusiveMaximum: 是否排除上界值；仅在提供 `maximum` 时可设为 true。
+    ///   - description: 字段说明。
+    /// - Returns: 解析为 `Double` 的命令字段。
+    public static func finiteNumber(_ name: String,
+                                    default value: Double,
+                                    minimum: Double? = nil,
+                                    maximum: Double? = nil,
+                                    exclusiveMinimum: Bool = false,
+                                    exclusiveMaximum: Bool = false,
+                                    description: String) -> CommandField<Double> {
+        validateFiniteNumberBounds(name: name,
+                                   minimum: minimum,
+                                   maximum: maximum,
+                                   exclusiveMinimum: exclusiveMinimum,
+                                   exclusiveMaximum: exclusiveMaximum)
+        precondition(finiteNumberIsWithinBounds(value,
+                                                minimum: minimum,
+                                                maximum: maximum,
+                                                exclusiveMinimum: exclusiveMinimum,
+                                                exclusiveMaximum: exclusiveMaximum),
+                     "\(name) default must be finite and within the declared range")
+        return CommandField(name: name,
+                            schema: finiteNumberSchema(description: description,
+                                                       defaultValue: value,
+                                                       minimum: minimum,
+                                                       maximum: maximum,
+                                                       exclusiveMinimum: exclusiveMinimum,
+                                                       exclusiveMaximum: exclusiveMaximum)) { raw in
+            guard let raw, raw != .null else { return value }
+            guard let parsed = raw.doubleValue,
+                  finiteNumberIsWithinBounds(parsed,
+                                             minimum: minimum,
+                                             maximum: maximum,
+                                             exclusiveMinimum: exclusiveMinimum,
+                                             exclusiveMaximum: exclusiveMaximum) else {
+                throw CommandInputParseError("\(name) must be a finite number within the declared range")
             }
             return parsed
         }
@@ -367,6 +577,48 @@ public enum CommandFields {
         }
     }
 
+    /// 可选限定范围整数字段：缺失或 null 返回 nil，非有限整数、非 JSON safe integer 或越界时抛出解析错误。
+    ///
+    /// 该工厂供 generated wire 字段直接复用合同中的上下界；schema 输出和运行时校验共享同一组
+    /// `minimum` / `maximum` 参数，避免生成声明与 parser 范围漂移。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - minimum: 可选闭区间下界。
+    ///   - maximum: 可选闭区间上界。
+    ///   - description: 字段说明。
+    /// - Returns: 解析为 `Int?` 的命令字段。
+    public static func optionalInt(_ name: String,
+                                   minimum: Int? = nil,
+                                   maximum: Int? = nil,
+                                   description: String) -> CommandField<Int?> {
+        if let minimum {
+            precondition(isJSONSafeInteger(minimum), "\(name) minimum must be a JSON safe integer")
+        }
+        if let maximum {
+            precondition(isJSONSafeInteger(maximum), "\(name) maximum must be a JSON safe integer")
+        }
+        if let minimum, let maximum {
+            precondition(minimum <= maximum, "\(name) minimum must be <= maximum")
+        }
+
+        return CommandField(name: name,
+                            schema: CommandFieldSchema(type: .integer,
+                                                       required: false,
+                                                       description: description,
+                                                       allowsNull: true,
+                                                       minimum: minimum.map(Double.init),
+                                                       maximum: maximum.map(Double.init))) { raw in
+            guard let raw, raw != .null else { return nil }
+            guard let parsed = try parseInteger(raw, name: name),
+                  minimum.map({ parsed >= $0 }) ?? true,
+                  maximum.map({ parsed <= $0 }) ?? true else {
+                throw CommandInputParseError("\(name) must be an integer within the declared range")
+            }
+            return parsed
+        }
+    }
+
     /// 必填限定范围整数字段：缺失、null、非 JSON safe integer、非有限整数或越界时抛出解析错误。
     ///
     /// 用于调用方必须明确选择目标的场景，例如导航栏按钮下标。与带默认值的 `int` 不同，本字段
@@ -401,7 +653,7 @@ public enum CommandFields {
         }
     }
 
-    /// 限定范围整数字段：缺失使用默认值，存在但非 JSON safe integer、非有限整数或越界抛出解析错误。
+    /// 限定范围整数字段：缺失或兼容性 null 使用默认值，非法整数或越界时抛出解析错误。
     ///
     /// `default` 必须落在 `range` 内；这是声明字段时的开发期不变量。工厂本身非 throwing，
     /// 因此发现不一致时用 `preconditionFailure` 立即暴露，避免 schema 默认值与运行时校验漂移。
@@ -440,7 +692,7 @@ public enum CommandFields {
         }
     }
 
-    /// 字符串枚举字段：缺失或 null 使用默认值，不在枚举 rawValue 集合中抛出解析错误。
+    /// 字符串枚举字段：缺失或兼容性 null 使用默认值，非法 rawValue 抛出解析错误。
     ///
     /// - Parameters:
     ///   - name: 字段名。
@@ -510,6 +762,62 @@ public enum CommandFields {
             throw CommandInputParseError("\(name) must be an integer")
         }
         return value
+    }
+
+    /// 构造有限数字字段 schema，确保 exclusive 关键字与运行时边界使用相同输入。
+    private static func finiteNumberSchema(description: String,
+                                           defaultValue: Double?,
+                                           minimum: Double?,
+                                           maximum: Double?,
+                                           exclusiveMinimum: Bool,
+                                           exclusiveMaximum: Bool) -> CommandFieldSchema {
+        var extra = JSON()
+        if exclusiveMinimum, let minimum {
+            extra["exclusiveMinimum"] = .double(minimum)
+        }
+        if exclusiveMaximum, let maximum {
+            extra["exclusiveMaximum"] = .double(maximum)
+        }
+        return CommandFieldSchema(type: .number,
+                                  required: false,
+                                  description: description,
+                                  defaultValue: defaultValue.map(JSONValue.double),
+                                  allowsNull: true,
+                                  minimum: exclusiveMinimum ? nil : minimum,
+                                  maximum: exclusiveMaximum ? nil : maximum,
+                                  extraSchema: extra)
+    }
+
+    /// 校验有限数字边界声明本身可形成非空区间。
+    private static func validateFiniteNumberBounds(name: String,
+                                                   minimum: Double?,
+                                                   maximum: Double?,
+                                                   exclusiveMinimum: Bool,
+                                                   exclusiveMaximum: Bool) {
+        precondition(minimum?.isFinite ?? true, "\(name) minimum must be finite")
+        precondition(maximum?.isFinite ?? true, "\(name) maximum must be finite")
+        precondition(!exclusiveMinimum || minimum != nil, "\(name) exclusiveMinimum requires minimum")
+        precondition(!exclusiveMaximum || maximum != nil, "\(name) exclusiveMaximum requires maximum")
+        if let minimum, let maximum {
+            precondition(minimum < maximum || (minimum == maximum && !exclusiveMinimum && !exclusiveMaximum),
+                         "\(name) numeric bounds must describe a non-empty range")
+        }
+    }
+
+    /// 判断有限数字是否满足声明的 inclusive/exclusive 边界。
+    private static func finiteNumberIsWithinBounds(_ value: Double,
+                                                   minimum: Double?,
+                                                   maximum: Double?,
+                                                   exclusiveMinimum: Bool,
+                                                   exclusiveMaximum: Bool) -> Bool {
+        guard value.isFinite else { return false }
+        if let minimum, exclusiveMinimum ? value <= minimum : value < minimum {
+            return false
+        }
+        if let maximum, exclusiveMaximum ? value >= maximum : value > maximum {
+            return false
+        }
+        return true
     }
 
     /// 判断 Swift 整数是否可作为 JSON safe integer 精确暴露到协议层。

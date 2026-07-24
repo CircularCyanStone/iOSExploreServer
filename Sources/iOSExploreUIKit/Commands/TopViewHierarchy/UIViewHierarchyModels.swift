@@ -349,34 +349,8 @@ public enum UIViewHierarchyDetailLevel: String, Sendable, CaseIterable {
 ///
 /// 命令会从请求 `data` 解析为该类型；测试中也直接用它约束递归和筛选行为。
 public struct UIViewHierarchyInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let detailLevel = CommandFields.enumValue(
-            "detailLevel",
-            type: UIViewHierarchyDetailLevel.self,
-            default: .appearance,
-            description: "详情级别: basic / appearance / full, 默认 appearance"
-        )
-        static let maxDepth = UIKitFilterFields.maxDepth
-        static let includeHidden = UIKitFilterFields.includeHidden
-        static let accessibilityIdentifier = UIKitFilterFields.accessibilityIdentifier
-        static let accessibilityIdentifierPrefix = UIKitFilterFields.accessibilityIdentifierPrefix
-        static let controller = CommandFields.optionalString(
-            "controller",
-            description: "按 ui.controllers 返回的 controller 定位 path（如 root.tab[0].nav[1]）指定采集起点 controller，缺省为当前顶部控制器"
-        )
-
-        static let all: [AnyCommandField] = [
-            detailLevel.erased,
-            maxDepth.erased,
-            includeHidden.erased,
-            accessibilityIdentifier.erased,
-            accessibilityIdentifierPrefix.erased,
-            controller.erased,
-        ]
-    }
-
     /// `ui.topViewHierarchy` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(fields: Fields.all)
+    public static let inputSchema = UIKitActionContracts.uiTopViewHierarchyInputSchema
 
     /// 详情级别。
     public let detailLevel: UIViewHierarchyDetailLevel
@@ -431,13 +405,22 @@ public struct UIViewHierarchyInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已完成默认值填充和范围校验的层级查询参数。
     /// - Throws: 字段类型、枚举值或范围非法时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIViewHierarchyInput {
-        UIViewHierarchyInput(
-            detailLevel: try decoder.read(Fields.detailLevel),
-            maxDepth: try decoder.read(Fields.maxDepth),
-            includeHidden: try decoder.read(Fields.includeHidden),
-            accessibilityIdentifier: try decoder.read(Fields.accessibilityIdentifier),
-            accessibilityIdentifierPrefix: try decoder.read(Fields.accessibilityIdentifierPrefix),
-            controller: try decoder.read(Fields.controller)
+        let detailLevelValue = try decoder.read(UIKitActionContracts.uiTopViewHierarchyDetailLevelField)
+        guard let detailLevel = UIViewHierarchyDetailLevel(rawValue: detailLevelValue) else {
+            throw CommandInputParseError("unsupported detailLevel '\(detailLevelValue)'")
+        }
+
+        return UIViewHierarchyInput(
+            detailLevel: detailLevel,
+            maxDepth: try decoder.read(UIKitActionContracts.uiTopViewHierarchyMaxDepthField),
+            includeHidden: try decoder.read(UIKitActionContracts.uiTopViewHierarchyIncludeHiddenField),
+            accessibilityIdentifier: try decoder.read(
+                UIKitActionContracts.uiTopViewHierarchyAccessibilityIdentifierField
+            ),
+            accessibilityIdentifierPrefix: try decoder.read(
+                UIKitActionContracts.uiTopViewHierarchyAccessibilityIdentifierPrefixField
+            ),
+            controller: try decoder.read(UIKitActionContracts.uiTopViewHierarchyControllerField)
         )
     }
 }

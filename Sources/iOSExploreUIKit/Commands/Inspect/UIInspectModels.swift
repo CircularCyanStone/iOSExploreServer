@@ -5,46 +5,8 @@ import iOSExploreServer
 ///
 /// 该类型保持 Foundation-only，负责解析 `ui.inspect` 的 data，并约束响应规模。
 public struct UIInspectInput: CommandInput, Sendable, Equatable {
-    private enum Fields {
-        static let includeHidden = UIKitFilterFields.includeHidden
-        static let maxDepth = UIKitFilterFields.maxDepth
-        static let accessibilityIdentifier = UIKitFilterFields.accessibilityIdentifier
-        static let accessibilityIdentifierPrefix = UIKitFilterFields.accessibilityIdentifierPrefix
-        static let textLimit = CommandFields.int(
-            "textLimit",
-            range: 1...200,
-            default: 80,
-            description: "title/text/placeholder/value 最大字符数, 默认 80, 上限 200"
-        )
-        static let maxTargets = CommandFields.int(
-            "maxTargets",
-            range: 1...UIKitSnapshotLimits.maxFingerprints,
-            default: 200,
-            description: "单次响应最多返回的 full 目标数, 默认 200, 上限 512 (minimal 不占配额)"
-        )
-        /// DFS 访问节点上限，独立于 `maxTargets`：无论节点是否输出（full/minimal），访问到上限即停止，
-        /// 防止异常深的 view 树（如递归嵌套容器、巨大 tableView 缓存）让 collector 跑飞。
-        /// minimal 节点不占 `maxTargets` 配额，若无此上限，一棵全是 minimal 的深树仍可能失控。
-        static let maxVisitedNodes = CommandFields.int(
-            "maxVisitedNodes",
-            range: 100...20000,
-            default: 2000,
-            description: "DFS 访问节点上限, 防深树失控, 默认 2000 (含 full 与 minimal)"
-        )
-
-        static let all: [AnyCommandField] = [
-            includeHidden.erased,
-            maxDepth.erased,
-            accessibilityIdentifier.erased,
-            accessibilityIdentifierPrefix.erased,
-            textLimit.erased,
-            maxTargets.erased,
-            maxVisitedNodes.erased,
-        ]
-    }
-
     /// `ui.inspect` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = CommandInputSchema(fields: Fields.all)
+    public static let inputSchema = UIKitActionContracts.uiInspectInputSchema
 
     /// 是否包含隐藏 view。
     public let includeHidden: Bool
@@ -143,13 +105,15 @@ public struct UIInspectInput: CommandInput, Sendable, Equatable {
     /// - Throws: 字段类型或范围非法时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIInspectInput {
         UIInspectInput(
-            includeHidden: try decoder.read(Fields.includeHidden),
-            maxDepth: try decoder.read(Fields.maxDepth),
-            accessibilityIdentifier: try decoder.read(Fields.accessibilityIdentifier),
-            accessibilityIdentifierPrefix: try decoder.read(Fields.accessibilityIdentifierPrefix),
-            textLimit: try decoder.read(Fields.textLimit),
-            maxTargets: try decoder.read(Fields.maxTargets),
-            maxVisitedNodes: try decoder.read(Fields.maxVisitedNodes)
+            includeHidden: try decoder.read(UIKitActionContracts.uiInspectIncludeHiddenField),
+            maxDepth: try decoder.read(UIKitActionContracts.uiInspectMaxDepthField),
+            accessibilityIdentifier: try decoder.read(UIKitActionContracts.uiInspectAccessibilityIdentifierField),
+            accessibilityIdentifierPrefix: try decoder.read(
+                UIKitActionContracts.uiInspectAccessibilityIdentifierPrefixField
+            ),
+            textLimit: try decoder.read(UIKitActionContracts.uiInspectTextLimitField),
+            maxTargets: try decoder.read(UIKitActionContracts.uiInspectMaxTargetsField),
+            maxVisitedNodes: try decoder.read(UIKitActionContracts.uiInspectMaxVisitedNodesField)
         )
     }
 }

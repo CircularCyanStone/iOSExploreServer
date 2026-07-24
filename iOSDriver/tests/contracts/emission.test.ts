@@ -81,6 +81,57 @@ describe("contract emission", () => {
     expect(docs).toContain("`ui.inspect`");
     expect(docs).toContain("`wait_and_inspect`");
   });
+
+  test("emits typed Swift fields only for controlled schema shapes", () => {
+    const artifacts = new Map(
+      renderContractArtifacts(loadAndValidateContractBundle(repositoryRoot)).map(artifact => [artifact.path, artifact.content])
+    );
+    const uikit = requiredArtifact(artifacts, "Sources/iOSExploreUIKit/Generated/UIKitActionContracts.swift");
+    const diagnostics = requiredArtifact(artifacts, "Sources/iOSExploreDiagnostics/Generated/DiagnosticsActionContracts.swift");
+
+    expect(uikit).toContain(
+      'CommandFields.optionalInt("buttonIndex", minimum: 0, maximum: 9007199254740991, description: "要触发的按钮下标。")'
+    );
+    expect(uikit).toContain(
+      'CommandFields.requiredStringEnum("event", values: ["touchDown", "touchUpInside", "valueChanged", "editingChanged", "editingDidBegin", "editingDidEnd"], description: "事件名。")'
+    );
+    expect(uikit).toContain(
+      'CommandFields.stringEnum("strategy", values: ["auto", "resignFirstResponder", "endEditing"], default: "auto", description: "键盘收起策略。")'
+    );
+    expect(uikit).toContain(
+      'CommandFields.optionalStringEnum("placement", values: ["left", "right"], description: "导航栏按钮位置。")'
+    );
+    expect(uikit).toContain(
+      'CommandFields.optionalFiniteNumber("amount", minimum: 0, exclusiveMinimum: true, description: "滚动距离（pt），必须 > 0；省略或传 null 时按目标可见区的一半计算。")'
+    );
+    expect(uikit).toContain(
+      'CommandFields.finiteNumber("duration", default: 0.5, minimum: 0, maximum: 10, exclusiveMinimum: true, description: "长按持续时间（秒）；省略或传 null 时使用 0.5，范围 (0, 10]。")'
+    );
+    expect(diagnostics).toContain(
+      'CommandFields.optionalStringEnumArray("sources", values: ["explore", "bridge", "stdout", "stderr", "nslog", "oslog"], itemDescription: "日志来源。", description: "日志来源过滤。")'
+    );
+    expect(diagnostics).toContain(
+      'CommandFields.optionalStringEnum("minimumLevel", values: ["debug", "info", "error", "fault", "unknown"], description: "最低日志等级。")'
+    );
+
+    expect(diagnostics).toContain('appLogsReadAfterField = AnyCommandField(name: "after"');
+    expect(uikit).toContain('uiControlSendActionValueField = AnyCommandField(name: "value"');
+    expect(uikit).toContain('uiWaitAnyConditionsField = AnyCommandField(name: "conditions"');
+    expect(uikit).toContain('uiWebViewEvalArgumentsField = AnyCommandField(name: "arguments"');
+    expect(uikit).not.toContain("uiWaitAnyConditionsItem");
+
+    expect(uikit).toContain(
+      'uiInputFieldsItemModeField = CommandFields.stringEnum("mode", values: ["replace", "append"], default: "replace", description: "写入模式。")'
+    );
+    expect(uikit).toContain(
+      'uiInputFieldsItemInputSchema = CommandInputSchema(fields: [uiInputFieldsItemAccessibilityIdentifierField.erased'
+    );
+    expect(uikit).toContain(
+      'uiInputFieldsField = CommandFields.requiredArray("fields", description: "按顺序执行的字段数组。", itemsSchema: JSON('
+    );
+    expect(uikit).toContain('"description": .string("单个字段输入。")');
+    expect(uikit).toContain('"x-iosExplore-constraints": .object(JSON(');
+  });
 });
 
 function requiredArtifact(artifacts: ReadonlyMap<string, string>, path: string): string {
