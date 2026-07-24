@@ -19,12 +19,18 @@ export function loadContractBundle(root?: string | URL): RawDriverContractBundle
   const repositoryRoot = root === undefined ? discoverRepositoryRoot() : normalizeRoot(root);
   const contractsRoot = join(repositoryRoot, "contracts");
   const realContractsRoot = realpathOrThrow(contractsRoot, "contracts");
-  const manifest = readJSONObject(join(contractsRoot, "bundle.json"), "bundle.json");
+  const manifest = readJSONObject(
+    resolveContractFile(contractsRoot, realContractsRoot, "bundle.json"),
+    "bundle.json"
+  );
   const protocolVersion = requiredString(manifest, "protocolVersion", "bundle.json");
   const contractVersion = requiredString(manifest, "contractVersion", "bundle.json");
   const generatorVersion = requiredString(manifest, "generatorVersion", "bundle.json");
   const files = requiredStringArray(manifest, "files", "bundle.json");
-  const errors = readJSONObject(join(contractsRoot, "errors.json"), "errors.json");
+  const errors = readJSONObject(
+    resolveContractFile(contractsRoot, realContractsRoot, "errors.json"),
+    "errors.json"
+  );
   const definitions = readDefinitions(contractsRoot, realContractsRoot);
   const deviceActions: RawContractDocument[] = [];
   const hostOperations: RawContractDocument[] = [];
@@ -111,8 +117,8 @@ function resolveContractFile(contractsRoot: string, realContractsRoot: string, l
   let stats: ReturnType<typeof statSync>;
   try {
     stats = statSync(candidate);
-  } catch (error) {
-    throw new Error(`contract file does not exist: ${label}`, { cause: error });
+  } catch {
+    throw new Error(`contract file does not exist: ${label}`);
   }
   if (!stats.isFile()) throw new Error(`contract file does not exist: ${label}`);
 
@@ -134,8 +140,8 @@ function readDefinitions(contractsRoot: string, realContractsRoot: string): Reco
   let names: string[];
   try {
     names = readdirSync(directory).sort();
-  } catch (error) {
-    throw new Error("failed to read contracts directory: definitions", { cause: error });
+  } catch {
+    throw new Error("failed to read contracts directory: definitions");
   }
 
   const definitions: Record<string, RawContractDocument> = {};
@@ -152,15 +158,15 @@ function readJSONObject(path: string, label: string): RawContractDocument {
   let source: string;
   try {
     source = readFileSync(path, "utf8");
-  } catch (error) {
-    throw new Error(`failed to read contract JSON: ${label}`, { cause: error });
+  } catch {
+    throw new Error(`failed to read contract JSON: ${label}`);
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(source);
-  } catch (error) {
-    throw new Error(`failed to parse contract JSON: ${label}`, { cause: error });
+  } catch {
+    throw new Error(`failed to parse contract JSON: ${label}`);
   }
   if (!isRecord(parsed)) throw new Error(`contract JSON must contain an object: ${label}`);
   return parsed;
@@ -169,8 +175,8 @@ function readJSONObject(path: string, label: string): RawContractDocument {
 function realpathOrThrow(path: string, label: string): string {
   try {
     return realpathSync(path);
-  } catch (error) {
-    throw new Error(`contract file does not exist: ${label}`, { cause: error });
+  } catch {
+    throw new Error(`contract file does not exist: ${label}`);
   }
 }
 

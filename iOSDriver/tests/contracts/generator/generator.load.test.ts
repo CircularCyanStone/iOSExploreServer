@@ -68,6 +68,28 @@ describe("contract bundle loader", () => {
 
     expectLoaderError(root, "contract file must stay inside contracts root: device-actions/escaped.json");
   });
+
+  test("rejects a bundle manifest symlink outside contracts", () => {
+    const root = makeTemporaryContractsRoot();
+    const bundlePath = join(root, "contracts", "bundle.json");
+    const outsidePath = join(root, "outside-bundle.json");
+    writeJSON(outsidePath, validManifest());
+    rmSync(bundlePath);
+    symlinkSync(outsidePath, bundlePath);
+
+    expectLoaderError(root, "contract file must stay inside contracts root: bundle.json");
+  });
+
+  test("rejects an errors file symlink outside contracts", () => {
+    const root = makeTemporaryContractsRoot();
+    const errorsPath = join(root, "contracts", "errors.json");
+    const outsidePath = join(root, "outside-errors.json");
+    writeJSON(outsidePath, {});
+    rmSync(errorsPath);
+    symlinkSync(outsidePath, errorsPath);
+
+    expectLoaderError(root, "contract file must stay inside contracts root: errors.json");
+  });
 });
 
 function makeTemporaryContractsRoot(options: { files?: string[] } = {}): string {
@@ -75,15 +97,19 @@ function makeTemporaryContractsRoot(options: { files?: string[] } = {}): string 
   temporaryRoots.push(root);
   mkdirSync(join(root, "contracts", "device-actions"), { recursive: true });
   mkdirSync(join(root, "contracts", "definitions"), { recursive: true });
-  writeJSON(join(root, "contracts", "bundle.json"), {
-    protocolVersion: "1",
-    contractVersion: "1.0.0",
-    generatorVersion: "1",
-    files: options.files ?? ["device-actions/test.json"]
-  });
+  writeJSON(join(root, "contracts", "bundle.json"), validManifest(options.files));
   writeJSON(join(root, "contracts", "errors.json"), {});
   writeJSON(join(root, "contracts", "device-actions", "test.json"), validDeviceAction());
   return root;
+}
+
+function validManifest(files: string[] = ["device-actions/test.json"]): Record<string, unknown> {
+  return {
+    protocolVersion: "1",
+    contractVersion: "1.0.0",
+    generatorVersion: "1",
+    files
+  };
 }
 
 function validDeviceAction(): Record<string, unknown> {
@@ -111,7 +137,11 @@ function expectLoaderError(root: string | URL, expectedLabel: string): void {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     expect(message).toContain(expectedLabel);
-    expect(message).not.toContain(root instanceof URL ? fileURLToPath(root) : root);
+    const rootPath = root instanceof URL ? fileURLToPath(root) : root;
+    expect(message).not.toContain(rootPath);
+    if (error instanceof Error && error.cause instanceof Error) {
+      expect(error.cause.message).not.toContain(rootPath);
+    }
     return;
   }
   throw new Error("expected contract bundle loading to fail");
