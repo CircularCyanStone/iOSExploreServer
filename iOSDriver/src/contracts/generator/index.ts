@@ -1,4 +1,4 @@
-export { loadContractBundle } from "./loadBundle.js";
+export { loadAndValidateContractBundle, loadContractBundle } from "./loadBundle.js";
 export {
   ContractValidationError,
   validateContractBundle,
@@ -16,5 +16,7 @@ export type {
   HostOperationSpec,
   JsonSchema,
   JsonSchemaType,
+  RawContractDocument,
+  RawDriverContractBundle,
   ResultSpec
 } from "./model.js";

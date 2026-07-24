@@ -1,13 +1,10 @@
-import { dirname, posix } from "node:path";
+import { posix } from "node:path";
 import type {
   ContractJSONValue,
-  DeviceActionContract,
   DriverContractBundle,
-  ErrorContract,
-  HostOperationSpec,
   JsonSchema,
   JsonSchemaType,
-  ResultSpec
+  RawDriverContractBundle
 } from "./model.js";
 
 /** Stable categories emitted when a canonical contract bundle is invalid. */
@@ -69,8 +66,15 @@ const schemaTypes = new Set<JsonSchemaType>([
   "null"
 ]);
 
+const errorSources = new Set(["appEnvelope", "transport", "http", "protocol", "contract", "config", "workflow", "artifact"]);
+const providers = new Set(["core", "uikit", "diagnostics", "extension"]);
+const stabilities = new Set(["public", "experimental", "internal"]);
+const idempotencies = new Set(["readOnly", "idempotent", "sideEffecting"]);
+const timeoutClasses = new Set(["standard", "wait", "screenshot"]);
+const resultKinds = new Set(["json", "image", "text"]);
+
 /** Validate metadata, error references, and every schema in a loaded bundle. */
-export function validateContractBundle(bundle: DriverContractBundle): void {
+export function validateContractBundle(bundle: RawDriverContractBundle): asserts bundle is DriverContractBundle {
   requireNonEmptyString(bundle.protocolVersion, "bundle.protocolVersion", "invalid_bundle");
   requireNonEmptyString(bundle.contractVersion, "bundle.contractVersion", "invalid_bundle");
   requireNonEmptyString(bundle.generatorVersion, "bundle.generatorVersion", "invalid_bundle");
@@ -79,22 +83,22 @@ export function validateContractBundle(bundle: DriverContractBundle): void {
 
   const actionNames = new Set<string>();
   for (const contract of bundle.deviceActions) {
-    const source = bundle.sourceFiles.get(contract) ?? `device-action:${contract.action}`;
-    validateDeviceAction(contract, source, bundle);
-    if (actionNames.has(contract.action)) {
-      fail("duplicate_action", source, `duplicate action ${contract.action}`);
+    const source = bundle.sourceFiles.get(contract) ?? "device-action";
+    const action = validateDeviceAction(contract, source, bundle);
+    if (actionNames.has(action)) {
+      fail("duplicate_action", source, `duplicate action ${action}`);
     }
-    actionNames.add(contract.action);
+    actionNames.add(action);
   }
 
   const operationNames = new Set<string>();
   for (const operation of bundle.hostOperations) {
-    const source = bundle.sourceFiles.get(operation) ?? `host-operation:${operation.operation}`;
-    validateHostOperation(operation, source, bundle);
-    if (operationNames.has(operation.operation)) {
-      fail("duplicate_operation", source, `duplicate operation ${operation.operation}`);
+    const source = bundle.sourceFiles.get(operation) ?? "host-operation";
+    const name = validateHostOperation(operation, source, bundle);
+    if (operationNames.has(name)) {
+      fail("duplicate_operation", source, `duplicate operation ${name}`);
     }
-    operationNames.add(operation.operation);
+    operationNames.add(name);
   }
 
   for (const [source, schema] of Object.entries(bundle.definitions)) {
@@ -112,60 +116,61 @@ function validateManifest(files: string[]): void {
   }
 }
 
-function validateErrors(errors: Record<string, ErrorContract>): void {
+function validateErrors(errors: unknown): void {
   if (!isRecord(errors)) fail("invalid_bundle", "errors.json", "must contain an object");
-  const sources = new Set(["appEnvelope", "transport", "http", "protocol", "contract", "config", "workflow", "artifact"]);
   for (const [code, contract] of Object.entries(errors)) {
     requireNonEmptyString(code, "errors.json", "invalid_bundle");
     if (!isRecord(contract)) fail("invalid_bundle", `errors.json.${code}`, "must contain an object");
-    if (!sources.has(contract.source)) fail("invalid_bundle", `errors.json.${code}.source`, "has unsupported source");
+    if (!isAllowedString(contract.source, errorSources)) fail("invalid_bundle", `errors.json.${code}.source`, "has unsupported source");
     if (typeof contract.retryable !== "boolean") fail("invalid_bundle", `errors.json.${code}.retryable`, "must be boolean");
     if (typeof contract.terminal !== "boolean") fail("invalid_bundle", `errors.json.${code}.terminal`, "must be boolean");
   }
 }
 
-function validateDeviceAction(contract: DeviceActionContract, source: string, bundle: DriverContractBundle): void {
+function validateDeviceAction(contract: unknown, source: string, bundle: RawDriverContractBundle): string {
   if (!isRecord(contract) || contract.kind !== "deviceAction") fail("invalid_contract", source, "must be a deviceAction");
   requireNonEmptyString(contract.action, `${source}.action`, "invalid_contract");
   requireNonEmptyString(contract.description, `${source}.description`, "invalid_contract");
-  if (!new Set(["core", "uikit", "diagnostics", "extension"]).has(contract.provider)) {
+  if (!isAllowedString(contract.provider, providers)) {
     fail("invalid_contract", `${source}.provider`, "has unsupported provider");
   }
-  if (!new Set(["public", "experimental", "internal"]).has(contract.stability)) {
+  if (!isAllowedString(contract.stability, stabilities)) {
     fail("invalid_contract", `${source}.stability`, "has unsupported stability");
   }
-  if (!new Set(["readOnly", "idempotent", "sideEffecting"]).has(contract.idempotency)) {
+  if (!isAllowedString(contract.idempotency, idempotencies)) {
     fail("invalid_contract", `${source}.idempotency`, "has unsupported idempotency");
   }
-  if (!new Set(["standard", "wait", "screenshot"]).has(contract.timeoutClass)) {
+  if (!isAllowedString(contract.timeoutClass, timeoutClasses)) {
     fail("invalid_contract", `${source}.timeoutClass`, "has unsupported timeout class");
   }
   validateResult(contract.result, `${source}.result`);
   validateErrorCodes(contract.errors, `${source}.errors`, bundle.errors);
   validateSchema(contract.inputSchema, `${source}.inputSchema`, source, bundle, []);
+  return contract.action;
 }
 
-function validateHostOperation(operation: HostOperationSpec, source: string, bundle: DriverContractBundle): void {
+function validateHostOperation(operation: unknown, source: string, bundle: RawDriverContractBundle): string {
   if (!isRecord(operation) || operation.kind !== "hostOperation") fail("invalid_contract", source, "must be a hostOperation");
   requireNonEmptyString(operation.operation, `${source}.operation`, "invalid_contract");
   requireNonEmptyString(operation.description, `${source}.description`, "invalid_contract");
   validateResult(operation.result, `${source}.result`);
   validateErrorCodes(operation.errors, `${source}.errors`, bundle.errors);
   validateSchema(operation.inputSchema, `${source}.inputSchema`, source, bundle, []);
+  return operation.operation;
 }
 
-function validateResult(result: ResultSpec, path: string): void {
-  if (!isRecord(result) || !new Set(["json", "image", "text"]).has(result.kind)) {
+function validateResult(result: unknown, path: string): void {
+  if (!isRecord(result) || !isAllowedString(result.kind, resultKinds)) {
     fail("invalid_contract", path, "kind must be json, image, or text");
   }
 }
 
-function validateErrorCodes(codes: string[], path: string, errors: Record<string, ErrorContract>): void {
+function validateErrorCodes(codes: unknown, path: string, errors: object): void {
   if (!Array.isArray(codes) || codes.some(code => typeof code !== "string")) {
     fail("invalid_contract", path, "must be an array of error code strings");
   }
   for (const [index, code] of codes.entries()) {
-    if (!(code in errors)) fail("unknown_error_code", `${path}[${index}]`, `unknown error code ${code}`);
+    if (!Object.hasOwn(errors, code)) fail("unknown_error_code", `${path}[${index}]`, `unknown error code ${code}`);
   }
 }
 
@@ -173,7 +178,7 @@ function validateSchema(
   schema: unknown,
   path: string,
   sourceFile: string,
-  bundle: DriverContractBundle,
+  bundle: RawDriverContractBundle,
   refStack: string[]
 ): void {
   if (!isRecord(schema)) fail("invalid_contract", path, "schema must contain an object");
@@ -282,7 +287,7 @@ function validateSchemaArray(
   schemas: JsonSchema[] | undefined,
   path: string,
   sourceFile: string,
-  bundle: DriverContractBundle,
+  bundle: RawDriverContractBundle,
   refStack: string[]
 ): void {
   if (schemas === undefined) return;
@@ -336,6 +341,10 @@ function requireNonEmptyString(value: unknown, path: string, code: ContractValid
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAllowedString(value: unknown, values: ReadonlySet<string>): value is string {
+  return typeof value === "string" && values.has(value);
 }
 
 function fail(code: ContractValidationCode, path: string, message: string): never {

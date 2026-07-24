@@ -55,6 +55,11 @@ describe("contract bundle validator", () => {
     expectValidationCode(root, "unknown_error_code");
   });
 
+  test.each(["toString", "__proto__"])("rejects inherited error code %s", errorCode => {
+    const root = makeBundle({ errors: [errorCode] });
+    expectValidationCode(root, "unknown_error_code");
+  });
+
   test("rejects duplicate device actions", () => {
     const root = makeBundle({ additionalDeviceActions: [{ action: "test.action" }] });
     expectValidationCode(root, "duplicate_action");

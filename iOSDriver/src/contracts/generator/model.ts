@@ -82,7 +82,23 @@ export interface ErrorContract {
   terminal: boolean;
 }
 
-/** Parsed canonical contract bundle plus relative source locations needed for ref validation. */
+/** 未经完整契约校验的 JSON 对象。 */
+export type RawContractDocument = Record<string, unknown>;
+
+/** 由加载器读取、等待 `validateContractBundle` 完整校验的原始 bundle。 */
+export interface RawDriverContractBundle {
+  protocolVersion: string;
+  contractVersion: string;
+  generatorVersion: string;
+  files: string[];
+  deviceActions: object[];
+  hostOperations: object[];
+  errors: object;
+  definitions: Record<string, object>;
+  sourceFiles: ReadonlyMap<object, string>;
+}
+
+/** 已通过完整契约校验的 canonical bundle。 */
 export interface DriverContractBundle {
   protocolVersion: string;
   contractVersion: string;
@@ -92,5 +108,5 @@ export interface DriverContractBundle {
   hostOperations: HostOperationSpec[];
   errors: Record<string, ErrorContract>;
   definitions: Record<string, JsonSchema>;
-  sourceFiles: ReadonlyMap<DeviceActionContract | HostOperationSpec, string>;
+  sourceFiles: ReadonlyMap<object, string>;
 }
