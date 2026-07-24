@@ -1,0 +1,8 @@
+{
+  "kind": "hostOperation",
+  "operation": "health",
+  "description": "检查 iOS App 端点可达性和基础协议。",
+  "inputSchema": { "type": "object", "properties": {}, "required": [], "additionalProperties": false },
+  "result": { "kind": "json" },
+  "errors": ["transport_unavailable", "transport_timeout", "http_error", "protocol_error"]
+}

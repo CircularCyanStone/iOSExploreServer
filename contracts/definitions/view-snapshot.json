@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "viewSnapshotID": { "type": "string" },
+    "fingerprint": { "type": "string" }
+  },
+  "required": ["viewSnapshotID"],
+  "additionalProperties": true
+}

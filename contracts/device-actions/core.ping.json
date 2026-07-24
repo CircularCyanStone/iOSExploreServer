@@ -1,0 +1,12 @@
+{
+  "kind": "deviceAction",
+  "action": "ping",
+  "description": "检查 iOSExploreServer 是否可达。",
+  "provider": "core",
+  "stability": "public",
+  "inputSchema": { "type": "object", "properties": {}, "required": [], "additionalProperties": false },
+  "result": { "kind": "json" },
+  "errors": ["internal_error"],
+  "idempotency": "readOnly",
+  "timeoutClass": "standard"
+}

@@ -1,0 +1,9 @@
+{
+  "protocolVersion": "1",
+  "contractVersion": "1.0.0",
+  "generatorVersion": "1",
+  "files": [
+    "device-actions/core.ping.json",
+    "host-operations/health.json"
+  ]
+}
