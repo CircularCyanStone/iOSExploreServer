@@ -1,0 +1,87 @@
+{
+  "kind": "deviceAction",
+  "action": "ui.scrollToElement",
+  "description": "把匹配文本或 identifier 的元素滚动到可见区域。",
+  "provider": "uikit",
+  "stability": "public",
+  "inputSchema": {
+    "type": "object",
+    "description": "把匹配文本或 identifier 的元素滚动到可见区域。",
+    "properties": {
+      "match": {
+        "type": "string",
+        "enum": [
+          "text",
+          "accessibilityIdentifier"
+        ],
+        "description": "匹配方式。",
+        "default": "text"
+      },
+      "value": {
+        "type": "string",
+        "description": "要滚动到的文本片段或 identifier。"
+      },
+      "accessibilityIdentifier": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "滚动容器 identifier。"
+      },
+      "path": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "滚动容器 path。"
+      },
+      "animated": {
+        "type": "boolean",
+        "description": "是否动画。",
+        "default": false
+      }
+    },
+    "required": [
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "result": {
+    "kind": "json"
+  },
+  "errors": [
+    "unknown_action",
+    "invalid_data",
+    "internal_error",
+    "bad_request",
+    "timeout",
+    "response_too_large",
+    "stale_locator",
+    "wait_timeout",
+    "navigation_back_unavailable",
+    "navigation_bar_unavailable",
+    "navigation_bar_item_not_found",
+    "navigation_bar_item_mismatch",
+    "navigation_bar_item_disabled",
+    "navigation_bar_item_unsupported",
+    "alert_unavailable",
+    "alert_button_not_found",
+    "alert_button_required",
+    "alert_button_trigger_failed",
+    "alert_release_unsupported",
+    "keyboard_dismiss_failed",
+    "target_not_found",
+    "unsupported_target",
+    "input_rejected",
+    "transition_in_progress",
+    "unsupported_text_input_type",
+    "become_first_responder_failed",
+    "rendering_failed",
+    "scroll_container_unavailable",
+    "container_not_scrollable",
+    "stale_cursor",
+    "not_actionable"
+  ],
+  "idempotency": "sideEffecting",
+  "timeoutClass": "standard"
+}

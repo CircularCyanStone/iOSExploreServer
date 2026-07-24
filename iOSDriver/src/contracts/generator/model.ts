@@ -13,7 +13,7 @@ export type JsonSchemaType = "object" | "array" | "string" | "number" | "integer
 /** The controlled JSON Schema subset shared by Swift and TypeScript generators. */
 export interface JsonSchema {
   $ref?: string;
-  type?: JsonSchemaType;
+  type?: JsonSchemaType | JsonSchemaType[];
   properties?: Record<string, JsonSchema>;
   required?: string[];
   additionalProperties?: boolean | JsonSchema;

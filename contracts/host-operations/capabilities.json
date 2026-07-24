@@ -1,7 +1,7 @@
 {
   "kind": "hostOperation",
-  "operation": "health",
-  "description": "检查 iOS App 端点可达性和基础协议。",
+  "operation": "capabilities",
+  "description": "读取 App help 并报告当前注册 action。",
   "inputSchema": {
     "type": "object",
     "properties": {},

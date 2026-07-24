@@ -1,14 +1,14 @@
 {
   "kind": "deviceAction",
-  "action": "ping",
-  "description": "检查 iOSExploreServer 是否可达。",
+  "action": "echo",
+  "description": "原样回显 data。",
   "provider": "core",
   "stability": "public",
   "inputSchema": {
     "type": "object",
     "properties": {},
     "required": [],
-    "additionalProperties": false
+    "additionalProperties": true
   },
   "result": {
     "kind": "json"

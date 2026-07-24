@@ -1,23 +1,28 @@
 {
-  "kind": "hostOperation",
-  "operation": "health",
-  "description": "检查 iOS App 端点可达性和基础协议。",
+  "kind": "deviceAction",
+  "action": "ui.screenshot",
+  "description": "获取当前 UI 的 PNG 截图。",
+  "provider": "uikit",
+  "stability": "public",
   "inputSchema": {
     "type": "object",
-    "properties": {},
+    "description": "获取当前 UI 的 PNG 截图。",
+    "properties": {
+      "maxDimension": {
+        "type": "integer",
+        "description": "截图长边像素上限。",
+        "default": 1280,
+        "minimum": 1,
+        "maximum": 4096
+      }
+    },
     "required": [],
     "additionalProperties": false
   },
   "result": {
-    "kind": "json"
+    "kind": "image"
   },
   "errors": [
-    "transport_unavailable",
-    "transport_timeout",
-    "http_error",
-    "protocol_error",
-    "contract_mismatch",
-    "invalid_config",
     "unknown_action",
     "invalid_data",
     "internal_error",
@@ -49,5 +54,7 @@
     "container_not_scrollable",
     "stale_cursor",
     "not_actionable"
-  ]
+  ],
+  "idempotency": "readOnly",
+  "timeoutClass": "screenshot"
 }

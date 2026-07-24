@@ -1,0 +1,189 @@
+{
+  "kind": "hostOperation",
+  "operation": "wait_and_inspect",
+  "description": "先等待条件，再读取 UI 结构。",
+  "inputSchema": {
+    "type": "object",
+    "description": "先等待条件，再读取 UI 结构。",
+    "properties": {
+      "conditions": {
+        "type": "array",
+        "description": "等待条件数组。",
+        "items": {
+          "type": "object",
+          "description": "单个等待条件。",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "条件标识。"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "idle",
+                "targetExists",
+                "targetGone",
+                "textExists",
+                "snapshotChanged"
+              ],
+              "description": "等待模式。"
+            },
+            "accessibilityIdentifier": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "目标 identifier。"
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "目标 path。"
+            },
+            "text": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "等待的文本。"
+            },
+            "viewSnapshotID": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "参照的 viewSnapshotID。"
+            }
+          },
+          "required": [
+            "id",
+            "mode"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 16
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "description": "业务超时毫秒数。",
+        "default": 3000,
+        "minimum": 0,
+        "maximum": 30000
+      },
+      "intervalMs": {
+        "type": "integer",
+        "description": "轮询间隔毫秒数。",
+        "default": 100,
+        "minimum": 50,
+        "maximum": 5000
+      },
+      "stableMs": {
+        "type": "integer",
+        "description": "稳定窗口毫秒数。",
+        "default": 300,
+        "minimum": 0,
+        "maximum": 10000
+      },
+      "includeHidden": {
+        "type": "boolean",
+        "description": "是否考虑隐藏 view。",
+        "default": false
+      },
+      "inspectOptions": {
+        "type": "object",
+        "description": "传给 ui.inspect 的可选参数。",
+        "properties": {
+          "includeHidden": {
+            "type": "boolean",
+            "description": "是否包含隐藏 view。"
+          },
+          "maxDepth": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "最大递归深度。"
+          },
+          "accessibilityIdentifier": {
+            "type": "string",
+            "description": "按 identifier 过滤。"
+          },
+          "accessibilityIdentifierPrefix": {
+            "type": "string",
+            "description": "按 identifier 前缀过滤。"
+          },
+          "textLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 80,
+            "description": "文本截断长度。"
+          },
+          "maxTargets": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 512,
+            "default": 200,
+            "description": "最大目标数。"
+          },
+          "maxVisitedNodes": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 20000,
+            "default": 2000,
+            "description": "最大访问节点数。"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "conditions"
+    ],
+    "additionalProperties": false
+  },
+  "result": {
+    "kind": "json"
+  },
+  "errors": [
+    "transport_unavailable",
+    "transport_timeout",
+    "http_error",
+    "protocol_error",
+    "contract_mismatch",
+    "invalid_config",
+    "unknown_action",
+    "invalid_data",
+    "internal_error",
+    "bad_request",
+    "timeout",
+    "response_too_large",
+    "stale_locator",
+    "wait_timeout",
+    "navigation_back_unavailable",
+    "navigation_bar_unavailable",
+    "navigation_bar_item_not_found",
+    "navigation_bar_item_mismatch",
+    "navigation_bar_item_disabled",
+    "navigation_bar_item_unsupported",
+    "alert_unavailable",
+    "alert_button_not_found",
+    "alert_button_required",
+    "alert_button_trigger_failed",
+    "alert_release_unsupported",
+    "keyboard_dismiss_failed",
+    "target_not_found",
+    "unsupported_target",
+    "input_rejected",
+    "transition_in_progress",
+    "unsupported_text_input_type",
+    "become_first_responder_failed",
+    "rendering_failed",
+    "scroll_container_unavailable",
+    "container_not_scrollable",
+    "stale_cursor",
+    "not_actionable"
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "kind": "deviceAction",
+  "action": "ui.wait",
+  "description": "等待 UI 稳定或等待目标变化。",
+  "provider": "uikit",
+  "stability": "public",
+  "inputSchema": {
+    "type": "object",
+    "description": "等待 UI 稳定或等待目标变化。",
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": [
+          "idle",
+          "targetExists",
+          "targetGone",
+          "textExists",
+          "snapshotChanged"
+        ],
+        "description": "等待模式。",
+        "default": "idle"
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "description": "业务超时毫秒数。",
+        "default": 3000,
+        "minimum": 0,
+        "maximum": 30000
+      },
+      "intervalMs": {
+        "type": "integer",
+        "description": "轮询间隔毫秒数。",
+        "default": 100,
+        "minimum": 50,
+        "maximum": 5000
+      },
+      "stableMs": {
+        "type": "integer",
+        "description": "idle 模式下连续稳定的毫秒数。",
+        "default": 300,
+        "minimum": 0,
+        "maximum": 10000
+      },
+      "text": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "textExists 模式要等待的文本片段。"
+      },
+      "viewSnapshotID": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "snapshotChanged 模式参照的 viewSnapshotID。"
+      },
+      "accessibilityIdentifier": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "targetExists/targetGone 模式按 identifier 定位。"
+      },
+      "path": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "targetExists/targetGone 模式按 path 定位。"
+      },
+      "includeHidden": {
+        "type": "boolean",
+        "description": "是否考虑隐藏 view。",
+        "default": false
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "result": {
+    "kind": "json"
+  },
+  "errors": [
+    "unknown_action",
+    "invalid_data",
+    "internal_error",
+    "bad_request",
+    "timeout",
+    "response_too_large",
+    "stale_locator",
+    "wait_timeout",
+    "navigation_back_unavailable",
+    "navigation_bar_unavailable",
+    "navigation_bar_item_not_found",
+    "navigation_bar_item_mismatch",
+    "navigation_bar_item_disabled",
+    "navigation_bar_item_unsupported",
+    "alert_unavailable",
+    "alert_button_not_found",
+    "alert_button_required",
+    "alert_button_trigger_failed",
+    "alert_release_unsupported",
+    "keyboard_dismiss_failed",
+    "target_not_found",
+    "unsupported_target",
+    "input_rejected",
+    "transition_in_progress",
+    "unsupported_text_input_type",
+    "become_first_responder_failed",
+    "rendering_failed",
+    "scroll_container_unavailable",
+    "container_not_scrollable",
+    "stale_cursor",
+    "not_actionable"
+  ],
+  "idempotency": "readOnly",
+  "timeoutClass": "wait"
+}

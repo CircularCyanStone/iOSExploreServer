@@ -196,12 +196,25 @@ function validateSchema(
     validateSchema(target, reference, reference, bundle, [...refStack, reference]);
   }
 
-  let type: JsonSchemaType | undefined;
+  let type: JsonSchemaType | JsonSchemaType[] | undefined;
   if (typedSchema.type !== undefined) {
-    if (typeof typedSchema.type !== "string" || !schemaTypes.has(typedSchema.type as JsonSchemaType)) {
+    if (typeof typedSchema.type === "string") {
+      if (!schemaTypes.has(typedSchema.type as JsonSchemaType)) {
+        fail("invalid_contract", `${path}.type`, "has unsupported schema type");
+      }
+      type = typedSchema.type as JsonSchemaType;
+    } else if (Array.isArray(typedSchema.type)) {
+      if (typedSchema.type.length === 0) fail("invalid_contract", `${path}.type`, "must be a non-empty array");
+      const types = typedSchema.type.map((item, index) => {
+        if (typeof item !== "string" || !schemaTypes.has(item as JsonSchemaType)) {
+          fail("invalid_contract", `${path}.type[${index}]`, "has unsupported schema type");
+        }
+        return item as JsonSchemaType;
+      });
+      type = [...new Set(types)];
+    } else {
       fail("invalid_contract", `${path}.type`, "has unsupported schema type");
     }
-    type = typedSchema.type as JsonSchemaType;
   }
 
   if (typedSchema.properties !== undefined) {
@@ -311,7 +324,7 @@ function resolveReference(sourceFile: string, reference: string): string {
 function validateNonNegativeInteger(
   value: number | undefined,
   path: string,
-  schemaType: JsonSchemaType | undefined,
+  schemaType: JsonSchemaType | JsonSchemaType[] | undefined,
   requiredType: JsonSchemaType
 ): void {
   if (value === undefined) return;
@@ -319,11 +332,17 @@ function validateNonNegativeInteger(
   if (!Number.isInteger(value) || value < 0) fail("invalid_contract", path, "must be a non-negative integer");
 }
 
-function requireSchemaType(actual: JsonSchemaType | undefined, expected: JsonSchemaType, path: string): void {
+function requireSchemaType(actual: JsonSchemaType | JsonSchemaType[] | undefined, expected: JsonSchemaType, path: string): void {
+  if (actual === undefined) fail("invalid_contract", path, `requires schema type ${expected}`);
+  if (Array.isArray(actual)) {
+    if (!actual.includes(expected)) fail("invalid_contract", path, `requires schema type ${expected}`);
+    return;
+  }
   if (actual !== expected) fail("invalid_contract", path, `requires schema type ${expected}`);
 }
 
-function matchesType(value: ContractJSONValue, type: JsonSchemaType): boolean {
+function matchesType(value: ContractJSONValue, type: JsonSchemaType | JsonSchemaType[]): boolean {
+  if (Array.isArray(type)) return type.some(item => matchesType(value, item));
   switch (type) {
     case "object": return isRecord(value);
     case "array": return Array.isArray(value);

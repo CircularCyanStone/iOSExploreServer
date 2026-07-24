@@ -1,7 +1,7 @@
 {
   "kind": "deviceAction",
-  "action": "ping",
-  "description": "检查 iOSExploreServer 是否可达。",
+  "action": "help",
+  "description": "列出所有已注册命令及其参数说明。",
   "provider": "core",
   "stability": "public",
   "inputSchema": {

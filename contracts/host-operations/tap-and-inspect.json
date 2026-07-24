@@ -1,0 +1,107 @@
+{
+  "kind": "hostOperation",
+  "operation": "tap_and_inspect",
+  "description": "点击元素后自动检查 UI 状态。",
+  "inputSchema": {
+    "type": "object",
+    "description": "点击元素后自动检查 UI 状态。",
+    "properties": {
+      "accessibilityIdentifier": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "按 accessibilityIdentifier 定位。"
+      },
+      "path": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "按 path 定位。"
+      },
+      "viewSnapshotID": {
+        "type": "string",
+        "description": "ui.inspect 签发的快照标识。"
+      },
+      "waitForStable": {
+        "type": "boolean",
+        "description": "是否等待 UI 稳定后再 inspect。",
+        "default": true
+      },
+      "stableTimeMs": {
+        "type": "integer",
+        "description": "等待 UI 稳定的时长。",
+        "default": 300,
+        "minimum": 0,
+        "maximum": 3000
+      },
+      "inspectDepth": {
+        "type": "integer",
+        "description": "inspect 的最大递归深度。",
+        "default": 2,
+        "minimum": 0,
+        "maximum": 10
+      },
+      "inspectMaxTargets": {
+        "type": "integer",
+        "description": "inspect 返回的最大目标数量。",
+        "default": 20,
+        "minimum": 1,
+        "maximum": 512
+      }
+    },
+    "required": [
+      "viewSnapshotID"
+    ],
+    "additionalProperties": false,
+    "x-iosExplore-constraints": {
+      "exactlyOneOf": [
+        "accessibilityIdentifier",
+        "path"
+      ]
+    }
+  },
+  "result": {
+    "kind": "json"
+  },
+  "errors": [
+    "transport_unavailable",
+    "transport_timeout",
+    "http_error",
+    "protocol_error",
+    "contract_mismatch",
+    "invalid_config",
+    "unknown_action",
+    "invalid_data",
+    "internal_error",
+    "bad_request",
+    "timeout",
+    "response_too_large",
+    "stale_locator",
+    "wait_timeout",
+    "navigation_back_unavailable",
+    "navigation_bar_unavailable",
+    "navigation_bar_item_not_found",
+    "navigation_bar_item_mismatch",
+    "navigation_bar_item_disabled",
+    "navigation_bar_item_unsupported",
+    "alert_unavailable",
+    "alert_button_not_found",
+    "alert_button_required",
+    "alert_button_trigger_failed",
+    "alert_release_unsupported",
+    "keyboard_dismiss_failed",
+    "target_not_found",
+    "unsupported_target",
+    "input_rejected",
+    "transition_in_progress",
+    "unsupported_text_input_type",
+    "become_first_responder_failed",
+    "rendering_failed",
+    "scroll_container_unavailable",
+    "container_not_scrollable",
+    "stale_cursor",
+    "not_actionable"
+  ]
+}

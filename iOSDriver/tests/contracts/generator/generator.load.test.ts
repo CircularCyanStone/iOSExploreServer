@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 describe("contract bundle loader", () => {
-  test("loads the repository bundle metadata and its minimum real fixtures", () => {
+  test("loads the repository bundle metadata and its full contract set", () => {
     const bundle = loadAndValidateContractBundle();
 
     expect(bundle.protocolVersion).toBe("1");
@@ -20,10 +20,69 @@ describe("contract bundle loader", () => {
     expect(bundle.generatorVersion).toBe("1");
     expect(bundle.files).toEqual([
       "device-actions/core.ping.json",
-      "host-operations/health.json"
+      "device-actions/core.echo.json",
+      "device-actions/core.info.json",
+      "device-actions/core.help.json",
+      "device-actions/uikit.top-view-hierarchy.json",
+      "device-actions/uikit.inspect.json",
+      "device-actions/uikit.control-send-action.json",
+      "device-actions/uikit.tap.json",
+      "device-actions/uikit.screenshot.json",
+      "device-actions/uikit.input.json",
+      "device-actions/uikit.keyboard-dismiss.json",
+      "device-actions/uikit.scroll.json",
+      "device-actions/uikit.navigation-back.json",
+      "device-actions/uikit.navigation-tap-bar-button.json",
+      "device-actions/uikit.wait.json",
+      "device-actions/uikit.wait-any.json",
+      "device-actions/uikit.scroll-to-element.json",
+      "device-actions/uikit.alert-respond.json",
+      "device-actions/uikit.controllers.json",
+      "device-actions/uikit.swipe.json",
+      "device-actions/uikit.long-press.json",
+      "device-actions/uikit.tab-bar-select-tab.json",
+      "device-actions/uikit.date-picker-set-date.json",
+      "device-actions/uikit.picker-select-row.json",
+      "device-actions/uikit.web-view-eval.json",
+      "device-actions/diagnostics.app-logs-mark.json",
+      "device-actions/diagnostics.app-logs-read.json",
+      "host-operations/health.json",
+      "host-operations/capabilities.json",
+      "host-operations/call-action.json",
+      "host-operations/wait-and-inspect.json",
+      "host-operations/tap-and-inspect.json"
     ]);
-    expect(bundle.deviceActions.map(contract => contract.action)).toEqual(["ping"]);
-    expect(bundle.hostOperations.map(spec => spec.operation)).toEqual(["health"]);
+    expect(bundle.deviceActions).toHaveLength(27);
+    expect(bundle.hostOperations).toHaveLength(5);
+    expect(bundle.deviceActions.map(contract => contract.action).sort()).toEqual([
+      "app.logs.mark",
+      "app.logs.read",
+      "echo",
+      "help",
+      "info",
+      "ping",
+      "ui.alert.respond",
+      "ui.control.sendAction",
+      "ui.controllers",
+      "ui.datePicker.setDate",
+      "ui.input",
+      "ui.inspect",
+      "ui.keyboard.dismiss",
+      "ui.longPress",
+      "ui.navigation.back",
+      "ui.navigation.tapBarButton",
+      "ui.picker.selectRow",
+      "ui.screenshot",
+      "ui.scroll",
+      "ui.scrollToElement",
+      "ui.swipe",
+      "ui.tabBar.selectTab",
+      "ui.tap",
+      "ui.topViewHierarchy",
+      "ui.wait",
+      "ui.waitAny",
+      "ui.webView.eval"
+    ]);
     expect(Object.keys(bundle.definitions).sort()).toEqual([
       "definitions/locator.json",
       "definitions/protocol-envelope.json",

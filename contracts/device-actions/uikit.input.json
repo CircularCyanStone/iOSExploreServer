@@ -1,0 +1,121 @@
+{
+  "kind": "deviceAction",
+  "action": "ui.input",
+  "description": "按顺序向多个文本控件注入文本。",
+  "provider": "uikit",
+  "stability": "public",
+  "inputSchema": {
+    "type": "object",
+    "description": "按顺序向多个文本控件注入文本。",
+    "properties": {
+      "viewSnapshotID": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "ui.inspect 签发的快照标识。"
+      },
+      "stopOnFailure": {
+        "type": "boolean",
+        "description": "某个字段失败后是否停止执行后续字段。",
+        "default": true
+      },
+      "fields": {
+        "type": "array",
+        "description": "按顺序执行的字段数组。",
+        "items": {
+          "type": "object",
+          "description": "单个字段输入。",
+          "properties": {
+            "accessibilityIdentifier": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "按 accessibilityIdentifier 定位。"
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "按 path 定位。"
+            },
+            "text": {
+              "type": "string",
+              "description": "要输入的文本。"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "replace",
+                "append"
+              ],
+              "description": "写入模式。",
+              "default": "replace"
+            },
+            "submit": {
+              "type": "boolean",
+              "description": "是否触发结束编辑语义。",
+              "default": false
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false,
+          "x-iosExplore-constraints": {
+            "exactlyOneOf": [
+              "accessibilityIdentifier",
+              "path"
+            ]
+          }
+        },
+        "minItems": 1,
+        "maxItems": 16
+      }
+    },
+    "required": [
+      "fields"
+    ],
+    "additionalProperties": false
+  },
+  "result": {
+    "kind": "json"
+  },
+  "errors": [
+    "unknown_action",
+    "invalid_data",
+    "internal_error",
+    "bad_request",
+    "timeout",
+    "response_too_large",
+    "stale_locator",
+    "wait_timeout",
+    "navigation_back_unavailable",
+    "navigation_bar_unavailable",
+    "navigation_bar_item_not_found",
+    "navigation_bar_item_mismatch",
+    "navigation_bar_item_disabled",
+    "navigation_bar_item_unsupported",
+    "alert_unavailable",
+    "alert_button_not_found",
+    "alert_button_required",
+    "alert_button_trigger_failed",
+    "alert_release_unsupported",
+    "keyboard_dismiss_failed",
+    "target_not_found",
+    "unsupported_target",
+    "input_rejected",
+    "transition_in_progress",
+    "unsupported_text_input_type",
+    "become_first_responder_failed",
+    "rendering_failed",
+    "scroll_container_unavailable",
+    "container_not_scrollable",
+    "stale_cursor",
+    "not_actionable"
+  ],
+  "idempotency": "sideEffecting",
+  "timeoutClass": "standard"
+}

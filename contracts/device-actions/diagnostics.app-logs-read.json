@@ -1,0 +1,117 @@
+{
+  "kind": "deviceAction",
+  "action": "app.logs.read",
+  "description": "读取当前进程内已捕获的日志。",
+  "provider": "diagnostics",
+  "stability": "public",
+  "inputSchema": {
+    "type": "object",
+    "description": "读取当前进程内已捕获的日志。",
+    "properties": {
+      "after": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "增量读取起点 cursor。",
+        "properties": {
+          "captureSessionID": {
+            "type": "string",
+            "description": "capture session ID。"
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "cursor id。"
+          }
+        },
+        "required": [
+          "captureSessionID",
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "limit": {
+        "type": "integer",
+        "description": "最多返回的日志条数。",
+        "default": 100,
+        "minimum": 1,
+        "maximum": 500
+      },
+      "sources": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "description": "日志来源过滤。",
+        "items": {
+          "type": "string",
+          "enum": [
+            "explore",
+            "bridge",
+            "stdout",
+            "stderr",
+            "nslog",
+            "oslog"
+          ],
+          "description": "日志来源。"
+        },
+        "uniqueItems": true
+      },
+      "minimumLevel": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "debug",
+          "info",
+          "error",
+          "fault",
+          "unknown"
+        ],
+        "description": "最低日志等级。"
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "result": {
+    "kind": "json"
+  },
+  "errors": [
+    "unknown_action",
+    "invalid_data",
+    "internal_error",
+    "bad_request",
+    "timeout",
+    "response_too_large",
+    "stale_locator",
+    "wait_timeout",
+    "navigation_back_unavailable",
+    "navigation_bar_unavailable",
+    "navigation_bar_item_not_found",
+    "navigation_bar_item_mismatch",
+    "navigation_bar_item_disabled",
+    "navigation_bar_item_unsupported",
+    "alert_unavailable",
+    "alert_button_not_found",
+    "alert_button_required",
+    "alert_button_trigger_failed",
+    "alert_release_unsupported",
+    "keyboard_dismiss_failed",
+    "target_not_found",
+    "unsupported_target",
+    "input_rejected",
+    "transition_in_progress",
+    "unsupported_text_input_type",
+    "become_first_responder_failed",
+    "rendering_failed",
+    "scroll_container_unavailable",
+    "container_not_scrollable",
+    "stale_cursor",
+    "not_actionable"
+  ],
+  "idempotency": "readOnly",
+  "timeoutClass": "standard"
+}

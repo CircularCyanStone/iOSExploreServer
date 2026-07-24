@@ -1,0 +1,135 @@
+{
+  "kind": "deviceAction",
+  "action": "ui.datePicker.setDate",
+  "description": "设置日期选择器日期。",
+  "provider": "uikit",
+  "stability": "public",
+  "inputSchema": {
+    "type": "object",
+    "description": "设置日期选择器日期。",
+    "properties": {
+      "accessibilityIdentifier": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "按 accessibilityIdentifier 定位。"
+      },
+      "path": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "按 path 定位。"
+      },
+      "viewSnapshotID": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "ui.inspect 签发的快照标识。"
+      },
+      "date": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "ISO 8601 日期时间字符串。"
+      },
+      "year": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "年份分量。"
+      },
+      "month": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "月份分量。"
+      },
+      "day": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "日期分量。"
+      },
+      "hour": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "小时分量。"
+      },
+      "minute": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "分钟分量。"
+      },
+      "animated": {
+        "type": "boolean",
+        "description": "是否动画。",
+        "default": false
+      }
+    },
+    "required": [],
+    "additionalProperties": false,
+    "x-iosExplore-constraints": {
+      "mutuallyExclusive": [
+        "date",
+        "year",
+        "month",
+        "day",
+        "hour",
+        "minute"
+      ],
+      "exactlyOneOf": [
+        "accessibilityIdentifier",
+        "path"
+      ]
+    }
+  },
+  "result": {
+    "kind": "json"
+  },
+  "errors": [
+    "unknown_action",
+    "invalid_data",
+    "internal_error",
+    "bad_request",
+    "timeout",
+    "response_too_large",
+    "stale_locator",
+    "wait_timeout",
+    "navigation_back_unavailable",
+    "navigation_bar_unavailable",
+    "navigation_bar_item_not_found",
+    "navigation_bar_item_mismatch",
+    "navigation_bar_item_disabled",
+    "navigation_bar_item_unsupported",
+    "alert_unavailable",
+    "alert_button_not_found",
+    "alert_button_required",
+    "alert_button_trigger_failed",
+    "alert_release_unsupported",
+    "keyboard_dismiss_failed",
+    "target_not_found",
+    "unsupported_target",
+    "input_rejected",
+    "transition_in_progress",
+    "unsupported_text_input_type",
+    "become_first_responder_failed",
+    "rendering_failed",
+    "scroll_container_unavailable",
+    "container_not_scrollable",
+    "stale_cursor",
+    "not_actionable"
+  ],
+  "idempotency": "sideEffecting",
+  "timeoutClass": "standard"
+}

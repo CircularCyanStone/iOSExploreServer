@@ -1,0 +1,85 @@
+{
+  "kind": "deviceAction",
+  "action": "ui.tabBar.selectTab",
+  "description": "按 index 或 title 选择 tab。",
+  "provider": "uikit",
+  "stability": "public",
+  "inputSchema": {
+    "type": "object",
+    "description": "按 index 或 title 选择 tab。",
+    "properties": {
+      "tabBarControllerPath": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "可选的 UITabBarController 路径。"
+      },
+      "index": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "tab 索引。"
+      },
+      "title": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "tab 标题。"
+      },
+      "triggerDelegate": {
+        "type": "boolean",
+        "description": "是否手动触发 delegate 回调。",
+        "default": true
+      }
+    },
+    "required": [],
+    "additionalProperties": false,
+    "x-iosExplore-constraints": {
+      "exactlyOneOf": [
+        "index",
+        "title"
+      ]
+    }
+  },
+  "result": {
+    "kind": "json"
+  },
+  "errors": [
+    "unknown_action",
+    "invalid_data",
+    "internal_error",
+    "bad_request",
+    "timeout",
+    "response_too_large",
+    "stale_locator",
+    "wait_timeout",
+    "navigation_back_unavailable",
+    "navigation_bar_unavailable",
+    "navigation_bar_item_not_found",
+    "navigation_bar_item_mismatch",
+    "navigation_bar_item_disabled",
+    "navigation_bar_item_unsupported",
+    "alert_unavailable",
+    "alert_button_not_found",
+    "alert_button_required",
+    "alert_button_trigger_failed",
+    "alert_release_unsupported",
+    "keyboard_dismiss_failed",
+    "target_not_found",
+    "unsupported_target",
+    "input_rejected",
+    "transition_in_progress",
+    "unsupported_text_input_type",
+    "become_first_responder_failed",
+    "rendering_failed",
+    "scroll_container_unavailable",
+    "container_not_scrollable",
+    "stale_cursor",
+    "not_actionable"
+  ],
+  "idempotency": "sideEffecting",
+  "timeoutClass": "standard"
+}

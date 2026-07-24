@@ -1,10 +1,31 @@
 {
-  "kind": "hostOperation",
-  "operation": "health",
-  "description": "检查 iOS App 端点可达性和基础协议。",
+  "kind": "deviceAction",
+  "action": "ui.keyboard.dismiss",
+  "description": "收起当前键盘或结束编辑状态。",
+  "provider": "uikit",
+  "stability": "public",
   "inputSchema": {
     "type": "object",
-    "properties": {},
+    "description": "收起当前键盘或结束编辑状态。",
+    "properties": {
+      "strategy": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "resignFirstResponder",
+          "endEditing"
+        ],
+        "description": "键盘收起策略。",
+        "default": "auto"
+      },
+      "waitAfterMs": {
+        "type": "integer",
+        "description": "执行后等待毫秒数。",
+        "default": 200,
+        "minimum": 0,
+        "maximum": 3000
+      }
+    },
     "required": [],
     "additionalProperties": false
   },
@@ -12,12 +33,6 @@
     "kind": "json"
   },
   "errors": [
-    "transport_unavailable",
-    "transport_timeout",
-    "http_error",
-    "protocol_error",
-    "contract_mismatch",
-    "invalid_config",
     "unknown_action",
     "invalid_data",
     "internal_error",
@@ -49,5 +64,7 @@
     "container_not_scrollable",
     "stale_cursor",
     "not_actionable"
-  ]
+  ],
+  "idempotency": "sideEffecting",
+  "timeoutClass": "standard"
 }

@@ -1,23 +1,47 @@
 {
-  "kind": "hostOperation",
-  "operation": "health",
-  "description": "检查 iOS App 端点可达性和基础协议。",
+  "kind": "deviceAction",
+  "action": "ui.tap",
+  "description": "点击 ui.inspect 签发的可操作目标。",
+  "provider": "uikit",
+  "stability": "public",
   "inputSchema": {
     "type": "object",
-    "properties": {},
-    "required": [],
-    "additionalProperties": false
+    "description": "点击 ui.inspect 签发的可操作目标。",
+    "properties": {
+      "accessibilityIdentifier": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "按 accessibilityIdentifier 定位。"
+      },
+      "path": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "按 path 定位。"
+      },
+      "viewSnapshotID": {
+        "type": "string",
+        "description": "ui.inspect 签发的快照标识。"
+      }
+    },
+    "required": [
+      "viewSnapshotID"
+    ],
+    "additionalProperties": false,
+    "x-iosExplore-constraints": {
+      "exactlyOneOf": [
+        "accessibilityIdentifier",
+        "path"
+      ]
+    }
   },
   "result": {
     "kind": "json"
   },
   "errors": [
-    "transport_unavailable",
-    "transport_timeout",
-    "http_error",
-    "protocol_error",
-    "contract_mismatch",
-    "invalid_config",
     "unknown_action",
     "invalid_data",
     "internal_error",
@@ -49,5 +73,7 @@
     "container_not_scrollable",
     "stale_cursor",
     "not_actionable"
-  ]
+  ],
+  "idempotency": "sideEffecting",
+  "timeoutClass": "standard"
 }

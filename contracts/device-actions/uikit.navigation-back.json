@@ -1,10 +1,36 @@
 {
-  "kind": "hostOperation",
-  "operation": "health",
-  "description": "检查 iOS App 端点可达性和基础协议。",
+  "kind": "deviceAction",
+  "action": "ui.navigation.back",
+  "description": "按策略返回或关闭当前页面。",
+  "provider": "uikit",
+  "stability": "public",
   "inputSchema": {
     "type": "object",
-    "properties": {},
+    "description": "按策略返回或关闭当前页面。",
+    "properties": {
+      "strategy": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "navigationController",
+          "dismiss"
+        ],
+        "description": "返回策略。",
+        "default": "auto"
+      },
+      "animated": {
+        "type": "boolean",
+        "description": "是否动画。",
+        "default": false
+      },
+      "waitAfterMs": {
+        "type": "integer",
+        "description": "执行后等待毫秒数。",
+        "default": 300,
+        "minimum": 0,
+        "maximum": 3000
+      }
+    },
     "required": [],
     "additionalProperties": false
   },
@@ -12,12 +38,6 @@
     "kind": "json"
   },
   "errors": [
-    "transport_unavailable",
-    "transport_timeout",
-    "http_error",
-    "protocol_error",
-    "contract_mismatch",
-    "invalid_config",
     "unknown_action",
     "invalid_data",
     "internal_error",
@@ -49,5 +69,7 @@
     "container_not_scrollable",
     "stale_cursor",
     "not_actionable"
-  ]
+  ],
+  "idempotency": "sideEffecting",
+  "timeoutClass": "standard"
 }

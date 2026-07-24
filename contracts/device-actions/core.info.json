@@ -1,7 +1,7 @@
 {
   "kind": "deviceAction",
-  "action": "ping",
-  "description": "检查 iOSExploreServer 是否可达。",
+  "action": "info",
+  "description": "返回系统、应用和 Bundle 信息。",
   "provider": "core",
   "stability": "public",
   "inputSchema": {

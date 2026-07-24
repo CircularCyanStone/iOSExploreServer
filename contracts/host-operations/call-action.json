@@ -1,11 +1,24 @@
 {
   "kind": "hostOperation",
-  "operation": "health",
-  "description": "检查 iOS App 端点可达性和基础协议。",
+  "operation": "call_action",
+  "description": "调用宿主 App 的任意 action。",
   "inputSchema": {
     "type": "object",
-    "properties": {},
-    "required": [],
+    "description": "调用宿主 App 的任意 action。",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "要调用的 action 名。"
+      },
+      "data": {
+        "type": "object",
+        "description": "传给 action 的原始 data。",
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "action"
+    ],
     "additionalProperties": false
   },
   "result": {

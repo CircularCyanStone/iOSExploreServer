@@ -1,0 +1,96 @@
+{
+  "kind": "deviceAction",
+  "action": "ui.topViewHierarchy",
+  "description": "读取当前最外层 controller 容器层级。",
+  "provider": "uikit",
+  "stability": "public",
+  "inputSchema": {
+    "type": "object",
+    "description": "读取当前最外层 controller 容器层级。",
+    "properties": {
+      "detailLevel": {
+        "type": "string",
+        "enum": [
+          "basic",
+          "appearance",
+          "full"
+        ],
+        "description": "层级详情级别。",
+        "default": "appearance"
+      },
+      "includeHidden": {
+        "type": "boolean",
+        "description": "是否包含隐藏 view。",
+        "default": false
+      },
+      "maxDepth": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "最大递归深度。"
+      },
+      "accessibilityIdentifier": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "按 accessibilityIdentifier 过滤。"
+      },
+      "accessibilityIdentifierPrefix": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "按 accessibilityIdentifier 前缀过滤。"
+      },
+      "controller": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "controller path。"
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "result": {
+    "kind": "json"
+  },
+  "errors": [
+    "unknown_action",
+    "invalid_data",
+    "internal_error",
+    "bad_request",
+    "timeout",
+    "response_too_large",
+    "stale_locator",
+    "wait_timeout",
+    "navigation_back_unavailable",
+    "navigation_bar_unavailable",
+    "navigation_bar_item_not_found",
+    "navigation_bar_item_mismatch",
+    "navigation_bar_item_disabled",
+    "navigation_bar_item_unsupported",
+    "alert_unavailable",
+    "alert_button_not_found",
+    "alert_button_required",
+    "alert_button_trigger_failed",
+    "alert_release_unsupported",
+    "keyboard_dismiss_failed",
+    "target_not_found",
+    "unsupported_target",
+    "input_rejected",
+    "transition_in_progress",
+    "unsupported_text_input_type",
+    "become_first_responder_failed",
+    "rendering_failed",
+    "scroll_container_unavailable",
+    "container_not_scrollable",
+    "stale_cursor",
+    "not_actionable"
+  ],
+  "idempotency": "readOnly",
+  "timeoutClass": "standard"
+}
