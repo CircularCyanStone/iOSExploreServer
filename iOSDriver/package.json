@@ -14,7 +14,9 @@
   ],
   "scripts": {
     "clean": "node scripts/clean-dist.mjs",
-    "build": "npm run clean && tsc -p tsconfig.json",
+    "contracts:generate": "tsx src/contracts/generator/index.ts generate",
+    "contracts:check": "tsx src/contracts/generator/index.ts check",
+    "build": "npm run clean && npm run contracts:check && tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
     "test": "npm run build && vitest run",
     "test:watch": "vitest",
