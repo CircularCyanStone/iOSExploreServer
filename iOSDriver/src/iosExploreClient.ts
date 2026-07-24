@@ -57,14 +57,22 @@ export class IOSExploreClient {
     }
 
     if (isFailureEnvelope(envelope)) {
-      throw new IOSExploreStructuredError({
+      const structured = {
         source: "ios_envelope",
         code: envelope.code,
         message: envelope.message,
         action
-      });
+      } as const;
+      const data = objectValue(envelope.data);
+      throw new IOSExploreStructuredError(data ? { ...structured, data } : structured);
     }
 
     return envelope.data ?? {};
   }
+}
+
+function objectValue(value: unknown): JSONObject | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as JSONObject)
+    : undefined;
 }

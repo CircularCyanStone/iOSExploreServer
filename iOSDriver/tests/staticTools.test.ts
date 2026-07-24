@@ -205,7 +205,30 @@ describe("static tools", () => {
     } } });
     const result = await tools.ui_inspect!.handler({});
     expect(result.isError).toBe(true);
-    expect(text(result)).toMatchObject({ source: "ios_envelope", code: "unknown_action" });
+    expect(text(result)).toMatchObject({
+      source: "ios_envelope",
+      code: "unknown_action",
+      nextSteps: expect.arrayContaining([expect.stringContaining("check_capabilities")])
+    });
+  });
+
+  test("静态工具保留 App 失败 data 并补充下一步建议", async () => {
+    const tools = createStaticTools({ client: { call: async () => {
+      throw new IOSExploreStructuredError({
+        source: "ios_envelope",
+        code: "wait_timeout",
+        message: "wait timed out mode=any",
+        data: { elapsedMs: 1200, attempts: 12 }
+      });
+    } } });
+    const result = await tools.ui_waitAny!.handler({ conditions: [{ id: "done", mode: "textExists", text: "Done" }] });
+    expect(result.isError).toBe(false);
+    expect(text(result)).toMatchObject({
+      source: "ios_envelope",
+      code: "wait_timeout",
+      data: { elapsedMs: 1200, attempts: 12 },
+      nextSteps: expect.arrayContaining([expect.stringContaining("wait_and_inspect")])
+    });
   });
 
   test("能力检查无法读取 help 时不伪造缺失 action，并报告模块状态 unknown", async () => {
@@ -247,7 +270,10 @@ describe("static tools", () => {
     } } });
     const result = await tools.call_action!.handler({ action: "debug.missing" });
     expect(result.isError).toBe(false);
-    expect(text(result)).toMatchObject({ code: "unknown_action" });
+    expect(text(result)).toMatchObject({
+      code: "unknown_action",
+      nextSteps: expect.arrayContaining([expect.stringContaining("health_check")])
+    });
   });
 
   test("call_action transport 重试失败后返回 retry 和 healthCheck", async () => {

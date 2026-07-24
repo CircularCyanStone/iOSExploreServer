@@ -17,14 +17,15 @@ describe("IOSExploreClient", () => {
 
   test("throws structured iOS envelope error", async () => {
     await withMockIOSExploreServer(
-      () => ({ body: { code: "invalid_data", message: "bad field" } }),
+      () => ({ body: { code: "invalid_data", message: "bad field", data: { field: "path" } } }),
       async ({ baseURL }) => {
         const client = new IOSExploreClient({ baseURL, requestTimeoutMs: 10000 });
         await expect(client.call("ui.tap", {})).rejects.toMatchObject({
           source: "ios_envelope",
           code: "invalid_data",
           action: "ui.tap",
-          message: "bad field"
+          message: "bad field",
+          data: { field: "path" }
         });
       }
     );
@@ -54,6 +55,31 @@ describe("IOSExploreClient", () => {
           source: "ios_envelope",
           code: "wait_timeout",
           action: "ui.waitAny"
+        });
+      }
+    );
+  });
+
+  test("preserves structured failure data from iOS envelope", async () => {
+    await withMockIOSExploreServer(
+      () => ({
+        body: {
+          code: "wait_timeout",
+          message: "wait timed out mode=any",
+          data: { elapsedMs: 1200, attempts: 12, snapshotUnavailableReason: "view snapshot unknown or expired" }
+        }
+      }),
+      async ({ baseURL }) => {
+        const client = new IOSExploreClient({ baseURL, requestTimeoutMs: 10000 });
+        await expect(client.call("ui.waitAny", { conditions: [] })).rejects.toMatchObject({
+          source: "ios_envelope",
+          code: "wait_timeout",
+          action: "ui.waitAny",
+          data: {
+            elapsedMs: 1200,
+            attempts: 12,
+            snapshotUnavailableReason: "view snapshot unknown or expired"
+          }
         });
       }
     );

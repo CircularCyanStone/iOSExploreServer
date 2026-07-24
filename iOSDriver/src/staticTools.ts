@@ -260,9 +260,9 @@ export function createStaticTools(options: { client: IOSExploreCaller }): Record
           const normalized = normalizeError(error);
           if (normalized.source === "ios_envelope" && normalized.code === "wait_timeout") {
             const observation = await client.call("ui.inspect", inspectOptions);
-            return jsonResult({ wait: normalized, observation }, false);
+            return jsonResult({ wait: enrichIOSFailure(normalized), observation }, false);
           }
-          return errorResult(normalized as StructuredError);
+          return errorResult(enrichIOSFailure(normalized));
         }
       }
     },
@@ -330,7 +330,7 @@ export function createStaticTools(options: { client: IOSExploreCaller }): Record
           });
         } catch (error) {
           // 点击失败时立即返回，不再执行等待和检查。
-          const normalized = normalizeError(error);
+          const normalized = enrichIOSFailure(normalizeError(error));
           timing.totalMs = Date.now() - startTime;
           return errorResult({ ...normalized, timing } as StructuredError);
         }
@@ -887,25 +887,27 @@ function pickAllowedFields(input: JSONObject, keys: readonly string[]): JSONObje
 
 function resultForStaticActionFailure(error: StructuredError): MCPToolResult {
   if (error.source === "ios_envelope") {
+    const enriched = enrichIOSFailure(error);
     const errorCodes = ["invalid_data", "stale_locator", "unknown_action"];
     if (error.code && errorCodes.includes(error.code)) {
-      return errorResult(error);
+      return errorResult(enriched);
     }
-    return jsonResult(error as unknown as JSONObject, false);
+    return jsonResult(enriched, false);
   }
   return errorResult(error);
 }
 
 function resultForFailure(error: StructuredError): MCPToolResult {
   if (error.source === "ios_envelope") {
+    const enriched = enrichIOSFailure(error);
     // call_action 的 unknown_action 保持 isError=false（兜底工具本就让 agent 猜 action 名）；
     // invalid_data / stale_locator 升格为 isError=true（参数错误、snapshot 过期）；
     // 其它 ios_envelope code（wait_timeout / alert_unavailable 等）保持 isError=false。
     const errorCodes = ["invalid_data", "stale_locator"];
     if (error.code && errorCodes.includes(error.code)) {
-      return errorResult(error);
+      return errorResult(enriched);
     }
-    return jsonResult(error as unknown as JSONObject, false);
+    return jsonResult(enriched, false);
   }
   return errorResult(error);
 }
@@ -917,17 +919,87 @@ function normalizeError(error: unknown): StructuredError {
   // 有明确 source 的对象，保留原始 source（transport/http/ios_envelope），
   // 不全部覆盖为 ios_envelope。只在没有 source 时默认 ios_envelope。
   if (typeof error === "object" && error !== null && "source" in error && "code" in error) {
-    const err = error as { source?: string; code: string; message?: string };
-    if (err.source === "transport" || err.source === "http" || err.source === "ios_envelope") {
-      return { source: err.source, code: err.code, message: err.message ?? String(error) } as StructuredError;
+    const err = error as Partial<StructuredError> & { source?: unknown; code?: unknown; message?: unknown };
+    if (typeof err.code !== "string") {
+      return {
+        source: "mcp_server" as const,
+        code: "unexpected_error",
+        message: err.message !== undefined ? String(err.message) : String(error)
+      };
     }
-    return { source: "ios_envelope" as const, code: err.code, message: err.message ?? String(error) };
+    if (err.source === "transport" || err.source === "http" || err.source === "ios_envelope") {
+      return { ...err, source: err.source, code: err.code, message: err.message !== undefined ? String(err.message) : String(error) } as StructuredError;
+    }
+    return { ...err, source: "ios_envelope" as const, code: err.code, message: err.message !== undefined ? String(err.message) : String(error) };
   }
   return {
     source: "mcp_server" as const,
     code: "unexpected_error",
     message: error instanceof Error ? error.message : String(error)
   };
+}
+
+function enrichIOSFailure(error: StructuredError): StructuredError & JSONObject {
+  if (error.source !== "ios_envelope") return error as StructuredError & JSONObject;
+  const nextSteps = error.nextSteps ?? iosEnvelopeNextSteps(error);
+  return nextSteps ? { ...error, nextSteps } : error as StructuredError & JSONObject;
+}
+
+function iosEnvelopeNextSteps(error: StructuredError): string[] | undefined {
+  switch (error.code) {
+    case "invalid_data":
+      return [
+        "对照当前工具 inputSchema 或 check_capabilities 返回的 App schema 修正参数。",
+        "优先检查字段名、必填字段、互斥字段、enum 值和数值范围；不要重试相同参数。"
+      ];
+    case "unknown_action":
+      return [
+        "先运行 health_check 或 check_capabilities 确认 App 当前注册的 action。",
+        "如果缺少 ui.* 或 app.logs.*，在宿主 App 里确认已调用对应 registerUIKitCommands/registerDiagnosticsCommands。"
+      ];
+    case "stale_locator":
+      return [
+        "重新调用 ui_inspect 获取新的 viewSnapshotID。",
+        "从最新 inspect 结果重新选择 path 或 accessibilityIdentifier 后再重试原 action。"
+      ];
+    case "target_not_found":
+      return [
+        "重新调用 ui_inspect 确认目标是否仍在当前页面。",
+        "如果目标可能在屏幕外，先用 ui_scrollToElement 或 ui_scroll 滚动，再重新 inspect。"
+      ];
+    case "not_actionable":
+      return [
+        "回到 ui_inspect 结果中选择 availableActions 非空的节点。",
+        "如果要操作表单或数值控件，改用 ui_input 或 ui_control_sendAction，而不是继续 tap 当前结构节点。"
+      ];
+    case "unsupported_target":
+      return [
+        "重新 ui_inspect 查看目标类型和 availableActions。",
+        "根据控件类型改用更具体的工具，例如 ui_control_sendAction、ui_input、ui_scroll、ui_swipe 或 ui_longPress。"
+      ];
+    case "wait_timeout":
+      return [
+        "读取错误 data 里的 elapsedMs/attempts 判断是否真的等满；随后重新 ui_inspect 查看当前 UI。",
+        "推荐改用 wait_and_inspect 或 ui_waitAny 同时等待成功和失败条件；只有 UI 仍在进展时才扩大 timeoutMs。"
+      ];
+    case "response_too_large":
+      return [
+        "降低响应体大小：ui_inspect 减小 maxDepth/maxTargets，ui_screenshot 减小 maxDimension。",
+        "避免请求完整大截图或过深 UI 树后直接重试同一参数。"
+      ];
+    case "stale_cursor":
+      return [
+        "重新调用 app_logs_mark 建立新的日志 cursor。",
+        "之后用新 cursor 调 app_logs_read；旧 cursor 不应继续重试。"
+      ];
+    case "alert_unavailable":
+      return [
+        "先 ui_inspect 或 ui_waitAny 确认当前是否存在 alert。",
+        "没有 alert 时不要继续 ui_alert_respond，应触发打开弹窗的前置操作。"
+      ];
+    default:
+      return undefined;
+  }
 }
 
 // transport 错误判定集中在兜底工具路径，避免不同工具产生不同错误语义。

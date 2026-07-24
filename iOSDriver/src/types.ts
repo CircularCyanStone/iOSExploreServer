@@ -10,6 +10,7 @@ export type IOSExploreSuccessEnvelope = {
 export type IOSExploreFailureEnvelope = {
   code: string;
   message: string;
+  data?: JSONObject;
 };
 
 export type IOSExploreEnvelope = IOSExploreSuccessEnvelope | IOSExploreFailureEnvelope;
@@ -31,6 +32,8 @@ export type StructuredError = {
   status?: number;
   timeoutMs?: number;
   bodySnippet?: string;
+  data?: JSONObject;
+  nextSteps?: string[];
 };
 
 export type MCPTextContent = {
