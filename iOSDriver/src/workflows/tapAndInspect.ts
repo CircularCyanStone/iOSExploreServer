@@ -70,15 +70,6 @@ export async function runTapAndInspect(
     });
     waitMs = context.now() - waitStartedAt;
     results.push(waitResult);
-
-    if (!waitResult.ok && waitResult.error.code !== "wait_timeout") {
-      const totalMs = context.now() - workflowStartedAt;
-      return failure(waitResult.error, {
-        tap: stepValue(tapResult),
-        wait: stepValue(waitResult),
-        timing: tapTiming(tapMs, waitMs, 0, totalMs)
-      }, results, totalMs);
-    }
   }
 
   const inspectStartedAt = context.now();
