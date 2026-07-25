@@ -10,3 +10,6 @@ export type {
   MCPToolHandlers,
   MCPWorkflowRunner
 } from "./adapters/mcp/server.js";
+/** Host logger 工厂与注入类型，供嵌入式调用方复用同一 stderr-safe 日志链。 */
+export { createHostLogger, defaultHostLogger, noopHostLogger } from "./runtime/hostLogger.js";
+export type { HostLogger, HostLoggerOptions, HostLogFields, HostLogLevel, HostLogSink } from "./runtime/hostLogger.js";

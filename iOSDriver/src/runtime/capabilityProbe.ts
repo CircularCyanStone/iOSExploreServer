@@ -4,6 +4,7 @@ import type { JSONObject } from "../types.js";
 import type { DriverError } from "./driverErrors.js";
 import type { InvocationPolicy } from "./driverRuntime.js";
 import type { InvocationResult } from "./types.js";
+import { noopHostLogger, type HostLogger } from "./hostLogger.js";
 import { compareContractSchemas, type ActionSchemaCompatibility, type SchemaCompatibility } from "./schemaCompatibility.js";
 
 /** CapabilityProbe 所需的最小 runtime 边界，便于 adapter 和测试注入。 */
@@ -70,68 +71,86 @@ export interface CapabilityReport {
 /** 调用 ping/help 并将 App 能力投影为 adapter 可消费的稳定报告。 */
 export class CapabilityProbe {
   private readonly expectedContracts: readonly DeviceActionContract[];
-  private readonly actionPolicies = new Map<string, InvocationPolicy>();
+  private readonly logger: HostLogger;
+  private actionPolicies: ReadonlyMap<string, InvocationPolicy> = new Map();
 
   /**
    * 创建能力探针；构造过程是纯配置，不发出任何 action。
    *
    * @param runtime 可注入的 DriverRuntime 兼容对象。
    * @param expectedContracts 本地生成合同，默认使用 canonical bundle。
+   * @param logger Host 命令链 logger；CLI/MCP 入口注入共享 stderr logger。
    */
-  constructor(private readonly runtime: CapabilityInvoker, expectedContracts: readonly DeviceActionContract[] = DEVICE_ACTION_CONTRACTS) {
+  constructor(
+    private readonly runtime: CapabilityInvoker,
+    expectedContracts: readonly DeviceActionContract[] = DEVICE_ACTION_CONTRACTS,
+    logger: HostLogger = noopHostLogger
+  ) {
     this.expectedContracts = expectedContracts;
+    this.logger = logger;
   }
 
   /** 显式执行 doctor/health/capabilities 检查。 */
   async probe(mode: CapabilityProbeMode = "capabilities"): Promise<CapabilityReport> {
-    this.actionPolicies.clear();
-    const pingResult = await this.runtime.invoke("ping", {});
-    const ping = pingStatus(pingResult);
-    const helpResult = await this.runtime.invoke("help", {});
-    const help = helpStatus(helpResult);
-    const connection: ConnectionStatus = ping.status === "malformed"
-      ? "malformed"
-      : ping.status === "ok"
-        ? "reachable"
-        : ping.error?.source === "transport"
-          ? "unreachable"
-          : "reachable";
+    const startedAt = Date.now();
+    this.logger.emit("info", "capability.probe.start", { mode });
+    try {
+      const pingResult = await this.runtime.invoke("ping", {});
+      const ping = pingStatus(pingResult);
+      const helpResult = await this.runtime.invoke("help", {});
+      const help = helpStatus(helpResult);
+      const connection: ConnectionStatus = ping.status === "malformed"
+        ? "malformed"
+        : ping.status === "ok"
+          ? "reachable"
+          : ping.error?.source === "transport"
+            ? "unreachable"
+            : "reachable";
 
-    if (help.status !== "available" || connection === "unreachable" || connection === "malformed") {
-      return {
-        mode, connection, ping, help,
-        actions: { status: "unknown", registeredActions: [], missingActions: [] },
-        modules: { uikit: { status: "unknown" }, diagnostics: { status: "unknown" } },
-        schemaCompatibility: "unknown",
-        schemaDifferences: []
+      if (help.status === "available") {
+        this.actionPolicies = validatedActionPolicies(help.commands);
+      }
+      if (help.status !== "available" || connection === "unreachable" || connection === "malformed") {
+        return this.complete({
+          mode, connection, ping, help,
+          actions: { status: "unknown", registeredActions: [], missingActions: [] },
+          modules: { uikit: { status: "unknown" }, diagnostics: { status: "unknown" } },
+          schemaCompatibility: "unknown",
+          schemaDifferences: []
+        }, startedAt);
+      }
+      const commands = help.commands;
+      const registeredActions = commands.map(command => command.action).filter((action): action is string => typeof action === "string");
+      const registered = new Set(registeredActions);
+      const missingActions = this.expectedContracts.map(contract => contract.action).filter(action => !registered.has(action));
+      const schemaDifferences = compareContractSchemas(this.expectedContracts, commands);
+      const schemaCompatibility = summarizeSchema(schemaDifferences);
+      const metadata = help.metadata === undefined ? undefined : {
+        ...help.metadata,
+        ...(help.metadata.protocolVersion === undefined ? {} : { protocolVersionMatches: help.metadata.protocolVersion === CONTRACT_BUNDLE_METADATA.protocolVersion }),
+        ...(help.metadata.contractVersion === undefined ? {} : { contractVersionMatches: help.metadata.contractVersion === CONTRACT_BUNDLE_METADATA.contractVersion }),
+        ...(help.metadata.contractHash === undefined ? {} : { hashMatches: help.metadata.contractHash === CONTRACT_BUNDLE_METADATA.contractHash })
       };
+      return this.complete({
+        mode, connection, ping, help,
+        actions: { status: "known", registeredActions, missingActions },
+        modules: {
+          uikit: moduleStatus(this.expectedContracts, "uikit", registered),
+          diagnostics: moduleStatus(this.expectedContracts, "diagnostics", registered)
+        },
+        schemaCompatibility,
+        schemaDifferences,
+        ...(metadata === undefined ? {} : { metadata })
+      }, startedAt);
+    } catch (error) {
+      this.logger.emit("error", "capability.probe.complete", {
+        mode,
+        outcome: "throw",
+        elapsedMs: Date.now() - startedAt,
+        errorType: error instanceof Error ? error.name : typeof error
+      });
+      throw error;
     }
-    const commands = help.commands;
-    for (const [action, policy] of validatedActionPolicies(commands)) {
-      this.actionPolicies.set(action, policy);
-    }
-    const registeredActions = commands.map(command => command.action).filter((action): action is string => typeof action === "string");
-    const registered = new Set(registeredActions);
-    const missingActions = this.expectedContracts.map(contract => contract.action).filter(action => !registered.has(action));
-    const schemaDifferences = compareContractSchemas(this.expectedContracts, commands);
-    const schemaCompatibility = summarizeSchema(schemaDifferences);
-    const metadata = help.metadata === undefined ? undefined : {
-      ...help.metadata,
-      ...(help.metadata.protocolVersion === undefined ? {} : { protocolVersionMatches: help.metadata.protocolVersion === CONTRACT_BUNDLE_METADATA.protocolVersion }),
-      ...(help.metadata.contractVersion === undefined ? {} : { contractVersionMatches: help.metadata.contractVersion === CONTRACT_BUNDLE_METADATA.contractVersion }),
-      ...(help.metadata.contractHash === undefined ? {} : { hashMatches: help.metadata.contractHash === CONTRACT_BUNDLE_METADATA.contractHash })
-    };
-    return {
-      mode, connection, ping, help,
-      actions: { status: "known", registeredActions, missingActions },
-      modules: {
-        uikit: moduleStatus(this.expectedContracts, "uikit", registered),
-        diagnostics: moduleStatus(this.expectedContracts, "diagnostics", registered)
-      },
-      schemaCompatibility,
-      schemaDifferences,
-      ...(metadata === undefined ? {} : { metadata })
-    };
   }
 
   /** doctor 的显式别名。 */
@@ -149,6 +168,25 @@ export class CapabilityProbe {
    */
   invocationPolicy(action: string): InvocationPolicy | undefined {
     return this.actionPolicies.get(action);
+  }
+
+  private complete(report: CapabilityReport, startedAt: number): CapabilityReport {
+    this.logger.emit(report.connection === "reachable" ? "info" : "warn", "capability.probe.complete", {
+      mode: report.mode,
+      outcome: "result",
+      elapsedMs: Date.now() - startedAt,
+      connection: report.connection,
+      pingStatus: report.ping.status,
+      helpStatus: report.help.status,
+      actionsStatus: report.actions.status,
+      registeredActionCount: report.actions.registeredActions.length,
+      missingActionCount: report.actions.missingActions.length,
+      uikitStatus: report.modules.uikit.status,
+      diagnosticsStatus: report.modules.diagnostics.status,
+      schemaCompatibility: report.schemaCompatibility,
+      schemaDifferenceCount: report.schemaDifferences.length
+    });
+    return report;
   }
 }
 

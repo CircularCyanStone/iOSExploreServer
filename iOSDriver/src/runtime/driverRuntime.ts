@@ -3,6 +3,7 @@ import type { JSONObject } from "../types.js";
 import type { ActionTransport } from "./actionTransport.js";
 import { ArtifactDecoder } from "./artifacts.js";
 import { DriverFailure, type DriverError } from "./driverErrors.js";
+import { noopHostLogger, type HostLogger } from "./hostLogger.js";
 import type { Artifact, InvocationResult } from "./types.js";
 
 const ACTION_METADATA: ReadonlyMap<string, DeviceActionContract> = new Map(
@@ -14,6 +15,8 @@ export interface DriverRuntimeOptions {
   readonly transport: ActionTransport;
   readonly configuredRequestTimeoutMs: number;
   readonly artifactDecoder?: ArtifactDecoder;
+  /** Host 命令链 logger；CLI/MCP 入口注入共享 stderr logger。 */
+  readonly logger?: HostLogger;
 }
 
 /** 单次 invoke 的调用参数。 */
@@ -36,6 +39,7 @@ export class DriverRuntime {
   private readonly transport: ActionTransport;
   private readonly configuredRequestTimeoutMs: number;
   private readonly artifactDecoder: ArtifactDecoder;
+  private readonly logger: HostLogger;
 
   /**
    * 创建 runtime。
@@ -46,6 +50,7 @@ export class DriverRuntime {
     this.transport = options.transport;
     this.configuredRequestTimeoutMs = options.configuredRequestTimeoutMs;
     this.artifactDecoder = options.artifactDecoder ?? new ArtifactDecoder();
+    this.logger = options.logger ?? noopHostLogger;
   }
 
   /**
@@ -61,6 +66,12 @@ export class DriverRuntime {
     const policy = invocationPolicy(action, options.policy);
     const timeoutMs = requestTimeout(policy, data, this.configuredRequestTimeoutMs);
     let attempts = 0;
+    this.logger.emit("info", "runtime.invoke.start", {
+      action,
+      timeoutMs,
+      idempotency: policy?.idempotency ?? "unknown",
+      timeoutClass: policy?.timeoutClass ?? "unknown"
+    });
 
     while (true) {
       attempts += 1;
@@ -70,19 +81,36 @@ export class DriverRuntime {
           ...(options.signal === undefined ? {} : { signal: options.signal })
         });
         if (response.httpStatus < 200 || response.httpStatus >= 300) {
-          return this.failure({
+          return this.finish(action, this.failure({
             source: "http",
             code: "http_error",
             message: `HTTP ${response.httpStatus}`,
             action,
             status: response.httpStatus
-          }, startedAt, attempts);
+          }, startedAt, attempts));
         }
-        return this.fromEnvelope(action, response.envelope, startedAt, attempts);
+        return this.finish(action, this.fromEnvelope(action, response.envelope, startedAt, attempts));
       } catch (error) {
-        if (!(error instanceof DriverFailure)) throw error;
-        if (this.shouldRetry(policy, error, attempts)) continue;
-        return this.failure(error.driverError, startedAt, attempts);
+        if (!(error instanceof DriverFailure)) {
+          this.logger.emit("error", "runtime.invoke.throw", {
+            action,
+            attempts,
+            elapsedMs: Date.now() - startedAt,
+            errorType: errorType(error)
+          });
+          throw error;
+        }
+        if (this.shouldRetry(policy, error, attempts)) {
+          this.logger.emit("warn", "runtime.invoke.retry", {
+            action,
+            attempts,
+            nextAttempt: attempts + 1,
+            elapsedMs: Date.now() - startedAt,
+            ...errorFields(error.driverError)
+          });
+          continue;
+        }
+        return this.finish(action, this.failure(error.driverError, startedAt, attempts));
       }
     }
   }
@@ -123,16 +151,15 @@ export class DriverRuntime {
     const decoded = responseData === undefined
       ? { ok: true as const, data: undefined, artifacts: [] as readonly Artifact[] }
       : this.artifactDecoder.decode(action, responseData);
-    if (!decoded.ok) {
-      return this.failure(decoded.error, startedAt, attempts, decoded.data, decoded.artifacts);
-    }
+    const failureData = decoded.ok ? decoded.data : responseData;
+    const artifacts = decoded.ok ? decoded.artifacts : [];
     return this.failure({
       source: "appEnvelope",
       code: envelope.code,
       message: envelope.message,
       action,
-      ...(decoded.data === undefined ? {} : { data: decoded.data })
-    }, startedAt, attempts, decoded.data, decoded.artifacts);
+      ...(failureData === undefined ? {} : { data: failureData })
+    }, startedAt, attempts, failureData, artifacts);
   }
 
   private shouldRetry(policy: InvocationPolicy | undefined, failure: DriverFailure, attempts: number): boolean {
@@ -161,6 +188,26 @@ export class DriverRuntime {
       attempts
     };
   }
+
+  private finish(action: string, result: InvocationResult): InvocationResult {
+    if (result.ok) {
+      this.logger.emit("info", "runtime.invoke.success", {
+        action,
+        attempts: result.attempts,
+        elapsedMs: result.elapsedMs,
+        artifactCount: result.artifacts.length
+      });
+    } else {
+      this.logger.emit("warn", "runtime.invoke.failure", {
+        action,
+        attempts: result.attempts,
+        elapsedMs: result.elapsedMs,
+        artifactCount: result.artifacts?.length ?? 0,
+        ...errorFields(result.error)
+      });
+    }
+    return result;
+  }
 }
 
 function requestTimeout(policy: InvocationPolicy | undefined, data: JSONObject, configuredRequestTimeoutMs: number): number {
@@ -170,11 +217,11 @@ function requestTimeout(policy: InvocationPolicy | undefined, data: JSONObject, 
 }
 
 function invocationPolicy(action: string, perCallPolicy: InvocationPolicy | undefined): InvocationPolicy | undefined {
-  if (isInvocationPolicy(perCallPolicy)) return perCallPolicy;
   const generated = ACTION_METADATA.get(action);
-  return generated === undefined
-    ? undefined
-    : { idempotency: generated.idempotency, timeoutClass: generated.timeoutClass };
+  if (generated !== undefined) {
+    return { idempotency: generated.idempotency, timeoutClass: generated.timeoutClass };
+  }
+  return isInvocationPolicy(perCallPolicy) ? perCallPolicy : undefined;
 }
 
 function isInvocationPolicy(value: InvocationPolicy | undefined): value is InvocationPolicy {
@@ -195,4 +242,19 @@ function protocolError(action: string): DriverError {
     action,
     protocolIssue: "invalid_envelope"
   };
+}
+
+function errorFields(error: DriverError): Record<string, string | number | undefined> {
+  return {
+    source: error.source,
+    code: error.code,
+    status: error.status,
+    timeoutMs: error.timeoutMs,
+    transportPhase: error.transportPhase,
+    protocolIssue: error.protocolIssue
+  };
+}
+
+function errorType(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
 }

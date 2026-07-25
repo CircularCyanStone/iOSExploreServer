@@ -26,6 +26,30 @@ describe("MCP result renderer", () => {
     expect(result.content[1]!.type === "text" ? result.content[1]!.text : "").not.toContain(Buffer.from(raw).toString("base64"));
   });
 
+  test("失败结果携带的 image artifact 仍渲染为 image content", () => {
+    const raw = Uint8Array.from([137, 80, 78, 71]);
+    const invocation: InvocationResult = {
+      ok: false,
+      error: { source: "workflow", code: "inspect_failed", message: "inspect failed" },
+      artifacts: [{ kind: "image", mimeType: "image/png", data: raw, metadata: { stage: "inspect" } }],
+      elapsedMs: 1,
+      attempts: 2
+    };
+
+    const result = renderInvocationResult(invocation, "workflow");
+
+    expect(result.content[0]).toEqual({
+      type: "image",
+      data: Buffer.from(raw).toString("base64"),
+      mimeType: "image/png"
+    });
+    expect(result.content[1]).toEqual({
+      type: "text",
+      text: JSON.stringify(invocation.error)
+    });
+    expect(result.isError).toBe(true);
+  });
+
   test("稳定 source/code 决定 isError，call_action unknown_action 保留探索语义", () => {
     const invalid = failure("appEnvelope", "invalid_data", "bad input");
     expect(renderInvocationResult(invalid, "deviceAction").isError).toBe(true);

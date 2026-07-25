@@ -3,6 +3,7 @@ import { STATIC_TOOL_NAMES } from "../src/adapters/mcp/toolMappings.js";
 import { createToolHandlers } from "../src/server.js";
 import type { CapabilityReport } from "../src/runtime/capabilityProbe.js";
 import type { InvocationResult } from "../src/runtime/types.js";
+import { noopHostLogger } from "../src/runtime/hostLogger.js";
 
 const success: InvocationResult = { ok: true, data: {}, artifacts: [], elapsedMs: 0, attempts: 1 };
 
@@ -15,7 +16,8 @@ describe("server 兼容委托", () => {
         async capabilities() { return report("capabilities"); },
         invocationPolicy() { return undefined; }
       },
-      workflowRunner: { async run() { return success; } }
+      workflowRunner: { async run() { return success; } },
+      logger: noopHostLogger
     });
 
     const listed = await handlers.listTools();

@@ -3,6 +3,7 @@ import { startMCPStdioServer } from "../mcp/server.js";
 import type { CapabilityProbe } from "../../runtime/capabilityProbe.js";
 import type { DriverError } from "../../runtime/driverErrors.js";
 import type { DriverRuntime } from "../../runtime/driverRuntime.js";
+import { defaultHostLogger, type HostLogger } from "../../runtime/hostLogger.js";
 import type { JSONObject } from "../../types.js";
 import type { WorkflowRunner } from "../../workflows/workflowRunner.js";
 import { CLIConfigError, type CLIConfig, type ConfigFileSystem, asJSONObject, initCLIConfig } from "./config.js";
@@ -33,6 +34,8 @@ export interface CLICommandContext {
   readonly human?: boolean;
   readonly nodeVersion?: string;
   readonly signal?: AbortSignal;
+  /** CLI 命令 logger；默认固定写 stderr，与业务输出通道分离。 */
+  readonly logger?: HostLogger;
 }
 
 /** 固定退出码：成功、业务/workflow、配置、transport/HTTP/protocol。 */
@@ -44,28 +47,51 @@ export async function executeCLICommand(
   context: CLICommandContext,
   options: CallCommandOptions = { action: "" }
 ): Promise<number> {
+  const logger = context.logger ?? defaultHostLogger;
+  logger.emit("info", "cli.command.start", { command });
   try {
+    let exitCode: number;
     switch (command) {
       case "init":
-        return await runInit(context);
+        exitCode = await runInit(context);
+        break;
       case "doctor":
-        return await runDoctor(context);
+        exitCode = await runDoctor(context);
+        break;
       case "call":
-        return await runCall(options, context);
+        exitCode = await runCall(options, context);
+        break;
       case "mcp":
         await (context.startMCP ?? (() => startMCPStdioServer({
           runtime: context.runtime,
           capabilityProbe: context.capabilityProbe as CapabilityProbe,
-          workflowRunner: context.workflowRunner as WorkflowRunner
+          workflowRunner: context.workflowRunner as WorkflowRunner,
+          logger
         })) )();
-        return EXIT_CODES.success;
+        exitCode = EXIT_CODES.success;
+        break;
     }
+    logger.emit(exitCode === EXIT_CODES.success ? "info" : "warn", exitCode === EXIT_CODES.success ? "cli.command.complete" : "cli.command.error", {
+      command,
+      exitCode
+    });
+    return exitCode;
   } catch (error) {
     if (error instanceof CLIConfigError) {
       printError(context.output, error);
+      logger.emit("warn", "cli.command.error", {
+        command,
+        exitCode: EXIT_CODES.configError,
+        errorType: error.name
+      });
       return EXIT_CODES.configError;
     }
     printError(context.output, error instanceof Error ? error : String(error));
+    logger.emit("error", "cli.command.error", {
+      command,
+      exitCode: EXIT_CODES.transportFailure,
+      errorType: error instanceof Error ? error.name : typeof error
+    });
     return EXIT_CODES.transportFailure;
   }
 }
@@ -79,7 +105,7 @@ async function runInit(context: CLICommandContext): Promise<number> {
   }, context.env ?? process.env, context.fileSystem);
   printJSON(context.output, {
     configPath: result.config.configPath,
-    created: result.created,
+    configChanged: result.configChanged,
     mcp: { command: "iosdriver", args: ["mcp"] }
   });
   return EXIT_CODES.success;
@@ -99,6 +125,7 @@ async function runDoctor(context: CLICommandContext): Promise<number> {
     actions: report.actions,
     modules: report.modules,
     schemaCompatibility: report.schemaCompatibility,
+    schemaDifferences: report.schemaDifferences,
     ...(report.metadata === undefined ? {} : { metadata: report.metadata })
   };
   if (context.human) {
@@ -115,7 +142,10 @@ async function runDoctor(context: CLICommandContext): Promise<number> {
   if (report.connection !== "reachable" || report.ping.status !== "ok" || report.help.status !== "available") {
     return EXIT_CODES.transportFailure;
   }
-  if (report.schemaCompatibility === "breaking" || report.metadata?.hashMatches === false || report.metadata?.contractVersionMatches === false) {
+  if (report.metadata?.protocolVersionMatches === false) {
+    return EXIT_CODES.transportFailure;
+  }
+  if (report.schemaCompatibility === "breaking") {
     return EXIT_CODES.appFailure;
   }
   return EXIT_CODES.success;

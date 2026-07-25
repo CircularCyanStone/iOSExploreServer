@@ -4,6 +4,7 @@ import { DEVICE_ACTION_CONTRACTS } from "../../src/generated/deviceActionContrac
 import { CapabilityProbe, type CapabilityInvoker } from "../../src/runtime/capabilityProbe.js";
 import type { DriverError } from "../../src/runtime/driverErrors.js";
 import type { InvocationResult } from "../../src/runtime/types.js";
+import { hostLogRecorder } from "../support/hostLogRecorder.js";
 
 const ok = (data: Record<string, unknown>): InvocationResult => ({ ok: true, data, artifacts: [], elapsedMs: 0, attempts: 1 });
 const failure = (source: DriverError["source"] = "transport"): InvocationResult => ({ ok: false, error: { source, code: source === "transport" ? "transport_unavailable" : "protocol_error", message: "failed" }, elapsedMs: 0, attempts: 1 });
@@ -100,7 +101,7 @@ describe("CapabilityProbe", () => {
     expect(probe.invocationPolicy("extension.duplicate")).toBeUndefined();
   });
 
-  test("后续显式 probe 失败会清除旧 help policy", async () => {
+  test("后续显式 probe 失败仍保留最近一次成功 help policy", async () => {
     const outcomes: Record<string, InvocationResult> = {
       ping: ok({ pong: true }),
       help: ok({ commands: [command("extension.wait", undefined, { idempotency: "readOnly", timeoutClass: "wait" })] })
@@ -112,6 +113,80 @@ describe("CapabilityProbe", () => {
     outcomes.ping = failure();
     outcomes.help = failure();
     await probe.capabilities();
-    expect(probe.invocationPolicy("extension.wait")).toBeUndefined();
+    expect(probe.invocationPolicy("extension.wait")).toEqual({ idempotency: "readOnly", timeoutClass: "wait" });
+  });
+
+  test("同轮 ping 失败但 help 成功时仍发布最新 help policy", async () => {
+    const outcomes: Record<string, InvocationResult> = {
+      ping: ok({ pong: true }),
+      help: ok({ commands: [command("extension.old", undefined, { idempotency: "readOnly", timeoutClass: "standard" })] })
+    };
+    const probe = new CapabilityProbe(fake(outcomes));
+    await probe.capabilities();
+
+    outcomes.ping = failure();
+    outcomes.help = ok({ commands: [command("extension.new", undefined, { idempotency: "idempotent", timeoutClass: "wait" })] });
+    await probe.capabilities();
+
+    expect(probe.invocationPolicy("extension.new")).toEqual({ idempotency: "idempotent", timeoutClass: "wait" });
+    expect(probe.invocationPolicy("extension.old")).toBeUndefined();
+  });
+
+  test("并发 probe 仅发布最近完成的成功 help 原子快照", async () => {
+    const helpResolvers: Array<(result: InvocationResult) => void> = [];
+    let bothHelpCallsResolve: (() => void) | undefined;
+    const bothHelpCalls = new Promise<void>(resolve => { bothHelpCallsResolve = resolve; });
+    const runtime: CapabilityInvoker = {
+      async invoke(action) {
+        if (action === "ping") return ok({ pong: true });
+        return new Promise<InvocationResult>(resolve => {
+          helpResolvers.push(resolve);
+          if (helpResolvers.length === 2) bothHelpCallsResolve?.();
+        });
+      }
+    };
+    const probe = new CapabilityProbe(runtime);
+
+    const firstProbe = probe.capabilities();
+    const secondProbe = probe.capabilities();
+    await bothHelpCalls;
+
+    helpResolvers[1]!(ok({ commands: [
+      command("extension.second", undefined, { idempotency: "idempotent", timeoutClass: "standard" })
+    ] }));
+    await secondProbe;
+    expect(probe.invocationPolicy("extension.second")).toEqual({ idempotency: "idempotent", timeoutClass: "standard" });
+    expect(probe.invocationPolicy("extension.first")).toBeUndefined();
+
+    helpResolvers[0]!(ok({ commands: [
+      command("extension.first", undefined, { idempotency: "readOnly", timeoutClass: "wait" })
+    ] }));
+    await firstProbe;
+    expect(probe.invocationPolicy("extension.first")).toEqual({ idempotency: "readOnly", timeoutClass: "wait" });
+    expect(probe.invocationPolicy("extension.second")).toBeUndefined();
+  });
+
+  test("记录 probe 起止与连接、ping、help、schema 摘要，不记录 commands 内容", async () => {
+    const recorded = hostLogRecorder();
+    const probe = new CapabilityProbe(fake({
+      ping: ok({ pong: true }),
+      help: ok({ commands: [command("secret.command", undefined, { description: "private payload" })] })
+    }), DEVICE_ACTION_CONTRACTS, recorded.logger);
+
+    await probe.health();
+
+    expect(recorded.entries().map(entry => entry.event)).toEqual([
+      "capability.probe.start",
+      "capability.probe.complete"
+    ]);
+    expect(recorded.entries()[1]).toMatchObject({
+      mode: "health",
+      connection: "reachable",
+      pingStatus: "ok",
+      helpStatus: "available",
+      actionsStatus: "known",
+      schemaCompatibility: expect.any(String)
+    });
+    expect(recorded.lines.join("")).not.toMatch(/secret\.command|private payload|commands/);
   });
 });

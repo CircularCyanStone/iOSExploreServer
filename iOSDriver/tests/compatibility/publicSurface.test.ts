@@ -20,6 +20,37 @@ const EXPECTED_TOOL_NAMES = [
   "ui_picker_selectRow", "ui_webView_eval", "wait_and_inspect", "ui_wait", "ui_tap_and_inspect"
 ] as const;
 
+const EXPECTED_TOOL_MAPPINGS = [
+  { toolName: "health_check", kind: "hostOperation", operation: "health" },
+  { toolName: "check_capabilities", kind: "hostOperation", operation: "capabilities" },
+  { toolName: "call_action", kind: "hostOperation", operation: "call_action" },
+  { toolName: "app_logs_mark", kind: "deviceAction", action: "app.logs.mark" },
+  { toolName: "app_logs_read", kind: "deviceAction", action: "app.logs.read" },
+  { toolName: "ui_topViewHierarchy", kind: "deviceAction", action: "ui.topViewHierarchy" },
+  { toolName: "ui_inspect", kind: "deviceAction", action: "ui.inspect" },
+  { toolName: "ui_control_sendAction", kind: "deviceAction", action: "ui.control.sendAction" },
+  { toolName: "ui_input", kind: "deviceAction", action: "ui.input" },
+  { toolName: "ui_tap", kind: "deviceAction", action: "ui.tap" },
+  { toolName: "ui_screenshot", kind: "deviceAction", action: "ui.screenshot" },
+  { toolName: "ui_keyboard_dismiss", kind: "deviceAction", action: "ui.keyboard.dismiss" },
+  { toolName: "ui_scroll", kind: "deviceAction", action: "ui.scroll" },
+  { toolName: "ui_navigation_back", kind: "deviceAction", action: "ui.navigation.back" },
+  { toolName: "ui_navigation_tapBarButton", kind: "deviceAction", action: "ui.navigation.tapBarButton" },
+  { toolName: "ui_waitAny", kind: "deviceAction", action: "ui.waitAny" },
+  { toolName: "ui_scrollToElement", kind: "deviceAction", action: "ui.scrollToElement" },
+  { toolName: "ui_alert_respond", kind: "deviceAction", action: "ui.alert.respond" },
+  { toolName: "ui_controllers", kind: "deviceAction", action: "ui.controllers" },
+  { toolName: "ui_swipe", kind: "deviceAction", action: "ui.swipe" },
+  { toolName: "ui_longPress", kind: "deviceAction", action: "ui.longPress" },
+  { toolName: "ui_tabBar_selectTab", kind: "deviceAction", action: "ui.tabBar.selectTab" },
+  { toolName: "ui_datePicker_setDate", kind: "deviceAction", action: "ui.datePicker.setDate" },
+  { toolName: "ui_picker_selectRow", kind: "deviceAction", action: "ui.picker.selectRow" },
+  { toolName: "ui_webView_eval", kind: "deviceAction", action: "ui.webView.eval" },
+  { toolName: "wait_and_inspect", kind: "hostOperation", operation: "wait_and_inspect" },
+  { toolName: "ui_wait", kind: "deviceAction", action: "ui.wait" },
+  { toolName: "ui_tap_and_inspect", kind: "hostOperation", operation: "tap_and_inspect" }
+] as const;
+
 describe("public compatibility surface", () => {
   test("固定 28 个工具、映射和 generated schema 保持稳定", async () => {
     const handlers = createMCPToolHandlers(fixture().options);
@@ -27,7 +58,7 @@ describe("public compatibility surface", () => {
 
     expect(STATIC_TOOL_NAMES).toEqual(EXPECTED_TOOL_NAMES);
     expect(listed.tools.map(tool => tool.name)).toEqual(EXPECTED_TOOL_NAMES);
-    expect(TOOL_MAPPINGS).toHaveLength(28);
+    expect(TOOL_MAPPINGS).toEqual(EXPECTED_TOOL_MAPPINGS);
     for (const entry of TOOL_CATALOG) {
       const contract = contractFor(entry);
       expect(entry.description, entry.name).toBe(contract.description);

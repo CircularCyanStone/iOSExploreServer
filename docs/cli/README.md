@@ -59,7 +59,10 @@ npm run contracts:check
 
 1. Swift `ExploreServer` 在 App 内注册 `Command`，执行 typed 输入解析、UIKit/Diagnostics handler 和业务错误封装。
 2. `iOSDriver/src/iosExploreClient.ts` 在 Mac 侧通过 HTTP 调用 App，并把 HTTP 错误和 App envelope 转换成 Node 错误。
-3. `iOSDriver/src/staticTools.ts` 另外维护 MCP 工具名、action 映射、输入 schema、组合工具、截图转换和错误富化。
+3. MCP adapter 由 `src/adapters/mcp/toolMappings.ts` 固定历史工具名到合同标识的映射，
+   `src/adapters/mcp/toolCatalog.ts` 从生成的 device action / host operation 合同读取 description
+   与 input schema；执行路由、工作流、产物渲染和错误富化分别留在 adapter、WorkflowRunner、
+   runtime 与 result renderer 边界内。
 4. `help` 返回当前实际注册的 action；`check_capabilities` 用它检查 App 是否满足静态工具依赖，但它不应该决定 `tools/list`。
 
 这说明真正需要收敛的是“协议和执行核心”，不是把所有逻辑机械搬到一份 IDL。当前 Swift schema 与 typed parser 已经有复杂语义：部分输入要手写嵌套数组解析、跨字段校验和日期解析，不能声称全部 typed input 都能直接生成。
@@ -68,7 +71,7 @@ npm run contracts:check
 
 | 方案 | 决策 | 原因 |
 |---|---|---|
-| 继续由 `staticTools.ts` 手写全部 schema | 拒绝 | 继续复制 Swift 字段、默认值、范围和错误语义，漂移只能靠运行时比较发现。 |
+| 在 MCP adapter 手写全部 schema | 拒绝 | 会复制 Swift 字段、默认值、范围和错误语义，漂移只能靠运行时比较发现；当前 schema 从 generated contract 读取。 |
 | 动态读取 `help` 生成 MCP tools | 拒绝 | App 不在线时无法发现工具，工具列表会随运行时注册状态变化，破坏 MCP 启动稳定性。 |
 | 一份总 manifest 同时描述 action、宿主工作流、CLI、MCP、当前能力 | 拒绝 | 把静态协议、宿主策略和运行时状态混成一个事实源，最终会成为新的大杂烩。 |
 | contract / runtime / adapter 三层拆分 | 采用 | 能把协议、执行核心和展示入口分别演进。 |
@@ -229,7 +232,9 @@ App action 的稳定业务错误码属于 `DeviceActionContract`；配置、网�
 
 ## 能力探测与兼容性
 
-MCP 工具列表始终来自构建时合同和 HostOperationSpec，不依赖 App 是否在线。运行时能力通过 `help`、`ping` 和 capability probe 判断：
+MCP 工具列表由构建时生成合同与 `toolMappings.ts` 的显式历史名称映射共同构造，不依赖 App
+是否在线；`toolCatalog.ts` 只合并二者，不成为新的业务事实源。运行时能力通过 `help`、
+`ping` 和 capability probe 判断：
 
 - `health`：检查端点可达、响应可解析和基础协议是否正常；
 - `capabilities`：检查实际注册 action、模块状态、contract version/hash 和 schema 兼容性；
@@ -285,7 +290,9 @@ HTTP 端点仍保持单一 `POST /`：
 curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
 ```
 
-成功 envelope 仍为 `{"code":"ok","data":{"pong":true}}`。字段、工具映射和错误列表请以 [`generated/contracts.md`](../generated/contracts.md) 为准。
+成功 envelope 仍为 `{"code":"ok","data":{"pong":true}}`。Device action / host operation 的
+字段与稳定错误列表以 [`generated/contracts.md`](../generated/contracts.md) 为准；MCP 工具名到
+合同标识的映射以 `iOSDriver/src/adapters/mcp/toolMappings.ts` 为准。
 
 仅把 `dist/index.js` 包成 `iosdriver` 命令不能解决分发问题；npm 全局安装、`npx` 或其他安装方式必须在实际发行说明中明确。
 

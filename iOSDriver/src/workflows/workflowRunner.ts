@@ -1,5 +1,7 @@
 import type { JSONObject } from "../types.js";
 import type { InvocationResult } from "../runtime/types.js";
+import type { DriverError } from "../runtime/driverErrors.js";
+import { noopHostLogger, type HostLogger } from "../runtime/hostLogger.js";
 import { runTapAndInspect } from "./tapAndInspect.js";
 import type {
   WorkflowClock,
@@ -21,6 +23,7 @@ const SYSTEM_CLOCK: WorkflowClock = {
 export class WorkflowRunner {
   private readonly runtime: WorkflowRunnerOptions["runtime"];
   private readonly clock: WorkflowClock;
+  private readonly logger: HostLogger;
 
   /**
    * 创建 workflow runner。
@@ -30,6 +33,7 @@ export class WorkflowRunner {
   constructor(options: WorkflowRunnerOptions) {
     this.runtime = options.runtime;
     this.clock = options.clock ?? SYSTEM_CLOCK;
+    this.logger = options.logger ?? noopHostLogger;
   }
 
   /**
@@ -48,12 +52,34 @@ export class WorkflowRunner {
     const startedAt = this.clock.now();
     const totalBudgetMs = Math.max(0, options.deadlineAtMs - startedAt);
     const context = this.context(operation, options.deadlineAtMs, totalBudgetMs);
+    this.logger.emit("info", "workflow.operation.start", { operation, totalBudgetMs });
 
-    switch (operation) {
-      case "tap_and_inspect":
-        return runTapAndInspect(context, input, startedAt);
-      case "wait_and_inspect":
-        return runWaitAndInspect(context, input, startedAt);
+    try {
+      let result: WorkflowResult;
+      switch (operation) {
+        case "tap_and_inspect":
+          result = await runTapAndInspect(context, input, startedAt);
+          break;
+        case "wait_and_inspect":
+          result = await runWaitAndInspect(context, input, startedAt);
+          break;
+      }
+      this.logger.emit(result.ok ? "info" : "warn", result.ok ? "workflow.operation.complete" : "workflow.operation.failure", {
+        operation,
+        outcome: result.ok ? "success" : "failure",
+        attempts: result.attempts,
+        elapsedMs: result.elapsedMs,
+        ...(result.ok ? {} : workflowErrorFields(result.error))
+      });
+      return result;
+    } catch (error) {
+      this.logger.emit("error", "workflow.operation.failure", {
+        operation,
+        outcome: "throw",
+        elapsedMs: this.clock.now() - startedAt,
+        errorType: error instanceof Error ? error.name : typeof error
+      });
+      throw error;
     }
   }
 
@@ -66,7 +92,9 @@ export class WorkflowRunner {
       now: () => this.clock.now(),
       invoke: async (action, data) => {
         const remainingMs = deadlineAtMs - this.clock.now();
+        this.logger.emit("debug", "workflow.stage.start", { operation, action, remainingMs });
         if (remainingMs <= 0) {
+          this.logger.emit("warn", "workflow.stage.timeout", { operation, action, timeoutMs: totalBudgetMs });
           return workflowTimeout(operation, action, totalBudgetMs);
         }
 
@@ -75,17 +103,45 @@ export class WorkflowRunner {
         let result: InvocationResult;
         try {
           result = await this.runtime.invoke(action, data, { signal: controller.signal });
+        } catch (error) {
+          this.logger.emit("error", "workflow.stage.failure", {
+            operation,
+            action,
+            outcome: "throw",
+            errorType: error instanceof Error ? error.name : typeof error
+          });
+          throw error;
         } finally {
           this.clock.clearTimeout(timer);
         }
 
         if (this.clock.now() >= deadlineAtMs) {
+          this.logger.emit("warn", "workflow.stage.timeout", { operation, action, timeoutMs: totalBudgetMs });
           return workflowTimeout(operation, action, totalBudgetMs);
         }
+        this.logger.emit(result.ok ? "debug" : "warn", result.ok ? "workflow.stage.complete" : "workflow.stage.failure", {
+          operation,
+          action,
+          outcome: result.ok ? "success" : "failure",
+          attempts: result.attempts,
+          elapsedMs: result.elapsedMs,
+          ...(result.ok ? {} : workflowErrorFields(result.error))
+        });
         return result;
       }
     };
   }
+}
+
+function workflowErrorFields(error: DriverError): Record<string, string | number | undefined> {
+  return {
+    source: error.source,
+    code: error.code,
+    status: error.status,
+    timeoutMs: error.timeoutMs,
+    transportPhase: error.transportPhase,
+    protocolIssue: error.protocolIssue
+  };
 }
 
 function workflowTimeout(

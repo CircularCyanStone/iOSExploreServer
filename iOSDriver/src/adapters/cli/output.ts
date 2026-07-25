@@ -61,12 +61,19 @@ export async function printInvocationSuccess(
 
 /** 将失败结果写到 stderr，并返回可机器读取的稳定错误对象。 */
 export function printInvocationFailure(output: CLIOutput, result: Extract<InvocationResult, { readonly ok: false }>): void {
+  const error = result.error;
   printJSON({ ...output, stdout: output.stderr }, {
-    source: result.error.source,
-    code: result.error.code,
-    message: result.error.message,
-    ...(result.error.action === undefined ? {} : { action: result.error.action }),
-    ...(result.error.data === undefined ? {} : { data: result.error.data })
+    source: error.source,
+    code: error.code,
+    message: error.message,
+    ...(error.action === undefined ? {} : { action: error.action }),
+    ...(error.baseURL === undefined ? {} : { baseURL: error.baseURL }),
+    ...(error.status === undefined ? {} : { status: error.status }),
+    ...(error.timeoutMs === undefined ? {} : { timeoutMs: error.timeoutMs }),
+    ...(error.bodySnippet === undefined ? {} : { bodySnippet: error.bodySnippet }),
+    ...(error.data === undefined ? {} : { data: error.data }),
+    ...(error.transportPhase === undefined ? {} : { transportPhase: error.transportPhase }),
+    ...(error.protocolIssue === undefined ? {} : { protocolIssue: error.protocolIssue })
   });
 }
 

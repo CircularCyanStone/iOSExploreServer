@@ -4,6 +4,7 @@ import type { InvocationResult } from "../../src/runtime/types.js";
 import type { JSONObject } from "../../src/types.js";
 import { WorkflowRunner } from "../../src/workflows/workflowRunner.js";
 import type { WorkflowClock, WorkflowRuntime } from "../../src/workflows/types.js";
+import { hostLogRecorder } from "../support/hostLogRecorder.js";
 
 interface QueuedResult {
   readonly result: InvocationResult;
@@ -140,6 +141,7 @@ describe("wait_and_inspect", () => {
       ok: false,
       error: { code: "protocol_error" },
       data: {
+        stage: "inspect",
         wait: { matchedConditionID: "ready" },
         observation: { code: "protocol_error" },
         timing: { waitMs: 4, inspectMs: 6, totalMs: 10 }
@@ -170,10 +172,33 @@ describe("wait_and_inspect", () => {
         data: { stageAction: "ui.waitAny" }
       },
       data: {
+        stage: "wait",
         wait: { source: "workflow", code: "workflow_timeout" },
         timing: { waitMs: 50, inspectMs: 0, totalMs: 50 }
       }
     });
+  });
+
+  it("记录 operation、阶段调用和 timeout，不记录 workflow 输入", async () => {
+    const clock = new FakeClock();
+    const runtime = new FakeRuntime(clock, [
+      { result: failure("wait_timeout", "private wait error"), advanceMs: 50 }
+    ]);
+    const recorded = hostLogRecorder();
+    const runner = new WorkflowRunner({ runtime, clock, logger: recorded.logger });
+
+    await runner.run("wait_and_inspect", {
+      conditions: [{ id: "secret-condition", mode: "idle" }]
+    }, { deadlineAtMs: 50 });
+
+    expect(recorded.entries().map(entry => entry.event)).toEqual([
+      "workflow.operation.start",
+      "workflow.stage.start",
+      "workflow.stage.timeout",
+      "workflow.operation.failure"
+    ]);
+    expect(recorded.entries()[2]).toMatchObject({ operation: "wait_and_inspect", action: "ui.waitAny", timeoutMs: 50 });
+    expect(recorded.lines.join("")).not.toMatch(/secret-condition|private wait error|conditions/);
   });
 });
 

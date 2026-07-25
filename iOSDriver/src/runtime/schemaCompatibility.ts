@@ -85,6 +85,7 @@ function compareSchemaForAction(action: string, expected: unknown, actual: unkno
     differences.push({ kind: "invalid", path: action, message: "inputSchema 必须是合法 object schema", breaking: true });
     return { action, status: "unknown", differences };
   }
+  compareDefault(expected, actual, action, differences);
   compareObjectSchema(expected, actual, action, differences);
   const hasInvalid = differences.some(difference => difference.kind === "invalid");
   const hasBreaking = differences.some(difference => difference.breaking);
@@ -147,6 +148,7 @@ function compareObjectSchema(
 }
 
 function compareSchemaNode(expected: SchemaObject, actual: SchemaObject, path: string, differences: SchemaDifference[]): void {
+  compareDefault(expected, actual, path, differences);
   compareType(expected, actual, path, differences);
   if (typeSet(expected.type)?.has("object") && typeSet(actual.type)?.has("object")) {
     compareObjectSchema(expected, actual, path, differences);
@@ -159,6 +161,8 @@ function compareSchemaNode(expected: SchemaObject, actual: SchemaObject, path: s
   compareNumberBound(expected, actual, "exclusiveMaximum", path, differences, false);
   compareNumberBound(expected, actual, "minItems", path, differences, true);
   compareNumberBound(expected, actual, "maxItems", path, differences, false);
+  validateBoundaryRelationships(expected, path, differences, "合同");
+  validateBoundaryRelationships(actual, path, differences, "App");
   if (expected.items !== undefined || actual.items !== undefined) {
     if (expected.items !== undefined && !isSchema(expected.items)
         || actual.items !== undefined && !isSchema(actual.items)) {
@@ -182,9 +186,18 @@ function compareType(expected: SchemaObject, actual: SchemaObject, path: string,
   const actualTypes = typeSet(actual.type);
   if (!expectedTypes || !actualTypes) {
     differences.push({ kind: "invalid", path: `${path}.type`, message: "type 必须是受控类型", breaking: true });
-  } else if (!sameSet(expectedTypes, actualTypes)) {
-    const breaking = !isSubset(expectedTypes, actualTypes);
+  } else if (!sameTypeSet(expectedTypes, actualTypes)) {
+    const breaking = !isTypeSubset(expectedTypes, actualTypes);
     differences.push({ kind: "changed", path: `${path}.type`, message: "property type 变化", breaking });
+  }
+}
+
+function compareDefault(expected: SchemaObject, actual: SchemaObject, path: string, differences: SchemaDifference[]): void {
+  const beforePresent = expected.default !== undefined;
+  const afterPresent = actual.default !== undefined;
+  if (!beforePresent && !afterPresent) return;
+  if (beforePresent !== afterPresent || !sameJSONValue(expected.default, actual.default)) {
+    differences.push({ kind: "changed", path: `${path}.default`, message: "default 变化", breaking: true });
   }
 }
 
@@ -212,15 +225,65 @@ function compareEnum(expected: SchemaObject, actual: SchemaObject, path: string,
 }
 
 function compareNumberBound(expected: SchemaObject, actual: SchemaObject, key: string, path: string, differences: SchemaDifference[], lower: boolean): void {
-  const before = numeric(expected[key]);
-  const after = numeric(actual[key]);
-  if (before === undefined && after === undefined) return;
-  if (before === undefined || after === undefined) {
-    differences.push({ kind: "changed", path: `${path}.${key}`, message: `${key} 约束变化`, breaking: before === undefined ? after !== undefined : false });
+  const beforePresent = expected[key] !== undefined;
+  const afterPresent = actual[key] !== undefined;
+  if (!beforePresent && !afterPresent) return;
+  const before = beforePresent ? validBound(key, expected[key]) : undefined;
+  const after = afterPresent ? validBound(key, actual[key]) : undefined;
+  if (beforePresent && before === undefined || afterPresent && after === undefined) {
+    differences.push({ kind: "invalid", path: `${path}.${key}`, message: `${key} 约束值非法`, breaking: true });
     return;
   }
-  const narrowed = lower ? after > before : after < before;
+  if (!beforePresent || !afterPresent) {
+    differences.push({ kind: "changed", path: `${path}.${key}`, message: `${key} 约束变化`, breaking: !beforePresent });
+    return;
+  }
+  const narrowed = lower ? after! > before! : after! < before!;
   if (after !== before) differences.push({ kind: "changed", path: `${path}.${key}`, message: `${key} 约束变化`, breaking: narrowed });
+}
+
+function validateBoundaryRelationships(
+  schema: SchemaObject,
+  path: string,
+  differences: SchemaDifference[],
+  source: string
+): void {
+  const minItems = validBound("minItems", schema.minItems);
+  const maxItems = validBound("maxItems", schema.maxItems);
+  if (minItems !== undefined && maxItems !== undefined && minItems > maxItems) {
+    differences.push({
+      kind: "invalid",
+      path: `${path}.minItems/maxItems`,
+      message: `${source} minItems 不能大于 maxItems`,
+      breaking: true
+    });
+  }
+
+  const lowerBounds = [
+    boundCandidate(schema, "minimum", false),
+    boundCandidate(schema, "exclusiveMinimum", true)
+  ].filter((candidate): candidate is BoundCandidate => candidate !== undefined);
+  const upperBounds = [
+    boundCandidate(schema, "maximum", false),
+    boundCandidate(schema, "exclusiveMaximum", true)
+  ].filter((candidate): candidate is BoundCandidate => candidate !== undefined);
+  if (lowerBounds.length === 0 || upperBounds.length === 0) return;
+
+  const lower = lowerBounds.reduce((current, candidate) =>
+    candidate.value > current.value
+      || candidate.value === current.value && candidate.exclusive ? candidate : current);
+  const upper = upperBounds.reduce((current, candidate) =>
+    candidate.value < current.value
+      || candidate.value === current.value && candidate.exclusive ? candidate : current);
+  if (lower.value > upper.value
+      || lower.value === upper.value && (lower.exclusive || upper.exclusive)) {
+    differences.push({
+      kind: "invalid",
+      path: `${path}.minimum/maximum`,
+      message: `${source} 数值上下界冲突`,
+      breaking: true
+    });
+  }
 }
 
 function compareAdditionalProperties(expected: SchemaObject, actual: SchemaObject, path: string, differences: SchemaDifference[]): void {
@@ -258,7 +321,41 @@ function stringSet(value: unknown, path: string, differences: SchemaDifference[]
   }
   return new Set(value);
 }
-function numeric(value: unknown): number | undefined { return typeof value === "number" && Number.isFinite(value) ? value : undefined; }
+interface BoundCandidate {
+  readonly value: number;
+  readonly exclusive: boolean;
+}
+
+function boundCandidate(schema: SchemaObject, key: string, exclusive: boolean): BoundCandidate | undefined {
+  const value = validBound(key, schema[key]);
+  return value === undefined ? undefined : { value, exclusive };
+}
+
+function validBound(key: string, value: unknown): number | undefined {
+  if (value === undefined || typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if ((key === "minItems" || key === "maxItems") && (!Number.isInteger(value) || value < 0)) return undefined;
+  return value;
+}
+
 function sameSet(left: Set<string>, right: Set<string>): boolean { return left.size === right.size && [...left].every(value => right.has(value)); }
-function isSubset(left: Set<string>, right: Set<string>): boolean { return [...left].every(value => right.has(value)); }
+function sameTypeSet(left: Set<string>, right: Set<string>): boolean {
+  return isTypeSubset(left, right) && isTypeSubset(right, left);
+}
+function isTypeSubset(left: Set<string>, right: Set<string>): boolean {
+  return [...left].every(value => right.has(value) || value === "integer" && right.has("number"));
+}
+function sameJSONValue(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameJSONValue(value, right[index]));
+  }
+  if (!isSchema(left) || !isSchema(right)) return false;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every(key => Object.prototype.hasOwnProperty.call(right, key) && sameJSONValue(left[key], right[key]));
+}
 function stableValue(value: unknown): string { try { return JSON.stringify(value); } catch { return String(value); } }

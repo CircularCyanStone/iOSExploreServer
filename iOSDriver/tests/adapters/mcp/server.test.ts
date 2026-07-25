@@ -6,6 +6,7 @@ import type { InvocationOptions, InvocationPolicy } from "../../../src/runtime/d
 import type { InvocationResult } from "../../../src/runtime/types.js";
 import type { JSONObject } from "../../../src/types.js";
 import type { WorkflowOperation } from "../../../src/workflows/types.js";
+import { hostLogRecorder } from "../../support/hostLogRecorder.js";
 
 describe("MCP adapter handlers", () => {
   test("tools/list 离线返回固定 28 项且不调用 runtime/probe/workflow", async () => {
@@ -76,6 +77,34 @@ describe("MCP adapter handlers", () => {
     expect(fixture.runtimeCalls).toEqual([]);
     expect(fixture.probeCalls).toEqual([]);
     expect(fixture.workflowCalls).toEqual([]);
+    expect(fixture.logEntries().map(entry => entry.event)).toEqual(["mcp.tool.start", "mcp.tool.complete"]);
+    expect(fixture.logEntries()[1]).toMatchObject({ tool: "extension_tool", outcome: "failure", code: "unknown_tool" });
+    expect(fixture.logLines.join("")).not.toContain("secret");
+  });
+
+  test("未分类异常统一返回 unexpected 且不泄露原始 message", async () => {
+    const fixture = createFixture();
+    const handlers = createMCPToolHandlers({
+      ...fixture.options,
+      runtime: {
+        async invoke() {
+          throw new Error("secret runtime details");
+        }
+      }
+    });
+
+    const result = await handlers.callTool("ui_inspect", {});
+
+    expect(result.isError).toBe(true);
+    const payload = JSON.parse(result.content[0]!.type === "text" ? result.content[0]!.text : "{}");
+    expect(payload).toEqual({
+      source: "mcp_server",
+      code: "unexpected",
+      message: "Unexpected host error"
+    });
+    expect(JSON.stringify(payload)).not.toContain("secret runtime details");
+    expect(fixture.logEntries().at(-1)).toMatchObject({ event: "mcp.tool.unexpected", tool: "ui_inspect", errorType: "Error" });
+    expect(fixture.logLines.join("")).not.toContain("secret runtime details");
   });
 });
 
@@ -83,6 +112,7 @@ function createFixture(options: { policy?: InvocationPolicy } = {}) {
   const runtimeCalls: Array<{ action: string; data: JSONObject; options: InvocationOptions }> = [];
   const probeCalls: string[] = [];
   const workflowCalls: Array<{ operation: WorkflowOperation; input: JSONObject; deadlineAtMs: number }> = [];
+  const recorded = hostLogRecorder();
   const runtime = {
     async invoke(action: string, data: JSONObject = {}, invocationOptions: InvocationOptions = {}) {
       runtimeCalls.push({ action, data, options: invocationOptions });
@@ -103,7 +133,9 @@ function createFixture(options: { policy?: InvocationPolicy } = {}) {
   };
   return {
     runtimeCalls, probeCalls, workflowCalls,
-    options: { runtime, capabilityProbe, workflowRunner, now: () => 5_000 }
+    logLines: recorded.lines,
+    logEntries: recorded.entries,
+    options: { runtime, capabilityProbe, workflowRunner, now: () => 5_000, logger: recorded.logger }
   };
 }
 

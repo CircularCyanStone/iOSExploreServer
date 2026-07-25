@@ -1,7 +1,7 @@
 import { HOST_OPERATION_SPECS } from "../generated/hostOperationSpecs.js";
-import type { DriverError } from "../runtime/driverErrors.js";
-import type { Artifact, InvocationResult } from "../runtime/types.js";
+import type { InvocationResult } from "../runtime/types.js";
 import type { JSONObject, JSONValue } from "../types.js";
+import { stepValue, workflowFailure, workflowSuccess } from "./resultAggregation.js";
 import type { WorkflowExecutionContext, WorkflowResult } from "./types.js";
 
 interface ContractProperty {
@@ -50,7 +50,7 @@ export async function runTapAndInspect(
 
   if (!tapResult.ok) {
     const totalMs = context.now() - workflowStartedAt;
-    return failure(tapResult.error, {
+    return workflowFailure(tapResult.error, "tap", {
       tap: stepValue(tapResult),
       timing: tapTiming(tapMs, undefined, 0, totalMs)
     }, results, totalMs);
@@ -88,9 +88,9 @@ export async function runTapAndInspect(
   };
 
   if (!inspectResult.ok) {
-    return failure(inspectResult.error, data, results, totalMs);
+    return workflowFailure(inspectResult.error, "inspect", data, results, totalMs);
   }
-  return success(data, results, totalMs);
+  return workflowSuccess(data, results, totalMs);
 }
 
 function valueOrDefault<T extends boolean | number>(input: JSONObject, key: string): T {
@@ -121,60 +121,4 @@ function project(input: JSONObject, allowedKeys: readonly string[]): JSONObject 
   return Object.fromEntries(
     allowedKeys.flatMap(key => input[key] === undefined ? [] : [[key, input[key] as JSONValue]])
   );
-}
-
-function stepValue(result: InvocationResult): JSONObject {
-  if (result.ok) return result.data;
-  return errorValue(result.error, result.data);
-}
-
-function errorValue(error: DriverError, data?: JSONObject): JSONObject {
-  return {
-    source: error.source,
-    code: error.code,
-    message: error.message,
-    ...(error.action === undefined ? {} : { action: error.action }),
-    ...(error.baseURL === undefined ? {} : { baseURL: error.baseURL }),
-    ...(error.status === undefined ? {} : { status: error.status }),
-    ...(error.timeoutMs === undefined ? {} : { timeoutMs: error.timeoutMs }),
-    ...(error.bodySnippet === undefined ? {} : { bodySnippet: error.bodySnippet }),
-    ...(error.transportPhase === undefined ? {} : { transportPhase: error.transportPhase }),
-    ...(error.protocolIssue === undefined ? {} : { protocolIssue: error.protocolIssue }),
-    ...((data ?? error.data) === undefined ? {} : { data: (data ?? error.data) as JSONObject })
-  };
-}
-
-function success(data: JSONObject, results: readonly InvocationResult[], totalMs: number): WorkflowResult {
-  return {
-    ok: true,
-    data,
-    artifacts: artifacts(results),
-    elapsedMs: totalMs,
-    attempts: attempts(results)
-  };
-}
-
-function failure(
-  error: DriverError,
-  data: JSONObject,
-  results: readonly InvocationResult[],
-  totalMs: number
-): WorkflowResult {
-  const collectedArtifacts = artifacts(results);
-  return {
-    ok: false,
-    error,
-    data,
-    ...(collectedArtifacts.length === 0 ? {} : { artifacts: collectedArtifacts }),
-    elapsedMs: totalMs,
-    attempts: attempts(results)
-  };
-}
-
-function artifacts(results: readonly InvocationResult[]): readonly Artifact[] {
-  return results.flatMap(result => result.ok ? result.artifacts : result.artifacts ?? []);
-}
-
-function attempts(results: readonly InvocationResult[]): number {
-  return results.reduce((total, result) => total + result.attempts, 0);
 }

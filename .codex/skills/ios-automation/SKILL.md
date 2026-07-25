@@ -33,16 +33,15 @@ L1 UI 或日志任务必须有 iOSDriver MCP。只有任务还需要构建、安
 
 1. 调用 iOSDriver `health_check`。
 2. 工具不存在或调用无法发起：转 `ios-mcp-setup`，修复 iOSDriver 配置后重连客户端。
-3. 顶层 `connection == "unreachable"`：iOSDriver 已加载，但 App 端点不可达；把原始结果和已知设备上下文交给 `ios-connection`，不要在入口展开端口分诊。
-4. 顶层 `connection == "malformed"`：端点有响应，但 `ping` 响应不符合协议；保留 `ping.status` 与错误详情，按 App 端点协议或集成问题处理，不进入端口分诊。
-5. 顶层 `connection == "reachable"` 且 `ping.status == "ok"`：连接可用；`help.status == "available"` 时能力自省也可用，按用户目标路由到一个主场景 skill。其他 ping/help 状态按原始错误修复 App 集成，不把端点可达误判为能力完整。
-6. 任务需要构建、启动或设备选择时，再检查构建/设备管理 MCP；工具缺失或所需 workflow 未加载时转 `ios-mcp-setup`。
+3. 工具可调用后，把未改写的 `health_check` 原始结果、已知设备上下文和任务是否需要启动 App 交给 `ios-connection`；由它解释 connection / ping 并完成连接分诊，本入口不复制字段判断。
+4. `ios-connection` 确认连接正常后，按用户目标路由到一个主场景 skill。
+5. 任务需要构建、启动或设备选择时，再检查构建/设备管理 MCP；工具缺失或所需 workflow 未加载时转 `ios-mcp-setup`。
 
 当检测到 MCP 不可用时,**不要尝试使用 curl 等底层命令或脚本替代 MCP 工具**。MCP 配置必须由用户手动完成,Agent 无法代劳。
 
 ## 快速连接验证
 
-入口只保留可交接的连接结论：`health_check` 原始结果、用户指定或已可靠识别的设备类型，以及任务是否需要启动 App。设备类型未知时标记为未知，由 `ios-connection` 读取真实设备列表和工具清单；不要在入口猜测。
+入口只保留交接信息：未改写的 `health_check` 原始结果、用户指定或已可靠识别的设备类型，以及任务是否需要启动 App。设备类型未知时标记为未知，由 `ios-connection` 读取真实设备列表和工具清单并解释报告；不要在入口猜测或摘录字段后另写结论。
 
 **静态工具与能力检查**:
 - iOSDriver 的稳定公共工具在进程启动后即固定可见，不随 App 是否启动或模块是否注册而变化
@@ -56,7 +55,7 @@ L1 UI 或日志任务必须有 iOSDriver MCP。只有任务还需要构建、安
 
 入口阶段只做连接判断和任务路由,不要预读或预调用尚未进入任务路径的子 skill。具体规则:
 
-- **先连通,再加载场景 skill**:`health_check` 的 transport 失败只走 `ios-connection`;成功后再按用户目标加载一个主 skill。不要因为 UI 可能跳转就提前读取 `ios-ui-nav`,也不要因为可能要证据就提前读取 `ios-ui-shot`。
+- **先连通,再加载场景 skill**:`health_check` 可调用后先把原始结果交给 `ios-connection`;由它确认连接正常后，再按用户目标加载一个主 skill。不要因为 UI 可能跳转就提前读取 `ios-ui-nav`,也不要因为可能要证据就提前读取 `ios-ui-shot`。
 - **结构化优先于视觉证据**:默认用 `ui_inspect` 判断当前页面、字段、按钮和终态。只有用户明确要截图、需要 bug 证据、或结构化结果不足以说明视觉问题时,才加载 `ios-ui-shot` 并调用 `ui_screenshot`。
 - **异步动作交给等待 skill**:由动作所属 skill 触发操作，再路由到 `ios-ui-wait` 按明确成功/失败终态等待；入口不维护等待参数和业务判据模板。
 - **日志交给日志 skill**:需要动作级日志证据时路由到 `ios-logs`，由它负责 mark、增量读取、capture 状态和结论分层；入口不复制日志读取策略。

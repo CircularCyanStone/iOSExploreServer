@@ -39,7 +39,8 @@ node scripts/mcp-inspector.mjs <toolName> '<jsonArgs>' [<toolName2> '<jsonArgs2>
 
 ## 静态工具名
 
-工具名不是运行时从 App action 推断的，而是由 `src/staticTools.ts` 的静态清单固定：
+工具名不是运行时从 App action 推断的，而是由
+`src/adapters/mcp/toolMappings.ts` 的显式映射固定：
 
 | iOSExplore action | MCP 工具名 |
 |---|---|
@@ -49,19 +50,23 @@ node scripts/mcp-inspector.mjs <toolName> '<jsonArgs>' [<toolName2> '<jsonArgs2>
 | `ui.scrollToElement` | `ui_scrollToElement` |
 | `app.logs.read` | `app_logs_read` |
 
-静态工具清单以 `src/staticTools.ts` 导出的 `STATIC_TOOL_NAMES` 为唯一来源。私有或实验
-action 使用 `call_action`，App `help` 只通过 `health_check` / `check_capabilities` 做能力检查。
-完整架构说明见[静态 MCP 工具架构决策](../../docs/architecture/dynamic-mcp-tools.md)。
+`toolMappings.ts` 只固定历史 MCP 工具名及其对应的 device action / host operation；
+`src/adapters/mcp/toolCatalog.ts` 用这些映射从 `src/generated/deviceActionContracts.ts` 和
+`src/generated/hostOperationSpecs.ts` 读取 description 与 input schema，构造 `tools/list`。
+私有或实验 action 使用 `call_action`，App `help` 只通过 `health_check` /
+`check_capabilities` 做能力检查，不改变工具目录。生成的协议文档
+[`docs/generated/contracts.md`](../../docs/generated/contracts.md) 只描述 device action、host
+operation 和稳定错误索引，不包含 MCP 工具名映射。完整架构说明见[静态 MCP 工具架构决策](../../docs/architecture/dynamic-mcp-tools.md)。
 
 ## 排障
 
 | 现象 | 可能原因 | 处理 |
 |---|---|---|
 | `Cannot find module '.../dist/index.js'` | 没编译或路径不对 | `npm run build`；脚本里 spawn 路径必须是 `dist/index.js`（不是 `dist/src/index.js`） |
-| `transport` source 错误 + `healthCheck.ok=false` | App 没起 / 38321 不可达 | 模拟器直接 curl `localhost:38321`；真机确认 `iproxy` 在监听（`lsof` COMMAND 列必须是 `iproxy`，不是 `SPMExampl`） |
-| 工具响应 `isError=false` 但业务 `code` 不是 `ok` | App 端业务失败（如 `unknown_action` / `wait_timeout` / `not_found`） | 看 `content[0].text` 解出来的 JSON 里的 `code` / `message`；这是正常业务反馈，不是 MCP 协议错误 |
+| `health_check` 的 `connection` 为 `unreachable`，且 `ping.error.code` 为 `transport_unavailable` 或 `transport_timeout` | App 没起、请求超时或 38321 不可达 | 结合 `ping.error` 保留的稳定 `source` / `code` 分诊；模拟器直接 curl `localhost:38321`，真机确认 `iproxy` 在监听（`lsof` COMMAND 列必须是 `iproxy`，不是 `SPMExampl`） |
+| 工具响应带失败 payload | runtime 已按 `{source, code, message, ...}` 返回结构化错误 | 解析 `content` 中的 JSON，以稳定 `source` / `code` 为判断依据；`isError` 是 MCP adapter 的呈现策略，不能代替业务成功判断 |
 | `ui_tap` 返回 `stale_locator` | viewSnapshotID 陈旧 | 重新调一次 `ui_inspect` 拿新的 `viewSnapshotID` 与 path |
-| `ui_tap` 返回 `not_found` 但 path 看起来对 | path 是从旧快照拷来的 | 重新调 `ui_inspect` 拿当前快照的 path / indexPath |
+| UI 工具返回 `target_not_found` | 当前快照或可见层级里找不到目标 | 重新调 `ui_inspect`；目标在屏幕外时先滚动，再从新快照选择 path / indexPath |
 | 真机 curl 返回内容像旧版本 App | 残留模拟器 SPMExample 占着 Mac localhost 38321 | `xcrun simctl terminate <simulatorId> com.coo.SPMExample` 后重启 iproxy |
 
 ## 与单元测试的边界

@@ -14,16 +14,19 @@ afterEach(async () => {
 
 describe("stdio startup", () => {
   test("App 不可达时仍返回完整静态工具集合，且不声明 listChanged", async () => {
-    const client = await connectClient("http://127.0.0.1:1/");
+    const connected = await connectClient("http://127.0.0.1:1/");
+    const client = connected.client;
     const first = await client.listTools();
     const second = await client.listTools();
     expect(first).toEqual(second);
     expect(first.tools.map(tool => tool.name).sort()).toEqual([...STATIC_TOOL_NAMES].sort());
     expect(client.getServerCapabilities()?.tools?.listChanged).not.toBe(true);
+    expect(connected.stderr()).toContain('"event":"mcp.server.start"');
+    expect(connected.stderr()).toContain('"event":"mcp.server.connected"');
   });
 
   test("App 启动前后 tools/list 完全一致", async () => {
-    const client = await connectClient(await startHelpServer());
+    const { client } = await connectClient(await startHelpServer());
     const before = await client.listTools();
     await client.callTool({ name: "health_check", arguments: {} });
     const after = await client.listTools();
@@ -31,14 +34,17 @@ describe("stdio startup", () => {
   });
 });
 
-async function connectClient(baseURL: string): Promise<Client> {
+async function connectClient(baseURL: string): Promise<{ client: Client; stderr(): string }> {
   const client = new Client({ name: "ios-driver-startup-test", version: "1.0.0" }, { capabilities: {} });
   clients.push(client);
-  await client.connect(new StdioClientTransport({
+  const transport = new StdioClientTransport({
     command: process.execPath, args: ["dist/index.js"], cwd: process.cwd(),
     env: { IOS_EXPLORE_BASE_URL: baseURL, IOS_EXPLORE_REQUEST_TIMEOUT_MS: "250" }, stderr: "pipe"
-  }));
-  return client;
+  });
+  let stderr = "";
+  transport.stderr?.on("data", chunk => { stderr += chunk.toString(); });
+  await client.connect(transport);
+  return { client, stderr: () => stderr };
 }
 
 async function startHelpServer(): Promise<string> {

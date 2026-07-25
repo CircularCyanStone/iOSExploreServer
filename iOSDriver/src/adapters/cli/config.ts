@@ -79,7 +79,7 @@ export async function initCLIConfig(
   overrides: CLIConfigOverrides = {},
   env: NodeJS.ProcessEnv = process.env,
   fileSystem: ConfigFileSystem = defaultFileSystem
-): Promise<{ readonly config: CLIConfig; readonly created: boolean }> {
+): Promise<{ readonly config: CLIConfig; readonly configChanged: boolean }> {
   const configPath = overrides.configPath ?? configPathFor(env);
   const existing = await readConfigFile(configPath, fileSystem);
   const baseURL = normalizeBaseURL(
@@ -99,15 +99,15 @@ export async function initCLIConfig(
   };
   const serialized = `${JSON.stringify(next, null, 2)}\n`;
   const previous = Object.keys(existing).length === 0 ? undefined : `${JSON.stringify(existing, null, 2)}\n`;
-  let created = false;
+  let configChanged = false;
   if (serialized !== previous) {
     await fileSystem.mkdir(dirname(configPath));
     const temporary = `${configPath}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
     await fileSystem.writeFile(temporary, serialized);
     await fileSystem.rename(temporary, configPath);
-    created = true;
+    configChanged = true;
   }
-  return { config: Object.freeze({ baseURL, requestTimeoutMs, configPath, fileValues: Object.freeze(next) }), created };
+  return { config: Object.freeze({ baseURL, requestTimeoutMs, configPath, fileValues: Object.freeze(next) }), configChanged };
 }
 
 async function readConfigFile(path: string, fileSystem: ConfigFileSystem): Promise<Record<string, unknown>> {

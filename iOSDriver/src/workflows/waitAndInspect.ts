@@ -1,7 +1,7 @@
 import { HOST_OPERATION_SPECS } from "../generated/hostOperationSpecs.js";
-import type { DriverError } from "../runtime/driverErrors.js";
-import type { Artifact, InvocationResult } from "../runtime/types.js";
+import type { InvocationResult } from "../runtime/types.js";
 import type { JSONObject, JSONValue } from "../types.js";
+import { stepValue, workflowFailure, workflowSuccess } from "./resultAggregation.js";
 import type { WorkflowExecutionContext, WorkflowResult } from "./types.js";
 
 interface ContractProperty {
@@ -44,7 +44,7 @@ export async function runWaitAndInspect(
   const results: InvocationResult[] = [waitResult];
 
   if (!waitResult.ok && waitResult.error.code !== "wait_timeout") {
-    return failure(waitResult.error, {
+    return workflowFailure(waitResult.error, "wait", {
       wait: stepValue(waitResult),
       timing: waitTiming(waitMs, 0, context.now() - workflowStartedAt)
     }, results, context.now() - workflowStartedAt);
@@ -63,9 +63,9 @@ export async function runWaitAndInspect(
   };
 
   if (!inspectResult.ok) {
-    return failure(inspectResult.error, data, results, totalMs);
+    return workflowFailure(inspectResult.error, "inspect", data, results, totalMs);
   }
-  return success(data, results, totalMs);
+  return workflowSuccess(data, results, totalMs);
 }
 
 function waitTiming(waitMs: number, inspectMs: number, totalMs: number): JSONObject {
@@ -82,60 +82,4 @@ function objectValue(value: unknown): JSONObject | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as JSONObject
     : undefined;
-}
-
-function stepValue(result: InvocationResult): JSONObject {
-  if (result.ok) return result.data;
-  return errorValue(result.error, result.data);
-}
-
-function errorValue(error: DriverError, data?: JSONObject): JSONObject {
-  return {
-    source: error.source,
-    code: error.code,
-    message: error.message,
-    ...(error.action === undefined ? {} : { action: error.action }),
-    ...(error.baseURL === undefined ? {} : { baseURL: error.baseURL }),
-    ...(error.status === undefined ? {} : { status: error.status }),
-    ...(error.timeoutMs === undefined ? {} : { timeoutMs: error.timeoutMs }),
-    ...(error.bodySnippet === undefined ? {} : { bodySnippet: error.bodySnippet }),
-    ...(error.transportPhase === undefined ? {} : { transportPhase: error.transportPhase }),
-    ...(error.protocolIssue === undefined ? {} : { protocolIssue: error.protocolIssue }),
-    ...((data ?? error.data) === undefined ? {} : { data: (data ?? error.data) as JSONObject })
-  };
-}
-
-function success(data: JSONObject, results: readonly InvocationResult[], totalMs: number): WorkflowResult {
-  return {
-    ok: true,
-    data,
-    artifacts: artifacts(results),
-    elapsedMs: totalMs,
-    attempts: attempts(results)
-  };
-}
-
-function failure(
-  error: DriverError,
-  data: JSONObject,
-  results: readonly InvocationResult[],
-  totalMs: number
-): WorkflowResult {
-  const collectedArtifacts = artifacts(results);
-  return {
-    ok: false,
-    error,
-    data,
-    ...(collectedArtifacts.length === 0 ? {} : { artifacts: collectedArtifacts }),
-    elapsedMs: totalMs,
-    attempts: attempts(results)
-  };
-}
-
-function artifacts(results: readonly InvocationResult[]): readonly Artifact[] {
-  return results.flatMap(result => result.ok ? result.artifacts : result.artifacts ?? []);
-}
-
-function attempts(results: readonly InvocationResult[]): number {
-  return results.reduce((total, result) => total + result.attempts, 0);
 }

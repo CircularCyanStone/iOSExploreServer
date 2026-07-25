@@ -44,7 +44,8 @@ describe("CLI config", () => {
     const second = await initCLIConfig({ configPath: "/tmp/config.json" }, {}, fs);
     expect(first.config.baseURL).toBe("http://user:1/");
     expect(JSON.parse(fs.files["/tmp/config.json"]!)).toMatchObject({ baseURL: "http://user:1", custom: true, requestTimeoutMs: 10000 });
-    expect(second.created).toBe(false);
+    expect(first.configChanged).toBe(true);
+    expect(second.configChanged).toBe(false);
     expect(fs.renames).toBe(1);
   });
 });

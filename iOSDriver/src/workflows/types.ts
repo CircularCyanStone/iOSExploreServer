@@ -1,5 +1,6 @@
 import type { JSONObject } from "../types.js";
 import type { InvocationResult } from "../runtime/types.js";
+import type { HostLogger } from "../runtime/hostLogger.js";
 
 /** 当前支持的复合操作名称。 */
 export type WorkflowOperation = "tap_and_inspect" | "wait_and_inspect";
@@ -47,6 +48,8 @@ export interface WorkflowClock {
 export interface WorkflowRunnerOptions {
   readonly runtime: WorkflowRuntime;
   readonly clock?: WorkflowClock;
+  /** Host 命令链 logger；CLI/MCP 入口注入共享 stderr logger。 */
+  readonly logger?: HostLogger;
 }
 
 /** 单次 workflow 的总截止时间。 */

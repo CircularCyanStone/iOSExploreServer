@@ -3,6 +3,9 @@ import type { ActionTransport, ActionTransportResponse } from "../../src/runtime
 import { DriverFailure } from "../../src/runtime/driverErrors.js";
 import { DriverRuntime } from "../../src/runtime/driverRuntime.js";
 import type { JSONObject } from "../../src/types.js";
+import { hostLogRecorder } from "../support/hostLogRecorder.js";
+
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 class FakeTransport implements ActionTransport {
   readonly calls: Array<{ action: string; data: JSONObject; timeoutMs: number }> = [];
@@ -49,6 +52,65 @@ describe("DriverRuntime", () => {
       artifacts: [],
       attempts: 1
     });
+  });
+
+  test("失败 envelope 的 screenshot artifact 无法解码时仍保留 App 业务失败", async () => {
+    const transport = new FakeTransport([{
+      httpStatus: 200,
+      envelope: {
+        code: "capture_failed",
+        message: "screen unavailable",
+        data: { image: "not base64", format: "png", reason: "window missing" }
+      }
+    }]);
+    const runtime = new DriverRuntime({ transport, configuredRequestTimeoutMs: 1000 });
+
+    const result = await runtime.invoke("ui.screenshot", {});
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        source: "appEnvelope",
+        code: "capture_failed",
+        message: "screen unavailable",
+        action: "ui.screenshot"
+      },
+      artifacts: [],
+      attempts: 1
+    });
+    if (!result.ok) {
+      const originalData = { image: "not base64", format: "png", reason: "window missing" };
+      expect(result.error.data).toEqual(originalData);
+      expect(result.data).toEqual(originalData);
+    }
+  });
+
+  test("失败 envelope 的合法 screenshot artifact 与 App 业务失败同时保留", async () => {
+    const transport = new FakeTransport([{
+      httpStatus: 200,
+      envelope: {
+        code: "capture_partial",
+        message: "captured before failure",
+        data: { image: PNG.toString("base64"), format: "png", width: 1, height: 1 }
+      }
+    }]);
+    const runtime = new DriverRuntime({ transport, configuredRequestTimeoutMs: 1000 });
+
+    const result = await runtime.invoke("ui.screenshot", {});
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        source: "appEnvelope",
+        code: "capture_partial",
+        message: "captured before failure",
+        data: { format: "png", width: 1, height: 1 }
+      },
+      data: { format: "png", width: 1, height: 1 },
+      artifacts: [{ kind: "image", mimeType: "image/png" }],
+      attempts: 1
+    });
+    if (!result.ok) expect(Buffer.from(result.artifacts![0]!.data)).toEqual(PNG);
   });
 
   test("非法 protocol envelope 返回 protocol_error", async () => {
@@ -152,6 +214,20 @@ describe("DriverRuntime", () => {
     expect(transport.calls.map(call => call.timeoutMs)).toEqual([9_000, 9_000]);
   });
 
+  test("生成合同优先于 per-call policy，ui.tap 的 connect/reset 失败均不重试", async () => {
+    for (const phase of ["connect", "reset"] as const) {
+      const transport = new FakeTransport([transportFailure(phase, false)]);
+      const runtime = new DriverRuntime({ transport, configuredRequestTimeoutMs: 1_000 });
+
+      const result = await runtime.invoke("ui.tap", { timeoutMs: 20_000 }, {
+        policy: { idempotency: "readOnly", timeoutClass: "wait" }
+      });
+
+      expect(result).toMatchObject({ ok: false, error: { transportPhase: phase }, attempts: 1 });
+      expect(transport.calls).toEqual([{ action: "ui.tap", data: { timeoutMs: 20_000 }, timeoutMs: 1_000 }]);
+    }
+  });
+
   test("非法 per-call policy 对未知 extension 保持保守策略", async () => {
     const transport = new FakeTransport([transportFailure("connect", false)]);
     const runtime = new DriverRuntime({ transport, configuredRequestTimeoutMs: 1_000 });
@@ -162,6 +238,45 @@ describe("DriverRuntime", () => {
 
     expect(result).toMatchObject({ ok: false, attempts: 1 });
     expect(transport.calls).toEqual([{ action: "extension.invalid", data: { timeoutMs: 99_000 }, timeoutMs: 1_000 }]);
+  });
+
+  test("记录 invoke、retry、failure 和 throw 摘要且不泄露 payload 或错误全文", async () => {
+    const recorded = hostLogRecorder();
+    const runtime = new DriverRuntime({
+      transport: new FakeTransport([
+        new DriverFailure({
+          source: "transport",
+          code: "transport_unavailable",
+          message: "contains-secret-message",
+          baseURL: "http://token@localhost/",
+          transportPhase: "connect"
+        }, false),
+        { httpStatus: 200, envelope: { code: "invalid_data", message: "private-value", data: { password: "123456" } } }
+      ]),
+      configuredRequestTimeoutMs: 1000,
+      logger: recorded.logger
+    });
+
+    await runtime.invoke("ping", { token: "secret-token", image: "base64-secret" });
+    const events = recorded.entries();
+    expect(events.map(entry => entry.event)).toEqual([
+      "runtime.invoke.start",
+      "runtime.invoke.retry",
+      "runtime.invoke.failure"
+    ]);
+    expect(events[1]).toMatchObject({ action: "ping", attempts: 1, nextAttempt: 2, source: "transport", code: "transport_unavailable", transportPhase: "connect" });
+    expect(events[2]).toMatchObject({ action: "ping", attempts: 2, source: "appEnvelope", code: "invalid_data" });
+    expect(recorded.lines.join("")).not.toMatch(/secret|password|base64|token@|private-value/);
+
+    const thrown = hostLogRecorder();
+    const throwingRuntime = new DriverRuntime({
+      transport: { async execute() { throw new Error("do-not-log-this"); } },
+      configuredRequestTimeoutMs: 1000,
+      logger: thrown.logger
+    });
+    await expect(throwingRuntime.invoke("ping", {})).rejects.toThrow("do-not-log-this");
+    expect(thrown.entries().at(-1)).toMatchObject({ event: "runtime.invoke.throw", action: "ping", errorType: "Error" });
+    expect(thrown.lines.join("")).not.toContain("do-not-log-this");
   });
 });
 

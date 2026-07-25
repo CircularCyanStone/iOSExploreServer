@@ -13,7 +13,7 @@ description: iOS 自动化工具 MCP 配置指引。当用户说"配置 MCP"、"
 |---|---|---|
 | iOSDriver 工具和 XcodeBuildMCP 工具都不存在 | 两个 server 均未加载 | 分别配置并重连客户端 |
 | 缺少 `health_check` | iOSDriver 未加载或启动失败 | 检查 iOSDriver 配置和 server 日志 |
-| 有 `health_check`，且顶层 `connection` 是 `unreachable` | iOSDriver 已加载，App 端点不可达 | 转 `ios-connection` |
+| `health_check` 可调用，但结果需要连接或 ping 分诊 | iOSDriver 已加载，问题不在工具可见性 | 把未改写的原始结果转交 `ios-connection` |
 | 有 XcodeBuildMCP 模拟器工具，但真机任务缺少 `launch_app_device` 等工具 | XcodeBuildMCP 已加载，`device` workflow 未生效 | 修复 workspace 配置并重连 server |
 | UIKit / Diagnostics 静态工具存在，但调用返回 `unknown_action` | MCP 工具正常，App 未注册对应模块 | 检查宿主模块注册，不重装 MCP |
 
@@ -91,8 +91,7 @@ XcodeBuildMCP 从当前 workspace 发现 `.xcodebuildmcp/config.yaml`。需要�
 2. 查看工具列表：iOSDriver 至少有 `health_check`、`ui_inspect`、`app_logs_read`；XcodeBuildMCP 至少有本次任务所需的设备或构建工具。
 3. 真机任务额外确认 `launch_app_device`、`stop_app_device`、`build_run_device` 可见。只看到 `*_sim` 时继续修复 workflow，不进入 App 连接排障。
 4. 调用 XcodeBuildMCP 的设备列表能力，确认目标设备可见。
-5. 在 App 已运行并监听 HTTP 端点后调用 `health_check`。顶层 `connection == "unreachable"` 时转 `ios-connection`；`connection == "malformed"` 时按不合法的 ping 协议响应修复 App 集成；`connection == "reachable"` 且 `ping.status == "ok"`、`help.status == "available"` 时转 `ios-automation`。端点可达但 ping/help 不是上述成功状态时，按对应状态和错误修复 App 集成，不重装 MCP。
-6. 需要诊断能力完整性时读取 `actions.status`；仅为 `known` 时才依据其 action 差异下结论。UIKit 与 Diagnostics 注册状态分别读取 `modules.uikit.status`、`modules.diagnostics.status`，schema 兼容性读取 `schemaCompatibility`，具体差异读取 `schemaDifferences`。这些字段描述 App 能力与本地合同的关系，不描述 MCP 是否已加载。
+5. 在 App 已运行并监听 HTTP 端点后调用 `health_check`。调用成功只证明工具已加载；把未改写的原始结果交给 `ios-connection`，由它解释 connection / ping 并完成连接分诊。连接确认正常后转 `ios-automation`；本 skill 不摘录或复制 `health_check` 字段判断。
 
 需要直接区分 MCP 配置与 App 端点问题时，可调用：
 
@@ -109,7 +108,7 @@ curl -X POST http://localhost:38321/ -H 'Content-Type: application/json' -d '{"a
 | server 启动后立即退出 | 客户端日志、Node 版本、command/args、入口是否存在 | App 连接失败 |
 | `npx` 找不到或无法下载 | 客户端进程 PATH、网络与包管理器 | Xcode 工程错误 |
 | XcodeBuildMCP 只有模拟器工具 | `device` workflow、workspace 发现路径、server 是否重连 | iOSDriver 故障 |
-| `health_check` 顶层 `connection` 是 `unreachable` | App 运行状态、base URL、真机端口转发 | MCP 未安装 |
+| `health_check` 可调用但报告连接或 ping 异常 | 把未改写的原始结果交给 `ios-connection` | MCP 未安装 |
 | 只有部分 iOSDriver action 返回 `unknown_action` | App 的 UIKit / Diagnostics 注册 | MCP tools 未刷新 |
 
 ## 边界

@@ -133,6 +133,7 @@ describe("tap_and_inspect", () => {
       ok: false,
       error: { code: "target_not_found" },
       data: {
+        stage: "tap",
         tap: { code: "target_not_found" },
         timing: { tapMs: 6, inspectMs: 0, totalMs: 6 }
       }
@@ -183,6 +184,7 @@ describe("tap_and_inspect", () => {
       ok: false,
       error: { code: "protocol_error" },
       data: {
+        stage: "inspect",
         tap: { performed: true },
         wait: { satisfied: true },
         stateAfter: { code: "protocol_error" },
@@ -217,6 +219,25 @@ describe("tap_and_inspect", () => {
       }
     });
     expect((result.data as JSONObject).wait).toBeUndefined();
+  });
+
+  it("终态失败聚合各阶段 attempts 和 image artifacts", async () => {
+    const clock = new FakeClock();
+    const image = { kind: "image" as const, mimeType: "image/png", data: Uint8Array.from([1]), metadata: {} };
+    const runtime = new FakeRuntime(clock, [
+      { result: { ...success({ performed: true }), artifacts: [image], attempts: 2 }, advanceMs: 2 },
+      { result: success({ satisfied: true }), advanceMs: 3 },
+      { result: { ...failure("protocol_error", "Invalid envelope"), artifacts: [image], attempts: 3 }, advanceMs: 5 }
+    ]);
+
+    const result = await new WorkflowRunner({ runtime, clock }).run("tap_and_inspect", {
+      path: "0.1",
+      viewSnapshotID: "before"
+    }, { deadlineAtMs: 100 });
+
+    expect(result).toMatchObject({ ok: false, attempts: 6, data: { stage: "inspect" } });
+    if (result.ok) throw new Error("expected workflow failure");
+    expect(result.artifacts).toEqual([image, image]);
   });
 });
 

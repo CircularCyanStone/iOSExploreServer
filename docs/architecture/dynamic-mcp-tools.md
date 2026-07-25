@@ -37,8 +37,18 @@ MCP 客户端支持的 schema 也可能不一致。工具数量和名称在 App 
 | `wait_and_inspect` | 组合 `ui.waitAny` + `ui.inspect` |
 | `ui_tap_and_inspect` | 组合 `ui.tap` + `ui.wait` + `ui.inspect` |
 
-工具名、action 映射和 schema 集中在 `iOSDriver/src/staticTools.ts`；MCP 协议分发在
-`iOSDriver/src/server.ts`。没有动态工具缓存、命名转换、冲突过滤或 schema 映射层。
+当前边界分为三层：
+
+- `iOSDriver/src/adapters/mcp/toolMappings.ts` 只冻结 28 个历史 MCP 工具名，以及它们到
+  device action / host operation 合同标识的显式映射；
+- `iOSDriver/src/generated/deviceActionContracts.ts` 与
+  `iOSDriver/src/generated/hostOperationSpecs.ts` 提供生成的 description 和 input schema；
+- `iOSDriver/src/adapters/mcp/toolCatalog.ts` 合并映射与生成合同，离线构造固定工具目录，
+  `iOSDriver/src/adapters/mcp/server.ts` 负责 `tools/list` / `tools/call` 分发。
+
+生成的 [`docs/generated/contracts.md`](../generated/contracts.md) 只记录 device action、host
+operation 和稳定错误索引，不记录 MCP 工具名映射。当前实现没有动态工具缓存、运行时命名
+转换、冲突过滤或从 App `help` 生成 schema 的路径。
 
 ## 完整调用时序
 

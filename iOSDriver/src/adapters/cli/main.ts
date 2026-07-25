@@ -9,6 +9,7 @@ import { resolveCLIConfig, CLIConfigError, type CLIConfigOverrides } from "./con
 import { executeCLICommand, EXIT_CODES, type CallCommandOptions, type CLICommandContext, type CLICommandName } from "./commands.js";
 import { processOutput, type CLIOutput } from "./output.js";
 import { startMCPStdioServer } from "../mcp/server.js";
+import { defaultHostLogger, type HostLogger } from "../../runtime/hostLogger.js";
 
 /** 解析 CLI 参数并执行固定命令；可注入 argv、输出和 SIGINT 行为供测试使用。 */
 export async function main(
@@ -17,9 +18,11 @@ export async function main(
     readonly output?: CLIOutput;
     readonly env?: NodeJS.ProcessEnv;
     readonly nodeVersion?: string;
+    readonly logger?: HostLogger;
   } = {}
 ): Promise<number> {
   const output = dependencies.output ?? processOutput;
+  const logger = dependencies.logger ?? defaultHostLogger;
   const controller = new AbortController();
   const onSIGINT = () => controller.abort(new Error("SIGINT"));
   let handlesSIGINT = false;
@@ -30,10 +33,11 @@ export async function main(
     const config = await resolveCLIConfig(parsed.config, dependencies.env ?? process.env);
     const runtime = new DriverRuntime({
       transport: new HttpActionTransport(config.baseURL),
-      configuredRequestTimeoutMs: config.requestTimeoutMs
+      configuredRequestTimeoutMs: config.requestTimeoutMs,
+      logger
     });
-    const capabilityProbe = new CapabilityProbe(runtime);
-    const workflowRunner = new WorkflowRunner({ runtime });
+    const capabilityProbe = new CapabilityProbe(runtime, undefined, logger);
+    const workflowRunner = new WorkflowRunner({ runtime, logger });
     const context: CLICommandContext = {
       config,
       output,
@@ -43,14 +47,21 @@ export async function main(
       ...(dependencies.nodeVersion === undefined ? {} : { nodeVersion: dependencies.nodeVersion }),
       env: dependencies.env ?? process.env,
       signal: controller.signal,
+      logger,
       ...(parsed.human ? { human: true } : {})
     };
     if (parsed.command === "call") return await executeCLICommand("call", context, parsed.call);
     return await executeCLICommand(parsed.command, {
       ...context,
-      startMCP: () => startMCPStdioServer({ runtime, capabilityProbe, workflowRunner })
+      startMCP: () => startMCPStdioServer({ runtime, capabilityProbe, workflowRunner, logger })
     });
   } catch (error) {
+    logger.emit("error", "cli.command.error", {
+      command: knownCommand(argv[0]),
+      exitCode: EXIT_CODES.configError,
+      errorType: error instanceof Error ? error.name : typeof error,
+      phase: "startup"
+    });
     if (error instanceof CLIConfigError) {
       output.stderr(`${error.message}\n`);
       return EXIT_CODES.configError;
@@ -128,4 +139,8 @@ function parseTimeout(raw: string): number {
   const value = Number(raw);
   if (!Number.isInteger(value) || value <= 0) throw new CLIConfigError("--timeout 必须是正整数");
   return value;
+}
+
+function knownCommand(value: string | undefined): CLICommandName | "unknown" {
+  return value === "init" || value === "doctor" || value === "call" || value === "mcp" ? value : "unknown";
 }

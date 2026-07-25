@@ -18,7 +18,7 @@ description: iOS App 连接管理与诊断。当用户说"连不上 App"、"ipro
 
 按顺序执行，得到结论后停止当前分支：
 
-1. 调用 iOSDriver `health_check`。
+1. 上游已经提供 `health_check` 时，直接使用未改写的原始结果；否则调用 iOSDriver `health_check`。connection / ping 的字段解释和连接分诊只在本 skill 进行。
 2. 工具不存在或调用无法发起：MCP server 未加载，转 `ios-mcp-setup`。
 3. 顶层 `connection == "reachable"` 且 `ping.status == "ok"`：连接正常，转回 `ios-automation` 处理用户任务。`help.status`、`actions.status`、模块状态和 schema 兼容性不用于判断端口是否连通。
 4. 顶层 `connection == "malformed"`：端点有响应，但 ping 响应不符合协议；这是 App 端点协议或集成问题，不启动 `iproxy`，也不继续端口分诊。

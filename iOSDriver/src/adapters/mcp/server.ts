@@ -10,6 +10,7 @@ import { HOST_OPERATION_SPECS } from "../../generated/hostOperationSpecs.js";
 import type { CapabilityReport } from "../../runtime/capabilityProbe.js";
 import type { InvocationOptions, InvocationPolicy } from "../../runtime/driverRuntime.js";
 import type { InvocationResult } from "../../runtime/types.js";
+import { defaultHostLogger, type HostLogger } from "../../runtime/hostLogger.js";
 import type { JSONObject } from "../../types.js";
 import type { WorkflowOperation } from "../../workflows/types.js";
 import { renderAdapterError, renderInvocationResult, renderJSONData } from "./resultRenderer.js";
@@ -69,6 +70,8 @@ export interface MCPAdapterOptions {
   readonly capabilityProbe: MCPCapabilityProbe;
   readonly workflowRunner: MCPWorkflowRunner;
   readonly now?: () => number;
+  /** MCP 生命周期与工具调用 logger；默认固定写 stderr。 */
+  readonly logger?: HostLogger;
 }
 
 /** 可直接绑定 SDK 或供单元测试调用的 MCP handlers。 */
@@ -94,16 +97,32 @@ export interface MCPToolHandlers {
 export function createMCPToolHandlers(options: MCPAdapterOptions): MCPToolHandlers {
   const entries = new Map(TOOL_CATALOG.map(entry => [entry.name, entry] as const));
   const now = options.now ?? Date.now;
+  const logger = options.logger ?? defaultHostLogger;
   return {
     async listTools() {
       return { tools: TOOL_CATALOG.map(toMCPTool) };
     },
     async callTool(name: string, args: JSONObject = {}) {
+      logger.emit("info", "mcp.tool.start", { tool: name });
       const entry = entries.get(name);
       if (entry === undefined) {
+        logger.emit("warn", "mcp.tool.complete", { tool: name, outcome: "failure", code: "unknown_tool" });
         return renderAdapterError("unknown_tool", "Unknown MCP tool");
       }
-      return invokeEntry(entry, args, options, now);
+      try {
+        const result = await invokeEntry(entry, args, options, now);
+        logger.emit(result.isError === true ? "warn" : "info", "mcp.tool.complete", {
+          tool: name,
+          outcome: result.isError === true ? "failure" : "success"
+        });
+        return result;
+      } catch (error) {
+        logger.emit("error", "mcp.tool.unexpected", {
+          tool: name,
+          errorType: error instanceof Error ? error.name : typeof error
+        });
+        return renderAdapterError("unexpected", "Unexpected host error");
+      }
     }
   };
 }
@@ -115,6 +134,8 @@ export function createMCPToolHandlers(options: MCPAdapterOptions): MCPToolHandle
  * @returns server transport 连接完成后的 Promise。
  */
 export async function startMCPStdioServer(options: MCPAdapterOptions): Promise<void> {
+  const logger = options.logger ?? defaultHostLogger;
+  logger.emit("info", "mcp.server.start", { transport: "stdio" });
   const server = new Server(
     { name: "ios-explore-mcp-server", version: "0.1.0" },
     { capabilities: { tools: {} } }
@@ -127,7 +148,16 @@ export async function startMCPStdioServer(options: MCPAdapterOptions): Promise<v
     return handlers.callTool(request.params.name, args);
   });
 
-  await server.connect(new StdioServerTransport());
+  try {
+    await server.connect(new StdioServerTransport());
+    logger.emit("info", "mcp.server.connected", { transport: "stdio" });
+  } catch (error) {
+    logger.emit("error", "mcp.server.unexpected", {
+      transport: "stdio",
+      errorType: error instanceof Error ? error.name : typeof error
+    });
+    throw error;
+  }
 }
 
 async function invokeEntry(
