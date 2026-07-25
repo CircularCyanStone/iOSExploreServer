@@ -19,7 +19,7 @@ enum UIScrollExecutor {
     /// 在已定位上下文上执行滚动，返回 container/offset/extent/inset 摘要。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 scroll 输入。
+    ///   - input: 已通过 generated wire 校验的 scroll 输入。
     ///   - context: 当前 MainActor 查询上下文（window / rootView / topViewController）。
     /// - Returns: 滚动结果 JSON（container 类型名、offsetBefore/offsetAfter、reachedExtent、
     ///   adjustedContentInset 全字段）。

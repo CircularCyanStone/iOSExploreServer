@@ -20,15 +20,14 @@ public enum DiagnosticsActionContracts {
     public static let byAction: [String: CommandContract] = Dictionary(uniqueKeysWithValues: all.map { contract in
         (contract.action, contract)
     })
-    /// 按 action 名查询 typed 字段 schema。
-    public static let inputSchemas: [String: CommandInputSchema] = [
-        "app.logs.mark": appLogsMarkInputSchema,
-        "app.logs.read": appLogsReadInputSchema
+    /// 按 action 名查询 Swift 执行端输入定义。
+    public static let inputs: [String: CommandInputDefinition] = [
+        "app.logs.mark": appLogsMarkInput,
+        "app.logs.read": appLogsReadInput
     ]
     static let appLogsMarkContract = CommandContract(
         action: "app.logs.mark",
         description: "建立当前进程日志检查点。",
-        inputSchema: appLogsMarkInputSchema,
         provider: .diagnostics,
         stability: .public,
         resultKind: .json,
@@ -42,7 +41,6 @@ public enum DiagnosticsActionContracts {
     static let appLogsReadContract = CommandContract(
         action: "app.logs.read",
         description: "读取当前进程内已捕获的日志。",
-        inputSchema: appLogsReadInputSchema,
         provider: .diagnostics,
         stability: .public,
         resultKind: .json,
@@ -53,10 +51,34 @@ public enum DiagnosticsActionContracts {
         contractHash: contractHash,
         contractSource: .generated
     )
-    static let appLogsMarkInputSchema = CommandInputSchema(fields: [], additionalProperties: false)
-    static let appLogsReadAfterField = AnyCommandField(name: "after", schema: CommandFieldSchema(type: .object, required: false, description: "增量读取起点 cursor。", allowsNull: true, extraSchema: JSON(["additionalProperties": .bool(true), "properties": .object(JSON(["captureSessionID": .object(JSON(["description": .string("capture session ID。"), "type": .string("string")])), "id": .object(JSON(["description": .string("cursor id。"), "maximum": .double(9007199254740991), "minimum": .double(0), "type": .string("integer")]))])), "required": .array([.string("captureSessionID"), .string("id")])])))
-    static let appLogsReadLimitField = CommandFields.int("limit", range: 1...500, default: 100, description: "最多返回的日志条数。")
-    static let appLogsReadSourcesField = CommandFields.optionalStringEnumArray("sources", values: ["explore", "bridge", "stdout", "stderr", "nslog", "oslog"], itemDescription: "日志来源。", description: "日志来源过滤。")
-    static let appLogsReadMinimumLevelField = CommandFields.optionalStringEnum("minimumLevel", values: ["debug", "info", "error", "fault", "unknown"], description: "最低日志等级。")
-    static let appLogsReadInputSchema = CommandInputSchema(fields: [appLogsReadAfterField, appLogsReadLimitField.erased, appLogsReadSourcesField.erased, appLogsReadMinimumLevelField.erased], additionalProperties: false)
+    static let appLogsMarkInput = CommandInputDefinition(
+        fields: [],
+        additionalProperties: false,
+        validate: { data in
+        }
+    )
+    static let appLogsReadAfterField = AnyCommandField(name: "after")
+    static let appLogsReadLimitField = CommandFields.int("limit", range: 1...500, default: 100)
+    static let appLogsReadSourcesField = CommandFields.optionalStringEnumArray("sources", values: ["explore", "bridge", "stdout", "stderr", "nslog", "oslog"])
+    static let appLogsReadMinimumLevelField = CommandFields.optionalStringEnum("minimumLevel", values: ["debug", "info", "error", "fault", "unknown"])
+    static let appLogsReadInput = CommandInputDefinition(
+        fields: [appLogsReadAfterField, appLogsReadLimitField.erased, appLogsReadSourcesField.erased, appLogsReadMinimumLevelField.erased],
+        additionalProperties: false,
+        validate: { data in
+            try CommandWireValidation.value(data["after"], path: "after", required: false, types: [.object, .null])
+            if case .object(let object0)? = data["after"] {
+                try CommandWireValidation.object(object0, path: "after", allowedFields: Set(["captureSessionID", "id"]), additionalProperties: true)
+                try CommandWireValidation.value(object0["captureSessionID"], path: "after.captureSessionID", required: true, types: [.string])
+                try CommandWireValidation.value(object0["id"], path: "after.id", required: true, types: [.integer], minimum: 0, maximum: 9007199254740991)
+            }
+            try CommandWireValidation.value(data["limit"], path: "limit", required: false, types: [.integer], minimum: 1, maximum: 500)
+            try CommandWireValidation.value(data["sources"], path: "sources", required: false, types: [.array, .null])
+            if case .array(let array1)? = data["sources"] {
+                for item2 in array1 {
+                    try CommandWireValidation.value(item2, path: "sources[]", required: true, types: [.string], enumValues: [.string("explore"), .string("bridge"), .string("stdout"), .string("stderr"), .string("nslog"), .string("oslog")])
+                }
+            }
+            try CommandWireValidation.value(data["minimumLevel"], path: "minimumLevel", required: false, types: [.string, .null], enumValues: [.string("debug"), .string("info"), .string("error"), .string("fault"), .string("unknown"), .null])
+        }
+    )
 }

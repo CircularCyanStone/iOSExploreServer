@@ -166,7 +166,7 @@
 
 ### `UITapModels.swift` ✅
 - **职责**：`UITapInput`（`ui.tap` 的 typed input）。
-- **关键点**：conform core `CommandInput`；字段定义同时驱动解析和 `help.inputSchema`。**只接受 `accessibilityIdentifier` 或 `path`（二选一）+ 必填 `viewSnapshotID`**；已删除 `x`/`y`/`coordinateSpace`/`window` 坐标输入与 `UITapTarget`（目标直接复用 `UIKitViewLookupTarget`）。`ui.tap` 现是"默认激活动作"（非触摸注入），按 target 类型路由；成功响应字段为 `activated`/`activationRoute`（control.touchUpInside | switch.toggle | input.focus）/`path`/`type`/`event`（switch 另有 previousValue/currentValue，input 另有 isFirstResponder）。旧字段 `tapped`/`dispatchMode=controlActionFallback`/`x`/`y`/`hitPath`/`hitType`/`controlPath` 已删除。
+- **关键点**：conform core `CommandInput`；Swift 使用合同生成的 `inputDefinition` 做 wire 校验并驱动 typed parser，工具 schema 直接来自 `contracts/` 的 TypeScript 生成产物。**只接受 `accessibilityIdentifier` 或 `path`（二选一）+ 必填 `viewSnapshotID`**；已删除 `x`/`y`/`coordinateSpace`/`window` 坐标输入与 `UITapTarget`（目标直接复用 `UIKitViewLookupTarget`）。`ui.tap` 现是"默认激活动作"（非触摸注入），按 target 类型路由；成功响应字段为 `activated`/`activationRoute`（control.touchUpInside | switch.toggle | input.focus）/`path`/`type`/`event`（switch 另有 previousValue/currentValue，input 另有 isFirstResponder）。旧字段 `tapped`/`dispatchMode=controlActionFallback`/`x`/`y`/`hitPath`/`hitType`/`controlPath` 已删除。
 - **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitViewLookupTarget`。
 
 ### `UITapCommand.swift` 🍎

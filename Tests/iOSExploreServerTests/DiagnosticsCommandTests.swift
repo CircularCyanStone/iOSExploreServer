@@ -34,8 +34,8 @@ struct DiagnosticsCommandTests {
         }
     }
 
-    @Test("app.logs.read help 暴露可查询字段")
-    func readHelpIncludesInputSchemaFields() async throws {
+    @Test("app.logs.read help 不携带 inputSchema")
+    func readHelpOmitsInputSchema() async throws {
         try await withProcessDiagnosticsTestIsolation {
             ESDiagnosticsRuntime.shared.resetForTesting()
             defer { ESDiagnosticsRuntime.shared.resetForTesting() }
@@ -46,15 +46,16 @@ struct DiagnosticsCommandTests {
 
             let result = await server.routerSnapshotRoute(ExploreRequest(action: "help"))
 
-            let schema = try inputSchema(for: "app.logs.read", from: result)
-            let properties = schema["properties"]?.objectValue ?? [:]
-            #expect(Set(properties.storage.keys) == ["after", "limit", "sources", "minimumLevel"])
-            #expect(schema["additionalProperties"]?.boolValue == false)
-            #expect(properties["after"]?.objectValue?["type"]?.arrayValue?.contains(.string("object")) == true)
-            #expect(properties["limit"]?.objectValue?["minimum"]?.doubleValue == 1)
-            #expect(properties["limit"]?.objectValue?["maximum"]?.doubleValue == 500)
-            #expect(properties["sources"]?.objectValue?["type"]?.arrayValue?.contains(.string("array")) == true)
-            #expect(properties["minimumLevel"]?.objectValue?["enum"]?.arrayValue?.contains(.string("error")) == true)
+            guard case .success(let data) = result,
+                  let commands = data["commands"]?.arrayValue,
+                  let command = commands.compactMap(\.objectValue).first(where: {
+                      $0["action"]?.stringValue == "app.logs.read"
+                  }) else {
+                Issue.record("app.logs.read help entry missing")
+                return
+            }
+            #expect(command["inputSchema"] == nil)
+            #expect(command["inputDefinition"] == nil)
         }
     }
 
@@ -537,21 +538,6 @@ private func hasMore(from result: ExploreResult) throws -> Bool {
         throw TestFailure("missing hasMore")
     }
     return hasMore
-}
-
-private func inputSchema(for action: String, from result: ExploreResult) throws -> JSON {
-    guard case .success(let data) = result,
-          let commands = data["commands"]?.arrayValue else {
-        throw TestFailure("missing commands")
-    }
-    for commandValue in commands {
-        guard let command = commandValue.objectValue else { continue }
-        if command["action"]?.stringValue == action,
-           let schema = command["inputSchema"]?.objectValue {
-            return schema
-        }
-    }
-    throw TestFailure("missing schema")
 }
 
 private func writeLine(_ line: String, to handle: FileHandle) {

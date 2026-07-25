@@ -14,7 +14,7 @@ enum UIAlertRespondExecutor {
     /// 执行一次 alert 按钮响应。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 alert respond 参数。
+    ///   - input: 已通过 generated wire 校验的 alert respond 参数。
     ///   - context: 当前 MainActor 查询上下文。
     /// - Returns: 已触发的按钮与关闭请求结果。dismissWaitMs 和 presentedAfterDismiss 仅为
     ///   启动时标记（dismissWaitMs=0），真正的耗时等待由 `UIAlertRespondCommand.handle` 中的

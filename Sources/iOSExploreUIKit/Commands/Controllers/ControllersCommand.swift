@@ -14,7 +14,7 @@ import UIKit
 /// "全局 controller 结构"这个维度。返回的 `topPath` 直接回答"现在在哪个界面"，每个节点的 `path`
 /// 为后续让这两个命令接收 `controller` 定位参数（取非顶层 controller 的视图）建立可解析标识。
 struct ControllersCommand: Command {
-    /// typed 输入模型，负责 schema 暴露和 data 解析。
+    /// typed 输入模型，负责 wire 校验和 data 解析。
     typealias Input = UIControllersInput
 
     /// 固定 action 名，供注册、日志和错误工厂复用。
@@ -25,7 +25,7 @@ struct ControllersCommand: Command {
 
     /// 执行 controller 结构骨架采集。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的查询参数。
+    /// - Parameter input: 已通过 generated wire 校验的查询参数。
     /// - Returns: 成功时返回骨架树；UIKit 上下文不可用时返回业务失败 envelope。
     func handle(_ input: UIControllersInput) async throws -> ExploreResult {
         UIKitCommandLogger.info("command", "command \(action) start input=typed")

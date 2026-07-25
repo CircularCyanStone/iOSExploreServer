@@ -116,7 +116,7 @@
 
 ## 三个"如果你只想快速理解"的捷径
 
-- **只想知道命令怎么用** → 只读第 0 步 + 每个 `*Input.inputSchema`；实际对外 JSON 可直接看 `help` 返回的 `inputSchema.properties`。
+- **只想知道命令怎么用** → 看 [`docs/generated/contracts.md`](../generated/contracts.md) 或 MCP `tools/list`；Swift 的 `*Input.inputDefinition` 只负责 App 端执行校验，`help` 不重复返回 schema。
 - **只想理解架构设计** → 读第 0、2、3 步的文件头注释（`///` 块），每个文件的文档注释都写清了"为什么这样设计"。
 - **只想改某个命令** → 在 [uikit-file-reference.md](./uikit-file-reference.md) 里找到那个文件，看它依赖谁、被谁调用。
 

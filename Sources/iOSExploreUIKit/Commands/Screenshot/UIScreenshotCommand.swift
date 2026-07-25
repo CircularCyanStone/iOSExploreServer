@@ -11,7 +11,7 @@ import iOSExploreServer
 /// 截图是高耗时命令（渲染 + PNG 编码 + base64），自声明 30s 超时覆盖全局上限，避免被
 /// 默认 commandTimeout 提前打断。
 struct ScreenshotCommand: Command {
-    /// typed 输入模型，负责 schema 暴露与 data 解析（Foundation-only）。
+    /// typed 输入模型，负责 wire 校验与 data 解析（Foundation-only）。
     typealias Input = UIScreenshotInput
 
     /// 固定 action 名，供注册、日志和错误工厂复用。
@@ -38,7 +38,7 @@ struct ScreenshotCommand: Command {
     /// `UIKitContextProvider` 与 collector 均 `@MainActor`，必须在 `MainActor.run` 内调用；
     /// 返回值为纯 `JSON`（不含 UIKit 对象），可安全跨 actor。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的截图参数。
+    /// - Parameter input: 已通过 generated wire 校验的截图参数。
     /// - Returns: 成功时返回 base64 图像与像素尺寸；失败时返回明确原因 envelope。
     func handle(_ input: UIScreenshotInput) async -> ExploreResult {
         UIKitCommandLogger.info("command", "command \(action) start maxDimension=\(input.maxDimension)")

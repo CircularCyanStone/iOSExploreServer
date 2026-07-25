@@ -4,8 +4,8 @@ import Testing
 private let thirtySecondCommandTimeoutNanoseconds: UInt64 = 30 * 1_000_000_000
 
 private struct RouterGreetingInput: CommandInput, Equatable {
-    static let nameField = CommandFields.requiredString("name", description: "名字")
-    static let inputSchema = CommandInputSchema(fields: [nameField.erased])
+    static let nameField = CommandFields.requiredString("name")
+    static let inputDefinition = CommandInputDefinition(fields: [nameField.erased])
 
     let name: String
 
@@ -15,11 +15,9 @@ private struct RouterGreetingInput: CommandInput, Equatable {
 }
 
 private func routerTestContract(action: String,
-                                description: String = "",
-                                inputSchema: CommandInputSchema = .empty) -> CommandContract {
+                                description: String = "") -> CommandContract {
     CommandContract(action: action,
                     description: description,
-                    inputSchema: inputSchema,
                     provider: .extension,
                     stability: .`internal`,
                     resultKind: .json,
@@ -141,8 +139,8 @@ func routeProtocolRegistration() async {
     }
 }
 
-@Test("metadata 暴露 typed inputSchema properties")
-func commandMetadataIncludesInputSchemaProperties() {
+@Test("metadata 不携带 inputSchema")
+func commandMetadataContainsOnlyRuntimeContractData() {
     let router = Router()
     router.register(action: "greet", description: "打招呼", input: RouterGreetingInput.self) { _ in
         .success([:])
@@ -163,24 +161,12 @@ func commandMetadataIncludesInputSchemaProperties() {
     #expect(greet.contractVersion == CoreActionContracts.contractVersion)
     #expect(greet.contractHash == CoreActionContracts.contractHash)
     #expect(greet.contractSource == .runtime)
-    let schemaJSON = greet.inputSchema.toJSON()
-    guard case .object(let properties) = schemaJSON["properties"] else {
-        Issue.record("properties not object")
-        return
-    }
-    #expect(properties["name"] != nil)
-    guard case .array(let order) = schemaJSON["x-iosExplore-propertyOrder"] else {
-        Issue.record("property order missing")
-        return
-    }
-    #expect(order == [JSONValue.string("name")])
 }
 
 @Test("显式合同注册保留 metadata 且执行仍使用 typed parser")
 func explicitContractRegistrationPreservesMetadataAndTypedParser() async {
     let contract = CommandContract(action: "contract.greet",
                                    description: "显式合同问候",
-                                   inputSchema: .empty,
                                    provider: .extension,
                                    stability: .experimental,
                                    resultKind: .text,

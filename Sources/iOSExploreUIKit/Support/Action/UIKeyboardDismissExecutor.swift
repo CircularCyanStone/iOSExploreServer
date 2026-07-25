@@ -15,7 +15,7 @@ enum UIKeyboardDismissExecutor {
     /// 执行一次键盘收起。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 keyboard dismiss 参数。
+    ///   - input: 已通过 generated wire 校验的 keyboard dismiss 参数。
     ///   - context: 由调用方在 MainActor 上取好的查询上下文。
     /// - Returns: 成功时返回 dismissed、strategy、firstResponderBefore/After 摘要。
     /// - Throws: `UIKitCommandError.keyboardDismissFailed`——尝试后仍存在 first responder。

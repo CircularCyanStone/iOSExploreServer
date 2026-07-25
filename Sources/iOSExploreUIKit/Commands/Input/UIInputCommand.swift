@@ -12,7 +12,7 @@ import iOSExploreServer
 /// 为 `hierarchyUnavailable`。批量命令的顶层生命周期日志由 `execute(input:context:)` 统一记录，
 /// 避免 command adapter 与 executor 重复记录同一条 start/complete 日志。
 struct InputCommand: Command {
-    /// typed 输入模型，负责 schema 暴露和 data 解析。
+    /// typed 输入模型，负责 wire 校验和 data 解析。
     typealias Input = UIInputInput
 
     /// 固定 action 名。
@@ -23,7 +23,7 @@ struct InputCommand: Command {
 
     /// 执行文本注入。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的 input 参数。
+    /// - Parameter input: 已通过 generated wire 校验的 input 参数。
     /// - Returns: 成功时返回批量结果 JSON；失败时返回对应业务码 envelope。
     func handle(_ input: UIInputInput) async -> ExploreResult {
         do {
@@ -42,7 +42,7 @@ struct InputCommand: Command {
     /// 在已取得的 MainActor UIKit context 上执行一次批量输入并记录顶层生命周期。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的输入。
+    ///   - input: 已通过 generated wire 校验的输入。
     ///   - context: 当前 UIKit 查询上下文，调用方必须在 MainActor 上取得。
     /// - Returns: 成功时返回批量结果；UIKit 执行失败时返回对应业务码 envelope。
     @MainActor

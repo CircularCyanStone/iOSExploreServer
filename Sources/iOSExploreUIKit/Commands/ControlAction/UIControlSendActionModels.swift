@@ -21,18 +21,6 @@ public enum UIControlSendActionEvent: String, Sendable, Equatable, CaseIterable 
     /// 文本编辑结束事件。
     case editingDidEnd
 
-    /// 是否为文本编辑事件族（editingChanged / editingDidBegin / editingDidEnd）。
-    ///
-    /// 这三个事件只服务 `UITextField` 文本编辑；agent 若用 `ui.control.sendAction` + 字符串
-    /// value 尝试设文本（误把 sendAction 当文本输入入口），value 的 number schema 会拒绝。
-    /// 解析阶段据此标志把通用 number 错误改写成引导 `ui.input` 的友好错误，让 agent 知道
-    /// 文本输入应走专用 `ui.input` 命令而非 sendAction。
-    var isEditingEvent: Bool {
-        switch self {
-        case .editingChanged, .editingDidBegin, .editingDidEnd: return true
-        case .touchDown, .touchUpInside, .valueChanged: return false
-        }
-    }
 }
 
 /// `ui.control.sendAction` 的命令参数。
@@ -44,8 +32,8 @@ public enum UIControlSendActionEvent: String, Sendable, Equatable, CaseIterable 
 /// 它不做 hit-test、不接受坐标、不找祖先 control、不承担默认激活。成功只表示已向该
 /// UIControl 发出指定 event。
 public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
-    /// `ui.control.sendAction` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiControlSendActionInputSchema
+    /// `ui.control.sendAction` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiControlSendActionInput
 
     /// 目标控件定位方式。
     public let target: UIKitViewLookupTarget
@@ -75,13 +63,7 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
 
     /// 按 `CommandInputDecoder` 读取字段并执行定位/viewSnapshotID/event 校验。
     ///
-    /// 当 event 属于 editing* 族（editingChanged/editingDidBegin/editingDidEnd）且 value 解析
-    /// 失败（agent 传了非数值的字符串文本）时，把通用的 "value must be a finite number" 改写成
-    /// 明确引导 `ui.input` 的错误——editing* 事件服务 UITextField，文本输入是 `ui.input` 的职责，
-    /// `sendAction` 的 value 只接受数值控件（slider/segmented/stepper/switch）。非 editing 事件
-    /// 传错 value 仍走原 number schema 错误，避免误伤数值控件的文案。
-    ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已解析的 control action 输入。
     /// - Throws: 字段类型、事件枚举、定位互斥关系或 viewSnapshotID 缺失时抛出
     ///   `CommandInputParseError`。
@@ -90,38 +72,21 @@ public struct UIControlSendActionInput: CommandInput, Sendable, Equatable {
         let event = UIControlSendActionEvent(
             rawValue: try decoder.read(UIKitActionContracts.uiControlSendActionEventField)
         )!
-        let value = try readValue(decoder: &decoder, for: event)
+        let value = try readValue(decoder: &decoder)
         let target = try UIKitLocatorInput.parse(decoder: &decoder,
                                                  identifierField: UIKitActionContracts.uiControlSendActionAccessibilityIdentifierField,
                                                  pathField: UIKitActionContracts.uiControlSendActionPathField)
         return UIControlSendActionInput(target: target, event: event, viewSnapshotID: viewSnapshotID, value: value)
     }
 
-    /// 读取可选 `value` 字段；editing* 事件族下解析失败时改写为引导 `ui.input` 的友好错误。
-    ///
-    /// 把 value 读取单独抽出，使引导逻辑与主 parse 流程解耦：主流程仍按 schema 顺序读取各字段，
-    /// 只在 value 这一步按 event 类型决定错误文案。引导只在 editing* 事件触发，其余事件透传
-    /// 原始 number schema 错误（如 valueChanged + 字符串 value 仍报 "value must be a finite number"）。
-    private static func readValue(decoder: inout CommandInputDecoder,
-                                  for event: UIControlSendActionEvent) throws -> JSONValue? {
-        do {
-            guard let rawValue = try decoder.readRaw(UIKitActionContracts.uiControlSendActionValueField),
-                  rawValue != .null else {
-                return nil
-            }
-            if let number = rawValue.doubleValue, number.isFinite {
-                return .double(number)
-            }
-            if let boolean = rawValue.boolValue {
-                return .bool(boolean)
-            }
-            throw CommandInputParseError("value must be a finite number")
-        } catch {
-            guard event.isEditingEvent else { throw error }
-            throw CommandInputParseError(
-                "event '\(event.rawValue)' 服务 UITextField 文本编辑，文本输入请使用 ui.input 命令；"
-                + "ui.control.sendAction 的 value 只接受数值（UISlider/UISegmentedControl/UIStepper/UISwitch）"
-            )
+    /// 把已通过 generated wire 校验的 `value` 转成执行器使用的 JSON scalar。
+    private static func readValue(decoder: inout CommandInputDecoder) throws -> JSONValue? {
+        guard let rawValue = try decoder.readRaw(UIKitActionContracts.uiControlSendActionValueField),
+              rawValue != .null else {
+            return nil
         }
+        if let number = rawValue.doubleValue, number.isFinite { return .double(number) }
+        if let boolean = rawValue.boolValue { return .bool(boolean) }
+        throw CommandInputParseError("value must be a finite number or boolean")
     }
 }

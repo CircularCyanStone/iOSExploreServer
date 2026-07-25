@@ -22,7 +22,7 @@ enum UIWaitExecutor {
     /// 执行一次 UI 等待。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 wait 参数。
+    ///   - input: 已通过 generated wire 校验的 wait 参数。
     ///   - contextProvider: 每轮轮询取当前查询上下文的闭包（注入便于测试）。
     /// - Returns: 满足时返回 satisfied/mode/elapsedMs/attempts，snapshotChanged 不可用时附 reason。
     /// - Throws: `UIKitCommandError.waitTimeout`——业务 deadline 到仍未满足。contextProvider 抛出的瞬时
@@ -39,7 +39,7 @@ enum UIWaitExecutor {
     /// 淘汰本用例刚签发的 `viewSnapshotID`。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 wait 参数。
+    ///   - input: 已通过 generated wire 校验的 wait 参数。
     ///   - snapshotStore: 用于 `snapshotChanged` 的 snapshot 查询与整表比对。
     ///   - contextProvider: 每轮轮询取当前查询上下文的闭包（注入便于测试）。
     /// - Returns: 满足时返回 satisfied/mode/elapsedMs/attempts，snapshotChanged 不可用时附 reason。

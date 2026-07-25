@@ -159,7 +159,7 @@ enum UIKitActionExecutor {
         guard let route = UIKitDefaultActivationResolver.route(for: located.view) else {
             // 无 default 公开路由：尝试手势 target-action adapter（依赖 `UIGestureRecognizer` 的
             // 自定义 view）。adapter 是 executeTap 内部补充分支，不改 default 三路行为，也不改
-            // `ui.tap` schema/协议——agent 据 `ui.inspect` 响应的 `hasGestureRecognizers` 字段
+            // `ui.tap` 合同——agent 据 `ui.inspect` 响应的 `hasGestureRecognizers` 字段
             // 推断可试 tap，用 path/identifier + viewSnapshotID 发 `ui.tap`，executor 在此触发。
             // `availableActions` 不声明 tap：gesture 触发是启发式补充（runtime 读私有 ivar 派发），
             // 非 UIButton/UISwitch/文本输入那样的确定公开激活路由。

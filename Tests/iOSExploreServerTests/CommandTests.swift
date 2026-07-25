@@ -2,8 +2,8 @@ import Testing
 @testable import iOSExploreServer
 
 private struct GreetingInput: CommandInput, Equatable {
-    static let nameField = CommandFields.requiredString("name", description: "名字")
-    static let inputSchema = CommandInputSchema(fields: [nameField.erased])
+    static let nameField = CommandFields.requiredString("name")
+    static let inputDefinition = CommandInputDefinition(fields: [nameField.erased])
 
     let name: String
 
@@ -23,8 +23,7 @@ func anyCommandParsesTypedInputAndHandles() async {
     }
     #expect(cmd.action == "greet")
     #expect(cmd.description == "打招呼")
-    #expect(cmd.inputSchema.fields.count == 1)
-    #expect(cmd.inputSchema.fields[0].name == "name")
+    #expect(cmd.inputDefinition.fields.map(\.name) == ["name"])
 
     let result = await cmd.handle(ExploreRequest(action: "greet", data: ["name": "Claude"]))
     if case .success(let data) = result {

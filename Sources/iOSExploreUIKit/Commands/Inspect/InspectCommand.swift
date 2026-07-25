@@ -33,7 +33,7 @@ import UIKit
 /// - 已知 `accessibilityIdentifier` 想确认 view 是否可达 → 本命令比 `topViewHierarchy` 轻。
 /// - 看完整视图结构 / 颜色 / 字体 / 验收字段 → 用 `ui.topViewHierarchy`。
 struct InspectCommand: Command {
-    /// typed 输入模型，负责 schema 暴露和 data 解析。
+    /// typed 输入模型，负责 wire 校验和 data 解析。
     typealias Input = UIInspectInput
 
     /// 固定 action 名，供注册、日志和错误工厂复用。
@@ -44,7 +44,7 @@ struct InspectCommand: Command {
 
     /// 执行轻量目标查询。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的查询参数。
+    /// - Parameter input: 已通过 generated wire 校验的查询参数。
     /// - Returns: 成功时返回 targets 列表；参数非法或 UIKit 上下文不可用时返回业务失败 envelope。
     func handle(_ input: UIInspectInput) async throws -> ExploreResult {
         UIKitCommandLogger.info("command", "command \(action) start input=typed")

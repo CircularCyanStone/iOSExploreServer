@@ -77,11 +77,10 @@ struct ESAppLogsReadInput: CommandInput {
     let sources: Set<ESAppLogSource>?
     let minimumLevel: ESAppLogLevel?
 
-    static let inputSchema = DiagnosticsActionContracts.appLogsReadInputSchema
+    static let inputDefinition = DiagnosticsActionContracts.appLogsReadInput
 
     static func parse(from data: JSON) throws -> ESAppLogsReadInput {
-        var decoder = CommandInputDecoder(data, schema: inputSchema)
-        try decoder.validateNoUnknownFields()
+        var decoder = try inputDefinition.makeDecoder(for: data)
 
         let after = try parseCursor(decoder.readRaw(DiagnosticsActionContracts.appLogsReadAfterField))
         let limit = try decoder.read(DiagnosticsActionContracts.appLogsReadLimitField)

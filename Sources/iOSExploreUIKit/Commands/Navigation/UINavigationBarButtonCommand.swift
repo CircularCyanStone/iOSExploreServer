@@ -7,7 +7,7 @@ import iOSExploreServer
 /// action 为 `ui.navigation.tapBarButton`。adapter 只负责日志、MainActor 切换和错误转换；
 /// 真实查找与触发逻辑收敛在 `UINavigationBarButtonExecutor`。
 struct NavigationBarButtonCommand: Command {
-    /// typed 输入模型，负责 schema 暴露和 data 解析。
+    /// typed 输入模型，负责 wire 校验和 data 解析。
     typealias Input = UINavigationBarButtonInput
 
     /// 固定 action 名。
@@ -18,7 +18,7 @@ struct NavigationBarButtonCommand: Command {
 
     /// 执行导航栏按钮触发。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的导航栏按钮输入。
+    /// - Parameter input: 已通过 generated wire 校验的导航栏按钮输入。
     /// - Returns: 成功时返回 performed 与 top 控制器变化；失败时返回业务失败 envelope。
     func handle(_ input: UINavigationBarButtonInput) async -> ExploreResult {
         UIKitCommandLogger.info("command", "command \(action) start \(input.selectorSummary) waitAfterMs=\(input.waitAfterMs)")

@@ -7,7 +7,7 @@ import iOSExploreServer
 /// action 为 `ui.waitAny`。adapter 只负责解析后的日志与上下文注入；多条件轮询、deadline、
 /// cancellation 处理全部收敛在 `UIWaitAnyExecutor` 中，单条件判断原语复用 `UIWaitExecutor.evaluate`。
 struct WaitAnyCommand: Command {
-    /// typed 输入模型，负责 schema 暴露和 data 解析。
+    /// typed 输入模型，负责 wire 校验和 data 解析。
     typealias Input = UIWaitAnyInput
 
     /// 固定 action 名。
@@ -21,7 +21,7 @@ struct WaitAnyCommand: Command {
 
     /// 执行多条件等待。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的 waitAny 输入。
+    /// - Parameter input: 已通过 generated wire 校验的 waitAny 输入。
     /// - Returns: 命中时返回 satisfied/matchedID/matchedIndex/matchedMode/elapsedMs/attempts；
     ///   超时返回 `wait_timeout` 业务失败 envelope。
     func handle(_ input: UIWaitAnyInput) async -> ExploreResult {

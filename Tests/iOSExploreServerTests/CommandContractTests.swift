@@ -19,13 +19,9 @@ func commandContractRejectsInvalidActions() {
 
 @Test("CommandContract 保存完整合同字段")
 func commandContractStoresContractFields() {
-    let schema = CommandInputSchema(fields: [
-        CommandFields.requiredString("name", description: "名称").erased,
-    ])
     let contract = CommandContract(
         action: "example.read",
         description: "读取示例",
-        inputSchema: schema,
         provider: .core,
         stability: .public,
         resultKind: .json,
@@ -38,7 +34,6 @@ func commandContractStoresContractFields() {
 
     #expect(contract.action == "example.read")
     #expect(contract.description == "读取示例")
-    #expect(contract.inputSchema == schema)
     #expect(contract.provider == .core)
     #expect(contract.stability == .public)
     #expect(contract.resultKind == .json)
@@ -55,7 +50,6 @@ func commandContractStoresSource() {
         CommandContract(
             action: "example.read",
             description: "读取示例",
-            inputSchema: .empty,
             provider: .extension,
             stability: .`internal`,
             resultKind: .json,
@@ -78,7 +72,6 @@ func commandContractPreservesVersionAndHash() {
     let contract = CommandContract(
         action: "example.read",
         description: "读取示例",
-        inputSchema: .empty,
         provider: .core,
         stability: .public,
         resultKind: .json,

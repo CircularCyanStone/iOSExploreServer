@@ -85,9 +85,9 @@ func datePickerInputRejectsBadDate() {
     }
 }
 
-@Test("schema 声明全部字段")
-func datePickerInputSchemaFields() {
-    let fields = UIDatePickerSetDateInput.inputSchema.fields.map(\.name)
+@Test("generated definition 声明全部字段")
+func datePickerInputFields() {
+    let fields = UIDatePickerSetDateInput.inputDefinition.fields.map(\.name)
     #expect(fields.contains("date"))
     #expect(fields.contains("year"))
     #expect(fields.contains("month"))

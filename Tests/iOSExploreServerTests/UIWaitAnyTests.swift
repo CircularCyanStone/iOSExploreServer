@@ -5,11 +5,11 @@ import iOSExploreServer
 
 /// `ui.waitAny` 的 typed input 解析与执行测试。
 ///
-/// parse/schema 部分纯 Foundation（不依赖 UIKit），macOS SPM 与 iOS framework 均运行；
+/// parse/wire 部分纯 Foundation（不依赖 UIKit），macOS SPM 与 iOS framework 均运行；
 /// executor 部分用 `UIKitTestHost` 注入上下文，仅 iOS 运行，覆盖优先级、超时收敛、cancel 收敛、
 /// 瞬时层级不可用容忍。
 
-// MARK: - parse / schema（Foundation-only）
+// MARK: - parse / wire（Foundation-only）
 
 @Test("waitAny 合法多条件解析并填充共享字段默认值")
 func waitAnyParsesMultipleConditions() throws {

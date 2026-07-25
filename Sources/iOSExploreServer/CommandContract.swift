@@ -68,7 +68,7 @@ public enum CommandContractError: Error, Sendable, Equatable {
 
 /// 描述一个可注册命令的完整、Foundation-only 合同。
 ///
-/// 合同只携带 wire 层元数据和 `CommandInputSchema`，不携带 UIKit、executor 或业务领域
+/// 合同只携带 wire 层 metadata，不携带输入 schema、UIKit、executor 或业务领域
 /// 类型，因此可以安全地跨模块和 Swift 并发边界传递。实例本身不可变；运行时扩展应创建
 /// 新值，而不是修改已发布合同。
 public struct CommandContract: Sendable, Equatable {
@@ -77,9 +77,6 @@ public struct CommandContract: Sendable, Equatable {
 
     /// 命令的人类可读描述。
     public let description: String
-
-    /// 命令输入的 wire-level JSON Schema。
-    public let inputSchema: CommandInputSchema
 
     /// 提供该命令的模块或运行时扩展。
     public let provider: CommandContractProvider
@@ -113,7 +110,6 @@ public struct CommandContract: Sendable, Equatable {
     /// - Parameters:
     ///   - action: 命令名；需要执行严格格式校验时先调用 `validateAction(_:)`。
     ///   - description: 命令的人类可读描述。
-    ///   - inputSchema: 命令输入的 wire-level JSON Schema。
     ///   - provider: 提供命令的模块或运行时扩展。
     ///   - stability: 命令的公开稳定性级别。
     ///   - resultKind: 命令结果的 wire-level 表示类型。
@@ -125,7 +121,6 @@ public struct CommandContract: Sendable, Equatable {
     ///   - contractSource: 合同来源，默认是生成产物。
     public init(action: String,
                 description: String,
-                inputSchema: CommandInputSchema,
                 provider: CommandContractProvider,
                 stability: CommandContractStability,
                 resultKind: CommandContractResultKind,
@@ -137,7 +132,6 @@ public struct CommandContract: Sendable, Equatable {
                 contractSource: CommandContractSource = .generated) {
         self.action = action
         self.description = description
-        self.inputSchema = inputSchema
         self.provider = provider
         self.stability = stability
         self.resultKind = resultKind

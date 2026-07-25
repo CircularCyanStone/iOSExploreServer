@@ -87,24 +87,11 @@ func tapInputRejectsOldSnapshotID() {
     }
 }
 
-@Test("UITapInput schema 不再声明坐标字段且使用 viewSnapshotID")
-func tapInputSchemaDropsCoordinatesAndUsesViewSnapshotID() {
-    #expect(UITapInput.inputSchema.fields.map(\.name) == [
+@Test("UITapInput generated definition 不再声明坐标字段且使用 viewSnapshotID")
+func tapInputDropsCoordinatesAndUsesViewSnapshotID() {
+    #expect(UITapInput.inputDefinition.fields.map(\.name) == [
         "accessibilityIdentifier",
         "path",
         "viewSnapshotID",
     ])
-}
-
-@Test("ui.tap Swift help schema 与跨语言 fixture 一致")
-func tapSwiftHelpSchemaMatchesCrossLanguageFixture() throws {
-    let repositoryRoot = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-    let fixtureURL = repositoryRoot
-        .appendingPathComponent("iOSDriver/tests/runtime/fixtures/swift-ui-tap-input-schema.json")
-    let fixture = try #require(JSONCoder.decode(Data(contentsOf: fixtureURL)))
-
-    #expect(UITapInput.inputSchema.toJSON() == fixture)
 }

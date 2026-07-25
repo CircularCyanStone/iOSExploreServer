@@ -41,7 +41,7 @@ public final class Router: Sendable {
         }
         handlers.withLock { $0[command.action] = command }
         ESLogger.info(.router,
-                      "router registered action=\(command.action) provider=\(command.contract.provider.rawValue) stability=\(command.contract.stability.rawValue) source=\(command.contract.contractSource.rawValue) schemaFields=\(command.inputSchema.fields.count) constraints=\(command.inputSchema.constraints.count)")
+                      "router registered action=\(command.action) provider=\(command.contract.provider.rawValue) stability=\(command.contract.stability.rawValue) source=\(command.contract.contractSource.rawValue) inputFields=\(command.inputDefinition.fields.count)")
     }
 
     /// 使用显式合同注册一个 typed 闭包命令。
@@ -75,7 +75,7 @@ public final class Router: Sendable {
     /// - Parameters:
     ///   - action: 命令名。
     ///   - description: 命令说明，供 `help` 输出。
-    ///   - input: 命令输入类型，负责 schema 暴露与 data 解析。
+    ///   - input: 命令输入类型，负责 wire 校验与 data 解析。
     ///   - logCategory: 命令执行日志归属。
     ///   - handler: 实际业务处理闭包，入参已经是 typed input。
     public func register<Input: CommandInput>(action: String,

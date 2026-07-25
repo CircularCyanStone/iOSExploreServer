@@ -24,7 +24,7 @@ enum UITextInputExecutor {
     /// 执行一次批量文本注入。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 input 参数。
+    ///   - input: 已通过 generated wire 校验的 input 参数。
     ///   - context: 由调用方在 MainActor 上取好的查询上下文（持有真实 window / rootView）。
     /// - Returns: 成功时返回 `completed`、`results`，失败时额外返回 `failedIndex`。
     /// - Throws: `UIKitCommandError`——仅在执行器内部出现无法转为逐项结果的异常时抛出。

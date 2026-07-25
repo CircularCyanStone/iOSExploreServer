@@ -30,7 +30,7 @@ enum UIScrollToElementExecutor {
     /// 执行一次滚动到目标。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 scroll-to-element 参数。
+    ///   - input: 已通过 generated wire 校验的 scroll-to-element 参数。
     ///   - context: 当前 MainActor 查询上下文。
     /// - Returns: found=true 及目标 path/type/container 摘要。
     /// - Throws: `UIKitCommandError`——容器不可用 / 目标未找到。

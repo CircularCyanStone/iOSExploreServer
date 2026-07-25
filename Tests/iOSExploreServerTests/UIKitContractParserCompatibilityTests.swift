@@ -5,34 +5,34 @@ import iOSExploreServer
 
 @Suite("UIKitContractParserCompatibilityTests")
 struct UIKitContractParserCompatibilityTests {
-    private struct SchemaExpectation {
+    private struct InputExpectation {
         let action: String
-        let inputSchema: CommandInputSchema
+        let inputDefinition: CommandInputDefinition
     }
 
-    @Test("Foundation-only UIKit Input 使用对应的 generated schema")
-    func foundationInputSchemasMatchGeneratedContracts() throws {
+    @Test("Foundation-only UIKit Input 使用对应的 generated definition")
+    func foundationInputsMatchGeneratedContracts() throws {
         let expectations = [
-            SchemaExpectation(action: "ui.alert.respond", inputSchema: UIAlertRespondInput.inputSchema),
-            SchemaExpectation(action: "ui.control.sendAction", inputSchema: UIControlSendActionInput.inputSchema),
-            SchemaExpectation(action: "ui.controllers", inputSchema: UIControllersInput.inputSchema),
-            SchemaExpectation(action: "ui.input", inputSchema: UIInputInput.inputSchema),
-            SchemaExpectation(action: "ui.inspect", inputSchema: UIInspectInput.inputSchema),
-            SchemaExpectation(action: "ui.keyboard.dismiss", inputSchema: UIKeyboardDismissInput.inputSchema),
-            SchemaExpectation(action: "ui.longPress", inputSchema: UILongPressInput.inputSchema),
-            SchemaExpectation(action: "ui.navigation.back", inputSchema: UINavigationBackInput.inputSchema),
-            SchemaExpectation(action: "ui.navigation.tapBarButton", inputSchema: UINavigationBarButtonInput.inputSchema),
-            SchemaExpectation(action: "ui.screenshot", inputSchema: UIScreenshotInput.inputSchema),
-            SchemaExpectation(action: "ui.scroll", inputSchema: UIScrollInput.inputSchema),
-            SchemaExpectation(action: "ui.scrollToElement", inputSchema: UIScrollToElementInput.inputSchema),
-            SchemaExpectation(action: "ui.swipe", inputSchema: UISwipeInput.inputSchema),
-            SchemaExpectation(action: "ui.tap", inputSchema: UITapInput.inputSchema),
-            SchemaExpectation(action: "ui.topViewHierarchy", inputSchema: UIViewHierarchyInput.inputSchema),
-            SchemaExpectation(action: "ui.wait", inputSchema: UIWaitInput.inputSchema),
-            SchemaExpectation(action: "ui.waitAny", inputSchema: UIWaitAnyInput.inputSchema),
+            InputExpectation(action: "ui.alert.respond", inputDefinition: UIAlertRespondInput.inputDefinition),
+            InputExpectation(action: "ui.control.sendAction", inputDefinition: UIControlSendActionInput.inputDefinition),
+            InputExpectation(action: "ui.controllers", inputDefinition: UIControllersInput.inputDefinition),
+            InputExpectation(action: "ui.input", inputDefinition: UIInputInput.inputDefinition),
+            InputExpectation(action: "ui.inspect", inputDefinition: UIInspectInput.inputDefinition),
+            InputExpectation(action: "ui.keyboard.dismiss", inputDefinition: UIKeyboardDismissInput.inputDefinition),
+            InputExpectation(action: "ui.longPress", inputDefinition: UILongPressInput.inputDefinition),
+            InputExpectation(action: "ui.navigation.back", inputDefinition: UINavigationBackInput.inputDefinition),
+            InputExpectation(action: "ui.navigation.tapBarButton", inputDefinition: UINavigationBarButtonInput.inputDefinition),
+            InputExpectation(action: "ui.screenshot", inputDefinition: UIScreenshotInput.inputDefinition),
+            InputExpectation(action: "ui.scroll", inputDefinition: UIScrollInput.inputDefinition),
+            InputExpectation(action: "ui.scrollToElement", inputDefinition: UIScrollToElementInput.inputDefinition),
+            InputExpectation(action: "ui.swipe", inputDefinition: UISwipeInput.inputDefinition),
+            InputExpectation(action: "ui.tap", inputDefinition: UITapInput.inputDefinition),
+            InputExpectation(action: "ui.topViewHierarchy", inputDefinition: UIViewHierarchyInput.inputDefinition),
+            InputExpectation(action: "ui.wait", inputDefinition: UIWaitInput.inputDefinition),
+            InputExpectation(action: "ui.waitAny", inputDefinition: UIWaitAnyInput.inputDefinition),
         ]
 
-        try assertSchemasMatchGenerated(expectations)
+        try assertInputsMatchGenerated(expectations)
     }
 
     @Test("ui.input 拒绝空 fields 数组")
@@ -42,17 +42,11 @@ struct UIKitContractParserCompatibilityTests {
         }
     }
 
-    @Test("UIInputField 只使用 generated item schema 与字段")
+    @Test("UIInputField 只使用 generated item definition 与字段")
     func inputFieldUsesGeneratedItemContract() throws {
-        #expect(UIInputField.inputSchema == UIKitActionContracts.uiInputFieldsItemInputSchema)
-        #expect(UIInputField.inputSchema.fields.map(\.name) == [
+        #expect(UIInputField.inputDefinition.fields.map(\.name) == [
             "accessibilityIdentifier", "path", "text", "mode", "submit",
         ])
-
-        let topLevelFields = try #require(UIInputInput.inputSchema.toJSON()["properties"]?.objectValue?["fields"]?.objectValue)
-        let itemSchema = try #require(topLevelFields["items"]?.objectValue)
-        #expect(itemSchema["description"]?.stringValue == "单个字段输入。")
-        #expect(itemSchema["x-iosExplore-constraints"]?.objectValue?["note"]?.stringValue?.contains("path 文法") == true)
 
         let input = try UIInputField.parse(from: [
             "path": .string("root/0"),
@@ -101,16 +95,16 @@ struct UIKitContractParserCompatibilityTests {
     }
 
 #if canImport(UIKit)
-    @Test("UIKit-only Input 使用对应的 generated schema")
-    func uikitOnlyInputSchemasMatchGeneratedContracts() throws {
+    @Test("UIKit-only Input 使用对应的 generated definition")
+    func uikitOnlyInputsMatchGeneratedContracts() throws {
         let expectations = [
-            SchemaExpectation(action: "ui.datePicker.setDate", inputSchema: UIDatePickerSetDateInput.inputSchema),
-            SchemaExpectation(action: "ui.picker.selectRow", inputSchema: UIPickerSelectRowInput.inputSchema),
-            SchemaExpectation(action: "ui.tabBar.selectTab", inputSchema: UITabBarSelectInput.inputSchema),
-            SchemaExpectation(action: "ui.webView.eval", inputSchema: UIWebViewEvalInput.inputSchema),
+            InputExpectation(action: "ui.datePicker.setDate", inputDefinition: UIDatePickerSetDateInput.inputDefinition),
+            InputExpectation(action: "ui.picker.selectRow", inputDefinition: UIPickerSelectRowInput.inputDefinition),
+            InputExpectation(action: "ui.tabBar.selectTab", inputDefinition: UITabBarSelectInput.inputDefinition),
+            InputExpectation(action: "ui.webView.eval", inputDefinition: UIWebViewEvalInput.inputDefinition),
         ]
 
-        try assertSchemasMatchGenerated(expectations)
+        try assertInputsMatchGenerated(expectations)
     }
 
     @Test("ui.datePicker.setDate 接受 ISO 8601 date")
@@ -152,13 +146,11 @@ struct UIKitContractParserCompatibilityTests {
     }
 #endif
 
-    private func assertSchemasMatchGenerated(_ expectations: [SchemaExpectation]) throws {
+    private func assertInputsMatchGenerated(_ expectations: [InputExpectation]) throws {
         for expectation in expectations {
-            let generatedSchema = try #require(UIKitActionContracts.inputSchemas[expectation.action])
-            #expect(
-                expectation.inputSchema == generatedSchema,
-                "\(expectation.action) Input.inputSchema 必须使用对应的 generated schema"
-            )
+            let generated = try #require(UIKitActionContracts.inputs[expectation.action])
+            #expect(expectation.inputDefinition.fields.map(\.name) == generated.fields.map(\.name))
+            #expect(expectation.inputDefinition.additionalProperties == generated.additionalProperties)
         }
     }
 }

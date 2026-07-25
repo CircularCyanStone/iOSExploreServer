@@ -24,7 +24,7 @@ enum UINavigationBackExecutor {
     /// 执行一次导航返回。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 navigation back 参数。
+    ///   - input: 已通过 generated wire 校验的 navigation back 参数。
     ///   - context: 由调用方在 MainActor 上取好的查询上下文。
     /// - Returns: 成功时返回 performed、生效 strategy 与 topBefore/topAfter 控制器类型摘要。
     /// - Throws: `UIKitCommandError.navigationBackUnavailable`——dismiss 与 pop 均不可用时。

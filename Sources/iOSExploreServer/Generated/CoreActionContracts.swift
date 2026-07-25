@@ -21,17 +21,16 @@ public enum CoreActionContracts {
     public static let byAction: [String: CommandContract] = Dictionary(uniqueKeysWithValues: all.map { contract in
         (contract.action, contract)
     })
-    /// 按 action 名查询 typed 字段 schema。
-    public static let inputSchemas: [String: CommandInputSchema] = [
-        "echo": echoInputSchema,
-        "help": helpInputSchema,
-        "info": infoInputSchema,
-        "ping": pingInputSchema
+    /// 按 action 名查询 Swift 执行端输入定义。
+    public static let inputs: [String: CommandInputDefinition] = [
+        "echo": echoInput,
+        "help": helpInput,
+        "info": infoInput,
+        "ping": pingInput
     ]
     static let echoContract = CommandContract(
         action: "echo",
         description: "原样回显 data。",
-        inputSchema: echoInputSchema,
         provider: .core,
         stability: .public,
         resultKind: .json,
@@ -45,7 +44,6 @@ public enum CoreActionContracts {
     static let helpContract = CommandContract(
         action: "help",
         description: "列出所有已注册命令及其参数说明。",
-        inputSchema: helpInputSchema,
         provider: .core,
         stability: .public,
         resultKind: .json,
@@ -59,7 +57,6 @@ public enum CoreActionContracts {
     static let infoContract = CommandContract(
         action: "info",
         description: "返回系统、应用和 Bundle 信息。",
-        inputSchema: infoInputSchema,
         provider: .core,
         stability: .public,
         resultKind: .json,
@@ -73,7 +70,6 @@ public enum CoreActionContracts {
     static let pingContract = CommandContract(
         action: "ping",
         description: "检查 iOSExploreServer 是否可达。",
-        inputSchema: pingInputSchema,
         provider: .core,
         stability: .public,
         resultKind: .json,
@@ -84,8 +80,28 @@ public enum CoreActionContracts {
         contractHash: contractHash,
         contractSource: .generated
     )
-    static let echoInputSchema = CommandInputSchema(fields: [], additionalProperties: true)
-    static let helpInputSchema = CommandInputSchema(fields: [], additionalProperties: false)
-    static let infoInputSchema = CommandInputSchema(fields: [], additionalProperties: false)
-    static let pingInputSchema = CommandInputSchema(fields: [], additionalProperties: false)
+    static let echoInput = CommandInputDefinition(
+        fields: [],
+        additionalProperties: true,
+        validate: { data in
+        }
+    )
+    static let helpInput = CommandInputDefinition(
+        fields: [],
+        additionalProperties: false,
+        validate: { data in
+        }
+    )
+    static let infoInput = CommandInputDefinition(
+        fields: [],
+        additionalProperties: false,
+        validate: { data in
+        }
+    )
+    static let pingInput = CommandInputDefinition(
+        fields: [],
+        additionalProperties: false,
+        validate: { data in
+        }
+    )
 }

@@ -115,7 +115,7 @@ async function runInit(context: CLICommandContext): Promise<number> {
   return EXIT_CODES.success;
 }
 
-/** 执行 endpoint、ping/help 和合同兼容性检查，不管理任何外部进程。 */
+/** 执行 endpoint、ping/help 和合同 bundle 一致性检查，不管理任何外部进程。 */
 async function runDoctor(context: CLICommandContext): Promise<number> {
   const nodeVersion = context.nodeVersion ?? process.versions.node;
   const nodeOK = minimumNodeVersion(nodeVersion, 20);
@@ -128,13 +128,12 @@ async function runDoctor(context: CLICommandContext): Promise<number> {
     help: report.help,
     actions: report.actions,
     modules: report.modules,
-    schemaCompatibility: report.schemaCompatibility,
-    schemaDifferences: report.schemaDifferences,
+    contractCompatibility: report.contractCompatibility,
     ...(report.metadata === undefined ? {} : { metadata: report.metadata })
   };
   if (context.human) {
     printHuman(context.output, `Node ${nodeVersion}: ${nodeOK ? "ok" : "unsupported"}`);
-    printHuman(context.output, `Endpoint: ${report.connection}; ping=${report.ping.status}; help=${report.help.status}; contract=${report.schemaCompatibility}`);
+    printHuman(context.output, `Endpoint: ${report.connection}; ping=${report.ping.status}; help=${report.help.status}; contract=${report.contractCompatibility}`);
   } else {
     printJSON(context.output, result);
   }
@@ -149,7 +148,7 @@ async function runDoctor(context: CLICommandContext): Promise<number> {
   if (report.metadata?.protocolVersionMatches === false) {
     return EXIT_CODES.transportFailure;
   }
-  if (report.schemaCompatibility === "breaking") {
+  if (report.contractCompatibility !== "exact") {
     return EXIT_CODES.appFailure;
   }
   return EXIT_CODES.success;

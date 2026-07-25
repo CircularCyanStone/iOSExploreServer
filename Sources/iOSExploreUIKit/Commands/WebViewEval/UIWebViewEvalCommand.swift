@@ -43,7 +43,7 @@ struct UIWebViewEvalCommand: Command {
     /// MainActor。executor 内部的 `await` 挂起时会 yield MainActor（让出 actor），
     /// 使并发到达的其它 `ui.*` 命令能插队执行。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的 webView.eval 输入。
+    /// - Parameter input: 已通过 generated wire 校验的 webView.eval 输入。
     /// - Returns: JS 执行结果 JSON。
     /// - Throws: 定位/陈旧/超时等 `UIKitCommandError`。
     @MainActor

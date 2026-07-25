@@ -8,7 +8,7 @@ import iOSExploreServer
 /// 调用同步 executor；业务逻辑（first responder 查找、策略执行、settle 等待）全部收敛在
 /// `UIKeyboardDismissExecutor` 中。
 struct KeyboardDismissCommand: Command {
-    /// typed 输入模型，负责 schema 暴露和 data 解析。
+    /// typed 输入模型，负责 wire 校验和 data 解析。
     typealias Input = UIKeyboardDismissInput
 
     /// 固定 action 名。
@@ -19,7 +19,7 @@ struct KeyboardDismissCommand: Command {
 
     /// 执行键盘收起。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的 keyboard dismiss 输入。
+    /// - Parameter input: 已通过 generated wire 校验的 keyboard dismiss 输入。
     /// - Returns: 成功时返回 dismissed 与 first responder 类型变化；失败时返回业务失败 envelope。
     func handle(_ input: UIKeyboardDismissInput) async -> ExploreResult {
         UIKitCommandLogger.info("command", "command \(action) start strategy=\(input.strategy.rawValue) waitAfterMs=\(input.waitAfterMs)")

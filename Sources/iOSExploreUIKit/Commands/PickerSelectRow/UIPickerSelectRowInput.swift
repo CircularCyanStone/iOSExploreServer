@@ -36,8 +36,8 @@ public struct UIPickerSelectRowInput: CommandInput, Sendable, Equatable {
         self.animated = animated
     }
 
-    /// 输入 schema(暴露给 MCP 客户端)。
-    public static let inputSchema = UIKitActionContracts.uiPickerSelectRowInputSchema
+    /// Swift 执行端的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiPickerSelectRowInput
 
     /// 从声明式 decoder 解析输入。
     ///
@@ -52,7 +52,7 @@ public struct UIPickerSelectRowInput: CommandInput, Sendable, Equatable {
                                                   identifierField: UIKitActionContracts.uiPickerSelectRowAccessibilityIdentifierField,
                                                   pathField: UIKitActionContracts.uiPickerSelectRowPathField)
 
-        // row 与 title 必须且只能提供一个(schema constraint 仅作文档,此处强制)
+        // 领域约束：row 与 title 必须且只能提供一个；合同扩展描述语义，parser 负责执行。
         if (row != nil) == (title != nil) {
             throw CommandInputParseError("row 和 title 必须且只能提供一个")
         }

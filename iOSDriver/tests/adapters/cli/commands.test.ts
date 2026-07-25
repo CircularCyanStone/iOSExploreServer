@@ -7,7 +7,7 @@ import { hostLogRecorder } from "../../support/hostLogRecorder.js";
 
 const config: CLIConfig = Object.freeze({ baseURL: "http://localhost:38321/", requestTimeoutMs: 10000, configPath: "/tmp/config.json", fileValues: {} });
 
-function fixture(result: InvocationResult, report: Record<string, unknown> = { connection: "reachable", ping: { status: "ok" }, help: { status: "available" }, schemaCompatibility: "exact" }) {
+function fixture(result: InvocationResult, report: Record<string, unknown> = { connection: "reachable", ping: { status: "ok" }, help: { status: "available" }, contractCompatibility: "exact" }) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const artifactWrites: Array<{ path: string; data: Uint8Array }> = [];
@@ -125,57 +125,60 @@ describe("CLI commands", () => {
   test("doctor 按底层稳定错误来源映射退出码", async () => {
     const appFailure = fixture(
       { ok: true, data: {}, artifacts: [], elapsedMs: 0, attempts: 1 },
-      { connection: "reachable", ping: { status: "failed", error: { source: "appEnvelope", code: "busy", message: "busy" } }, help: { status: "available" }, schemaCompatibility: "exact" }
+      { connection: "reachable", ping: { status: "failed", error: { source: "appEnvelope", code: "busy", message: "busy" } }, help: { status: "available" }, contractCompatibility: "exact" }
     );
     expect(await executeCLICommand("doctor", appFailure.context)).toBe(1);
 
     const transportFailure = fixture(
       { ok: true, data: {}, artifacts: [], elapsedMs: 0, attempts: 1 },
-      { connection: "unreachable", ping: { status: "failed", error: { source: "transport", code: "transport_unavailable", message: "offline" } }, help: { status: "unknown" }, schemaCompatibility: "unknown" }
+      { connection: "unreachable", ping: { status: "failed", error: { source: "transport", code: "transport_unavailable", message: "offline" } }, help: { status: "unknown" }, contractCompatibility: "unknown" }
     );
     expect(await executeCLICommand("doctor", transportFailure.context)).toBe(3);
   });
 
-  test("doctor 输出 schemaDifferences，additive 和元数据差异只报告不失败", async () => {
-    const schemaDifferences = [{ action: "echo", status: "additive", differences: ["optional field added"] }];
+  test("doctor 输出合同 bundle 一致性和版本/hash 比较", async () => {
     const state = fixture(
       { ok: true, data: {}, artifacts: [], elapsedMs: 0, attempts: 1 },
       {
         connection: "reachable",
         ping: { status: "ok" },
         help: { status: "available" },
-        schemaCompatibility: "additive",
-        schemaDifferences,
-        metadata: { contractVersionMatches: false, hashMatches: false }
+        contractCompatibility: "exact",
+        metadata: { protocolVersionMatches: true, contractVersionMatches: true, hashMatches: true }
       }
     );
 
     expect(await executeCLICommand("doctor", state.context)).toBe(0);
     expect(JSON.parse(state.stdout.join(""))).toMatchObject({
-      schemaCompatibility: "additive",
-      schemaDifferences,
-      metadata: { contractVersionMatches: false, hashMatches: false }
+      contractCompatibility: "exact",
+      metadata: { protocolVersionMatches: true, contractVersionMatches: true, hashMatches: true }
     });
   });
 
-  test("doctor 仅将 breaking 视为合同不兼容，将协议版本不匹配视为 protocol 失败", async () => {
+  test("doctor 将合同 bundle 不匹配视为 App 失败，将协议版本不匹配视为 protocol 失败", async () => {
     const success = { ok: true, data: {}, artifacts: [], elapsedMs: 0, attempts: 1 } as const;
-    const breaking = fixture(success, {
+    const mismatch = fixture(success, {
       connection: "reachable",
       ping: { status: "ok" },
       help: { status: "available" },
-      schemaCompatibility: "breaking",
-      schemaDifferences: [{ action: "echo", status: "breaking", differences: ["required field added"] }],
+      contractCompatibility: "mismatch",
       metadata: { contractVersionMatches: false, hashMatches: false, protocolVersionMatches: true }
     });
-    expect(await executeCLICommand("doctor", breaking.context)).toBe(1);
+    expect(await executeCLICommand("doctor", mismatch.context)).toBe(1);
+
+    const unknown = fixture(success, {
+      connection: "reachable",
+      ping: { status: "ok" },
+      help: { status: "available" },
+      contractCompatibility: "unknown"
+    });
+    expect(await executeCLICommand("doctor", unknown.context)).toBe(1);
 
     const protocolMismatch = fixture(success, {
       connection: "reachable",
       ping: { status: "ok" },
       help: { status: "available" },
-      schemaCompatibility: "exact",
-      schemaDifferences: [],
+      contractCompatibility: "mismatch",
       metadata: { contractVersionMatches: true, hashMatches: true, protocolVersionMatches: false }
     });
     expect(await executeCLICommand("doctor", protocolMismatch.context)).toBe(3);

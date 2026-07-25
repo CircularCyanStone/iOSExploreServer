@@ -100,9 +100,9 @@ func controllersInputRejectsNegativeMaxDepth() {
     }
 }
 
-@Test("UIControllersInput schema 仅暴露 maxDepth")
-func controllersInputSchemaFields() {
-    #expect(UIControllersInput.inputSchema.fields.map(\.name) == ["maxDepth"])
+@Test("UIControllersInput generated definition 仅声明 maxDepth")
+func controllersInputFields() {
+    #expect(UIControllersInput.inputDefinition.fields.map(\.name) == ["maxDepth"])
 }
 
 #if canImport(UIKit)

@@ -3,7 +3,6 @@ import { CONTRACT_BUNDLE_METADATA } from "../../src/generated/contractBundle.js"
 import { DEVICE_ACTION_CONTRACTS } from "../../src/generated/deviceActionContracts.js";
 import { CapabilityProbe, type CapabilityInvoker } from "../../src/runtime/capabilityProbe.js";
 import type { DriverError } from "../../src/runtime/driverErrors.js";
-import { projectContractInputSchemaToSwiftHelp } from "../../src/runtime/schemaCompatibility.js";
 import type { InvocationResult } from "../../src/runtime/types.js";
 import { hostLogRecorder } from "../support/hostLogRecorder.js";
 
@@ -11,9 +10,8 @@ const ok = (data: Record<string, unknown>): InvocationResult => ({ ok: true, dat
 const failure = (source: DriverError["source"] = "transport"): InvocationResult => ({ ok: false, error: { source, code: source === "transport" ? "transport_unavailable" : "protocol_error", message: "failed" }, elapsedMs: 0, attempts: 1 });
 const command = (
   action: string,
-  inputSchema: Record<string, unknown> = { type: "object", properties: {}, required: [], additionalProperties: false },
   metadata: Record<string, unknown> = {}
-) => ({ action, inputSchema, ...metadata });
+) => ({ action, ...metadata });
 
 function fake(outcomes: Record<string, InvocationResult>): CapabilityInvoker & { calls: string[] } {
   const calls: string[] = [];
@@ -34,6 +32,7 @@ describe("CapabilityProbe", () => {
     expect(report.connection).toBe("unreachable");
     expect(report.actions).toMatchObject({ status: "unknown", missingActions: [] });
     expect(report.modules.uikit.status).toBe("unknown");
+    expect(report.contractCompatibility).toBe("unknown");
 
     const httpFailure = await new CapabilityProbe(fake({ ping: failure("http"), help: failure("http") })).health();
     expect(httpFailure.connection).toBe("reachable");
@@ -46,14 +45,12 @@ describe("CapabilityProbe", () => {
       expect(report.connection).toBe("reachable");
       expect(report.actions.status).toBe("unknown");
       expect(report.modules.diagnostics.status).toBe("unknown");
+      expect(report.contractCompatibility).toBe("unknown");
     }
   });
 
   test("完整注册和 partial action 正确区分模块", async () => {
-    const fullCommands = DEVICE_ACTION_CONTRACTS.map(contract => command(
-      contract.action,
-      projectContractInputSchemaToSwiftHelp(contract.inputSchema) as Record<string, unknown>
-    ));
+    const fullCommands = DEVICE_ACTION_CONTRACTS.map(contract => command(contract.action));
     const all = await new CapabilityProbe(fake({
       ping: ok({ pong: true }),
       help: ok({
@@ -65,7 +62,7 @@ describe("CapabilityProbe", () => {
     })).health();
     expect(all.modules.uikit.status).toBe("registered");
     expect(all.modules.diagnostics.status).toBe("registered");
-    expect(all.schemaCompatibility).toBe("exact");
+    expect(all.contractCompatibility).toBe("exact");
     expect(all.metadata?.hashMatches).toBe(true);
 
     const partial = await new CapabilityProbe(fake({
@@ -73,6 +70,7 @@ describe("CapabilityProbe", () => {
       help: ok({ contractHash: "sha256:different", commands: fullCommands.filter(item => item.action !== "ui.inspect") })
     })).capabilities();
     expect(partial.modules.uikit.status).toBe("partial");
+    expect(partial.contractCompatibility).toBe("mismatch");
     expect(partial.metadata?.hashMatches).toBe(false);
     expect(partial.actions.status).toBe("known");
 
@@ -82,17 +80,18 @@ describe("CapabilityProbe", () => {
     })).health();
     expect(unregistered.modules.uikit.status).toBe("not_registered");
     expect(unregistered.modules.diagnostics.status).toBe("not_registered");
+    expect(unregistered.contractCompatibility).toBe("unknown");
   });
 
   test("只缓存同时合法且不重复的 help action policy", async () => {
     const runtime = fake({
       ping: ok({ pong: true }),
       help: ok({ commands: [
-        command("extension.wait", undefined, { idempotency: "readOnly", timeoutClass: "wait" }),
-        command("extension.bad-idempotency", undefined, { idempotency: "maybe", timeoutClass: "standard" }),
-        command("extension.bad-timeout", undefined, { idempotency: "readOnly", timeoutClass: "slow" }),
-        command("extension.duplicate", undefined, { idempotency: "readOnly", timeoutClass: "standard" }),
-        command("extension.duplicate", undefined, { idempotency: "sideEffecting", timeoutClass: "standard" })
+        command("extension.wait", { idempotency: "readOnly", timeoutClass: "wait" }),
+        command("extension.bad-idempotency", { idempotency: "maybe", timeoutClass: "standard" }),
+        command("extension.bad-timeout", { idempotency: "readOnly", timeoutClass: "slow" }),
+        command("extension.duplicate", { idempotency: "readOnly", timeoutClass: "standard" }),
+        command("extension.duplicate", { idempotency: "sideEffecting", timeoutClass: "standard" })
       ] })
     });
     const probe = new CapabilityProbe(runtime);
@@ -113,7 +112,7 @@ describe("CapabilityProbe", () => {
   ])("App 重启后%s会清空旧 extension policy", async (_name, nextPing, nextHelp) => {
     const outcomes: Record<string, InvocationResult> = {
       ping: ok({ pong: true }),
-      help: ok({ commands: [command("extension.wait", undefined, { idempotency: "readOnly", timeoutClass: "wait" })] })
+      help: ok({ commands: [command("extension.wait", { idempotency: "readOnly", timeoutClass: "wait" })] })
     };
     const probe = new CapabilityProbe(fake(outcomes));
     await probe.health();
@@ -128,13 +127,13 @@ describe("CapabilityProbe", () => {
   test("同轮 ping 失败时不发布 help policy", async () => {
     const outcomes: Record<string, InvocationResult> = {
       ping: ok({ pong: true }),
-      help: ok({ commands: [command("extension.old", undefined, { idempotency: "readOnly", timeoutClass: "standard" })] })
+      help: ok({ commands: [command("extension.old", { idempotency: "readOnly", timeoutClass: "standard" })] })
     };
     const probe = new CapabilityProbe(fake(outcomes));
     await probe.capabilities();
 
     outcomes.ping = failure();
-    outcomes.help = ok({ commands: [command("extension.new", undefined, { idempotency: "idempotent", timeoutClass: "wait" })] });
+    outcomes.help = ok({ commands: [command("extension.new", { idempotency: "idempotent", timeoutClass: "wait" })] });
     await probe.capabilities();
 
     expect(probe.invocationPolicy("extension.new")).toBeUndefined();
@@ -144,13 +143,13 @@ describe("CapabilityProbe", () => {
   test("App action metadata 漂移后原子替换 extension policy", async () => {
     const outcomes: Record<string, InvocationResult> = {
       ping: ok({ pong: true }),
-      help: ok({ commands: [command("extension.changed", undefined, { idempotency: "readOnly", timeoutClass: "wait" })] })
+      help: ok({ commands: [command("extension.changed", { idempotency: "readOnly", timeoutClass: "wait" })] })
     };
     const probe = new CapabilityProbe(fake(outcomes));
     await probe.capabilities();
     expect(probe.invocationPolicy("extension.changed")).toEqual({ idempotency: "readOnly", timeoutClass: "wait" });
 
-    outcomes.help = ok({ commands: [command("extension.changed", undefined, { idempotency: "sideEffecting", timeoutClass: "standard" })] });
+    outcomes.help = ok({ commands: [command("extension.changed", { idempotency: "sideEffecting", timeoutClass: "standard" })] });
     await probe.capabilities();
 
     expect(probe.invocationPolicy("extension.changed")).toEqual({ idempotency: "sideEffecting", timeoutClass: "standard" });
@@ -176,25 +175,25 @@ describe("CapabilityProbe", () => {
     await bothHelpCalls;
 
     helpResolvers[1]!(ok({ commands: [
-      command("extension.second", undefined, { idempotency: "idempotent", timeoutClass: "standard" })
+      command("extension.second", { idempotency: "idempotent", timeoutClass: "standard" })
     ] }));
     await secondProbe;
     expect(probe.invocationPolicy("extension.second")).toEqual({ idempotency: "idempotent", timeoutClass: "standard" });
     expect(probe.invocationPolicy("extension.first")).toBeUndefined();
 
     helpResolvers[0]!(ok({ commands: [
-      command("extension.first", undefined, { idempotency: "readOnly", timeoutClass: "wait" })
+      command("extension.first", { idempotency: "readOnly", timeoutClass: "wait" })
     ] }));
     await firstProbe;
     expect(probe.invocationPolicy("extension.first")).toBeUndefined();
     expect(probe.invocationPolicy("extension.second")).toEqual({ idempotency: "idempotent", timeoutClass: "standard" });
   });
 
-  test("记录 probe 起止与连接、ping、help、schema 摘要，不记录 commands 内容", async () => {
+  test("记录 probe 起止与连接、ping、help、合同一致性，不记录 commands 内容", async () => {
     const recorded = hostLogRecorder();
     const probe = new CapabilityProbe(fake({
       ping: ok({ pong: true }),
-      help: ok({ commands: [command("secret.command", undefined, { description: "private payload" })] })
+      help: ok({ commands: [command("secret.command", { description: "private payload" })] })
     }), DEVICE_ACTION_CONTRACTS, recorded.logger);
 
     await probe.health();
@@ -209,7 +208,7 @@ describe("CapabilityProbe", () => {
       pingStatus: "ok",
       helpStatus: "available",
       actionsStatus: "known",
-      schemaCompatibility: expect.any(String)
+      contractCompatibility: expect.any(String)
     });
     expect(recorded.lines.join("")).not.toMatch(/secret\.command|private payload|commands/);
   });

@@ -10,7 +10,7 @@ import iOSExploreServer
 /// - `snapshotChanged`：等待结构指纹表变化（用 `ui.inspect` 签发的 `viewSnapshotID`
 ///   重采 whole-table 比对），典型用于检测跳转、弹窗或同页内容变化。
 ///
-/// case 顺序进入 schema 的 enum 列表，调整需同步测试与 help 文案。
+/// rawValue 必须与 `contracts/` 中的 enum 一致，新增取值需同步合同与测试。
 public enum WaitMode: String, Sendable, Equatable, CaseIterable {
     case idle
     case targetExists
@@ -26,8 +26,8 @@ public enum WaitMode: String, Sendable, Equatable, CaseIterable {
 /// `textExists` 需 `text`，`snapshotChanged` 需 `viewSnapshotID`（来源必须是 `ui.inspect`），
 /// `idle` 无额外要求。
 public struct UIWaitInput: CommandInput, Sendable, Equatable {
-    /// `ui.wait` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiWaitInputSchema
+    /// `ui.wait` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiWaitInput
 
     /// 等待模式。
     public let mode: WaitMode
@@ -69,7 +69,7 @@ public struct UIWaitInput: CommandInput, Sendable, Equatable {
 
     /// 按 `CommandInputDecoder` 读取字段并校验模式约束。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已解析的 wait 输入。
     /// - Throws: 字段类型/范围非法，或模式所需字段缺失时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIWaitInput {

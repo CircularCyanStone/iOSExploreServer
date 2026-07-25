@@ -4,15 +4,14 @@ import iOSExploreServer
 /// UIKit 查询命令复用的筛选字段声明。
 ///
 /// 这些字段只描述 Foundation-only 的输入形态，既供 `ui.topViewHierarchy` 和
-/// `ui.inspect` 暴露 schema，也供 typed input 解析时保持默认值和错误文案一致。
+/// `ui.inspect` 等手写输入模型复用的 typed 字段。
 public enum UIKitFilterFields {
     /// 按 accessibilityIdentifier 精确筛选（完全相等匹配，不是子串/前缀）。
     ///
     /// 示例：identifier='test.button' 只匹配 accessibilityIdentifier 恰好为
     /// 'test.button' 的 view；identifierPrefix='test.' 匹配所有以 'test.' 开头的 view。
     public static let accessibilityIdentifier = CommandFields.optionalString(
-        "accessibilityIdentifier",
-        description: "按 accessibilityIdentifier 精确筛选（完全相等，非子串/前缀；前缀匹配用 identifierPrefix）"
+        "accessibilityIdentifier"
     )
 
     /// 按 accessibilityIdentifier 前缀筛选（匹配开头一致的所有 view）。
@@ -20,21 +19,18 @@ public enum UIKitFilterFields {
     /// 示例：identifierPrefix='mine.' 匹配所有 accessibilityIdentifier 以 'mine.' 开头的
     /// view（如 'mine.header.avatar'、'mine.menu.settings'）。
     public static let accessibilityIdentifierPrefix = CommandFields.optionalString(
-        "accessibilityIdentifierPrefix",
-        description: "按 accessibilityIdentifier 前缀筛选（匹配开头一致的所有 view）"
+        "accessibilityIdentifierPrefix"
     )
 
     /// 最大递归深度，缺失时不限制。
     public static let maxDepth = CommandFields.optionalNonNegativeInt(
-        "maxDepth",
-        description: "最大递归深度, 0 表示仅根节点"
+        "maxDepth"
     )
 
     /// 是否包含隐藏 view，默认不包含。
     public static let includeHidden = CommandFields.bool(
         "includeHidden",
-        default: false,
-        description: "是否包含隐藏 view, 默认 false"
+        default: false
     )
 }
 
@@ -48,14 +44,12 @@ public enum UIKitFilterFields {
 public enum UIKitLocatorFields {
     /// 按 accessibilityIdentifier 精确定位目标 view。
     public static let accessibilityIdentifier = CommandFields.optionalString(
-        "accessibilityIdentifier",
-        description: "按 accessibilityIdentifier 精确定位目标 view"
+        "accessibilityIdentifier"
     )
 
     /// 按 `ui.inspect` 或 `ui.topViewHierarchy` 返回的路径定位目标 view。
     public static let path = CommandFields.optionalString(
-        "path",
-        description: "按 ui.inspect 或 ui.topViewHierarchy 返回的 root/0/1 路径定位目标 view"
+        "path"
     )
 
     /// `ui.inspect` 签发的结构化 target 指纹快照标识，用于交互命令的陈旧校验。
@@ -65,8 +59,7 @@ public enum UIKitLocatorFields {
     /// 会重采当前 target 指纹并与签发表比对，任一不一致即拒绝（`stale_locator`），
     /// 防止页面变化后旧定位器指向错误目标。
     public static let viewSnapshotID = CommandFields.optionalString(
-        "viewSnapshotID",
-        description: "ui.inspect 签发的结构化 target 指纹快照标识"
+        "viewSnapshotID"
     )
 }
 
@@ -78,7 +71,7 @@ public enum UIKitLocatorInput {
     /// 从 command input decoder 读取定位字段并解析为通用 view 定位目标。
     ///
     /// - Parameters:
-    ///   - decoder: 已绑定命令 schema 的 typed input decoder。
+    ///   - decoder: 已绑定命令输入定义的 typed input decoder。
     ///   - identifierField: identifier 字段声明，默认使用 `accessibilityIdentifier`。
     ///   - pathField: path 字段声明，默认使用 `path`。
     /// - Returns: 可交给 UIKit resolver/executor 的定位目标。
@@ -103,7 +96,7 @@ public enum UIKitLocatorInput {
     /// 的默认语义），而非抛错。互斥、空值、路径文法等校验规则保持不变。
     ///
     /// - Parameters:
-    ///   - decoder: 已绑定命令 schema 的 typed input decoder。
+    ///   - decoder: 已绑定命令输入定义的 typed input decoder。
     ///   - identifierField: identifier 字段声明，默认使用 `accessibilityIdentifier`。
     ///   - pathField: path 字段声明，默认使用 `path`。
     /// - Returns: 可交给 UIKit resolver/executor 的定位目标；两个字段都缺时返回 `nil`。

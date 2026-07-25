@@ -131,8 +131,8 @@ struct ESLoggerTests {
         _ = await router.route(ExploreRequest(action: "boom"))
 
         let messages = records.withLock { $0.map(\.message) }
-        #expect(messages.contains("router registered action=ok provider=extension stability=internal source=runtime schemaFields=0 constraints=0"))
-        #expect(messages.contains("router registered action=boom provider=extension stability=internal source=runtime schemaFields=0 constraints=0"))
+        #expect(messages.contains("router registered action=ok provider=extension stability=internal source=runtime inputFields=0"))
+        #expect(messages.contains("router registered action=boom provider=extension stability=internal source=runtime inputFields=0"))
         #expect(messages.contains("router route start action=ok payloadKeys=0"))
         #expect(messages.contains("router route success action=ok"))
         #expect(messages.contains("router route failed category=command message=unknown action=missing"))
@@ -151,8 +151,8 @@ struct ESLoggerTests {
         defer { ESLogger.resetForTesting() }
 
         struct NameInput: CommandInput {
-            static let name = CommandFields.requiredString("name", description: "名字")
-            static let inputSchema = CommandInputSchema(fields: [name.erased])
+            static let name = CommandFields.requiredString("name")
+            static let inputDefinition = CommandInputDefinition(fields: [name.erased])
 
             static func parse(decoding decoder: inout CommandInputDecoder) throws -> NameInput {
                 _ = try decoder.read(name)
@@ -161,7 +161,7 @@ struct ESLoggerTests {
         }
         struct BrokenInput: CommandInput {
             struct Boom: Error {}
-            static let inputSchema = CommandInputSchema.empty
+            static let inputDefinition = CommandInputDefinition.empty
 
             static func parse(from data: JSON) throws -> BrokenInput { throw Boom() }
             static func parse(decoding decoder: inout CommandInputDecoder) throws -> BrokenInput {

@@ -23,7 +23,7 @@ enum UIWaitAnyExecutor {
     /// 执行一次多条件等待。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 waitAny 参数。
+    ///   - input: 已通过 generated wire 校验的 waitAny 参数。
     ///   - contextProvider: 每轮轮询取当前查询上下文的闭包（注入便于测试）。
     /// - Returns: 命中时返回 satisfied/matchedID/matchedIndex/matchedMode/elapsedMs/attempts。
     /// - Throws: `UIKitCommandError.waitTimeout`——业务 deadline 到仍无命中，或被 cancel。
@@ -39,7 +39,7 @@ enum UIWaitAnyExecutor {
     /// `await` 轮询的测试从全局 LRU 状态中隔离出来，对齐 `UIWaitExecutor` 的测试隔离方式。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 waitAny 参数。
+    ///   - input: 已通过 generated wire 校验的 waitAny 参数。
     ///   - snapshotStore: 用于 snapshotChanged 条件的 snapshot 查询与整表比对。
     ///   - contextProvider: 每轮轮询取当前查询上下文的闭包（注入便于测试）。
     /// - Returns: 命中时返回 satisfied/matchedID/matchedIndex/matchedMode/elapsedMs/attempts。

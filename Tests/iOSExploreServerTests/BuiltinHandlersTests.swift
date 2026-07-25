@@ -2,8 +2,8 @@ import Testing
 @testable import iOSExploreServer
 
 private struct BuiltinGreetingInput: CommandInput, Equatable {
-    static let nameField = CommandFields.requiredString("name", description: "名字")
-    static let inputSchema = CommandInputSchema(fields: [nameField.erased])
+    static let nameField = CommandFields.requiredString("name")
+    static let inputDefinition = CommandInputDefinition(fields: [nameField.erased])
 
     let name: String
 
@@ -50,7 +50,7 @@ func registerAllRegisters() async {
     }
 }
 
-@Test("help 列出全部命令元数据,结构对齐 MCP")
+@Test("help 列出运行时命令元数据且不携带 inputSchema")
 func helpListsAllCommands() async throws {
     let router = Router()
     BuiltinHandlers.registerAll(into: router)
@@ -67,20 +67,14 @@ func helpListsAllCommands() async throws {
     #expect(actions.contains("info"))
     #expect(actions.contains("help"))
 
-    // 验证 greet2 的 inputSchema 映射逻辑。
+    // runtime extension 也只返回运行时 metadata，输入字段由 Swift parser 自己持有。
     guard let greet2 = entries.first(where: { entry in
         if case .object(let obj) = entry, case .string(let a) = obj["action"] { return a == "greet2" }
         return false
     }) else { Issue.record("greet2 not found"); return }
     guard case .object(let obj2) = greet2 else { Issue.record("greet2 not object"); return }
     #expect(obj2["parameters"] == nil)
-    guard case .object(let inputSchema) = obj2["inputSchema"] else { Issue.record("inputSchema not object"); return }
-    guard case .object(let properties) = inputSchema["properties"] else { Issue.record("properties not object"); return }
-    guard case .object(let nameSchema) = properties["name"] else { Issue.record("name schema missing"); return }
-    if case .string(let type) = nameSchema["type"] { #expect(type == "string") } else { Issue.record("type mismatch") }
-    if case .string(let d) = nameSchema["description"] { #expect(d == "名字") } else { Issue.record("description mismatch") }
-    guard case .array(let required) = inputSchema["required"] else { Issue.record("required missing"); return }
-    #expect(required == [JSONValue.string("name")])
-    guard case .array(let order) = inputSchema["x-iosExplore-propertyOrder"] else { Issue.record("property order missing"); return }
-    #expect(order == [JSONValue.string("name")])
+    #expect(obj2["inputSchema"] == nil)
+    #expect(obj2["inputDefinition"] == nil)
+    #expect(obj2["provider"]?.stringValue == "extension")
 }

@@ -8,7 +8,7 @@ import iOSExploreServer
 /// 处理全部收敛在 `UIWaitExecutor` 中。executor 是 `@MainActor async`（含 `Task.sleep`），故
 /// adapter 直接 `await` 它 hop 到 MainActor，而非用 `MainActor.run`（其 body 为同步）。
 struct WaitCommand: Command {
-    /// typed 输入模型，负责 schema 暴露和 data 解析。
+    /// typed 输入模型，负责 wire 校验和 data 解析。
     typealias Input = UIWaitInput
 
     /// 固定 action 名。
@@ -22,7 +22,7 @@ struct WaitCommand: Command {
 
     /// 执行 UI 等待。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的 wait 输入。
+    /// - Parameter input: 已通过 generated wire 校验的 wait 输入。
     /// - Returns: 满足时返回 satisfied/elapsedMs 等；超时返回 `wait_timeout` 业务失败 envelope。
     func handle(_ input: UIWaitInput) async -> ExploreResult {
         let action = WaitCommand.actionName
