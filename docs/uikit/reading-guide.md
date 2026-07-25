@@ -10,7 +10,7 @@
 
 整个模块只做一件事：**把"Mac 发来的 JSON 命令"翻译成"在 iPhone 当前页面上对真实 `UIView` 的读/写操作"**。
 
-它由 **14 个对外命令**和一组**内部基础设施**组成：
+它由一组公共 `ui.*` 命令和内部基础设施组成；当前完整 action 清单以 `contracts/bundle.json` 与 `docs/generated/contracts.md` 为准。
 
 | 命令 | 一句话作用 |
 |---|---|
@@ -28,15 +28,22 @@
 | `ui.waitAny` | 一次轮询等待多个条件，第一个命中返回 matchedID/matchedIndex |
 | `ui.scrollToElement` | 滚动到包含指定文本/identifier 的元素可见 |
 | `ui.alert.respond` | 按明确按钮触发并关闭当前 UIAlertController（查询 alert 结构用 ui.inspect） |
+| `ui.controllers` | 返回 controller 层级摘要 |
+| `ui.swipe` | 触发显式 swipe gesture |
+| `ui.longPress` | 触发 long press gesture |
+| `ui.tabBar.selectTab` | 切换 tab bar |
+| `ui.datePicker.setDate` | 设置 UIDatePicker 日期 |
+| `ui.picker.selectRow` | 选择 UIPickerView 行 |
+| `ui.webView.eval` | 在 WKWebView 中执行轻量 JavaScript |
 
-这 14 个命令共享同一套底层能力：**定位（Locator）→ 能力判定（Capability）→ 陈旧防护（Snapshot）→ 执行（Executor）**。理解了这套共享基础设施，各命令的 adapter 都只是薄薄的"解析参数 + 调用"。
+这些命令共享同一套底层能力：**定位（Locator）→ 能力判定（Capability）→ 陈旧防护（Snapshot）→ 执行（Executor）**。理解了这套共享基础设施，各命令的 adapter 都只是薄薄的"解析参数 + 调用"。
 
 ## 一张图看懂分层
 
 ```
                     ┌─────────────────────────────────────────┐
    Mac curl         │  UIKitCommandRegistrar  (注册入口)        │
-  命令 JSON   ──►  │  14 个 Command adapter（解析参数 + 打日志） │
+  命令 JSON   ──►  │  Command adapter（解析参数 + 打日志）       │
                     └──────────────────┬──────────────────────┘
                                        │  adapter 只解析请求、构造 Plan/Query
                                        │  真正的 UIKit 操作全部下沉 ↓
@@ -70,10 +77,10 @@
 
 ### 第 0 步：骨架（5 分钟，~60 行）
 先建立整体印象，**不要纠结细节**：
-- `UIKitCommandRegistrar.swift`——入口，看 14 个命令怎么被注册。
+- `UIKitCommandRegistrar.swift`——入口，看命令怎么被注册。
 - `UIKitCommandLogger.swift`（29 行）——日志怎么复用 core 的缝。
 
-> 目标：知道“14 个命令 + 一套日志”。
+> 目标：知道“命令注册入口 + 一套日志”。
 
 ### 第 1 步：两个查询命令（最容易上手，~750 行）
 查询命令是纯读、无副作用，最适合先读：

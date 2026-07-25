@@ -76,9 +76,12 @@ export function prepareContractBundle(bundle: DriverContractBundle): PreparedCon
     errors,
     definitions
   };
-  const source = stableNormalize(canonical);
-  const hash = `sha256:${createHash("sha256").update(JSON.stringify(source), "utf8").digest("hex")}`;
-  return { bundle: source as unknown as CanonicalContractBundle, hash };
+  const normalized = stableNormalize(canonical);
+  const hash = `sha256:${createHash("sha256").update(JSON.stringify(normalized), "utf8").digest("hex")}`;
+
+  // Emitters receive source declaration order. Hash normalization also preserves schema property
+  // order because Swift publishes it as x-iosExplore-propertyOrder and compatibility checks it.
+  return { bundle: canonical, hash };
 }
 
 /** Emit the three TypeScript contract modules. */
@@ -115,13 +118,24 @@ export function emitTypeScript(prepared: PreparedContractBundle): GeneratedArtif
   ];
 }
 
-/** Convert any contract value into a recursively key-sorted JSON value. */
+/**
+ * Convert a contract value into a stable JSON value. Ordinary object keys are sorted, while
+ * schema `properties` keys retain declaration order because that order is public metadata.
+ */
 export function stableNormalize(value: unknown): ContractJSONValue {
-  if (Array.isArray(value)) return value.map(item => stableNormalize(item));
+  return stableNormalizeValue(value, false);
+}
+
+function stableNormalizeValue(value: unknown, preserveObjectKeyOrder: boolean): ContractJSONValue {
+  if (Array.isArray(value)) return value.map(item => stableNormalizeValue(item, false));
   if (value !== null && typeof value === "object") {
     const normalized: Record<string, ContractJSONValue> = {};
     const object = value as Record<string, unknown>;
-    for (const key of Object.keys(object).sort()) normalized[key] = stableNormalize(object[key]);
+    const keys = Object.keys(object);
+    if (!preserveObjectKeyOrder) keys.sort();
+    for (const key of keys) {
+      normalized[key] = stableNormalizeValue(object[key], key === "properties");
+    }
     return normalized;
   }
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
@@ -159,7 +173,7 @@ function recursivelyExpandSchema(
   delete result.$ref;
   if (result.properties !== undefined) {
     const properties: Record<string, JsonSchema> = {};
-    for (const key of Object.keys(result.properties).sort()) {
+    for (const key of Object.keys(result.properties)) {
       properties[key] = expandSchema(result.properties[key]!, sourceFile, bundle, refStack);
     }
     result.properties = properties;

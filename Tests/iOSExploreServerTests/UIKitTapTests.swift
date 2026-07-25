@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import iOSExploreServer
 @testable import iOSExploreUIKit
@@ -93,4 +94,17 @@ func tapInputSchemaDropsCoordinatesAndUsesViewSnapshotID() {
         "path",
         "viewSnapshotID",
     ])
+}
+
+@Test("ui.tap Swift help schema 与跨语言 fixture 一致")
+func tapSwiftHelpSchemaMatchesCrossLanguageFixture() throws {
+    let repositoryRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    let fixtureURL = repositoryRoot
+        .appendingPathComponent("iOSDriver/tests/runtime/fixtures/swift-ui-tap-input-schema.json")
+    let fixture = try #require(JSONCoder.decode(Data(contentsOf: fixtureURL)))
+
+    #expect(UITapInput.inputSchema.toJSON() == fixture)
 }

@@ -37,9 +37,9 @@
 ## 根目录
 
 ### `UIKitCommandRegistrar.swift` ✅（整体 `#if canImport(UIKit)`）
-- **职责**：`public extension ExploreServer` 的注册入口 `registerUIKitCommands()`，把 14 个命令挂到 router。
+- **职责**：`public extension ExploreServer` 的注册入口 `registerUIKitCommands()`，把 UIKit 公共命令挂到 router。当前 action 清单以 `contracts/bundle.json` 与 `docs/generated/contracts.md` 为准。
 - **关键点**：core 不自动注册 UIKit 命令，宿主必须显式调用；幂等安全；注册前后打 `uikit.registrar` 日志（started/completed count）。
-- **依赖**：14 个 `*Command` 类型。
+- **依赖**：各 `*Command` 类型。
 
 ### `UIKitCommandLogger.swift` ✅
 - **职责**：UIKit 模块统一的日志入口（`info`/`error`）。

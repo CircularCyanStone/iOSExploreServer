@@ -82,6 +82,17 @@ describe("contract emission", () => {
     expect(docs).toContain("`wait_and_inspect`");
   });
 
+  test("declares terminal errors produced by host workflows and artifact decoding", () => {
+    const bundle = loadAndValidateContractBundle(repositoryRoot);
+    const errorsByOperation = new Map(
+      bundle.hostOperations.map(operation => [operation.operation, new Set(operation.errors)])
+    );
+
+    expect(errorsByOperation.get("wait_and_inspect")).toContain("workflow_timeout");
+    expect(errorsByOperation.get("tap_and_inspect")).toContain("workflow_timeout");
+    expect(errorsByOperation.get("call_action")).toContain("artifact_decode_failed");
+  });
+
   test("emits typed Swift fields only for controlled schema shapes", () => {
     const artifacts = new Map(
       renderContractArtifacts(loadAndValidateContractBundle(repositoryRoot)).map(artifact => [artifact.path, artifact.content])
@@ -131,6 +142,46 @@ describe("contract emission", () => {
     );
     expect(uikit).toContain('"description": .string("单个字段输入。")');
     expect(uikit).toContain('"x-iosExplore-constraints": .object(JSON(');
+  });
+
+  test("preserves contract property declaration order in generated Swift schemas", () => {
+    const artifacts = new Map(
+      renderContractArtifacts(loadAndValidateContractBundle(repositoryRoot)).map(artifact => [artifact.path, artifact.content])
+    );
+    const uikit = requiredArtifact(artifacts, "Sources/iOSExploreUIKit/Generated/UIKitActionContracts.swift");
+
+    expect(uikit).toContain(
+      "uiScrollInputSchema = CommandInputSchema(fields: [uiScrollDirectionField.erased, uiScrollAmountField.erased, uiScrollAccessibilityIdentifierField.erased, uiScrollPathField.erased, uiScrollViewSnapshotIDField.erased, uiScrollAnimatedField.erased]"
+    );
+    expect(uikit).toContain(
+      "uiInputFieldsItemInputSchema = CommandInputSchema(fields: [uiInputFieldsItemAccessibilityIdentifierField.erased, uiInputFieldsItemPathField.erased, uiInputFieldsItemTextField.erased, uiInputFieldsItemModeField.erased, uiInputFieldsItemSubmitField.erased]"
+    );
+  });
+
+  test("includes schema property declaration order in the contract hash", () => {
+    const original = loadAndValidateContractBundle(repositoryRoot);
+    const reordered = loadAndValidateContractBundle(repositoryRoot);
+    const action = reordered.deviceActions.find(contract => contract.action === "ui.scroll");
+    if (action?.inputSchema.properties === undefined) throw new Error("ui.scroll properties missing");
+    action.inputSchema.properties = Object.fromEntries(
+      Object.entries(action.inputSchema.properties).reverse()
+    );
+
+    expect(prepareContractBundle(reordered).hash).not.toBe(prepareContractBundle(original).hash);
+  });
+
+  test("ignores ordinary object key order in the contract hash", () => {
+    const original = loadAndValidateContractBundle(repositoryRoot);
+    const reordered = loadAndValidateContractBundle(repositoryRoot);
+    const [code, error] = Object.entries(reordered.errors)[0] ?? [];
+    if (code === undefined || error === undefined) throw new Error("contract errors missing");
+    reordered.errors[code] = {
+      terminal: error.terminal,
+      retryable: error.retryable,
+      source: error.source
+    };
+
+    expect(prepareContractBundle(reordered).hash).toBe(prepareContractBundle(original).hash);
   });
 });
 

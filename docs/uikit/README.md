@@ -1,6 +1,6 @@
 # iOSExploreUIKit 知识库
 
-`Sources/iOSExploreUIKit/`（UIKit 扩展模块，14 个 `ui.*` 命令）的阅读与参考文档。
+`Sources/iOSExploreUIKit/`（UIKit 扩展模块，公共 `ui.*` 命令）的阅读与参考文档。当前 action 清单以 `contracts/bundle.json` 与 `docs/generated/contracts.md` 为准。
 
 core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 App **显式** `server.registerUIKitCommands()` 注册。
 
@@ -10,7 +10,7 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 - **[reading-guide.md](./reading-guide.md)** — 阅读指南。回答"代码这么多，从哪看、整个设计长什么样"。给一张全局心智模型 + 一条按依赖排序的阅读路线（约 1500 行精选阅读量，不是全部 3840 行）。**第一次读从这份开始。**
 - **[uikit-file-reference.md](./uikit-file-reference.md)** — 文件档案。逐个登记 61 个文件的职责、关键点与依赖关系，当查阅手册或改某个文件时用。
 
-## 14 个命令一览
+## 命令一览
 
 | action | 作用 | adapter | 执行核心 |
 |---|---|---|---|
@@ -28,6 +28,13 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 | `ui.waitAny` | 一次轮询等待多个条件，第一个命中返回 matchedID/matchedIndex | `WaitAnyCommand` | `UIWaitAnyExecutor` |
 | `ui.scrollToElement` | 滚动到指定文本/identifier 元素可见 | `ScrollToElementCommand` | `UIScrollToElementExecutor` |
 | `ui.alert.respond` | 按按钮触发并关闭 UIAlertController（查询走 `ui.inspect`） | `AlertRespondCommand` | `UIAlertRespondExecutor` |
+| `ui.controllers` | 返回 controller 层级摘要 | `ControllersCommand` | `UIControllersCollector` |
+| `ui.swipe` | 触发显式 swipe gesture 或相关手势路径 | `UISwipeCommand` | `UISwipeExecutor` |
+| `ui.longPress` | 触发 long press gesture | `UILongPressCommand` | `UILongPressExecutor` |
+| `ui.tabBar.selectTab` | 按 tab bar index/title/identifier 切换 tab | `UITabBarSelectCommand` | `UITabBarSelectExecutor` |
+| `ui.datePicker.setDate` | 设置 UIDatePicker 日期 | `UIDatePickerSetDateCommand` | `UIDatePickerSetDateExecutor` |
+| `ui.picker.selectRow` | 选择 UIPickerView 行 | `UIPickerSelectRowCommand` | `UIPickerSelectRowExecutor` |
+| `ui.webView.eval` | 在 WKWebView 中执行轻量 JavaScript | `UIWebViewEvalCommand` | `UIWebViewEvalExecutor` |
 
 ## 贯穿全模块的两条铁律
 
@@ -36,5 +43,4 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 
 ## 相关文档
 
-- 架构总览（含 UIKit 模块边界）→ `docs/architecture/index.md`
 - 架构总览（含 UIKit 模块边界）→ `docs/architecture/index.md`

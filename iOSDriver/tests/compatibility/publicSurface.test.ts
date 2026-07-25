@@ -87,7 +87,9 @@ describe("public compatibility surface", () => {
       }
     });
 
-    const wait = await handlers.callTool("wait_and_inspect", { conditions: [] });
+    const wait = await handlers.callTool("wait_and_inspect", {
+      conditions: [{ id: "stable", mode: "idle" }]
+    });
     const tap = await handlers.callTool("ui_tap_and_inspect", { viewSnapshotID: "snapshot", path: "/0" });
     expect(json(wait)).toEqual(expect.objectContaining({ wait: expect.any(Object), observation: expect.any(Object) }));
     expect(json(tap)).toEqual(expect.objectContaining({

@@ -1,5 +1,11 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import { compareSchemas } from "../../src/runtime/schemaCompatibility.js";
+import { DEVICE_ACTION_CONTRACTS } from "../../src/generated/deviceActionContracts.js";
+import { compareActionSchema, compareSchemas } from "../../src/runtime/schemaCompatibility.js";
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 const schema = (overrides: Record<string, unknown> = {}) => ({
   type: "object",
@@ -153,5 +159,52 @@ describe("schema compatibility", () => {
     }), schema());
     expect(invalidContract.status).toBe("unknown");
     expect(invalidContract.differences.some(difference => difference.kind === "invalid")).toBe(true);
+  });
+
+  test("使用 Swift help fixture 比较 canonical exactlyOneOf 投影", () => {
+    const fixture = JSON.parse(readFileSync(
+      resolve(repositoryRoot, "iOSDriver/tests/runtime/fixtures/swift-ui-tap-input-schema.json"),
+      "utf8"
+    )) as Record<string, unknown>;
+    const contract = DEVICE_ACTION_CONTRACTS.find(item => item.action === "ui.tap")!;
+
+    expect(compareActionSchema(contract, { action: "ui.tap", inputSchema: fixture }).status).toBe("exact");
+
+    const withoutOneOf = structuredClone(fixture);
+    delete withoutOneOf.oneOf;
+    expect(compareActionSchema(contract, { action: "ui.tap", inputSchema: withoutOneOf }).status).not.toBe("exact");
+
+    const reordered = structuredClone(fixture);
+    reordered["x-iosExplore-propertyOrder"] = ["path", "accessibilityIdentifier", "viewSnapshotID"];
+    expect(compareActionSchema(contract, { action: "ui.tap", inputSchema: reordered }).status).toBe("breaking");
+  });
+
+  test("oneOf/allOf/not、uniqueItems 与扩展约束变化不会误报 exact", () => {
+    const constrained = schema({
+      properties: {
+        ...schema().properties,
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          uniqueItems: true,
+          oneOf: [{ minItems: 1 }, { maxItems: 3 }],
+          allOf: [{ not: { minItems: 2, maxItems: 2 } }],
+          "x-iosExplore-constraints": { note: "parser enforces stable ordering" }
+        }
+      }
+    });
+    const actual = structuredClone(constrained);
+    const tags = (actual.properties as Record<string, Record<string, unknown>>).tags!;
+
+    delete tags.uniqueItems;
+    expect(compareSchemas(constrained, actual).status).toBe("additive");
+
+    tags.uniqueItems = true;
+    tags.oneOf = [{ minItems: 1 }];
+    expect(compareSchemas(constrained, actual).status).toBe("breaking");
+
+    tags.oneOf = [{ minItems: 1 }, { maxItems: 3 }];
+    delete tags["x-iosExplore-constraints"];
+    expect(compareSchemas(constrained, actual).status).toBe("additive");
   });
 });

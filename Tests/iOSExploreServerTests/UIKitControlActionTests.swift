@@ -97,10 +97,10 @@ func sendActionInputRejectsMixedPathAndIdentifier() {
 func sendActionInputSchemaUsesViewSnapshotID() throws {
     #expect(UIControlSendActionInput.inputSchema.fields.map(\.name) == [
         "accessibilityIdentifier",
-        "event",
         "path",
-        "value",
         "viewSnapshotID",
+        "event",
+        "value",
     ])
     let valueField = try #require(UIControlSendActionInput.inputSchema.fields.first { $0.name == "value" })
     #expect(valueField.schema.type == .number)

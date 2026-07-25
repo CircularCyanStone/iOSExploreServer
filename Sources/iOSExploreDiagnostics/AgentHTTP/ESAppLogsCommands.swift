@@ -70,6 +70,8 @@ struct ESAppLogsReadCommand: Command {
 }
 
 struct ESAppLogsReadInput: CommandInput {
+    private static let maximumCursorID = 9_007_199_254_740_991
+
     let after: ESAppLogCursor?
     let limit: Int
     let sources: Set<ESAppLogSource>?
@@ -106,10 +108,12 @@ struct ESAppLogsReadInput: CommandInput {
               let idDouble = object["id"]?.doubleValue,
               idDouble.isFinite,
               idDouble >= 0,
-              idDouble.rounded(.towardZero) == idDouble else {
+              idDouble <= Double(maximumCursorID),
+              idDouble.rounded(.towardZero) == idDouble,
+              let id = UInt64(exactly: idDouble) else {
             throw CommandInputParseError("after must be an object with captureSessionID and id")
         }
-        return ESAppLogCursor(captureSessionID: captureSessionID, id: UInt64(idDouble))
+        return ESAppLogCursor(captureSessionID: captureSessionID, id: id)
     }
 
     private static func parseSources(_ values: [String]?) throws -> Set<ESAppLogSource>? {

@@ -3,6 +3,10 @@ import { startMCPStdioServer } from "../mcp/server.js";
 import type { CapabilityProbe } from "../../runtime/capabilityProbe.js";
 import type { DriverError } from "../../runtime/driverErrors.js";
 import type { DriverRuntime } from "../../runtime/driverRuntime.js";
+import {
+  HostOperationInputValidationError,
+  validateHostOperationInput
+} from "../../runtime/hostOperationInput.js";
 import { defaultHostLogger, type HostLogger } from "../../runtime/hostLogger.js";
 import type { JSONObject } from "../../types.js";
 import type { WorkflowRunner } from "../../workflows/workflowRunner.js";
@@ -156,7 +160,18 @@ async function runCall(options: CallCommandOptions, context: CLICommandContext):
   const action = options.action.trim();
   if (action.length === 0) throw new CLIConfigError("call 需要非空 action");
   const data = await parseData(options.data, context.readFile ?? (path => readFile(path, "utf8")));
-  const result = await context.runtime.invoke(action, data, context.signal === undefined ? {} : { signal: context.signal });
+  let operationInput: JSONObject;
+  try {
+    operationInput = validateHostOperationInput("call_action", { action, data });
+  } catch (error) {
+    if (error instanceof HostOperationInputValidationError) throw new CLIConfigError(error.message);
+    throw error;
+  }
+  const result = await context.runtime.invoke(
+    operationInput.action as string,
+    operationInput.data as JSONObject,
+    context.signal === undefined ? {} : { signal: context.signal }
+  );
   if (result.ok) {
     await printInvocationSuccess(context.output, result, options.output, context.writeArtifact);
     return EXIT_CODES.success;

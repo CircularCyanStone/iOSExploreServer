@@ -6,25 +6,40 @@ import { DriverFailure, type DriverError, type TransportPhase } from "./driverEr
 /** 可注入的 fetch 边界，测试无需建立真实网络连接。 */
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
+/** HTTP transport 构造选项。 */
+export interface HttpActionTransportOptions {
+  readonly fetchImpl?: FetchLike;
+  /** App 原始 JSON response body 上限，默认 8 MiB。 */
+  readonly maxResponseBodyBytes?: number;
+}
+
+const DEFAULT_MAX_RESPONSE_BODY_BYTES = 8 * 1024 * 1024;
+
 /** 使用 `POST /` JSON 协议访问 App 的唯一 HTTP transport 实现。 */
 export class HttpActionTransport implements ActionTransport {
   private readonly fetchImpl: FetchLike;
+  private readonly maxResponseBodyBytes: number;
 
   /**
    * 创建 HTTP transport。
    *
    * @param baseURL App HTTP action 端点。
-   * @param fetchImpl 可选 fetch 实现，默认使用运行环境的全局 fetch。
+   * @param fetchOrOptions 可选 fetch 实现（兼容旧构造方式），或 response body 限制选项。
    */
   constructor(
     private readonly baseURL: string,
-    fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+    fetchOrOptions: FetchLike | HttpActionTransportOptions = {}
   ) {
-    this.fetchImpl = fetchImpl;
+    const options = typeof fetchOrOptions === "function" ? { fetchImpl: fetchOrOptions } : fetchOrOptions;
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.maxResponseBodyBytes = options.maxResponseBodyBytes ?? DEFAULT_MAX_RESPONSE_BODY_BYTES;
+    if (!Number.isSafeInteger(this.maxResponseBodyBytes) || this.maxResponseBodyBytes <= 0) {
+      throw new RangeError("maxResponseBodyBytes must be a positive safe integer");
+    }
   }
 
   /**
-   * 发送请求、读取完整 body 并解析 JSON 对象。
+   * 发送请求、在固定字节上限内流式读取 body，并解析 JSON 对象。
    *
    * @param request action 请求。
    * @param options transport timeout 与外部取消信号。
@@ -59,7 +74,7 @@ export class HttpActionTransport implements ActionTransport {
         signal: controller.signal
       });
       responseReceived = true;
-      const text = await response.text();
+      const text = await readResponseText(response, this.maxResponseBodyBytes, request.action);
 
       if (!response.ok) {
         throw new DriverFailure({
@@ -127,6 +142,68 @@ export class HttpActionTransport implements ActionTransport {
       options.signal?.removeEventListener("abort", onExternalAbort);
     }
   }
+}
+
+async function readResponseText(response: Response, maxBytes: number, action: string): Promise<string> {
+  const declaredBytes = contentLength(response.headers.get("content-length"));
+  if (declaredBytes !== undefined && declaredBytes > maxBytes) {
+    await cancelQuietly(response.body);
+    throw responseTooLarge(action, maxBytes);
+  }
+
+  if (response.body == null) {
+    const text = await response.text();
+    if (Buffer.byteLength(text, "utf8") > maxBytes) throw responseTooLarge(action, maxBytes);
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        await cancelReaderQuietly(reader);
+        throw responseTooLarge(action, maxBytes);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    releaseReaderQuietly(reader);
+  }
+  return Buffer.concat(chunks.map(chunk => Buffer.from(chunk)), bytes).toString("utf8");
+}
+
+function contentLength(raw: string | null): number | undefined {
+  if (raw === null || !/^\d+$/.test(raw.trim())) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+}
+
+function responseTooLarge(action: string, maxBytes: number): DriverFailure {
+  return new DriverFailure({
+    source: "protocol",
+    code: "protocol_error",
+    message: `HTTP response body exceeded ${maxBytes} bytes`,
+    action,
+    protocolIssue: "response_too_large"
+  }, true);
+}
+
+async function cancelQuietly(body: ReadableStream<Uint8Array> | null): Promise<void> {
+  if (body === null) return;
+  try { await body.cancel(); } catch { /* The classified size error remains authoritative. */ }
+}
+
+async function cancelReaderQuietly(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  try { await reader.cancel(); } catch { /* The classified size error remains authoritative. */ }
+}
+
+function releaseReaderQuietly(reader: ReadableStreamDefaultReader<Uint8Array>): void {
+  try { reader.releaseLock(); } catch { /* Cleanup must not replace the classified read failure. */ }
 }
 
 function isJSONObject(value: unknown): value is JSONObject {

@@ -32,13 +32,22 @@ describe("stdio startup", () => {
     const after = await client.listTools();
     expect(after).toEqual(before);
   });
+
+  test("兼容 bin 入口仍可启动 MCP server", async () => {
+    const { client } = await connectClient("http://127.0.0.1:1/", ["dist/index.js"]);
+    const tools = await client.listTools();
+    expect(tools.tools.map(tool => tool.name).sort()).toEqual([...STATIC_TOOL_NAMES].sort());
+  });
 });
 
-async function connectClient(baseURL: string): Promise<{ client: Client; stderr(): string }> {
+async function connectClient(
+  baseURL: string,
+  args: readonly string[] = ["dist/adapters/cli/main.js", "mcp"]
+): Promise<{ client: Client; stderr(): string }> {
   const client = new Client({ name: "ios-driver-startup-test", version: "1.0.0" }, { capabilities: {} });
   clients.push(client);
   const transport = new StdioClientTransport({
-    command: process.execPath, args: ["dist/index.js"], cwd: process.cwd(),
+    command: process.execPath, args: [...args], cwd: process.cwd(),
     env: { IOS_EXPLORE_BASE_URL: baseURL, IOS_EXPLORE_REQUEST_TIMEOUT_MS: "250" }, stderr: "pipe"
   });
   let stderr = "";

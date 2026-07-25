@@ -110,7 +110,9 @@ function renderInputSchemaMembers(contract: DeviceActionContract): string[] {
   const schema = contract.inputSchema;
   const properties = schema.properties ?? {};
   const required = new Set(schema.required ?? []);
-  const fields = Object.keys(properties).sort();
+  // JSON object insertion order is the contract declaration order. CommandInputSchema publishes
+  // this order through x-iosExplore-propertyOrder, so sorting here changes public help metadata.
+  const fields = Object.keys(properties);
   const fieldMembers: string[] = [];
   const fieldReferences: string[] = [];
 
@@ -164,7 +166,7 @@ function renderObjectArrayItemMembers(
   const fieldMembers: string[] = [];
   const fieldReferences: string[] = [];
 
-  for (const name of Object.keys(properties).sort()) {
+  for (const name of Object.keys(properties)) {
     const fieldIdentifier = `${itemIdentifier}${fieldIdentifierPart(name)}Field`;
     const emission = emitField(name, properties[name]!, required.has(name));
     fieldMembers.push(`    static let ${fieldIdentifier} = ${emission.expression}`);

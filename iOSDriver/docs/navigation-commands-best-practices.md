@@ -362,9 +362,3 @@ await navigationBack({ animated: false, waitAfterMs: 100 });
 | 日期 | 版本 | 变更内容 |
 |------|------|----------|
 | 2026-07-12 | 1.0 | 初始版本，记录 dismiss topAfter 不准确问题和 tapBarButton 全局搜索功能 |
-
----
-
-## 相关文档
-
-- [问题修复记录](./fix-navigation-issues-2026-07-12.md)

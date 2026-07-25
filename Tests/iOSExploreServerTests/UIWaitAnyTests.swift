@@ -144,6 +144,23 @@ func waitAnyRejectsUnknownConditionField() {
     }
 }
 
+@Test("waitAny condition 嵌套字段类型必须符合合同")
+func waitAnyRejectsInvalidNestedFieldTypes() {
+    for condition in [
+        JSON(["id": 1, "mode": "idle"]),
+        JSON(["id": "x", "mode": true]),
+        JSON(["id": "x", "mode": "idle", "text": 1]),
+        JSON(["id": "x", "mode": "idle", "viewSnapshotID": false]),
+        JSON(["id": "x", "mode": "idle", "accessibilityIdentifier": .object(JSON([:]))]),
+        JSON(["id": "x", "mode": "idle", "path": .array([])]),
+    ] {
+        let data = JSON(["conditions": .array([.object(condition)])])
+        #expect(throws: CommandInputParseError.self) {
+            try UIWaitAnyInput.parse(from: data)
+        }
+    }
+}
+
 #if canImport(UIKit)
 import UIKit
 

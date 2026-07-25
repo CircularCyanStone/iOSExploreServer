@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { executeCLICommand, type CLICommandContext } from "../../../src/adapters/cli/commands.js";
 import type { CLIConfig, ConfigFileSystem } from "../../../src/adapters/cli/config.js";
 import type { InvocationResult } from "../../../src/runtime/types.js";
+import type { JSONObject } from "../../../src/types.js";
 import { hostLogRecorder } from "../../support/hostLogRecorder.js";
 
 const config: CLIConfig = Object.freeze({ baseURL: "http://localhost:38321/", requestTimeoutMs: 10000, configPath: "/tmp/config.json", fileValues: {} });
@@ -10,11 +11,12 @@ function fixture(result: InvocationResult, report: Record<string, unknown> = { c
   const stdout: string[] = [];
   const stderr: string[] = [];
   const artifactWrites: Array<{ path: string; data: Uint8Array }> = [];
+  const runtimeCalls: Array<{ action: string; data: JSONObject }> = [];
   const recorded = hostLogRecorder();
   const context: CLICommandContext = {
     config,
     output: { stdout: value => stdout.push(value), stderr: value => stderr.push(value) },
-    runtime: { async invoke() { return result; } },
+    runtime: { async invoke(action, data = {}) { runtimeCalls.push({ action, data }); return result; } },
     capabilityProbe: { async doctor() { return report as never; } },
     workflowRunner: { async run() { return result; } },
     startMCP: async () => { stdout.push("mcp-frame\n"); },
@@ -22,7 +24,7 @@ function fixture(result: InvocationResult, report: Record<string, unknown> = { c
     writeArtifact: async (path, data) => { artifactWrites.push({ path, data }); },
     logger: recorded.logger
   };
-  return { context, stdout, stderr, artifactWrites, logLines: recorded.lines, logEntries: recorded.entries };
+  return { context, stdout, stderr, artifactWrites, runtimeCalls, logLines: recorded.lines, logEntries: recorded.entries };
 }
 
 describe("CLI commands", () => {
@@ -39,6 +41,18 @@ describe("CLI commands", () => {
     await executeCLICommand("call", fixtureState.context, { action: "ui.screenshot" });
     expect(fixtureState.stdout.join(" ")).not.toContain(image.data.toString("base64"));
     expect(fixtureState.artifactWrites).toHaveLength(1);
+  });
+
+  test("call 只校验 call_action wrapper，不在 CLI 重复校验 device action data", async () => {
+    const state = fixture({ ok: true, data: {}, artifacts: [], elapsedMs: 0, attempts: 1 });
+    const data = { unsupportedFutureField: true, maxDepth: "invalid-for-swift" };
+
+    expect(await executeCLICommand("call", state.context, {
+      action: " ui.inspect ",
+      data: JSON.stringify(data)
+    })).toBe(0);
+
+    expect(state.runtimeCalls).toEqual([{ action: "ui.inspect", data }]);
   });
 
   test("init 只写配置并输出 iosdriver mcp 片段", async () => {

@@ -1,135 +1,128 @@
 # iOSDriver 本地安装与更新（Codex）
 
-本文用于把当前仓库中的 iOSDriver 直接注册到 Codex，方便测试本地修改后的 MCP 服务代码。iOSDriver 是 Node.js/TypeScript 服务，不是 Swift Package；Codex 启动的是 `dist/index.js`。
+本文用于把当前仓库里的 iOSDriver 注册到 Codex。它面向本地开发和验证，不是 npm 发布说明。
 
-## 固定本地入口
-
-源码目录：
-
-```text
-/Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSDriver
-```
-
-MCP 配置固定指向：
-
-```text
-/Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSDriver/dist/index.js
-```
-
-使用绝对路径，避免 Codex 的工作目录变化导致入口找不到。
-
-## 首次安装
-
-要求 macOS、Node.js 20 或更高版本，以及已安装的 Codex CLI。
+## 准备
 
 ```bash
-cd /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSDriver
+cd <repo>/iOSDriver
 npm install
 npm run build
 ```
 
-确认编译产物存在：
+本地源码构建后的 CLI 入口：
 
 ```bash
-test -f /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSDriver/dist/index.js
+node <repo>/iOSDriver/dist/adapters/cli/main.js init
+node <repo>/iOSDriver/dist/adapters/cli/main.js doctor
+node <repo>/iOSDriver/dist/adapters/cli/main.js call ping
 ```
 
-## 直接编辑 Codex 配置文件（推荐）
+如果希望直接使用 `iosdriver` 命令，可以在当前仓库 link：
 
-Codex 的 MCP 配置文件是：
-
-```text
-~/.codex/config.toml
+```bash
+cd <repo>/iOSDriver
+npm link
+iosdriver doctor
+iosdriver call ping
 ```
 
-用编辑器打开该文件，在已有配置末尾添加以下内容：
+MCP 推荐入口是同一个 CLI 的 `mcp` 子命令：
+
+```bash
+iosdriver mcp
+node <repo>/iOSDriver/dist/adapters/cli/main.js mcp
+```
+
+`<repo>` 替换为当前仓库绝对路径。使用绝对路径可以避免 Codex 工作目录变化导致入口找不到。
+
+配置优先级：CLI 参数 > 环境变量 > 配置文件 > 默认值。默认配置文件是 `~/.config/iosdriver/config.json`；可用 `IOSDRIVER_CONFIG` 或 `--config` 指定。
+
+## 配置
+
+如果已经 `npm link`，可以让 Codex 直接启动 `iosdriver mcp`：
 
 ```toml
 [mcp_servers.iOSDriver]
-command = "node"
-args = ["/Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSDriver/dist/index.js"]
+command = "iosdriver"
+args = ["mcp"]
 
 [mcp_servers.iOSDriver.env]
 IOS_EXPLORE_BASE_URL = "http://localhost:38321"
 IOS_EXPLORE_REQUEST_TIMEOUT_MS = "10000"
 ```
 
-如果文件中已经存在 `[mcp_servers.iOSDriver]`，不要再添加第二组同名表；直接把它的 `command`、`args` 和环境变量改成上面的值即可。当前仓库的 Codex 配置就是这种形式。
+未 link 时，编辑 `~/.codex/config.toml`，使用当前仓库构建产物的绝对路径：
 
-配置完成后完全退出并重新启动 Codex。用下面的命令检查文件中的 MCP 服务是否已被读取：
+```toml
+[mcp_servers.iOSDriver]
+command = "node"
+args = ["<repo>/iOSDriver/dist/adapters/cli/main.js", "mcp"]
 
-```bash
-codex mcp list
-codex mcp get iOSDriver
+[mcp_servers.iOSDriver.env]
+IOS_EXPLORE_BASE_URL = "http://localhost:38321"
+IOS_EXPLORE_REQUEST_TIMEOUT_MS = "10000"
 ```
 
-这种方式不依赖 `codex mcp add`，适合需要手动维护配置或把配置纳入本机初始化脚本的场景。
+如果已经存在 `[mcp_servers.iOSDriver]`，只更新这一组，不要再添加第二组同名表。
 
-## 使用 Codex 命令注册（可选）
-
-如果不想手动编辑文件，也可以注册本地 stdio MCP 服务：
+也可以用命令注册。已 link 时：
 
 ```bash
 codex mcp add iOSDriver \
   --env IOS_EXPLORE_BASE_URL=http://localhost:38321 \
   --env IOS_EXPLORE_REQUEST_TIMEOUT_MS=10000 \
-  -- node /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSDriver/dist/index.js
+  -- iosdriver mcp
 ```
 
-检查注册结果：
+未 link 时：
+
+```bash
+codex mcp add iOSDriver \
+  --env IOS_EXPLORE_BASE_URL=http://localhost:38321 \
+  --env IOS_EXPLORE_REQUEST_TIMEOUT_MS=10000 \
+  -- node <repo>/iOSDriver/dist/adapters/cli/main.js mcp
+```
+
+## 验证
+
+先确认 App HTTP 服务可达：
+
+```bash
+curl -s -X POST http://localhost:38321/ -d '{"action":"ping"}'
+```
+
+真机需要先启动 `iproxy 38321 38321`，并确认：
+
+```bash
+lsof -iTCP:38321 -sTCP:LISTEN
+```
+
+COMMAND 应为 `iproxy`。
+
+重启 Codex 后检查：
 
 ```bash
 codex mcp list
 codex mcp get iOSDriver
 ```
 
-如果 `iOSDriver` 已存在，且准备改用命令注册，先删除再注册：
+再调用 MCP 工具 `health_check`。如果 `health_check` 可达但 `ui.*` 工具返回 `unknown_action`，检查 App 是否调用了 `registerUIKitCommands()`。
+
+## 更新
+
+修改 `iOSDriver/src` 后：
 
 ```bash
-codex mcp remove iOSDriver
-```
-
-## 验证
-
-先确保集成了 iOSExploreServer 的 App 已启动并监听 `38321`。模拟器直接验证：
-
-```bash
-curl -s -X POST http://localhost:38321/ \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"ping"}'
-```
-
-预期包含：
-
-```json
-{"code":"ok","data":{"pong":true}}
-```
-
-然后重新启动 Codex，在 MCP 工具列表中确认 `health_check`。调用它可以验证 iOSDriver 到 App HTTP 服务的连接；App 未启动时，MCP 服务仍可能启动，但 `health_check` 会报告连接失败。
-
-真机还需要先运行 `iproxy 38321 38321`，并确认 `lsof -iTCP:38321 -sTCP:LISTEN` 显示的监听进程是 `iproxy`。
-
-## 本地更新
-
-修改 `iOSDriver/src` 下的代码后，执行：
-
-```bash
-cd /Users/coo/Desktop/iOS_agent_debugger/iOSExploreServer/iOSDriver
+cd <repo>/iOSDriver
 npm run build
 ```
 
-因为 Codex 配置始终指向同一个 `dist/index.js`，不需要重新编辑配置文件，也不需要重新 `codex mcp add`。已运行的 MCP 子进程不会自动加载新代码，编译完成后请完全退出当前 Codex，再重新启动；新会话会启动新的 iOSDriver 进程。
-
-可选地，先运行单元测试（测试命令也会先编译）：
-
-```bash
-npm test
-```
+已运行的 MCP 子进程不会自动加载新构建；需要完全退出并重启 Codex。
 
 ## 常见问题
 
-- `Cannot find module .../dist/index.js`：在 iOSDriver 目录执行 `npm run build`，并检查上面的绝对路径。
-- Codex 启动失败或配置解析失败：检查 `~/.codex/config.toml` 的 TOML 表名、引号和数组语法；同名 `[mcp_servers.iOSDriver]` 只能保留一组。
-- 工具调用返回 `unknown_action`：确认 App 是否注册了对应 UIKit/Diagnostics 模块；静态工具列表不会因 App 状态改变。
-- `health_check` 连接失败：先用上面的 `curl` 验证 App 端口，再检查模拟器/真机端口转发。
-- 换了电脑或目录：重新注册 `iOSDriver`，把命令中的绝对路径替换为新路径。
+- `Cannot find module`：检查 `<repo>` 是否是绝对路径，并重新 `npm run build`。
+- 配置解析失败：检查 TOML 表名、引号和数组语法；同名表只能有一组。
+- `unknown_action`：App 未注册对应模块或 action 名错误，先调用 `help` 检查。
+- 连接失败：先 curl `ping`，真机再检查 `iproxy`。

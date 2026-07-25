@@ -20,13 +20,13 @@ func inspectQueryParsesDefaultsAndFilters() throws {
 @Test("UIInspectInput schema 按工具展示顺序声明字段")
 func inspectInputSchemaUsesExpectedFieldOrder() {
     #expect(UIInspectInput.inputSchema.fields.map(\.name) == [
-        "accessibilityIdentifier",
-        "accessibilityIdentifierPrefix",
         "includeHidden",
         "maxDepth",
+        "accessibilityIdentifier",
+        "accessibilityIdentifierPrefix",
+        "textLimit",
         "maxTargets",
         "maxVisitedNodes",
-        "textLimit",
     ])
 }
 

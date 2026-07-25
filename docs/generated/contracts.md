@@ -4,7 +4,7 @@
 - Protocol version: `1`
 - Contract version: `1.0.0`
 - Generator version: `1`
-- Contract hash: `sha256:6077da3314052391a3407141faeab53982762be6175ad8fe845dfcda2366ab87`
+- Contract hash: `sha256:f1ca3ffa43d7418af9be345ce7daf5dcb5906e1ab6c6a764ee2faa151421d84b`
 - Device actions: 27
 - Host operations: 5
 
@@ -511,7 +511,7 @@ Input fields: none.
 调用宿主 App 的任意 action。
 
 - Result: `json`
-- Errors: `alert_button_not_found`, `alert_button_required`, `alert_button_trigger_failed`, `alert_release_unsupported`, `alert_unavailable`, `bad_request`, `become_first_responder_failed`, `container_not_scrollable`, `contract_mismatch`, `http_error`, `input_rejected`, `internal_error`, `invalid_config`, `invalid_data`, `keyboard_dismiss_failed`, `navigation_back_unavailable`, `navigation_bar_item_disabled`, `navigation_bar_item_mismatch`, `navigation_bar_item_not_found`, `navigation_bar_item_unsupported`, `navigation_bar_unavailable`, `not_actionable`, `protocol_error`, `rendering_failed`, `response_too_large`, `scroll_container_unavailable`, `stale_cursor`, `stale_locator`, `target_not_found`, `timeout`, `transition_in_progress`, `transport_timeout`, `transport_unavailable`, `unknown_action`, `unsupported_target`, `unsupported_text_input_type`, `wait_timeout`
+- Errors: `alert_button_not_found`, `alert_button_required`, `alert_button_trigger_failed`, `alert_release_unsupported`, `alert_unavailable`, `artifact_decode_failed`, `bad_request`, `become_first_responder_failed`, `container_not_scrollable`, `contract_mismatch`, `http_error`, `input_rejected`, `internal_error`, `invalid_config`, `invalid_data`, `keyboard_dismiss_failed`, `navigation_back_unavailable`, `navigation_bar_item_disabled`, `navigation_bar_item_mismatch`, `navigation_bar_item_not_found`, `navigation_bar_item_unsupported`, `navigation_bar_unavailable`, `not_actionable`, `protocol_error`, `rendering_failed`, `response_too_large`, `scroll_container_unavailable`, `stale_cursor`, `stale_locator`, `target_not_found`, `timeout`, `transition_in_progress`, `transport_timeout`, `transport_unavailable`, `unknown_action`, `unsupported_target`, `unsupported_text_input_type`, `wait_timeout`
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -541,7 +541,7 @@ Input fields: none.
 点击元素后自动检查 UI 状态。
 
 - Result: `json`
-- Errors: `alert_button_not_found`, `alert_button_required`, `alert_button_trigger_failed`, `alert_release_unsupported`, `alert_unavailable`, `bad_request`, `become_first_responder_failed`, `container_not_scrollable`, `contract_mismatch`, `http_error`, `input_rejected`, `internal_error`, `invalid_config`, `invalid_data`, `keyboard_dismiss_failed`, `navigation_back_unavailable`, `navigation_bar_item_disabled`, `navigation_bar_item_mismatch`, `navigation_bar_item_not_found`, `navigation_bar_item_unsupported`, `navigation_bar_unavailable`, `not_actionable`, `protocol_error`, `rendering_failed`, `response_too_large`, `scroll_container_unavailable`, `stale_cursor`, `stale_locator`, `target_not_found`, `timeout`, `transition_in_progress`, `transport_timeout`, `transport_unavailable`, `unknown_action`, `unsupported_target`, `unsupported_text_input_type`, `wait_timeout`
+- Errors: `alert_button_not_found`, `alert_button_required`, `alert_button_trigger_failed`, `alert_release_unsupported`, `alert_unavailable`, `bad_request`, `become_first_responder_failed`, `container_not_scrollable`, `contract_mismatch`, `http_error`, `input_rejected`, `internal_error`, `invalid_config`, `invalid_data`, `keyboard_dismiss_failed`, `navigation_back_unavailable`, `navigation_bar_item_disabled`, `navigation_bar_item_mismatch`, `navigation_bar_item_not_found`, `navigation_bar_item_unsupported`, `navigation_bar_unavailable`, `not_actionable`, `protocol_error`, `rendering_failed`, `response_too_large`, `scroll_container_unavailable`, `stale_cursor`, `stale_locator`, `target_not_found`, `timeout`, `transition_in_progress`, `transport_timeout`, `transport_unavailable`, `unknown_action`, `unsupported_target`, `unsupported_text_input_type`, `wait_timeout`, `workflow_timeout`
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -558,7 +558,7 @@ Input fields: none.
 先等待条件，再读取 UI 结构。
 
 - Result: `json`
-- Errors: `alert_button_not_found`, `alert_button_required`, `alert_button_trigger_failed`, `alert_release_unsupported`, `alert_unavailable`, `bad_request`, `become_first_responder_failed`, `container_not_scrollable`, `contract_mismatch`, `http_error`, `input_rejected`, `internal_error`, `invalid_config`, `invalid_data`, `keyboard_dismiss_failed`, `navigation_back_unavailable`, `navigation_bar_item_disabled`, `navigation_bar_item_mismatch`, `navigation_bar_item_not_found`, `navigation_bar_item_unsupported`, `navigation_bar_unavailable`, `not_actionable`, `protocol_error`, `rendering_failed`, `response_too_large`, `scroll_container_unavailable`, `stale_cursor`, `stale_locator`, `target_not_found`, `timeout`, `transition_in_progress`, `transport_timeout`, `transport_unavailable`, `unknown_action`, `unsupported_target`, `unsupported_text_input_type`, `wait_timeout`
+- Errors: `alert_button_not_found`, `alert_button_required`, `alert_button_trigger_failed`, `alert_release_unsupported`, `alert_unavailable`, `bad_request`, `become_first_responder_failed`, `container_not_scrollable`, `contract_mismatch`, `http_error`, `input_rejected`, `internal_error`, `invalid_config`, `invalid_data`, `keyboard_dismiss_failed`, `navigation_back_unavailable`, `navigation_bar_item_disabled`, `navigation_bar_item_mismatch`, `navigation_bar_item_not_found`, `navigation_bar_item_unsupported`, `navigation_bar_unavailable`, `not_actionable`, `protocol_error`, `rendering_failed`, `response_too_large`, `scroll_container_unavailable`, `stale_cursor`, `stale_locator`, `target_not_found`, `timeout`, `transition_in_progress`, `transport_timeout`, `transport_unavailable`, `unknown_action`, `unsupported_target`, `unsupported_text_input_type`, `wait_timeout`, `workflow_timeout`
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |

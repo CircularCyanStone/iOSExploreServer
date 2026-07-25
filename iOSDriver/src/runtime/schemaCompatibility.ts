@@ -55,7 +55,7 @@ export function compareActionSchema(
       differences: [{ kind: "missing", path: action, message: "action 未注册", breaking: true }]
     };
   }
-  return compareSchemaForAction(action, expected.inputSchema, actual.inputSchema);
+  return compareSchemaForAction(action, projectContractInputSchemaToSwiftHelp(expected.inputSchema), actual.inputSchema);
 }
 
 /** 比较两个 JSON Schema；只判断合同支持的输入 object 子集。 */
@@ -145,6 +145,7 @@ function compareObjectSchema(
     }
   }
   compareAdditionalProperties(expected, actual, path, differences);
+  compareBehaviorConstraints(expected, actual, path, differences);
 }
 
 function compareSchemaNode(expected: SchemaObject, actual: SchemaObject, path: string, differences: SchemaDifference[]): void {
@@ -179,6 +180,167 @@ function compareSchemaNode(expected: SchemaObject, actual: SchemaObject, path: s
     }
   }
   compareAdditionalProperties(expected, actual, path, differences);
+  compareBehaviorConstraints(expected, actual, path, differences);
+}
+
+/**
+ * Canonical contracts and Swift help intentionally use different representations for the root
+ * CommandInputSchema. Project only those documented generator transformations before comparison;
+ * nested schemas are emitted verbatim through CommandFieldSchema.extraSchema.
+ */
+export function projectContractInputSchemaToSwiftHelp(value: unknown): unknown {
+  if (!isObjectSchema(value)) return value;
+  const projected: Record<string, unknown> = { ...value };
+  const properties = objectValue(value.properties);
+  if (properties !== undefined) {
+    const projectedProperties: Record<string, unknown> = {};
+    const required = new Set(Array.isArray(value.required) ? value.required.filter(item => typeof item === "string") : []);
+    for (const [name, property] of Object.entries(properties)) {
+      projectedProperties[name] = projectRootFieldSchema(property, required.has(name));
+    }
+    projected.properties = projectedProperties;
+    projected["x-iosExplore-propertyOrder"] = Object.keys(properties);
+  }
+
+  const extension = objectValue(value["x-iosExplore-constraints"]);
+  if (extension === undefined) return projected;
+  delete projected["x-iosExplore-constraints"];
+
+  const exactlyOneOf = stringArray(extension.exactlyOneOf);
+  if (exactlyOneOf !== undefined) {
+    const generatedOneOf = exactlyOneOf.map(name => ({ required: [name] }));
+    if (projected.oneOf === undefined && projected.allOf === undefined) {
+      projected.oneOf = generatedOneOf;
+    } else {
+      const units: unknown[] = [];
+      if (projected.oneOf !== undefined) units.push({ oneOf: projected.oneOf });
+      if (Array.isArray(projected.allOf)) units.push(...projected.allOf);
+      units.push({ oneOf: generatedOneOf });
+      delete projected.oneOf;
+      projected.allOf = units;
+    }
+  }
+
+  const messages: string[] = [];
+  const mutuallyExclusive = stringArray(extension.mutuallyExclusive);
+  if (mutuallyExclusive !== undefined) messages.push(`mutuallyExclusive: ${mutuallyExclusive.join(", ")}`);
+  if (typeof extension.note === "string") messages.push(extension.note);
+  if (messages.length > 0) projected["x-iosExplore-constraints"] = messages;
+  return projected;
+}
+
+function projectRootFieldSchema(value: unknown, required: boolean): unknown {
+  if (!isSchema(value)) return value;
+  const projected: Record<string, unknown> = { ...value };
+  const types = typeSet(value.type);
+  if (!required && types?.has("string") && types.has("null") && Array.isArray(value.enum)
+      && value.enum.every(item => typeof item === "string")) {
+    projected.enum = [...value.enum, null];
+  }
+  return projected;
+}
+
+function compareBehaviorConstraints(
+  expected: SchemaObject,
+  actual: SchemaObject,
+  path: string,
+  differences: SchemaDifference[]
+): void {
+  compareUniqueItems(expected, actual, path, differences);
+  for (const key of ["oneOf", "allOf", "not"] as const) {
+    compareCompositeConstraint(expected, actual, key, path, differences);
+  }
+  compareExtensionConstraint(expected, actual, path, differences);
+  comparePropertyOrder(expected, actual, path, differences);
+}
+
+function compareUniqueItems(
+  expected: SchemaObject,
+  actual: SchemaObject,
+  path: string,
+  differences: SchemaDifference[]
+): void {
+  if (expected.uniqueItems !== undefined && typeof expected.uniqueItems !== "boolean"
+      || actual.uniqueItems !== undefined && typeof actual.uniqueItems !== "boolean") {
+    differences.push({ kind: "invalid", path: `${path}.uniqueItems`, message: "uniqueItems 必须是 boolean", breaking: true });
+    return;
+  }
+  const before = expected.uniqueItems === true;
+  const after = actual.uniqueItems === true;
+  if (before !== after) {
+    differences.push({ kind: "changed", path: `${path}.uniqueItems`, message: "uniqueItems 约束变化", breaking: after });
+  }
+}
+
+function compareCompositeConstraint(
+  expected: SchemaObject,
+  actual: SchemaObject,
+  key: "oneOf" | "allOf" | "not",
+  path: string,
+  differences: SchemaDifference[]
+): void {
+  const beforePresent = expected[key] !== undefined;
+  const afterPresent = actual[key] !== undefined;
+  if (!beforePresent && !afterPresent) return;
+  if (beforePresent && !validCompositeConstraint(key, expected[key])
+      || afterPresent && !validCompositeConstraint(key, actual[key])) {
+    differences.push({ kind: "invalid", path: `${path}.${key}`, message: `${key} 约束非法`, breaking: true });
+    return;
+  }
+  if (beforePresent && afterPresent && sameJSONValue(expected[key], actual[key])) return;
+  differences.push({
+    kind: "changed",
+    path: `${path}.${key}`,
+    message: `${key} 约束变化`,
+    breaking: afterPresent
+  });
+}
+
+function validCompositeConstraint(key: "oneOf" | "allOf" | "not", value: unknown): boolean {
+  if (key === "not") return isSchema(value);
+  return Array.isArray(value) && value.length > 0 && value.every(isSchema);
+}
+
+function compareExtensionConstraint(
+  expected: SchemaObject,
+  actual: SchemaObject,
+  path: string,
+  differences: SchemaDifference[]
+): void {
+  const key = "x-iosExplore-constraints";
+  const beforePresent = expected[key] !== undefined;
+  const afterPresent = actual[key] !== undefined;
+  if (!beforePresent && !afterPresent) return;
+  if (beforePresent && !validExtensionConstraint(expected[key])
+      || afterPresent && !validExtensionConstraint(actual[key])) {
+    differences.push({ kind: "invalid", path: `${path}.${key}`, message: `${key} 必须是 object 或字符串数组`, breaking: true });
+    return;
+  }
+  if (beforePresent && afterPresent && sameJSONValue(expected[key], actual[key])) return;
+  differences.push({ kind: "changed", path: `${path}.${key}`, message: `${key} 约束变化`, breaking: afterPresent });
+}
+
+function validExtensionConstraint(value: unknown): boolean {
+  return isSchema(value) || Array.isArray(value) && value.every(item => typeof item === "string");
+}
+
+function comparePropertyOrder(
+  expected: SchemaObject,
+  actual: SchemaObject,
+  path: string,
+  differences: SchemaDifference[]
+): void {
+  const key = "x-iosExplore-propertyOrder";
+  if (expected[key] === undefined) return;
+  const before = stringArray(expected[key]);
+  const after = stringArray(actual[key]);
+  if (before === undefined || after === undefined) {
+    differences.push({ kind: "invalid", path: `${path}.${key}`, message: `${key} 必须是字符串数组`, breaking: true });
+    return;
+  }
+  if (before.length !== after.length || before.some((value, index) => after[index] !== value)) {
+    differences.push({ kind: "changed", path: `${path}.${key}`, message: `${key} 字段顺序变化`, breaking: true });
+  }
 }
 
 function compareType(expected: SchemaObject, actual: SchemaObject, path: string, differences: SchemaDifference[]): void {
@@ -320,6 +482,9 @@ function stringSet(value: unknown, path: string, differences: SchemaDifference[]
     return new Set();
   }
   return new Set(value);
+}
+function stringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every(item => typeof item === "string") ? value : undefined;
 }
 interface BoundCandidate {
   readonly value: number;

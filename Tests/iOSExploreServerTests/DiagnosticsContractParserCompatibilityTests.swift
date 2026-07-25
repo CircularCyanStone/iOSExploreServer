@@ -30,6 +30,14 @@ struct DiagnosticsContractParserCompatibilityTests {
         ])
 
         #expect(input.after == ESAppLogCursor(captureSessionID: "capture-1", id: 42))
+        let boundaryInput = try ESAppLogsReadInput.parse(from: [
+            "after": .object([
+                "captureSessionID": "capture-1",
+                "id": .double(9_007_199_254_740_991),
+            ]),
+        ])
+        #expect(boundaryInput.after == ESAppLogCursor(captureSessionID: "capture-1",
+                                                      id: 9_007_199_254_740_991))
         #expect(throws: CommandInputParseError.self) {
             _ = try ESAppLogsReadInput.parse(from: [
                 "after": .object(["id": 42]),
@@ -48,6 +56,22 @@ struct DiagnosticsContractParserCompatibilityTests {
                 "after": .object([
                     "captureSessionID": "capture-1",
                     "id": 1.5,
+                ]),
+            ])
+        }
+        #expect(throws: CommandInputParseError.self) {
+            _ = try ESAppLogsReadInput.parse(from: [
+                "after": .object([
+                    "captureSessionID": "capture-1",
+                    "id": .double(9_007_199_254_740_992),
+                ]),
+            ])
+        }
+        #expect(throws: CommandInputParseError.self) {
+            _ = try ESAppLogsReadInput.parse(from: [
+                "after": .object([
+                    "captureSessionID": "capture-1",
+                    "id": .double(Double.greatestFiniteMagnitude),
                 ]),
             ])
         }

@@ -151,8 +151,10 @@ export class DriverRuntime {
     const decoded = responseData === undefined
       ? { ok: true as const, data: undefined, artifacts: [] as readonly Artifact[] }
       : this.artifactDecoder.decode(action, responseData);
-    const failureData = decoded.ok ? decoded.data : responseData;
-    const artifacts = decoded.ok ? decoded.artifacts : [];
+    // 即使保留 App 的业务错误，artifact decoder 的清理结果也必须生效，
+    // 避免非法或超限 image 经 error.data/result.data 旁路输出。
+    const failureData = decoded.data;
+    const artifacts = decoded.artifacts;
     return this.failure({
       source: "appEnvelope",
       code: envelope.code,

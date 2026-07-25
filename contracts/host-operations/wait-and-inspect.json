@@ -184,6 +184,7 @@
     "scroll_container_unavailable",
     "container_not_scrollable",
     "stale_cursor",
-    "not_actionable"
+    "not_actionable",
+    "workflow_timeout"
   ]
 }

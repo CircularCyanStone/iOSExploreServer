@@ -267,7 +267,7 @@ curl -X POST http://localhost:38321/ -d '{
 |---|---|---|
 | 跳过 `ui.inspect`，直接 `ui.tap` 不带 `viewSnapshotID` | `viewSnapshotID is required` | 先 ui.inspect |
 | 字段名写成 `snapshotID` / `identifier` / `viewPath` | `unknown command input field` | 用 `viewSnapshotID` / `accessibilityIdentifier` / `path` |
-| `build_run_sim` 后直接 curl 38321 没反应 | server 因 autostart 关闭而未起 | 调 `launch_app_sim(env={"IOS_EXPLORE_AUTOSTART":"1"})` 重启 App（详见 AGENTS.md 「四个必须记住的差异」） |
+| `build_run_sim` 后直接 curl 38321 没反应 | App 未启动、server 未调用 `start()` 或端口不可达 | 先确认 Debug App 已前台运行，再用 `curl ping` 和端口排障 runbook 检查 |
 | 点击 cell 后旧 `viewSnapshotID` 还在用 | `stale_locator` | 重新 ui.inspect |
 | 用 subviews 数组顺序当 indexPath 顺序 | 点错 cell（本次案例） | 见 §2.3，靠 `accessibilityIdentifier` / cell 标题 / 返回的 indexPath |
 | `ui.alert.respond` 直接 dryRun=false 但不知道按钮 | `unknown button` 或点错按钮 | 先 dryRun=true 列按钮，再 dryRun=false 精确点 |
@@ -277,7 +277,7 @@ curl -X POST http://localhost:38321/ -d '{
 
 ## 6. SPMExample 真实闭环补充约定
 
-调用 `Examples/SPMExample` 做 agent 验证时，**自动启动 server 的开关必须通过 `launch_app_sim` / `launch_app_device` 的 `env` 或 `launchArgs`**，**不能**写进 session defaults 的 `env`（`build_run_*` 不把 session env 注入到 App 进程）。已实测打通的流程见 `AGENTS.md` 的「XcodeBuildMCP 运行配置」节「四个必须记住的差异」第 3 点。这套环境变量属于长期测试约定，不要清理，复用即可。
+调用 `Examples/SPMExample` 做 agent 验证时，Debug App 会直接启动 server；如果需要打开指定测试页面，用 `launch_app_sim` / `launch_app_device` 的 `env` 或 `launchArgs` 传页面开关，不要写进 session defaults 的 `env`，因为 `build_run_*` 不把 session env 注入到 App 进程。
 
 **示例 App 当前 cell 无 `accessibilityIdentifier`**，这是 §2.4 库改进未实施之前，调用方必须按下表钻 topViewHierarchy 子节点确认菜单项（数据按 `indexPath` 不是按 subviews 顺序）：
 

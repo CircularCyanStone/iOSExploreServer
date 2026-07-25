@@ -140,7 +140,7 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
             guard let obj = element.objectValue else {
                 throw CommandInputParseError("each condition must be an object")
             }
-            guard let id = stringValue(obj, "id"), !id.isEmpty else {
+            guard let id = try stringValue(obj, "id"), !id.isEmpty else {
                 throw CommandInputParseError("condition requires non-empty id")
             }
             // 与顶层 validateNoUnknownFields 一致：拒绝 condition 内未知字段，避免调用方拼错字段
@@ -153,16 +153,16 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
             guard seenIDs.insert(id).inserted else {
                 throw CommandInputParseError("duplicate condition id '\(id)'")
             }
-            guard let modeRaw = stringValue(obj, "mode") else {
+            guard let modeRaw = try stringValue(obj, "mode") else {
                 throw CommandInputParseError("condition '\(id)' requires mode")
             }
             guard let mode = WaitMode(rawValue: modeRaw) else {
                 throw CommandInputParseError("condition '\(id)' has unknown wait mode '\(modeRaw)'")
             }
-            let text = stringValue(obj, "text")
-            let viewSnapshotID = stringValue(obj, "viewSnapshotID")
-            let identifier = stringValue(obj, "accessibilityIdentifier")
-            let path = stringValue(obj, "path")
+            let text = try stringValue(obj, "text", allowsNull: true)
+            let viewSnapshotID = try stringValue(obj, "viewSnapshotID", allowsNull: true)
+            let identifier = try stringValue(obj, "accessibilityIdentifier", allowsNull: true)
+            let path = try stringValue(obj, "path", allowsNull: true)
             let target: UIKitViewLookupTarget?
             if identifier != nil || path != nil {
                 do {
@@ -198,9 +198,19 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
         return parsed
     }
 
-    /// 读取对象上可选字符串字段；缺失或非字符串均返回 nil。
-    private static func stringValue(_ json: JSON, _ key: String) -> String? {
-        if case .string(let s) = json[key] { return s }
-        return nil
+    /// 按嵌套 condition schema 读取字符串字段，拒绝把错误类型静默当成缺失值。
+    private static func stringValue(_ json: JSON,
+                                    _ key: String,
+                                    allowsNull: Bool = false) throws -> String? {
+        guard let value = json[key] else { return nil }
+        switch value {
+        case .string(let string):
+            return string
+        case .null where allowsNull:
+            return nil
+        default:
+            let expected = allowsNull ? "a string or null" : "a string"
+            throw CommandInputParseError("condition field '\(key)' must be \(expected)")
+        }
     }
 }

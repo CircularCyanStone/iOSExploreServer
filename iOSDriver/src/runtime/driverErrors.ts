@@ -3,8 +3,8 @@ import type { JSONObject } from "../types.js";
 /** transport 失败发生的阶段，用于严格限制自动重试范围。 */
 export type TransportPhase = "connect" | "reset" | "timeout" | "abort" | "unknown";
 
-/** protocol 失败的具体类别；稳定 code 仍统一为 `protocol_error`。 */
-export type ProtocolIssue = "invalid_json" | "invalid_envelope";
+/** protocol 失败的具体类别；稳定 code 统一为 `protocol_error`。 */
+export type ProtocolIssue = "invalid_json" | "invalid_envelope" | "response_too_large";
 
 /** Host runtime 对外暴露的稳定错误结构。 */
 export interface DriverError {

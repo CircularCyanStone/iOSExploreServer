@@ -30,7 +30,10 @@ describe("MCP adapter handlers", () => {
     await handlers.callTool("ui_inspect", { maxDepth: 2 });
     await handlers.callTool("health_check", {});
     await handlers.callTool("check_capabilities", {});
-    await handlers.callTool("wait_and_inspect", { conditions: [], timeoutMs: 7_000 });
+    await handlers.callTool("wait_and_inspect", {
+      conditions: [{ id: "idle", mode: "idle" }],
+      timeoutMs: 7_000
+    });
     await handlers.callTool("ui_tap_and_inspect", { viewSnapshotID: "v", path: "/0", stableTimeMs: 400 });
 
     expect(fixture.runtimeCalls[0]).toMatchObject({ action: "ui.inspect", data: { maxDepth: 2 } });
@@ -38,6 +41,59 @@ describe("MCP adapter handlers", () => {
     expect(fixture.workflowCalls.map(call => call.operation)).toEqual(["wait_and_inspect", "tap_and_inspect"]);
     expect(fixture.workflowCalls[0]!.deadlineAtMs).toBe(22_000);
     expect(fixture.workflowCalls[1]!.deadlineAtMs).toBe(16_400);
+  });
+
+  test("host operation 严格校验 generated input schema，失败时不执行任何边界", async () => {
+    const fixture = createFixture();
+    const handlers = createMCPToolHandlers(fixture.options);
+
+    const results = await Promise.all([
+      handlers.callTool("call_action", {}),
+      handlers.callTool("call_action", { action: "ui.tap", data: [] }),
+      handlers.callTool("health_check", { unsupported: true }),
+      handlers.callTool("wait_and_inspect", { conditions: [] }),
+      handlers.callTool("ui_tap_and_inspect", {
+        path: "root/0",
+        accessibilityIdentifier: "button",
+        viewSnapshotID: "snapshot"
+      })
+    ]);
+
+    expect(results.every(result => result.isError === true)).toBe(true);
+    expect(results.map(result => JSON.parse(result.content[0]!.type === "text" ? result.content[0]!.text : "{}").code))
+      .toEqual(["invalid_data", "invalid_data", "invalid_data", "invalid_data", "invalid_data"]);
+    expect(fixture.runtimeCalls).toEqual([]);
+    expect(fixture.probeCalls).toEqual([]);
+    expect(fixture.workflowCalls).toEqual([]);
+  });
+
+  test("host input 错误使用稳定 adapter envelope 且不回显 payload", async () => {
+    const fixture = createFixture();
+    const result = await createMCPToolHandlers(fixture.options).callTool("call_action", {
+      action: "extension.private",
+      data: "secret-payload"
+    });
+    const payload = JSON.parse(result.content[0]!.type === "text" ? result.content[0]!.text : "{}");
+
+    expect(result.isError).toBe(true);
+    expect(payload).toEqual({
+      source: "mcp_server",
+      code: "invalid_data",
+      message: "Invalid call_action input at $.data: expected object"
+    });
+    expect(JSON.stringify(payload)).not.toMatch(/extension\.private|secret-payload/);
+    expect(fixture.logLines.join("")).not.toMatch(/extension\.private|secret-payload/);
+    expect(fixture.runtimeCalls).toEqual([]);
+  });
+
+  test("device action payload 不在 host 重复校验，原样交给 App runtime", async () => {
+    const fixture = createFixture();
+    const handlers = createMCPToolHandlers(fixture.options);
+    const data = { unsupportedFutureField: true, maxDepth: "invalid-for-swift" };
+
+    await handlers.callTool("ui_inspect", data);
+
+    expect(fixture.runtimeCalls).toEqual([{ action: "ui.inspect", data, options: {} }]);
   });
 
   test("call_action 接受任意 action 并只转交已知 help policy", async () => {

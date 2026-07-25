@@ -46,7 +46,7 @@ struct UIKitContractParserCompatibilityTests {
     func inputFieldUsesGeneratedItemContract() throws {
         #expect(UIInputField.inputSchema == UIKitActionContracts.uiInputFieldsItemInputSchema)
         #expect(UIInputField.inputSchema.fields.map(\.name) == [
-            "accessibilityIdentifier", "mode", "path", "submit", "text",
+            "accessibilityIdentifier", "path", "text", "mode", "submit",
         ])
 
         let topLevelFields = try #require(UIInputInput.inputSchema.toJSON()["properties"]?.objectValue?["fields"]?.objectValue)
