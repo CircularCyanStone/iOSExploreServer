@@ -10,7 +10,7 @@
 
 整个模块只做一件事：**把"Mac 发来的 JSON 命令"翻译成"在 iPhone 当前页面上对真实 `UIView` 的读/写操作"**。
 
-它由 **14 个对外命令**和一组**内部基础设施**组成：
+它由一组 **`ui.*` 对外命令**和一组**内部基础设施**组成：
 
 | 命令 | 一句话作用 |
 |---|---|
@@ -29,14 +29,14 @@
 | `ui.scrollToElement` | 滚动到包含指定文本/identifier 的元素可见 |
 | `ui.alert.respond` | 按明确按钮触发并关闭当前 UIAlertController（查询 alert 结构用 ui.inspect） |
 
-这 14 个命令共享同一套底层能力：**定位（Locator）→ 能力判定（Capability）→ 陈旧防护（Snapshot）→ 执行（Executor）**。理解了这套共享基础设施，各命令的 adapter 都只是薄薄的"解析参数 + 调用"。
+当前命令集合共享同一套底层能力：**定位（Locator）→ 能力判定（Capability）→ 陈旧防护（Snapshot）→ 执行（Executor）**。理解了这套共享基础设施，各命令的 adapter 都只是薄薄的"解析参数 + 调用"。
 
 ## 一张图看懂分层
 
 ```
                     ┌─────────────────────────────────────────┐
    Mac curl         │  UIKitCommandRegistrar  (注册入口)        │
-  命令 JSON   ──►  │  14 个 Command adapter（解析参数 + 打日志） │
+  命令 JSON   ──►  │  Command adapter（解析参数 + 打日志）       │
                     └──────────────────┬──────────────────────┘
                                        │  adapter 只解析请求、构造 Plan/Query
                                        │  真正的 UIKit 操作全部下沉 ↓
@@ -52,7 +52,7 @@
                     └─────────────────────────────────────────┘
                                        │
               ┌────────────────────────┴───────────────────────┐
-              │  两个 Foundation-only 层（macOS 可测，无 UIKit）  │
+              │  跨边界值/解析层（macOS 可测，无 UIKit 对象）      │
               ├────────────────────────────────────────────────┤
               │  Models：UIKitLocator / UIViewHierarchyInput …  │
               │  Parsing：UIKitCommandFields / UIKitQueryNumber  │
@@ -61,8 +61,8 @@
 
 **贯穿全模块的两条铁律**（看任何文件都要带着这两点）：
 
-1. **typed input factory**：所有 UIKit 操作必须先在 Foundation-only 的 `CommandInput`（如 `UIViewHierarchyInput`、`UITapInput`）里解析+校验参数，通过后才进入 `@MainActor` 域。UIKit 类型（`UIView`/`UIControl`）**绝不穿过 public 边界**回到非隔离域——跨边界只传 `Sendable` 值（路径、类型名、指纹）。
-2. **`#if canImport(UIKit)`**：所有碰 UIKit 的文件整体包在这条指令里。macOS 编译时这些文件变成空壳，所以 macOS 上 `swift test` 只能测到 Foundation-only 层；真实 `UIView` 行为由 iOS framework 测试覆盖。
+1. **typed input factory**：所有 UIKit 操作必须先在不含 UIKit 对象的 `CommandInput`（如 `UIViewHierarchyInput`、`UITapInput`）里解析+校验参数，通过后才进入 `@MainActor` 域。UIKit 类型（`UIView`/`UIControl`）**绝不穿过 command/public/concurrency 边界**回到非隔离域——跨边界只传 `Sendable` 值或 JSON（路径、类型名、指纹）。
+2. **`#if canImport(UIKit)` + `@MainActor`**：core 不依赖 UIKit；所有真实 UIKit 状态采集、能力判断、resolver 和 executor 执行都留在 iOS 编译路径的 `@MainActor` 上。macOS 上 `swift test` 只能覆盖值模型、schema、parser 和 snapshot store 这类不碰真实 `UIView` 的逻辑；真实 `UIView` 行为由 iOS framework 测试或 SPMExample 闭环验证。
 
 ## 推荐阅读路线（按依赖，从入口往下）
 
@@ -70,14 +70,14 @@
 
 ### 第 0 步：骨架（5 分钟，~60 行）
 先建立整体印象，**不要纠结细节**：
-- `UIKitCommandRegistrar.swift`——入口，看 14 个命令怎么被注册。
+- `UIKitCommandRegistrar.swift`——入口，看当前命令集合怎么被注册。
 - `UIKitCommandLogger.swift`（29 行）——日志怎么复用 core 的缝。
 
-> 目标：知道“14 个命令 + 一套日志”。
+> 目标：知道“当前命令集合 + 一套日志”。
 
 ### 第 1 步：两个查询命令（最容易上手，~750 行）
 查询命令是纯读、无副作用，最适合先读：
-- `Commands/Inspect/UIInspectModels.swift`（381 行）——**重点读 `UIInspectInput.shouldInclude`**，这是 canonical 目标发现决策核心（含 UIControl 系 + UIScrollView 系 + 挂手势的非 control view；普通 label/container 不进 targets，观察职责在 `ui.topViewHierarchy`），而且全是 Foundation-only 逻辑。
+- `Commands/Inspect/UIInspectModels.swift`（381 行）——**重点读 `UIInspectInput.isFull(candidate:)`**，这是 full/minimal 分档决策核心（含 UIControl 系 + UIScrollView 系 + 挂手势的非 control view；普通 label/container 只承担结构观察职责，完整验收看 `ui.topViewHierarchy`），而且只处理跨边界值模型与筛选规则，不读取真实 UIKit 状态。
 - `Commands/Inspect/UIInspectCollector.swift`（270 行）——看 `collect(view:...)` 递归遍历 + 仅按最终 returned targets 签发 `viewSnapshotID` 的主流程。
 - `Commands/Inspect/InspectCommand.swift`（81 行）——最薄的 adapter，看"typed input → 调 collector → 打日志"模板。
 - （可选）`Commands/TopViewHierarchy/` 三件套——结构类似，但多了完整树和 `UIViewHierarchyElement` 协议抽象，可略读。

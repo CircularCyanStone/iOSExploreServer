@@ -325,16 +325,16 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           logMessage: "ui alert button trigger failed action=\(action) reason=\(reason)")
     }
 
-    /// 非 Debug 构建：`ui.alert.respond` 的 `dryRun=false` 触发路径被 `#if DEBUG` 隔离，不可用。
+    /// 非 Debug 构建：`ui.alert.respond` 的触发路径被 `#if DEBUG` 隔离，不可用。
     ///
     /// 区别于 `alertButtonRequired`（多按钮需指定选择器，补参数可解决）：这里是构建配置硬限制，
-    /// 调用方应改用 `dryRun=true` 查询，触发交宿主自定义 action 或人工。
+    /// 调用方应改用 `ui.inspect` 查询 alert 结构，触发交宿主自定义 action 或人工。
     ///
     /// - Parameter action: 触发失败的 action 名。
     /// - Returns: `alert_release_unsupported` 失败描述。
     static func alertRespondDisabledInRelease(action: String) -> UIKitCommandError {
         UIKitCommandError(code: .alertReleaseUnsupported,
-                          message: "alert trigger is disabled in Release builds; use dryRun=true to query",
+                          message: "alert trigger is disabled in Release builds; use ui.inspect to query alert structure",
                           logMessage: "ui alert respond disabled in release action=\(action)")
     }
 

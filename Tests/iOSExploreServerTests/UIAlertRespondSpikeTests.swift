@@ -8,7 +8,7 @@ import iOSExploreServer
 /// inspector 直接读 `UIAlertController.actions`，不依赖 present 转场（评审 M7），
 /// 因此用构造好的 alert 对象稳定验证。
 ///
-/// `ui.alert.respond` 移除 dryRun 后只负责「触发按钮」；查询 alert 结构（标题/按钮/输入框
+/// `ui.alert.respond` 只负责「触发按钮」；查询 alert 结构（标题/按钮/输入框
 /// 含 path/identifier）由 `ui.inspect` 的 alert 区块覆盖，见 `UIAlertInspectBlockTests`。
 
 @Test("alert inspector 列出 UIAlertController actions") @MainActor

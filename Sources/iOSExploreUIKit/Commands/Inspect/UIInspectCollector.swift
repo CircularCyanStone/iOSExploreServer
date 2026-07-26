@@ -106,7 +106,7 @@ enum UIInspectCollector {
         // alert 按钮也走单独的 inspector 摘要：它们不在 rootView 子树里被 canonical 收集，
         // 单独由 `UIAlertInspector.summarizeForInspect` 暴露 index/title/role/path 与
         // `availableActions: ["ui.alert.respond"]`。这样 agent 在同一份 inspect 结果里就能
-        // 看到按钮，不必再调一次 `ui.alert.respond dryRun=true` 才能列出按钮清单。
+        // 看到按钮，不需要再通过 respond 命令承担查询职责。
         data["alert"] = .object(
             UIAlertInspector.toJSONInspect(
                 UIAlertInspector.summarizeForInspect(
@@ -224,7 +224,7 @@ enum UIInspectCollector {
         return .none
     }
 
-    /// 从真实 `UIView` 构造 Foundation-only 候选摘要（full/minimal 判定的唯一构造点）。
+    /// 从真实 `UIView` 构造不含 UIKit 对象的候选摘要（full/minimal 判定的唯一构造点）。
     ///
     /// `isFull(view:query:)` 与 `collect` 递归共用此入口，保证目标输出与指纹签发用同一份
     /// candidate（Task 8 的 fingerprint collector 亦复用，不重复提取）。`isInControlSubtree`

@@ -27,7 +27,7 @@ enum UIAlertInspector {
     }
 
     /// alert 整体摘要（标题/消息/按钮），供 executor 选按钮与测试用。输入框摘要只在 inspect
-    /// 扩展摘要（`InspectTextFieldSummary`）里暴露——`ui.alert.respond` 移除 dryRun 后不再
+    /// 扩展摘要（`InspectTextFieldSummary`）里暴露——`ui.alert.respond` 不再
     /// 返回 alert 结构查询结果，查询统一走 `ui.inspect`。
     struct Summary: Sendable, Equatable {
         /// alert 标题。

@@ -119,10 +119,11 @@ enum HTTPParser {
         guard case .string(let action)? = json["action"] else {
             return .failure(.invalidCommandBody(bodyBytes: body.count))
         }
-        switch json["data"] {
-        case nil:
+        guard let data = json["data"] else {
             return .success(ExploreRequest(action: action, data: JSON()))
-        case .object(let object)?:
+        }
+        switch data {
+        case .object(let object):
             return .success(ExploreRequest(action: action, data: object))
         default:
             return .failure(.invalidCommandData())

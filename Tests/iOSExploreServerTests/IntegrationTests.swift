@@ -254,11 +254,12 @@ func connectionLimitRejectsAdditionalConnection() async throws {
         #expect(!text.contains(#""error":"#))
     }
 
-    /// 显式注册后 `help` 必须经 HTTP 列出全部 14 个 UIKit action（registrar count=14）。
+    /// 显式注册后 `help` 必须经 HTTP 列出代表性的 UIKit action。
     ///
-    /// 这是 registrar 计数的端到端回归点：经真实 HTTP `help` 取回命令列表，断言全部 14 个 `ui.*` action 都已注册并可被发现。
-    @Test("registerUIKitCommands 后 help 经 HTTP 含 14 个 ui.* action")
-    func helpListsAllUIKitActions() async throws {
+    /// 这是 registrar 端到端回归点：经真实 HTTP `help` 取回命令列表，断言核心 `ui.*` action
+    /// 已注册并可被发现。
+    @Test("registerUIKitCommands 后 help 经 HTTP 含代表性 ui.* action")
+    func helpListsRepresentativeUIKitActions() async throws {
         let server = ExploreServer(port: uiTestPort)
         server.registerUIKitCommands()
         try await startWithPortRetry(server)
@@ -266,7 +267,7 @@ func connectionLimitRejectsAdditionalConnection() async throws {
 
         let text = try await send(action: "help", port: uiTestPort)
         #expect(envelopeCode(text) == "ok")
-        // 四个旧命令 + screenshot/input/keyboard.dismiss/scroll/navigation.back/navigation.tapBarButton/waitAny。
+        // 覆盖查询、动作、输入、滚动、导航、等待和 alert 等主要类别。
         #expect(text.contains(#""action":"ui.topViewHierarchy""#))
         #expect(text.contains(#""action":"ui.inspect""#))
         #expect(text.contains(#""action":"ui.control.sendAction""#))

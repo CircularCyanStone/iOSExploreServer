@@ -13,15 +13,28 @@
 ```
 [发现阶段]                    [定位 + 陈旧防护阶段]        [执行阶段]
 ui.topViewHierarchy  ──┐
-ui.inspect     ────┼──>  选定 path/identifier  ──>  ui.tap
+ui.inspect     ────┼──>  选定 path/accessibilityIdentifier  ──>  ui.tap
                        │     + 拿 viewSnapshotID         ui.control.sendAction
                        │                                  ui.input
                        └──>  对照层次结构选目标            ui.scroll
                                                             ui.alert.respond
 ```
 
-**铁律**：任何 `ui.*` 交互命令执行**之前**，**必须**先在同一个 UI 稳定状态下调用过一次发现命令。`ui.tap` / `ui.control.sendAction` 必须带 `ui.inspect` 签发的 `viewSnapshotID`；`ui.input` 顶层可选带 `viewSnapshotID`，并对 `fields` 中的 identifier/path 两种定位做陈旧校验；`ui.scroll` 可选带 `viewSnapshotID`，有定位字段时也对 identifier/path 两种定位做陈旧校验。
+**铁律**：任何 `ui.*` 交互命令执行**之前**，**必须**先在同一个 UI 稳定状态下调用过一次发现命令。`ui.tap` / `ui.control.sendAction` 必须带 `ui.inspect` 签发的 `viewSnapshotID`；`ui.input` 顶层可选带 `viewSnapshotID`，并对 `fields` 中的 `accessibilityIdentifier` / `path` 两种定位做陈旧校验；`ui.scroll` 可选带 `viewSnapshotID`，有定位字段时也对 `accessibilityIdentifier` / `path` 两种定位做陈旧校验。
 **铁律二**：执行命令之后如果换了页面、或想点新的目标，**必须重新**调用发现命令；带旧 `viewSnapshotID` 给新页面目标会触发 `stale_locator`。
+
+**agent 执行决策表**：先看 `ui.inspect` 返回的节点能力，再选命令；不要凭控件类型或文本猜动作。
+
+| `ui.inspect` 观察结果 | 下一步调用 | 调用方规则 |
+|---|---|---|
+| `availableActions` 含 `tap` | `ui.tap` | 带同一响应里的 `viewSnapshotID` + `path` 或 `accessibilityIdentifier` |
+| `availableActions` 含 `control.valueChanged` / `control.touchUpInside` 等 `control.*` 事件 | `ui.control.sendAction` | `event` 取 `control.` 后面的 UIKit 事件名，如 `valueChanged` / `touchUpInside` |
+| `availableActions` 含 `input` | `ui.input` | 用 text field / text view 的 `path` 或 `accessibilityIdentifier` 写入文本 |
+| `availableActions` 含 `scroll` | `ui.scroll` | 目标是 scroll view 系节点时带定位字段；页面级滚动可不带定位字段 |
+| `data.alert.buttons[]` 中的按钮 | `ui.alert.respond` | 按 `buttonTitle` / `buttonIndex` / `role` 三选一响应；不要 tap/control alert 按钮节点 |
+| 节点没有 `availableActions` 或数组为空 | 不执行 tap/control | 只用于理解结构、文本、状态或辅助定位；换一个具备动作能力的目标 |
+| 交互返回 `stale_locator` | 重新 `ui.inspect` | UI 快照过期，拿新的 `viewSnapshotID` 和目标后重试 |
+| 交互返回 `not_actionable` | 换目标 | 当前节点不在可执行目标集合内，通常是 minimal 节点或结构节点 |
 
 **两个发现命令怎么选**（决策树）：
 
@@ -64,7 +77,7 @@ MCP 调用方使用 iOSDriver 的静态 `ui_inspect`、`ui_waitAny`、`wait_and_
 
 ### 1.1 它是什么、为什么必须有
 
-`viewSnapshotID` 是 `ui.inspect` 响应里**签发**的一个字符串（形如 `snap-9`），代表"那一瞬间 view 树的指纹快照"。后续 `ui.tap` / `ui.control.sendAction` 强制要求带上它；`ui.input` / `ui.scroll` 可选带上它，带上后 identifier/path 两种定位都会做陈旧校验。原因在 [reading-guide.md 第 3 步](./reading-guide.md)：执行 click 期间 UI 可能正在异步变化（动画、异步 reload），用旧定位找当前 view 不一定对，所以要校验"执行时的 view 树指纹 == 发现时的指纹"，否则报 `stale_locator`。
+`viewSnapshotID` 是 `ui.inspect` 响应里**签发**的一个字符串（形如 `snap-9`），代表"那一瞬间 view 树的指纹快照"。后续 `ui.tap` / `ui.control.sendAction` 强制要求带上它；`ui.input` / `ui.scroll` 可选带上它，带上后 `accessibilityIdentifier` / `path` 两种定位都会做陈旧校验。原因在 [reading-guide.md 第 3 步](./reading-guide.md)：执行 click 期间 UI 可能正在异步变化（动画、异步 reload），用旧定位找当前 view 不一定对，所以要校验"执行时的 view 树指纹 == 发现时的指纹"，否则报 `stale_locator`。
 
 ### 1.2 调用方必须记住的三条
 
@@ -228,7 +241,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":
 ```
 # 1) 触发弹窗（业务侧动作，或调 ui.tap 点触发按钮）
 
-# 2) ui.inspect 看 alert 区块（buttons 带 title/index/role/path；输入型 alert 还有 textFields 带 path/identifier）
+# 2) ui.inspect 看 alert 区块（buttons 带 index/title/role/availableActions；输入型 alert 还有 textFields 带 path/accessibilityIdentifier）
 curl -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}'
 #  → 响应 data.alert.buttons 数组；data.alert.textFields（输入型 alert）
 
@@ -270,7 +283,7 @@ curl -X POST http://localhost:38321/ -d '{
 | `build_run_sim` 后直接 curl 38321 没反应 | server 因 autostart 关闭而未起 | 调 `launch_app_sim(env={"IOS_EXPLORE_AUTOSTART":"1"})` 重启 App（详见 AGENTS.md 「四个必须记住的差异」） |
 | 点击 cell 后旧 `viewSnapshotID` 还在用 | `stale_locator` | 重新 ui.inspect |
 | 用 subviews 数组顺序当 indexPath 顺序 | 点错 cell（本次案例） | 见 §2.3，靠 `accessibilityIdentifier` / cell 标题 / 返回的 indexPath |
-| `ui.alert.respond` 直接 dryRun=false 但不知道按钮 | `unknown button` 或点错按钮 | 先 dryRun=true 列按钮，再 dryRun=false 精确点 |
+| `ui.alert.respond` 不知道按钮选择条件 | `alert_button_required` / `alert_button_not_found` 或点错按钮 | 先 `ui.inspect` 查看 `data.alert.buttons`，再用 `buttonTitle` / `buttonIndex` / `role` 精确点 |
 | 一上来只发 `ui.topViewHierarchy` 想 tap | 没有 viewSnapshotID 字段，topViewHierarchy 不签发 | tap 前必须单独发 `ui.inspect` |
 
 ---

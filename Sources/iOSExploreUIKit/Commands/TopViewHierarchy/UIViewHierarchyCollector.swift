@@ -259,7 +259,7 @@ private struct UIKitViewElement: UIViewHierarchyElement {
     /// 抛 Objective-C **NSException**；Swift 错误处理 (`do-catch` / `try?`) 无法 catch
     /// `NSException`，进程会整个 abort。这里在采集层就把非有限值过滤为 `nil`，让 JSON
     /// 输出 `null`，避免崩溃并保留可读语义。参考：
-    /// `Sources/iOSExploreServer/JSONCoder.swift::toAny` 在序列化边界再做一次同口径兜底。
+    /// `Sources/iOSExploreServer/Support/JSONCoder.swift::toAny` 在序列化边界再做一次同口径兜底。
     @MainActor
     private static func finiteDouble(_ value: CGFloat) -> Double? {
         let d = Double(value)

@@ -202,10 +202,10 @@ public enum ExploreError: String, Sendable {
     /// 已选中 alert 按钮，但无法取到或执行对应的 handler。
     case alertButtonTriggerFailed = "alert_button_trigger_failed"
 
-    /// 非 Debug 构建下 `ui.alert.respond` 的 `dryRun=false` 不支持触发。
+    /// 非 Debug 构建下 `ui.alert.respond` 不支持触发。
     ///
     /// 真实触发依赖 Debug-only 私有 API（`_dismissWithAction:`），Release 构建下该路径被
-    /// `#if DEBUG` 隔离不存在，此时只能 `dryRun=true` 查询。区别于 `alert_button_required`
+    /// `#if DEBUG` 隔离不存在，此时只能用 `ui.inspect` 查询 alert 结构。区别于 `alert_button_required`
     ///（多按钮未指定选择器，补参数可解决）：这里是构建配置硬限制，补按钮参数无效。
     case alertReleaseUnsupported = "alert_release_unsupported"
 

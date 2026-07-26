@@ -147,7 +147,7 @@ func waitSnapshotChangedUnchangedWhenViewTreeStable() async throws {
 
 @Test("wait snapshotChanged 检测 full 节点 UILabel 状态变化（v1 漏掉场景）") @MainActor
 func waitSnapshotChangedDetectsFullNodeLabelTextChange() async throws {
-    // UILabel 自身非 UIControl：v1（shouldInclude 3 条白名单）不会把它采集进指纹表，
+    // UILabel 自身非 UIControl：旧版 full 判定不会把它采集进指纹表，
     // 故 cell / 容器内 UILabel 的任何变化在 v1 下都检测不到；v2 isFull 六条里 hasStaticText
     // 命中 → label 进入签发表，其状态变化（isHidden / alpha / 显式 a11y label 等）被指纹字段
     // 捕获 → whole table 不一致被检出。本测试锁定该 v2 修复不被回退。

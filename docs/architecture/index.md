@@ -42,18 +42,18 @@ curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ :38321 ──
 
 ## 组件职责（`Sources/iOSExploreServer/`）
 
-| 文件 | 职责 | 关键点 |
+| 目录/文件 | 职责 | 关键点 |
 |---|---|---|
-| `Models.swift` | `JSONValue`/`JSON`/`ExploreRequest`/`ExploreResult`/`ExploreError` | Sendable 值类型；`JSON` 是命令 data 容器 |
-| `JSONCoder.swift` | JSON ↔ Data/Any 编解码 | 基于 `JSONSerialization`；`NSNumber` bool/number 用 `CFBooleanGetTypeID` 区分 |
-| `HTTPRequest.swift` / `HTTPResponse.swift` | HTTP 值类型 | `serialized()` 产出 `HTTP/1.1 ... \r\n\r\n body` |
-| `HTTPParser.swift` | 解析请求 + 构造 envelope 响应 | `parseRequestResult` 区分 complete/incomplete/invalid；`parseRequest` 保留兼容 |
-| `ExploreServerError.swift` | 统一错误模型 | HTTP status/reason、envelope code/message、日志文本的单一来源 |
-| `ESLogger.swift` | Apple Unified Logging 封装 | 默认关闭；`ESLogger.setEnabled(true)` 开启；category 区分 server/listener/http/router/command |
-| `Router.swift` | `Mutex` 保护的 action→handler 注册表与分发 | 未命中→`.unknownAction`；handler 抛错→`.internalError`；不 rethrow |
-| `ClientSession.swift` | 单连接生命周期 | session id、receive buffer、读/命令超时、发送响应、统一 close |
-| `HTTPListener.swift` | `NWListener` 封装 | 串行 network queue；session map；连接上限；ready 后继续观测 listener 状态 |
-| `ExploreServer.swift` | 对外门面 + `ServerEvent` 事件流 | `start()/stop()/register()/events()`；内置命令只注册一次 |
+| `Support/Models.swift` | `JSONValue`/`JSON`/`ExploreRequest`/`ExploreResult`/`ExploreError` | Sendable 值类型；`JSON` 是命令 data 容器 |
+| `Support/JSONCoder.swift` | JSON ↔ Data/Any 编解码 | 基于 `JSONSerialization`；`NSNumber` bool/number 用 `CFBooleanGetTypeID` 区分 |
+| `HTTP/HTTPRequest.swift` / `HTTP/HTTPResponse.swift` | HTTP 值类型 | `serialized()` 产出 `HTTP/1.1 ... \r\n\r\n body` |
+| `HTTP/HTTPParser.swift` | 解析请求 + 构造 envelope 响应 | `parseRequestResult` 区分 complete/incomplete/invalid；`parseRequest` 保留兼容 |
+| `Support/ExploreServerError.swift` | 统一错误模型 | HTTP status/reason、envelope code/message、日志文本的单一来源 |
+| `Support/ESLogger.swift` | Apple Unified Logging 封装 | 默认关闭；`ESLogger.setEnabled(true)` 开启；category 区分 server/listener/http/router/command |
+| `Commands/Router.swift` | `Mutex` 保护的 action→handler 注册表与分发 | 未命中→`.unknownAction`；handler 抛错→`.internalError`；不 rethrow |
+| `HTTP/ClientSession.swift` | 单连接生命周期 | session id、receive buffer、读/命令超时、发送响应、统一 close |
+| `HTTP/HTTPListener.swift` | `NWListener` 封装 | 串行 network queue；session map；连接上限；ready 后继续观测 listener 状态 |
+| `Server/ExploreServer.swift` | 对外门面 + `ServerEvent` 事件流 | `start()/stop()/register()/events()`；内置命令只注册一次 |
 | `Handlers/BuiltinHandlers.swift` | ping/echo/info/help | 库内只用 `ProcessInfo`/`Bundle`，**不用 UIDevice** |
 
 ## UIKit 扩展模块（`Sources/iOSExploreUIKit/`）
@@ -68,12 +68,12 @@ core 库刻意不依赖 UIKit；所有 `ui.*` 命令下沉到独立模块 `iOSEx
 | `UIKitCommandLogger.swift` | 日志入口 | 复用 core public 缝 `ESLogger.emitExtension`，category 统一 `command`；不暴露 core internal logger |
 | `UIKitCommandError.swift` | UIKit 错误工厂 | 生成 `invalid_data`/`internal_error`，单一来源 |
 | `Support/Context/UIKitContextProvider.swift` | `@MainActor` 上下文 | 取当前前台 window / 根控制器，并产出两种根：`topViewController`（`topViewController(from:)` 钻到叶子 VC，操作类命令 `ui.tap`/`ui.input`/`ui.control.sendAction` 用）与 `rootView`（最外层容器 VC.view = `hierarchyRootController(from:)` 的 view，采集类命令 `ui.inspect`/`ui.topViewHierarchy` 用，含 `UITabBar`/`UINavigationBar` 等 chrome）；`currentContext(action:) throws` 失败抛 `hierarchyUnavailable` |
-| `Support/Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` + `UIKitViewLookupModels.swift` | 目标定位 | `UIKitLocator` 是 Foundation-only 值类型（`identifier` / `path` 两种定位语义），resolver 仅 iOS 编译把 locator 解析为真实 `UIView`（`locate(...) throws`，失败由调用方工厂构造错误） |
+| `Support/Locator/UIKitLocator.swift` + `UIKitLocatorResolver.swift` + `UIKitViewLookupModels.swift` | 目标定位 | `UIKitLocator` 是跨边界 Sendable 值类型（`accessibilityIdentifier` / `path` 两种定位语义），resolver 仅 iOS 编译并在 `@MainActor` 把 locator 解析为真实 `UIView`（`locate(...) throws`，失败由调用方工厂构造错误） |
 | `Support/Action/UIKitActionExecutor.swift` | 动作执行 | `@MainActor`；`execute throws -> JSON`，按能力（tap/control）路由到具体执行；失败 throw `UIKitCommandError`，handler 顶层 catch 转 envelope |
 | `Support/Action/UIKitActionCapabilityResolver.swift` | 能力解析 | 判断目标 view 支持哪种动作（collector 与 executor 共用） |
 | `Support/Snapshot/UIKitSnapshotStore.swift` + `UIKitFingerprintCollector.swift` | 快照与陈旧检测 | 容量 8 条快照 × 每条 512 指纹、TTL、LRU；`isStale` 为 true 时 executor 抛 `invalid_data` + 固定陈旧消息 |
 
-**typed input factory 规则**：每个 UIKit 命令的入参先用 Foundation-only 的 `CommandInput` 模型（如 `UITapInput`）解析并校验，校验通过后才进入 `@MainActor` 的 resolver/executor；UIKit 类型绝不穿过 public 边界回到非隔离域。字段定义同时驱动解析和 `help.inputSchema.properties`，保证模型/解析逻辑可在 macOS `swift test` 覆盖，真实 `UIView` 采集只在 iOS 编译执行。
+**typed input factory 规则**：每个 UIKit 命令的入参先用不含 UIKit 对象的 `CommandInput` 模型（如 `UITapInput`）解析并校验，跨 command/public/concurrency 边界只传 `Sendable` 值或 JSON；校验通过后才进入 `@MainActor` 的 collector/resolver/executor 读取和判断真实 UIKit 状态。字段定义同时驱动解析和 `help.inputSchema.properties`，保证模型/解析逻辑可在 macOS `swift test` 覆盖；真实 `UIView` 采集、能力判断和动作执行只在 iOS 编译运行。
 
 ## Diagnostics 扩展模块（`Sources/iOSExploreDiagnostics/`）
 
@@ -137,19 +137,19 @@ Diagnostics 不依赖 UIKit，宿主通过 `server.registerDiagnosticsCommands()
 
 优先用业务层设置的 `accessibilityIdentifier` 做稳定语义锚点；缺失时用 `path` 描述快照内位置。命令不主动设置 identifier。
 
-`ui.viewTargets` 是事件下发前的轻量目标发现命令，返回 **canonical interaction targets** 列表（UIControl 系：`UIButton` / `UISwitch` / `UISlider` / `UISegmentedControl` / `UITextField` / 自定义 `UIControl`；以及 UIScrollView 系：`UIScrollView` / `UITableView` / `UICollectionView` / `UITextView`），不返回完整 `subviews` 树，也不承担视觉验收职责。普通 `UILabel` / container / gesture-only view / 仅 identifier 或 label 的普通 view 不再进入 targets（其观察职责在 `ui.topViewHierarchy`）；按钮内部 label / image 不再作为独立 target，其文本汇总到父 target 的 `semanticText`；disabled control 仍 include（其 `availableActions` 为空）。每个 target 包含 `path`、运行时类型、轻量 role、`accessibilityIdentifier`、`semanticText`、`frame`（window 空间）、基础交互状态和 `availableActions`。
+`ui.inspect` 是事件下发前的轻量目标发现命令，返回 **canonical interaction targets** 列表（UIControl 系：`UIButton` / `UISwitch` / `UISlider` / `UISegmentedControl` / `UITextField` / 自定义 `UIControl`；以及 UIScrollView 系：`UIScrollView` / `UITableView` / `UICollectionView` / `UITextView`），不返回完整 `subviews` 树，也不承担视觉验收职责。普通 `UILabel` / container / gesture-only view / 仅 identifier 或 label 的普通 view 不再进入 targets（其观察职责在 `ui.topViewHierarchy`）；按钮内部 label / image 不再作为独立 target，其文本汇总到父 target 的 `semanticText`；disabled control 仍 include（其 `availableActions` 为空）。每个 target 包含 `path`、运行时类型、轻量 role、`accessibilityIdentifier`、`semanticText`、`frame`（window 空间）、基础交互状态和 `availableActions`。
 
 该命令是 **viewSnapshotID 的唯一签发来源**（`ui.screenshot` / `ui.topViewHierarchy` 都不再签发）；返回的 target path 集合 == 签发的 fingerprint path 集合 == `ui.tap` / `ui.control.sendAction` 可执行的 path 集合（maxTargets 截断后只为返回的 target 签发指纹，不再签发未返回的 path）。`ui.tap` 现对签发的 target 执行默认激活动作（按类型路由：`UIButton` → `.touchUpInside`、`UISwitch` → 切换 + `.valueChanged`、`UITextField`/`UITextView` → `becomeFirstResponder`），不再触摸注入；`control.<event>` 对应 `ui.control.sendAction` 的 `<event>` 参数。agent 应优先按该能力表选择后续事件命令。
 
-`Support/`（`iOSExploreUIKit` 内）集中保存 UIKit 横切能力：定位（`Support/Locator/`，前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、祖先关系判断）、动作执行（`Support/Action/`）、快照陈旧检测（`Support/Snapshot/`）、command input 共享字段与安全数字（`Support/Parsing/`）。14 个 `ui.*` 命令在 `Commands/` 下按领域分子目录组织：`TopViewHierarchy`、`ViewTargets`、`Tap`、`ControlAction`、`Screenshot`、`Input`、`Scroll`、`Keyboard`、`Navigation`、`Wait`（含 `ui.wait` + `ui.waitAny`）、`ScrollToElement`、`Alert`。后续 UIKit 命令应复用 `Support/`，不要各自重新实现路径解析和遍历。
+`Support/`（`iOSExploreUIKit` 内）集中保存 UIKit 横切能力：定位（`Support/Locator/`，前台 window、顶部控制器、顶部根 view、`accessibilityIdentifier` 精确查找、`path` 查找、祖先关系判断）、动作执行（`Support/Action/`）、快照陈旧检测（`Support/Snapshot/`）、command input 共享字段与安全数字（`Support/Parsing/`）。当前 `ui.*` 命令集合在 `Commands/` 下按领域分子目录组织：`TopViewHierarchy`、`Inspect`、`Tap`、`ControlAction`、`Screenshot`、`Input`、`Scroll`、`Keyboard`、`Navigation`、`Wait`（含 `ui.wait` + `ui.waitAny`）、`ScrollToElement`、`Alert`。后续 UIKit 命令应复用 `Support/`，不要各自重新实现路径解析和遍历。
 
 ## UIKit 定位语义
 
-所有 `ui.*` 交互命令的定位遵循统一优先级：`identifier`（精确）→ `path`（只读路径）→ `viewSnapshotID`（陈旧防护；`ui.tap` / `ui.control.sendAction` 必填，其他交互命令可选）。
+所有 `ui.*` 交互命令的定位遵循统一优先级：`accessibilityIdentifier`（精确）→ `path`（只读路径）→ `viewSnapshotID`（陈旧防护；`ui.tap` / `ui.control.sendAction` 必填，其他交互命令可选）。
 
-- `identifier`：按业务层设置的 `accessibilityIdentifier` 精确定位。**完整匹配、不截断**（历史 bug 曾截断 prefix）；匹配多个 view 返回 `invalid_data`。
-- `path`：来自 `ui.viewTargets`/`ui.topViewHierarchy` 的只读路径（如 `root/0/2`），仅描述快照内位置。
-- `viewSnapshotID` + `path`：交互命令携带 `ui.viewTargets` 返回的 `viewSnapshotID` 时，executor 会重新采集当前 view 树指纹并逐字段比对；类型、identifier、enabled/selected、hidden、alpha、交互开关、祖先结构或 **semanticDigest**（按钮标题 / a11y label / a11y value / switch isOn / segment index / 默认激活路由 等的稳定哈希）任一不同，或 snapshot 已淘汰/过期，都会判定陈旧，返回 HTTP 200 + 顶层 `code:"invalid_data"` + **固定陈旧消息**（提示 "call `ui.viewTargets` first, then retry with the new viewSnapshotID"）。无 `viewSnapshotID` 时（仅非必填命令）跳过陈旧检查，按当前树直接定位。
+- `accessibilityIdentifier`：按业务层设置的 `accessibilityIdentifier` 精确定位。**完整匹配、不截断**（历史 bug 曾截断 prefix）；匹配多个 view 返回 `invalid_data`。
+- `path`：来自 `ui.inspect`/`ui.topViewHierarchy` 的只读路径（如 `root/0/2`），仅描述快照内位置。
+- `viewSnapshotID` + `path`：交互命令携带 `ui.inspect` 返回的 `viewSnapshotID` 时，executor 会重新采集当前 view 树指纹并逐字段比对；类型、identifier、enabled/selected、hidden、alpha、交互开关、祖先结构或 **semanticDigest**（按钮标题 / a11y label / a11y value / switch isOn / segment index / 默认激活路由 等的稳定哈希）任一不同，或 snapshot 已淘汰/过期，都会判定陈旧，返回 HTTP 200 + 顶层 `code:"invalid_data"` + **固定陈旧消息**（提示重新调用 `ui.inspect` 后使用新的 `viewSnapshotID` 重试）。无 `viewSnapshotID` 时（仅非必填命令）跳过陈旧检查，按当前树直接定位。
 
 `ui.control.sendAction` 复用同一套顶部控制器根 view 和 `path` 规则，按 `accessibilityIdentifier` 或 `path` 定位目标，要求目标自身必须是 `UIControl`（不做命中测试 / ancestor fallback）并携带必填 `viewSnapshotID`，再按显式 `event` 在 `MainActor` 调用 `sendActions(for:)`。该命令触发 target-action，不模拟真实触摸坐标、命中过程或高亮过程。
 

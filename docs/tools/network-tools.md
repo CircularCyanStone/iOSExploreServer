@@ -69,7 +69,7 @@ curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"afte
 
 ## UIKit 命令
 
-> UIKit 命令由独立模块 `iOSExploreUIKit` 提供，core **不会自动注册**。宿主 App 必须在创建 `ExploreServer` 后显式调用 `server.registerUIKitCommands()` 才开放下列 14 个 `ui.*` action；未注册时 `help` 不含任何 `ui.*`。SPMExample 已在 `ViewController` 调用该方法。
+> UIKit 命令由独立模块 `iOSExploreUIKit` 提供，core **不会自动注册**。宿主 App 必须在创建 `ExploreServer` 后显式调用 `server.registerUIKitCommands()` 才开放 `ui.*` action；未注册时 `help` 不含任何 `ui.*`。SPMExample 已在 `ViewController` 调用该方法。
 
 ### 定位语义（所有 `ui.*` 交互命令通用）
 
@@ -104,10 +104,10 @@ curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":
 ```bash
 curl -X POST http://localhost:38321/ \
   -H 'Content-Type: application/json' \
-  -d '{"action":"ui.inspect","data":{"includeStaticText":true,"textLimit":80}}'
+  -d '{"action":"ui.inspect","data":{"textLimit":80}}'
 ```
 
-`ui.inspect` 可选参数：`includeHidden`/`includeDisabled`/`includeStaticText`/`includeContainers`（schema 兼容字段，canonical-only 时代已不参与决策，保留只为不破坏旧调用方）、`maxDepth`、`accessibilityIdentifier`/`accessibilityIdentifierPrefix`（筛选，**只作用于 full 节点**，不影响 minimal 节点可见性）、`textLimit`（展示文本截断，默认 80，上限 200）、`maxTargets`（最多返回 full 目标数，默认 `200`，范围 `1...512`；达到上限时响应 `truncated=true`，应缩小筛选范围后重新查询）。响应里每个节点带 `isFull`/`isMinimal` 分档：**full 节点**含完整 `path`、`role`、`availableActions`、短文本与基础交互状态并进入 `viewSnapshotID` 签发集合（可被 `ui.tap`/`ui.control.sendAction` 直接操作）；**minimal 节点**只输出 `{path, type}`、强制 `availableActions=[]`、不签发指纹（仅维持层级可见性，让 agent 看见 cell 内 `UILabel` 等子节点位置）。对 minimal 节点调 `ui.tap`/`ui.control.sendAction` 返回业务码 `not_actionable`。disabled target 仍可观察，但 `availableActions` 为空。cell 内 `UILabel`/子 view 通过 `cellAncestor` 自动进 full，可直接按标题文本定位。响应含 `viewSnapshotID`，签发集合与最终返回的 full targets 一致。
+`ui.inspect` 可选参数：`includeHidden`、`maxDepth`、`accessibilityIdentifier`/`accessibilityIdentifierPrefix`（筛选，**只作用于 full 节点**，不影响 minimal 节点可见性）、`textLimit`（展示文本截断，默认 80，上限 200）、`maxTargets`（最多返回 full 目标数，默认 `200`，范围 `1...512`）、`maxVisitedNodes`（DFS 访问节点上限，默认 `2000`）。达到上限时响应 `truncated=true`，应缩小筛选范围后重新查询。响应里的 **full 节点**含完整 `path`、`role`、`availableActions`、短文本与基础交互状态并进入 `viewSnapshotID` 签发集合（可被 `ui.tap`/`ui.control.sendAction` 直接操作）；**minimal 节点**只输出 `{path, type}`、不签发指纹（仅维持层级可见性）。对 minimal 节点调 `ui.tap`/`ui.control.sendAction` 返回业务码 `not_actionable`。disabled target 仍可观察，但 `availableActions` 为空。cell 内 `UILabel`/子 view 通过 `cellAncestor` 自动进 full，可直接按标题文本定位。响应含 `viewSnapshotID`，签发集合与最终返回的 full targets 一致。
 
 ### `ui.control.sendAction`
 

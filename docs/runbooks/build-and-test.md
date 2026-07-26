@@ -11,7 +11,16 @@ swift test --filter Integration          # 只跑端到端集成测试
 
 - 集成测试在测试进程内起真实 `ExploreServer` + 用 `NWConnection` 走 loopback 验证往返，**模拟器/CI/本机都能跑**，无需真机。
 - 集成测试用端口 **38399**，且用 `@Suite(.serialized)` 串行（多个测试共用端口，不能并行）。iOS 模拟器上 `NWListener.cancel()` 释放端口是异步的，串行用例间偶发 `Address already in use`；测试用 `startWithPortRetry` 在端口占用时退避重试，macOS 下首次即成功。
-- UIKit 层级模型、筛选逻辑、control/tap 参数解析、snapshot store 是 Foundation-only，可由 macOS `swift test` 覆盖；真实 UIKit 采集器、`sendActions(for:)` 和 `hitTest` 点击流程需要 framework/iOS 构建或 App 运行验证。UIKit 命令的"显式注册正向断言"（`#if canImport(UIKit)`）只在 framework iOS 测试下编译运行。
+- UIKit 命令分两层验证：值模型、schema、parser 和 snapshot store 可由 macOS `swift test` 覆盖；真实 UIKit 状态采集、能力判断和动作执行需要 iOS framework 测试或 SPMExample 闭环。不要把 macOS 层测试通过解释成真实 UIKit 行为已经验证。
+
+## 按改动范围选择验证
+
+| 改动范围 | 首选验证 | 覆盖边界 |
+|---|---|---|
+| command parser / schema / `CommandInput` model / JSON 值转换 | 定向 `swift test --filter <相关测试名>` | 覆盖跨边界 Sendable 值、字段校验、错误码和 help schema；不证明真实 `UIView` 行为 |
+| UIKit collector / context provider / locator resolver / executor / registrar | iOS framework 定向测试或对应 scheme 的 `xcodebuild ... test` | 覆盖 `@MainActor` 上的真实 UIKit 对象采集、解析、陈旧检测和显式注册 |
+| 真实执行行为：`sendActions(for:)`、alert 响应、navigation、scroll、keyboard、WKWebView JS | SPMExample 模拟器闭环；涉及 USB/设备差异时再跑真机闭环 | 覆盖 App 运行时转场、键盘、滚动、alert dismissal、WebView 加载和 HTTP action 往返 |
+| 纯文档、README、注释 | `rg` / 链接或路径检查 | 不运行 Swift 测试；只验证文档中命令名、字段名和交叉引用没有明显漂移 |
 
 ## framework 工程（手动编 `.framework`）
 
