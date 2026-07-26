@@ -1,6 +1,21 @@
 import Testing
 @testable import iOSExploreServer
 
+private struct SchemaOnlyConstraintInput: CommandInput, Equatable {
+    static let a = CommandFields.optionalString("a", description: "a")
+    static let b = CommandFields.optionalString("b", description: "b")
+    static let inputSchema = CommandInputSchema(fields: [a.erased, b.erased],
+                                                constraints: [.exactlyOneOf(["a", "b"])])
+
+    let a: String?
+    let b: String?
+
+    static func parse(decoding decoder: inout CommandInputDecoder) throws -> SchemaOnlyConstraintInput {
+        SchemaOnlyConstraintInput(a: try decoder.read(a),
+                                  b: try decoder.read(b))
+    }
+}
+
 @Test("CommandInputSchema 输出 properties object 和 propertyOrder")
 func commandInputSchemaOutputsPropertiesObject() throws {
     let name = CommandFields.requiredString("name", description: "名字")
@@ -175,6 +190,15 @@ func commandInputSchemaMixesExactlyOneOfAndOneOfBranches() throws {
     #expect(oneOfCounts == [2, 1])
     // 不应残留被覆盖的顶层 oneOf。
     #expect(json["oneOf"] == nil)
+}
+
+@Test("CommandInputConstraint 只输出 schema,不由默认 parse 运行时强制")
+func commandInputConstraintIsSchemaOnlyDuringParse() throws {
+    let input = try SchemaOnlyConstraintInput.parse(from: ["a": "left", "b": "right"])
+
+    #expect(input.a == "left")
+    #expect(input.b == "right")
+    #expect(SchemaOnlyConstraintInput.inputSchema.toJSON()["oneOf"] != nil)
 }
 
 private func schemaProperties(_ json: JSON) throws -> JSON {

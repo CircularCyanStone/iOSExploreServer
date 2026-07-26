@@ -50,10 +50,11 @@ public struct CommandInputOneOfBranch: Sendable, Equatable {
     }
 }
 
-/// 命令输入 schema 的跨字段约束。
+/// 命令输入 schema 的 schema-only 跨字段约束。
 ///
 /// JSON Schema 能表达一部分结构化约束；无法标准表达或暂不执行的业务约束会进入
-/// `x-iosExplore-constraints`，供上层工具和文档展示。
+/// `x-iosExplore-constraints`，供上层工具和文档展示。这些值是 contract/schema 提示，
+/// 不是通用运行时 validator。
 ///
 /// - Important (设计特性 F-25，勿当 bug 重提): 本枚举的所有约束（含 `exactlyOneOf` 与
 ///   `oneOf`）**只在 `CommandInputSchema.toJSON()` 生成给 MCP 客户端的 JSON Schema
@@ -67,13 +68,13 @@ public struct CommandInputOneOfBranch: Sendable, Equatable {
 ///   提示拦截，服务端不拦——这是已知设计特性，不是 bug。新增带互斥字段的命令时，务必
 ///   同步补上手写校验，别误以为"声明了 exactlyOneOf 就安全"。
 public enum CommandInputConstraint: Sendable, Equatable {
-    /// 要求给定字段中恰好一个出现。
+    /// 在输出的 JSON Schema 中要求给定字段恰好一个出现。
     ///
     /// - Warning (F-25): 该约束只影响 `toJSON()` 输出的 schema 描述，`CommandInput.parse(from:)`
     ///   运行时**不**强制。使用此约束的命令必须在 `parse(decoding:)` 里自行实现"恰好一个"
     ///   的校验（参考 `UIKitViewLookupTarget.parse`），否则运行时会静默接受两个字段。
     case exactlyOneOf([String])
-    /// 输出显式 `oneOf` 分支，用于表达成对字段、互斥字段和补充禁止条件。
+    /// 输出显式 `oneOf` 分支，用于在 schema 中表达成对字段、互斥字段和补充禁止条件。
     case oneOf([CommandInputOneOfBranch])
     /// 以扩展字符串形式暴露的约束说明。
     case extensionMessage(String)
@@ -88,7 +89,7 @@ public struct CommandInputSchema: Sendable, Equatable {
     public let fields: [AnyCommandField]
     /// 是否允许 data object 携带 schema 未声明字段。
     public let additionalProperties: Bool
-    /// 跨字段约束列表。
+    /// schema-only 跨字段约束列表。
     public let constraints: [CommandInputConstraint]
 
     /// 空对象 schema。
@@ -99,7 +100,7 @@ public struct CommandInputSchema: Sendable, Equatable {
     /// - Parameters:
     ///   - fields: 字段列表。
     ///   - additionalProperties: 是否允许未声明字段。
-    ///   - constraints: 跨字段约束列表。
+    ///   - constraints: schema-only 跨字段约束列表。
     public init(fields: [AnyCommandField],
                 additionalProperties: Bool = false,
                 constraints: [CommandInputConstraint] = []) {
@@ -116,7 +117,7 @@ public struct CommandInputSchema: Sendable, Equatable {
     /// - Parameters:
     ///   - fields: 字段列表。
     ///   - additionalProperties: 是否允许未声明字段。
-    ///   - constraints: 跨字段约束列表。
+    ///   - constraints: schema-only 跨字段约束列表。
     /// - Returns: 字段名唯一的输入 schema。
     /// - Throws: 发现重复字段名时抛出 `CommandInputSchemaError`。
     public static func validated(fields: [AnyCommandField],
@@ -147,7 +148,7 @@ public struct CommandInputSchema: Sendable, Equatable {
     /// 输出 JSON Schema object。
     ///
     /// - Returns: 包含 `type`、`properties`、`required`、`additionalProperties`、
-    ///   `x-iosExplore-propertyOrder` 的 JSON object；并视跨字段约束输出 `oneOf`
+    ///   `x-iosExplore-propertyOrder` 的 JSON object；并视 schema-only 跨字段约束输出 `oneOf`
     ///   （单约束单元）或 `allOf` 嵌套 `oneOf`（多约束单元），以及
     ///   `x-iosExplore-constraints` 扩展说明。
     public func toJSON() -> JSON {

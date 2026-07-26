@@ -46,13 +46,7 @@ public struct CommandInputDecoder: Sendable {
     /// - Returns: 字段解析后的 Swift typed 值。
     /// - Throws: 字段未声明、同名字段 schema 不一致或字段值校验失败时抛出 `CommandInputParseError`。
     public mutating func read<Value>(_ field: CommandField<Value>) throws -> Value {
-        guard let declaredField = schema.fields.first(where: { $0.name == field.name }) else {
-            throw CommandInputParseError("command input field '\(field.name)' is not declared in schema")
-        }
-        guard declaredField.schema == field.schema else {
-            throw CommandInputParseError("command input field '\(field.name)' schema does not match declaration")
-        }
-        readFieldNames.insert(field.name)
+        _ = try declaredField(matching: field.erased)
         return try field.decode(data[field.name])
     }
 
@@ -66,14 +60,8 @@ public struct CommandInputDecoder: Sendable {
     /// - Returns: 请求 data 中的原始 JSON 值；字段缺失时返回 `nil`。
     /// - Throws: 字段声明不符合当前输入 schema 时抛出 `CommandInputParseError`。
     public mutating func readRaw(_ field: AnyCommandField) throws -> JSONValue? {
-        guard let declaredField = schema.fields.first(where: { $0.name == field.name }) else {
-            throw CommandInputParseError("command input field '\(field.name)' is not declared in schema")
-        }
-        guard declaredField.schema == field.schema else {
-            throw CommandInputParseError("command input field '\(field.name)' schema does not match declaration")
-        }
-        readFieldNames.insert(field.name)
-        return data[field.name]
+        let declared = try declaredField(matching: field)
+        return data[declared.name]
     }
 
     /// 判断请求 data 是否显式携带声明字段，并把字段名记入已访问集合。
@@ -86,6 +74,12 @@ public struct CommandInputDecoder: Sendable {
     /// - Returns: 请求 data 中是否包含该字段名。
     /// - Throws: 字段未声明或同名字段 schema 不一致时抛出 `CommandInputParseError`。
     public mutating func contains<Value>(_ field: CommandField<Value>) throws -> Bool {
+        _ = try declaredField(matching: field.erased)
+        return data.storage.keys.contains(field.name)
+    }
+
+    /// 查找 schema 中的同名声明字段，并校验调用方传入字段与 schema 声明完全一致。
+    private mutating func declaredField(matching field: AnyCommandField) throws -> AnyCommandField {
         guard let declaredField = schema.fields.first(where: { $0.name == field.name }) else {
             throw CommandInputParseError("command input field '\(field.name)' is not declared in schema")
         }
@@ -93,7 +87,7 @@ public struct CommandInputDecoder: Sendable {
             throw CommandInputParseError("command input field '\(field.name)' schema does not match declaration")
         }
         readFieldNames.insert(field.name)
-        return data.storage.keys.contains(field.name)
+        return declaredField
     }
 
     /// 校验 schema 声明的字段都已被 `read`/`readRaw`/`contains` 访问过。

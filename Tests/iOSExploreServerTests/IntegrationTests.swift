@@ -86,6 +86,23 @@ func endToEndCustom() async throws {
     #expect(text.contains(#""message":"Hello, Claude""#))
 }
 
+@Test("typed input 缺必填字段经 HTTP 返回 invalid_data envelope")
+func endToEndTypedInputMissingRequiredFieldReturnsInvalidData() async throws {
+    let server = ExploreServer(port: testPort)
+    server.register(action: "greet", input: IntegrationGreetingInput.self) { input in
+        .success(["message": .string("Hello, \(input.name)")])
+    }
+    try await startWithPortRetry(server)
+    defer { server.stop() }
+
+    let text = try await send(action: "greet")
+    #expect(text.contains("200 OK"))
+    #expect(text.contains(#""code":"invalid_data""#))
+    #expect(text.contains("name"))
+    #expect(!text.contains(#""ok":"#))
+    #expect(!text.contains(#""error":"#))
+}
+
 @Test("init 后内置命令即已注册,无需 start")
 func builtinRegisteredAfterInit() async {
     let server = ExploreServer(port: testPort)
