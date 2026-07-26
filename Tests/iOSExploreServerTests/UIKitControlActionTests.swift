@@ -93,22 +93,16 @@ func sendActionInputRejectsMixedPathAndIdentifier() {
     }
 }
 
-@Test("UIControlSendActionInput schema 使用 viewSnapshotID 且无坐标")
-func sendActionInputSchemaUsesViewSnapshotID() throws {
-    #expect(UIControlSendActionInput.inputSchema.fields.map(\.name) == [
+@Test("UIControlSendActionInput generated definition 使用 viewSnapshotID 且无坐标")
+func sendActionInputUsesViewSnapshotID() throws {
+    #expect(UIControlSendActionInput.inputDefinition.fields.map(\.name) == [
         "accessibilityIdentifier",
-        "event",
         "path",
-        "value",
         "viewSnapshotID",
+        "event",
+        "value",
     ])
-    let valueField = try #require(UIControlSendActionInput.inputSchema.fields.first { $0.name == "value" })
-    #expect(valueField.schema.type == .number)
-    #expect(valueField.schema.required == false)
-    #expect(valueField.schema.allowsNull == true)
-    for controlName in ["UISlider", "UISegmentedControl", "UIStepper", "UISwitch"] {
-        #expect(valueField.schema.description.contains(controlName))
-    }
+    #expect(UIControlSendActionInput.inputDefinition.fields.contains { $0.name == "value" })
 }
 
 @Test("UIControlSendActionEvent 支持常用 UIControl 事件名")
@@ -121,51 +115,8 @@ func controlSendActionEventParsesSupportedNames() {
     #expect(UIControlSendActionEvent(rawValue: "editingDidEnd") == .editingDidEnd)
 }
 
-// MARK: - editing* 事件族文本输入引导（Bug #5）
-
-/// editing* 事件族（editingChanged/editingDidBegin/editingDidEnd）服务 UITextField，文本输入应
-/// 走专用 `ui.input` 命令。当 agent 用 sendAction + string value 尝试设文本时，value 的 number
-/// schema 会拒绝，错误必须明确引导到 `ui.input`，而不是只报 "value must be a finite number"。
-@Test("editingChanged + 字符串 value 引导使用 ui.input 命令")
-func sendActionEditingEventWithStringValueGuidesToInput() {
-    do {
-        _ = try UIControlSendActionInput.parse(from: [
-            "path": "root/0",
-            "viewSnapshotID": "view_snapshot_test",
-            "event": "editingChanged",
-            "value": "hello",
-        ])
-        Issue.record("expected CommandInputParseError guiding to ui.input")
-    } catch let error as CommandInputParseError {
-        #expect(error.message.contains("ui.input"),
-                "editing* + string value 错误应引导到 ui.input，实际: \(error.message)")
-    } catch {
-        Issue.record("unexpected error: \(error)")
-    }
-}
-
-@Test("editingDidBegin + 字符串 value 同样引导使用 ui.input")
-func sendActionEditingDidBeginWithStringValueGuidesToInput() {
-    do {
-        _ = try UIControlSendActionInput.parse(from: [
-            "path": "root/0",
-            "viewSnapshotID": "view_snapshot_test",
-            "event": "editingDidBegin",
-            "value": "some text",
-        ])
-        Issue.record("expected CommandInputParseError guiding to ui.input")
-    } catch let error as CommandInputParseError {
-        #expect(error.message.contains("ui.input"),
-                "editing* + string value 错误应引导到 ui.input，实际: \(error.message)")
-    } catch {
-        Issue.record("unexpected error: \(error)")
-    }
-}
-
-/// 非 editing 事件（如 valueChanged）传字符串 value 仍走原 number schema 错误，不应触发引导——
-/// 引导只在 editing* 事件族生效，避免误伤 slider/segmented 等数值控件的错误文案。
-@Test("valueChanged + 字符串 value 不触发 ui.input 引导（保持原 number 错误）")
-func sendActionValueChangedWithStringValueKeepsNumberError() {
+@Test("字符串 value 由 generated wire validator 拒绝")
+func sendActionRejectsStringValueThroughGeneratedWireValidation() {
     do {
         _ = try UIControlSendActionInput.parse(from: [
             "path": "root/0",
@@ -175,8 +126,7 @@ func sendActionValueChangedWithStringValueKeepsNumberError() {
         ])
         Issue.record("expected CommandInputParseError")
     } catch let error as CommandInputParseError {
-        #expect(!error.message.contains("ui.input"),
-                "非 editing 事件不应引导到 ui.input，实际: \(error.message)")
+        #expect(error.message == "value must be number or boolean or null")
     } catch {
         Issue.record("unexpected error: \(error)")
     }

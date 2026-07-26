@@ -22,8 +22,8 @@ public typealias SwipeDirection = ScrollDirection
 /// 定位参数（`accessibilityIdentifier`/`path`）可缺省——此时 executor 回退到 keyWindow 最前的
 /// scrollView。`viewSnapshotID` 可选，支持 identifier / path 两种定位方式的陈旧校验。
 public struct UISwipeInput: CommandInput, Sendable, Equatable {
-    /// `ui.swipe` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiSwipeInputSchema
+    /// `ui.swipe` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiSwipeInput
 
     /// 滑动方向。
     public let direction: SwipeDirection
@@ -64,7 +64,7 @@ public struct UISwipeInput: CommandInput, Sendable, Equatable {
 
     /// 按 `CommandInputDecoder` 读取字段并执行 distance 组合校验。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与原始 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与原始 data 的字段读取器。
     /// - Returns: 已解析的 swipe 输入。
     /// - Throws: 字段类型、方向枚举、distance 越界、cell 定位规则违规时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UISwipeInput {

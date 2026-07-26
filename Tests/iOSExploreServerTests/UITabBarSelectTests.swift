@@ -54,9 +54,9 @@ func tabBarSelectInputRejectsNeither() {
     }
 }
 
-@Test("UITabBarSelectInput schema 声明 4 个字段")
-func tabBarSelectInputSchemaFields() {
-    let fields = UITabBarSelectInput.inputSchema.fields.map(\.name)
+@Test("UITabBarSelectInput generated definition 声明 4 个字段")
+func tabBarSelectInputFields() {
+    let fields = UITabBarSelectInput.inputDefinition.fields.map(\.name)
     #expect(fields.contains("index"))
     #expect(fields.contains("title"))
     #expect(fields.contains("triggerDelegate"))

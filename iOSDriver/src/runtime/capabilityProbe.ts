@@ -5,7 +5,6 @@ import type { DriverError } from "./driverErrors.js";
 import type { InvocationPolicy } from "./driverRuntime.js";
 import type { InvocationResult } from "./types.js";
 import { noopHostLogger, type HostLogger } from "./hostLogger.js";
-import { compareContractSchemas, type ActionSchemaCompatibility, type SchemaCompatibility } from "./schemaCompatibility.js";
 
 /** CapabilityProbe 所需的最小 runtime 边界，便于 adapter 和测试注入。 */
 export interface CapabilityInvoker {
@@ -16,6 +15,7 @@ export interface CapabilityInvoker {
 export type CapabilityProbeMode = "doctor" | "health" | "capabilities";
 export type ConnectionStatus = "reachable" | "unreachable" | "malformed";
 export type ModuleStatus = "registered" | "partial" | "not_registered" | "unknown";
+export type ContractCompatibility = "exact" | "mismatch" | "unknown";
 
 /** action 注册状态。离线或 help 不可解析时保持 unknown。 */
 export interface ActionCapabilityStatus {
@@ -53,10 +53,8 @@ export interface CapabilityReport {
   readonly actions: ActionCapabilityStatus;
   /** UIKit 与 Diagnostics 模块结论。 */
   readonly modules: Readonly<{ uikit: ModuleCapabilityStatus; diagnostics: ModuleCapabilityStatus }>;
-  /** 所有已知 action schema 的汇总结论。 */
-  readonly schemaCompatibility: SchemaCompatibility;
-  /** 每个合同 action 的 schema 细节。 */
-  readonly schemaDifferences: readonly ActionSchemaCompatibility[];
+  /** App 与 host 是否由同一份 canonical contract bundle 生成。 */
+  readonly contractCompatibility: ContractCompatibility;
   /** App help 宣布的协议/合同版本和 hash，以及与本地基线的比较。 */
   readonly metadata?: Readonly<{
     protocolVersion?: string;
@@ -73,6 +71,7 @@ export class CapabilityProbe {
   private readonly expectedContracts: readonly DeviceActionContract[];
   private readonly logger: HostLogger;
   private actionPolicies: ReadonlyMap<string, InvocationPolicy> = new Map();
+  private probeGeneration = 0;
 
   /**
    * 创建能力探针；构造过程是纯配置，不发出任何 action。
@@ -92,6 +91,9 @@ export class CapabilityProbe {
 
   /** 显式执行 doctor/health/capabilities 检查。 */
   async probe(mode: CapabilityProbeMode = "capabilities"): Promise<CapabilityReport> {
+    const generation = ++this.probeGeneration;
+    // 一旦开始重新探测，旧 App 的扩展策略便不再可信；探测期间保持保守默认值。
+    this.actionPolicies = new Map();
     const startedAt = Date.now();
     this.logger.emit("info", "capability.probe.start", { mode });
     try {
@@ -107,24 +109,25 @@ export class CapabilityProbe {
             ? "unreachable"
             : "reachable";
 
-      if (help.status === "available") {
-        this.actionPolicies = validatedActionPolicies(help.commands);
+      // Policy 会影响未知扩展 action 的自动重试，只有同轮 ping/help 均可信时才发布。
+      // App 重启、连接失败或畸形 help 后必须立即回到未知 action 的保守策略。
+      if (generation === this.probeGeneration) {
+        this.actionPolicies = ping.status === "ok" && help.status === "available"
+          ? validatedActionPolicies(help.commands)
+          : new Map();
       }
       if (help.status !== "available" || connection === "unreachable" || connection === "malformed") {
         return this.complete({
           mode, connection, ping, help,
           actions: { status: "unknown", registeredActions: [], missingActions: [] },
           modules: { uikit: { status: "unknown" }, diagnostics: { status: "unknown" } },
-          schemaCompatibility: "unknown",
-          schemaDifferences: []
+          contractCompatibility: "unknown"
         }, startedAt);
       }
       const commands = help.commands;
       const registeredActions = commands.map(command => command.action).filter((action): action is string => typeof action === "string");
       const registered = new Set(registeredActions);
       const missingActions = this.expectedContracts.map(contract => contract.action).filter(action => !registered.has(action));
-      const schemaDifferences = compareContractSchemas(this.expectedContracts, commands);
-      const schemaCompatibility = summarizeSchema(schemaDifferences);
       const metadata = help.metadata === undefined ? undefined : {
         ...help.metadata,
         ...(help.metadata.protocolVersion === undefined ? {} : { protocolVersionMatches: help.metadata.protocolVersion === CONTRACT_BUNDLE_METADATA.protocolVersion }),
@@ -138,8 +141,7 @@ export class CapabilityProbe {
           uikit: moduleStatus(this.expectedContracts, "uikit", registered),
           diagnostics: moduleStatus(this.expectedContracts, "diagnostics", registered)
         },
-        schemaCompatibility,
-        schemaDifferences,
+        contractCompatibility: contractCompatibility(metadata),
         ...(metadata === undefined ? {} : { metadata })
       }, startedAt);
     } catch (error) {
@@ -161,7 +163,8 @@ export class CapabilityProbe {
   async capabilities(): Promise<CapabilityReport> { return this.probe("capabilities"); }
 
   /**
-   * 返回最近一次成功 help 中严格校验过的 action 策略。
+   * 返回最近一次完整成功 probe 中严格校验过的 action 策略。
+   * 后续 probe 失败或 help 畸形时会清空快照，避免基于旧 App 元数据重试扩展 action。
    *
    * @param action action 名称。
    * @returns 同时具有合法 idempotency/timeoutClass 的策略；其他情况返回 undefined。
@@ -183,8 +186,7 @@ export class CapabilityProbe {
       missingActionCount: report.actions.missingActions.length,
       uikitStatus: report.modules.uikit.status,
       diagnosticsStatus: report.modules.diagnostics.status,
-      schemaCompatibility: report.schemaCompatibility,
-      schemaDifferenceCount: report.schemaDifferences.length
+      contractCompatibility: report.contractCompatibility
     });
     return report;
   }
@@ -192,7 +194,6 @@ export class CapabilityProbe {
 
 type HelpCommand = {
   readonly action?: unknown;
-  readonly inputSchema?: unknown;
   readonly idempotency?: unknown;
   readonly timeoutClass?: unknown;
 };
@@ -219,11 +220,15 @@ function moduleStatus(contracts: readonly DeviceActionContract[], provider: "uik
   const count = required.length - missing.length;
   return { status: count === required.length ? "registered" : count === 0 ? "not_registered" : "partial", registeredCount: count, requiredCount: required.length, missingActions: missing };
 }
-function summarizeSchema(results: readonly ActionSchemaCompatibility[]): SchemaCompatibility {
-  if (results.some(result => result.status === "unknown")) return "unknown";
-  if (results.some(result => result.status === "breaking")) return "breaking";
-  if (results.some(result => result.status === "additive")) return "additive";
-  return "exact";
+function contractCompatibility(metadata: CapabilityReport["metadata"]): ContractCompatibility {
+  if (metadata === undefined) return "unknown";
+  const matches = [
+    metadata.protocolVersionMatches,
+    metadata.contractVersionMatches,
+    metadata.hashMatches
+  ];
+  if (matches.some(value => value === false)) return "mismatch";
+  return matches.every(value => value === true) ? "exact" : "unknown";
 }
 function isObject(value: unknown): value is HelpCommand { return typeof value === "object" && value !== null && !Array.isArray(value); }
 

@@ -1,6 +1,25 @@
 import Foundation
 
 public extension CommandFields {
+    /// 必填数组字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - itemsSchema: 数组元素的 JSON Schema object。
+    ///   - minimumCount: 数组最小长度。
+    ///   - maximumCount: 数组最大长度。
+    /// - Returns: 解析为 `[JSONValue]` 的命令字段。
+    static func requiredArray(_ name: String,
+                              itemsSchema: JSON? = nil,
+                              minimumCount: Int? = nil,
+                              maximumCount: Int? = nil) -> CommandField<[JSONValue]> {
+        requiredArray(name,
+                      description: "",
+                      itemsSchema: itemsSchema,
+                      minimumCount: minimumCount,
+                      maximumCount: maximumCount)
+    }
+
     /// 必填数组字段：缺失或 null 抛出解析错误，存在但非数组也抛出解析错误。
     ///
     /// 该工厂用于需要在 schema 里声明 `items` 的命令输入，例如批量字段数组。调用方可以通过
@@ -52,6 +71,19 @@ public extension CommandFields {
             }
             return values
         }
+    }
+
+    /// 可选 nullable 字符串枚举数组；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - values: 每个字符串元素允许的枚举值。
+    ///   - itemDescription: 数组元素的可选 schema 说明。
+    /// - Returns: 解析为 `[String]?` 的命令字段。
+    static func optionalStringEnumArray(_ name: String,
+                                        values: [String],
+                                        itemDescription: String? = nil) -> CommandField<[String]?> {
+        optionalStringEnumArray(name, values: values, itemDescription: itemDescription, description: "")
     }
 
     /// 可选 nullable 字符串枚举数组：缺失或 null 返回 nil，数组元素必须属于合同枚举。

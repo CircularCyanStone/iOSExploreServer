@@ -6,6 +6,7 @@ private struct SchemaOnlyConstraintInput: CommandInput, Equatable {
     static let b = CommandFields.optionalString("b", description: "b")
     static let inputSchema = CommandInputSchema(fields: [a.erased, b.erased],
                                                 constraints: [.exactlyOneOf(["a", "b"])])
+    static let inputDefinition = CommandInputDefinition(fields: [a.erased, b.erased])
 
     let a: String?
     let b: String?

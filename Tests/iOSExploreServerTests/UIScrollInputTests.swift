@@ -2,7 +2,7 @@ import Testing
 @testable import iOSExploreServer
 @testable import iOSExploreUIKit
 
-/// `UIScrollInput` 的 schema/parse 测试。
+/// `UIScrollInput` 的 wire/parse 测试。
 ///
 /// `UIScrollInput`（含 `ScrollDirection` / `ScrollExtent`）保持 Foundation-only
 /// （无 `#if canImport(UIKit)`），因此本测试在 macOS SPM 与 iOS framework 工程下均可运行，
@@ -59,9 +59,9 @@ func scrollInputParsesPathWithViewSnapshotID() throws {
     #expect(input.animated == true)
 }
 
-@Test("UIScrollInput schema 声明字段顺序与方向枚举值")
-func scrollInputSchemaFieldsAndDirectionValues() {
-    #expect(UIScrollInput.inputSchema.fields.map(\.name) == [
+@Test("UIScrollInput generated definition 声明字段顺序与方向枚举值")
+func scrollInputFieldsAndDirectionValues() {
+    #expect(UIScrollInput.inputDefinition.fields.map(\.name) == [
         "direction",
         "amount",
         "accessibilityIdentifier",

@@ -23,8 +23,8 @@ public enum ScrollToElementMatch: String, Sendable, Equatable, CaseIterable {
 /// 命令不签发 viewSnapshotID：滚动后画面变化，agent 应重新 `ui.inspect` 取新
 /// viewSnapshotID 再交互。
 public struct UIScrollToElementInput: CommandInput, Sendable, Equatable {
-    /// `ui.scrollToElement` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiScrollToElementInputSchema
+    /// `ui.scrollToElement` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiScrollToElementInput
 
     /// 匹配方式。
     public let match: ScrollToElementMatch
@@ -52,7 +52,7 @@ public struct UIScrollToElementInput: CommandInput, Sendable, Equatable {
 
     /// 按 `CommandInputDecoder` 读取字段并填充默认值。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已解析的 scroll-to-element 输入。
     /// - Throws: 字段类型非法或 `value` 缺失时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIScrollToElementInput {

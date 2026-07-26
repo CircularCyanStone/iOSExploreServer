@@ -4,13 +4,13 @@ import Testing
 import iOSExploreServer
 @testable import iOSExploreUIKit
 
-/// `ui.input` 的 schema 解析与执行核心测试。
+/// `ui.input` 的 generated wire 校验、解析与执行核心测试。
 ///
-/// schema 解析（Foundation-only typed query）与 executor 派发（批量顺序 → locate →
+/// wire 解析（Foundation-only typed query）与 executor 派发（批量顺序 → locate →
 /// first responder → insertText → 委托比对 → 密码脱敏）都在这里覆盖。通过
 /// `UIKitTestHost` 注入可控 view 树，真实驱动 `UITextInputExecutor.execute` 的主要成功/失败分支。
 
-// MARK: - UIInputInput schema 解析（Foundation-only typed query）
+// MARK: - UIInputInput wire 解析（Foundation-only typed query）
 
 @Test("UIInputInput: 单字段也必须放入 fields；mode 默认 replace；submit 默认 false")
 func inputInputParseDefaults() throws {
@@ -129,27 +129,24 @@ func inputInputRejectsTooManyFields() {
     }
 }
 
-@Test("UIInputInput schema 声明 fields 数组元素是对象")
-func inputInputSchemaFieldsAndItems() throws {
-    #expect(UIInputInput.inputSchema.fields.map(\.name) == [
+@Test("UIInputInput generated definition 声明顶层字段并校验嵌套对象")
+func inputInputFieldsAndItems() {
+    #expect(UIInputInput.inputDefinition.fields.map(\.name) == [
         "fields",
         "viewSnapshotID",
         "stopOnFailure",
     ])
 
-    let json = UIInputInput.inputSchema.toJSON()
-    let properties = try #require(json["properties"]?.objectValue)
-    let fieldsSchema = try #require(properties["fields"]?.objectValue)
-    #expect(fieldsSchema["type"]?.stringValue == "array")
-    #expect(fieldsSchema["minItems"]?.doubleValue == 1)
-    #expect(fieldsSchema["maxItems"]?.doubleValue == Double(UIInputInput.maxFields))
-
-    let itemSchema = try #require(fieldsSchema["items"]?.objectValue)
-    #expect(itemSchema["type"]?.stringValue == "object")
-    let itemProperties = try #require(itemSchema["properties"]?.objectValue)
-    #expect(Set(itemProperties.storage.keys) == ["accessibilityIdentifier", "path", "text", "mode", "submit"])
-    #expect(itemSchema["required"]?.arrayValue == [.string("text")])
-    #expect(itemSchema["oneOf"]?.arrayValue?.count == 2)
+    #expect(throws: CommandInputParseError.self) {
+        _ = try UIInputInput.parse(from: [
+            "fields": .array([.object(["path": "root/0", "text": 1])]),
+        ])
+    }
+    #expect(throws: CommandInputParseError.self) {
+        _ = try UIInputInput.parse(from: [
+            "fields": .array([.object(["path": "root/0", "text": "x", "typo": true])]),
+        ])
+    }
 }
 
 // MARK: - UITextInputExecutor 派发

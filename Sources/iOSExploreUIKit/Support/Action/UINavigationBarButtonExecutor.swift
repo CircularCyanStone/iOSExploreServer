@@ -12,7 +12,7 @@ enum UINavigationBarButtonExecutor {
     /// 执行一次导航栏按钮触发。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的按钮选择输入。
+    ///   - input: 已通过 generated wire 校验的按钮选择输入。
     ///   - context: 当前 UIKit 查询上下文。
     /// - Returns: 成功时返回按钮摘要和前后顶部控制器类型。
     /// - Throws: `UIKitCommandError`——导航栏不可用、按钮不存在、不匹配、不可用或不支持触发。
@@ -107,4 +107,3 @@ enum UINavigationBarButtonExecutor {
     }
 }
 #endif
-

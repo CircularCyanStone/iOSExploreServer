@@ -5,8 +5,8 @@ import iOSExploreServer
 ///
 /// 该类型保持 Foundation-only，负责解析 `ui.inspect` 的 data，并约束响应规模。
 public struct UIInspectInput: CommandInput, Sendable, Equatable {
-    /// `ui.inspect` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiInspectInputSchema
+    /// `ui.inspect` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiInspectInput
 
     /// 是否包含隐藏 view。
     public let includeHidden: Bool
@@ -100,7 +100,7 @@ public struct UIInspectInput: CommandInput, Sendable, Equatable {
 
     /// 按 `CommandInputDecoder` 读取声明字段并构造 typed input。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已完成默认值填充和范围校验的查询参数。
     /// - Throws: 字段类型或范围非法时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIInspectInput {

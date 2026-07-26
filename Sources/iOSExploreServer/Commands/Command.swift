@@ -14,10 +14,10 @@ public enum CommandLogCategory: Sendable, Equatable {
 /// 可被 `ExploreServer` 注册和路由的 typed 命令协议。
 ///
 /// 每个新增能力都应该提供完整 `CommandContract` 并通过 `register` 注入，而不是修改 HTTP
-/// 协议。合同负责对外 metadata；命令输入仍由 `Input` 从动态 JSON 解析成 Swift 值，再进入
-/// 业务逻辑，确保合同迁移不会改变现有 parser 行为。
+/// 协议。合同负责对外 metadata；generated 输入定义先校验 wire data，`Input` 再把动态 JSON
+/// 转成 Swift 值并进入业务逻辑。
 public protocol Command: Sendable {
-    /// 命令输入类型，负责 schema 暴露与 JSON data 解析。
+    /// 命令输入类型，负责声明 Swift 输入定义与 JSON data 解析。
     associatedtype Input: CommandInput
 
     /// 命令的完整 wire-level 合同。
@@ -25,7 +25,7 @@ public protocol Command: Sendable {
 
     /// 执行命令。
     ///
-    /// - Parameter input: 已按 `Input.inputSchema` 解析并校验的 typed 输入。
+    /// - Parameter input: 已按 `Input.inputDefinition` 解析并校验的 typed 输入。
     /// - Returns: 业务结果。抛出的异常会由 `AnyCommand` 捕获并转换为 `internal_error`。
     /// - Throws: 命令执行中出现的未转换异常。
     func handle(_ input: Input) async throws -> ExploreResult
@@ -72,8 +72,8 @@ public struct AnyCommand: Sendable {
     /// 命令人类可读描述，由 `help` 输出给调用方。
     public var description: String { contract.description }
 
-    /// 命令输入 schema，由 `help` 输出给调用方和工具客户端。
-    public var inputSchema: CommandInputSchema { contract.inputSchema }
+    /// Swift 执行端使用的输入定义。
+    public let inputDefinition: CommandInputDefinition
 
     /// 命令执行日志归属。
     public let logCategory: CommandLogCategory
@@ -93,6 +93,7 @@ public struct AnyCommand: Sendable {
     ///   - logCategory: 命令日志归属；core 命令默认走内部 `command` category。
     public init<C: Command>(_ command: C, logCategory: CommandLogCategory = .core) {
         self.contract = command.contract
+        self.inputDefinition = C.Input.inputDefinition
         self.logCategory = logCategory
         self.timeoutNanoseconds = command.timeoutNanoseconds
         self.executor = { request in
@@ -114,9 +115,6 @@ public struct AnyCommand: Sendable {
 
     /// 使用显式合同创建一个 typed 闭包命令。
     ///
-    /// `contract.inputSchema` 用于 metadata 输出，实际执行仍调用 `Input.parse(from:)`，因此
-    /// generated schema 接入不会在 Task 5 之前改变现有手写 parser。
-    ///
     /// - Parameters:
     ///   - contract: 命令的完整 wire-level 合同。
     ///   - input: 命令输入类型，负责实际 JSON 解析。
@@ -127,6 +125,7 @@ public struct AnyCommand: Sendable {
                                      logCategory: CommandLogCategory = .core,
                                      handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
         self.contract = contract
+        self.inputDefinition = Input.inputDefinition
         self.logCategory = logCategory
         self.timeoutNanoseconds = nil
         self.executor = { request in
@@ -149,7 +148,7 @@ public struct AnyCommand: Sendable {
 
     /// 创建一个 runtime extension typed 闭包命令。
     ///
-    /// 该兼容入口会使用 `Input.inputSchema` 构造保守合同：命令属于 runtime extension，按
+    /// 该便利入口构造保守合同：命令属于 runtime extension，按
     /// side-effecting 处理且不声明错误码；合同版本和哈希沿用公共 core bundle。
     ///
     /// - Parameters:
@@ -165,7 +164,6 @@ public struct AnyCommand: Sendable {
                                      handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
         let contract = CommandContract(action: action,
                                        description: description,
-                                       inputSchema: Input.inputSchema,
                                        provider: .extension,
                                        stability: .`internal`,
                                        resultKind: .json,
@@ -184,12 +182,12 @@ public struct AnyCommand: Sendable {
     /// 解析请求 data 并执行命令。
     ///
     /// 方法不会向路由层抛错：输入解析失败映射为 `invalid_data`，handler 未转换异常映射为
-    /// `internal_error`。日志只记录 action、schema 字段数和错误摘要，不输出完整 payload。
+    /// `internal_error`。日志只记录 action、输入字段数和错误摘要，不输出完整 payload。
     ///
     /// - Parameter request: 已由 HTTP 层解析出的命令请求。
     /// - Returns: 业务成功或失败 envelope 的中间结果。
     public func handle(_ request: ExploreRequest) async -> ExploreResult {
-        emit(.debug, "command \(action) start schemaFields=\(inputSchema.fields.count) payloadKeys=\(request.data.storage.count)")
+        emit(.debug, "command \(action) start inputFields=\(inputDefinition.fields.count) payloadKeys=\(request.data.storage.count)")
         switch await executor(request) {
         case .completed(let result):
             logCompleted(result)

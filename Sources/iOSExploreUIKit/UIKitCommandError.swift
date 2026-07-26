@@ -8,7 +8,7 @@ import iOSExploreServer
 /// 散写 `code`/`message`/`logMessage`，也避免依赖 core 的 `ExploreServerError`
 /// （该类型对扩展模块不可见）。
 ///
-/// 错误码语义集中在这里：schema/能力类失败用 `.invalidData`，目标缺失用 `.targetNotFound`，
+/// 错误码语义集中在这里：wire 输入/能力类失败用 `.invalidData`，目标缺失用 `.targetNotFound`，
 /// UIKit 上下文不可用用 `.internalError`。
 struct UIKitCommandError: Error, Sendable, Equatable {
     /// 被包装的扩展失败描述。

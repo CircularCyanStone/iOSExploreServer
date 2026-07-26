@@ -60,11 +60,13 @@ describe("contract emission", () => {
 
     for (const swift of [core, uikit, diagnostics]) {
       expect(swift).toContain("CommandContract(");
+      expect(swift).toContain("CommandInputDefinition(");
       expect(swift).toContain('protocolVersion = "1"');
       expect(swift).not.toContain("import UIKit");
+      expect(swift).not.toContain("CommandInputSchema");
+      expect(swift).not.toContain("inputSchema:");
       expect(swift).not.toContain("JSON([])");
     }
-    expect(uikit).toContain("JSON([:])");
     expect(uikit).toContain("CommandFields.bool");
     expect(uikit).toContain("CommandFields.requiredArray");
     expect(uikit).toContain(".erased");
@@ -82,7 +84,18 @@ describe("contract emission", () => {
     expect(docs).toContain("`wait_and_inspect`");
   });
 
-  test("emits typed Swift fields only for controlled schema shapes", () => {
+  test("declares terminal errors produced by host workflows and artifact decoding", () => {
+    const bundle = loadAndValidateContractBundle(repositoryRoot);
+    const errorsByOperation = new Map(
+      bundle.hostOperations.map(operation => [operation.operation, new Set(operation.errors)])
+    );
+
+    expect(errorsByOperation.get("wait_and_inspect")).toContain("workflow_timeout");
+    expect(errorsByOperation.get("tap_and_inspect")).toContain("workflow_timeout");
+    expect(errorsByOperation.get("call_action")).toContain("artifact_decode_failed");
+  });
+
+  test("emits typed Swift parsers and direct wire validators from controlled schema shapes", () => {
     const artifacts = new Map(
       renderContractArtifacts(loadAndValidateContractBundle(repositoryRoot)).map(artifact => [artifact.path, artifact.content])
     );
@@ -90,28 +103,28 @@ describe("contract emission", () => {
     const diagnostics = requiredArtifact(artifacts, "Sources/iOSExploreDiagnostics/Generated/DiagnosticsActionContracts.swift");
 
     expect(uikit).toContain(
-      'CommandFields.optionalInt("buttonIndex", minimum: 0, maximum: 9007199254740991, description: "要触发的按钮下标。")'
+      'CommandFields.optionalInt("buttonIndex", minimum: 0, maximum: 9007199254740991)'
     );
     expect(uikit).toContain(
-      'CommandFields.requiredStringEnum("event", values: ["touchDown", "touchUpInside", "valueChanged", "editingChanged", "editingDidBegin", "editingDidEnd"], description: "事件名。")'
+      'CommandFields.requiredStringEnum("event", values: ["touchDown", "touchUpInside", "valueChanged", "editingChanged", "editingDidBegin", "editingDidEnd"])'
     );
     expect(uikit).toContain(
-      'CommandFields.stringEnum("strategy", values: ["auto", "resignFirstResponder", "endEditing"], default: "auto", description: "键盘收起策略。")'
+      'CommandFields.stringEnum("strategy", values: ["auto", "resignFirstResponder", "endEditing"], default: "auto")'
     );
     expect(uikit).toContain(
-      'CommandFields.optionalStringEnum("placement", values: ["left", "right"], description: "导航栏按钮位置。")'
+      'CommandFields.optionalStringEnum("placement", values: ["left", "right"])'
     );
     expect(uikit).toContain(
-      'CommandFields.optionalFiniteNumber("amount", minimum: 0, exclusiveMinimum: true, description: "滚动距离（pt），必须 > 0；省略或传 null 时按目标可见区的一半计算。")'
+      'CommandFields.optionalFiniteNumber("amount", minimum: 0, exclusiveMinimum: true)'
     );
     expect(uikit).toContain(
-      'CommandFields.finiteNumber("duration", default: 0.5, minimum: 0, maximum: 10, exclusiveMinimum: true, description: "长按持续时间（秒）；省略或传 null 时使用 0.5，范围 (0, 10]。")'
+      'CommandFields.finiteNumber("duration", default: 0.5, minimum: 0, maximum: 10, exclusiveMinimum: true)'
     );
     expect(diagnostics).toContain(
-      'CommandFields.optionalStringEnumArray("sources", values: ["explore", "bridge", "stdout", "stderr", "nslog", "oslog"], itemDescription: "日志来源。", description: "日志来源过滤。")'
+      'CommandFields.optionalStringEnumArray("sources", values: ["explore", "bridge", "stdout", "stderr", "nslog", "oslog"])'
     );
     expect(diagnostics).toContain(
-      'CommandFields.optionalStringEnum("minimumLevel", values: ["debug", "info", "error", "fault", "unknown"], description: "最低日志等级。")'
+      'CommandFields.optionalStringEnum("minimumLevel", values: ["debug", "info", "error", "fault", "unknown"])'
     );
 
     expect(diagnostics).toContain('appLogsReadAfterField = AnyCommandField(name: "after"');
@@ -121,16 +134,63 @@ describe("contract emission", () => {
     expect(uikit).not.toContain("uiWaitAnyConditionsItem");
 
     expect(uikit).toContain(
-      'uiInputFieldsItemModeField = CommandFields.stringEnum("mode", values: ["replace", "append"], default: "replace", description: "写入模式。")'
+      'uiInputFieldsItemModeField = CommandFields.stringEnum("mode", values: ["replace", "append"], default: "replace")'
     );
     expect(uikit).toContain(
-      'uiInputFieldsItemInputSchema = CommandInputSchema(fields: [uiInputFieldsItemAccessibilityIdentifierField.erased'
+      'uiInputFieldsItemInput = CommandInputDefinition(\n        fields: [uiInputFieldsItemAccessibilityIdentifierField.erased'
     );
     expect(uikit).toContain(
-      'uiInputFieldsField = CommandFields.requiredArray("fields", description: "按顺序执行的字段数组。", itemsSchema: JSON('
+      'uiInputFieldsField = CommandFields.requiredArray("fields", minimumCount: 1, maximumCount: 16)'
     );
-    expect(uikit).toContain('"description": .string("单个字段输入。")');
-    expect(uikit).toContain('"x-iosExplore-constraints": .object(JSON(');
+    expect(uikit).toContain(
+      'try CommandWireValidation.object(object2, path: "fields[]", allowedFields: Set(["accessibilityIdentifier", "path", "text", "mode", "submit"]), additionalProperties: false)'
+    );
+    expect(uikit).toContain(
+      'try CommandWireValidation.value(object2["text"], path: "fields[].text", required: true, types: [.string])'
+    );
+    expect(diagnostics).toContain(
+      'try CommandWireValidation.value(object0["id"], path: "after.id", required: true, types: [.integer], minimum: 0, maximum: 9007199254740991)'
+    );
+  });
+
+  test("preserves contract property declaration order in generated Swift input definitions", () => {
+    const artifacts = new Map(
+      renderContractArtifacts(loadAndValidateContractBundle(repositoryRoot)).map(artifact => [artifact.path, artifact.content])
+    );
+    const uikit = requiredArtifact(artifacts, "Sources/iOSExploreUIKit/Generated/UIKitActionContracts.swift");
+
+    expect(uikit).toContain(
+      "uiScrollInput = CommandInputDefinition(\n        fields: [uiScrollDirectionField.erased, uiScrollAmountField.erased, uiScrollAccessibilityIdentifierField.erased, uiScrollPathField.erased, uiScrollViewSnapshotIDField.erased, uiScrollAnimatedField.erased]"
+    );
+    expect(uikit).toContain(
+      "uiInputFieldsItemInput = CommandInputDefinition(\n        fields: [uiInputFieldsItemAccessibilityIdentifierField.erased, uiInputFieldsItemPathField.erased, uiInputFieldsItemTextField.erased, uiInputFieldsItemModeField.erased, uiInputFieldsItemSubmitField.erased]"
+    );
+  });
+
+  test("includes schema property declaration order in the contract hash", () => {
+    const original = loadAndValidateContractBundle(repositoryRoot);
+    const reordered = loadAndValidateContractBundle(repositoryRoot);
+    const action = reordered.deviceActions.find(contract => contract.action === "ui.scroll");
+    if (action?.inputSchema.properties === undefined) throw new Error("ui.scroll properties missing");
+    action.inputSchema.properties = Object.fromEntries(
+      Object.entries(action.inputSchema.properties).reverse()
+    );
+
+    expect(prepareContractBundle(reordered).hash).not.toBe(prepareContractBundle(original).hash);
+  });
+
+  test("ignores ordinary object key order in the contract hash", () => {
+    const original = loadAndValidateContractBundle(repositoryRoot);
+    const reordered = loadAndValidateContractBundle(repositoryRoot);
+    const [code, error] = Object.entries(reordered.errors)[0] ?? [];
+    if (code === undefined || error === undefined) throw new Error("contract errors missing");
+    reordered.errors[code] = {
+      terminal: error.terminal,
+      retryable: error.retryable,
+      source: error.source
+    };
+
+    expect(prepareContractBundle(reordered).hash).toBe(prepareContractBundle(original).hash);
   });
 });
 

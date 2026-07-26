@@ -95,7 +95,7 @@ describe("contract bundle validator", () => {
             allOf: [{ type: "string" }],
             not: { type: "number" },
             description: "Execution mode",
-            "x-iosExplore-constraints": { mutuallyExclusiveWith: ["count"] }
+            "x-iosExplore-constraints": { note: "mode is interpreted by the command parser" }
           },
           values: {
             type: "array",
@@ -169,6 +169,34 @@ describe("contract bundle validator", () => {
     );
   });
 
+  test("validates extension constraint names and referenced properties", () => {
+    const unknown = makeBundle({
+      inputSchema: {
+        type: "object",
+        properties: { first: { type: "string" }, second: { type: "string" } },
+        "x-iosExplore-constraints": { exactlyOneOfTypo: ["first", "second"] }
+      }
+    });
+    expectValidationCode(unknown, "unknown_schema_keyword");
+
+    const missing = makeBundle({
+      inputSchema: {
+        type: "object",
+        properties: { first: { type: "string" } },
+        "x-iosExplore-constraints": { exactlyOneOf: ["first", "missing"] }
+      }
+    });
+    expectValidationCode(missing, "required_property_missing");
+
+    const duplicate = makeBundle({
+      inputSchema: {
+        type: "object",
+        properties: { first: { type: "string" } },
+        "x-iosExplore-constraints": { mutuallyExclusive: ["first", "first"] }
+      }
+    });
+    expectValidationCode(duplicate, "invalid_contract");
+  });
   test.each([
     { type: ["integer", "null"], minimum: 2, maximum: 1 },
     { type: ["number", "null"], exclusiveMinimum: 1, exclusiveMaximum: 1 }

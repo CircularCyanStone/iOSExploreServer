@@ -1,176 +1,123 @@
 # iOSExploreServer
 
-手机端 HTTP Server（基于 `NWListener`）的 SPM 库。Mac 经 `iproxy`（USB）转发后用 `curl` 向 iPhone App 发送 JSON 命令，App 按 `action` 分发执行并返回统一 envelope。
+Debug 环境使用的 iOS App HTTP 自动化库。App 内启动 `ExploreServer` 后，Mac 可以通过单一 HTTP 端点 `POST /` 调用 `ping`、`ui.inspect`、`ui.tap`、`app.logs.read` 等 action；`iOSDriver` 在 Mac 侧把同一套合同投影成 CLI 与 MCP 工具。
 
-**🚀 [iOSDriver](iOSDriver/)** - 基于本项目的生产级 MCP Server，提供完整的 iOS 自动化测试能力和 Claude Code 集成。
+## 适用范围
 
-## 通信链路
+- 给 iOS App 的 Debug 构建接入远程诊断、UI 操作和进程内日志读取。
+- 给开发脚本使用 `iosdriver call` / `iosdriver doctor` 做可重复检查。
+- 给 MCP 客户端使用 `iosdriver mcp` 暴露稳定工具列表。
 
-```
-Mac curl ──→ localhost:38321 ──[iproxy 38321 38321]──→ iPhone :38321 ──→ ExploreServer
-```
+它不是线上日志 SDK，也不提供 Release 默认入口。UIKit、Diagnostics 和宿主自定义命令都需要宿主显式注册。
 
-## 快速开始
+## 组成
 
-### 方式 1：使用 Claude Code + MCP（推荐）
+| 目录 | 面向对象 | 内容 |
+| --- | --- | --- |
+| `Sources/iOSExploreServer/` | App 开发者 | Core HTTP server、action router、内置 `ping`/`echo`/`info`/`help`。 |
+| `Sources/iOSExploreUIKit/` | App 开发者 | UIKit action：`ui.inspect`、`ui.tap`、`ui.input`、等待、导航、列表、alert 等。 |
+| `Sources/iOSExploreDiagnostics/` | App 开发者 | `app.logs.mark/read`、Debug 日志桥接和可选 stdout/stderr/NSLog/os_log 捕获。 |
+| `contracts/` | Host/adapter 开发者 | Device action 与 host operation 的 JSON 合同事实源。 |
+| `iOSDriver/` | Mac 侧使用者 | Node.js CLI + MCP adapter，共用合同、runtime 和 workflow。 |
+| `docs/developers/` | 开发者 | 接入、安装、运行和排障入口。 |
+| `AGENTS.md`、`docs/agents/` | Agent | 代码修改规则、验证策略和 agent 专用背景。 |
 
-```bash
-# 1. 配置 MCP 服务（已配置在 .mcp.json）
-# 2. 在 Claude Code 中使用统一入口 skill
-/ios-automation
+## App 接入
 
-# 自动处理：
-# - 连接检查（模拟器/真机）
-# - iproxy 启动/停止/状态管理
-# - 任务路由到专业 skills（表单/弹窗/导航...）
-# - 快速诊断（ping/inspect/screenshot）
-```
+Swift Package products：
 
-**可用的专业 skills：**
-- `/ios-ui-form` — 表单填写与控件操作
-- `/ios-ui-alert` — 弹窗检测与响应
-- `/ios-ui-nav` — 页面导航与返回
-- `/ios-ui-list` — 列表查找、滚动与选中
-- `/ios-ui-shot` — 截图与视觉验证
+- `iOSExploreServer`
+- `iOSExploreUIKit`
+- `iOSExploreDiagnostics`
 
-**完整 skills 索引：** `docs/skills/README.md`
-
-### 方式 2：手动使用 curl
-
-1. 在手机/模拟器上运行集成了 iOSExploreServer 的 App（见 `Examples/SPMExample`），启动 Server。
-2. Mac 上起转发（真机）：
-   ```bash
-   # 前台运行，保持此终端不关闭；Ctrl-C 停止
-   iproxy 38321 38321
-   ```
-   > 模拟器无需 `iproxy`：App 监听的端口 Mac 本机直接可达。
-3. 发命令：
-   ```bash
-   curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
-   curl -X POST http://localhost:38321/ -d '{"action":"ui.screenshot"}'
-   ```
-
-## 命令协议
-
-请求：`POST /`，body `{"action":"<name>","data":{...}}`。
-响应：`{"code":"ok","data":{...}}` 或 `{"code":"...","message":"..."}`。
-
-### 命令清单
-
-**core 内置**（`ExploreServer.init` 自动注册；只依赖 Foundation + Network）：
-
-| action | 说明 |
-|---|---|
-| `ping` | 存活探活，返回 `pong` + uptime |
-| `echo` | 原样回显入参 |
-| `info` | 设备/系统/应用信息 |
-| `help` | 列出全部已注册命令及输入 schema |
-
-**UIKit 扩展**（`server.registerUIKitCommands()` 显式注册；仅 iOS，由宿主决定开启）：
-
-| action | 说明 |
-|---|---|
-| `ui.topViewHierarchy` | 完整 view 树快照（文本/颜色/控件状态） |
-| `ui.viewTargets` | canonical interaction targets 列表（UIControl 系 + UIScrollView 系；返回 path + 可用动作 + viewSnapshotID） |
-| `ui.tap` | 对 `ui.viewTargets` 签发的 canonical target 执行默认激活动作（accessibilityIdentifier / path + 必填 viewSnapshotID） |
-| `ui.control.sendAction` | 向 UIControl 发 target-action 事件（path/identifier + 必填 viewSnapshotID + 显式 event） |
-| `ui.screenshot` | 截屏（PNG base64，降采样；可选视觉证据，不再签发 viewSnapshotID） |
-| `ui.input` | 向 UITextField / UITextView 注入文本（UITextInput.insertText） |
-| `ui.keyboard.dismiss` | 收起当前 first responder / 键盘 |
-| `ui.scroll` | 在 UIScrollView 上按方向 + 距离滚动 |
-| `ui.navigation.back` | 返回上一页（auto 先 dismiss 再 navigation pop） |
-| `ui.navigation.tapBarButton` | 触发导航栏 UIBarButtonItem（placement + index，可用 title/identifier 防误点） |
-| `ui.wait` | 等待 UI 稳定或等待目标/文本/快照变化 |
-| `ui.waitAny` | 一次轮询等待多个条件，第一个命中返回 matchedID/matchedIndex |
-| `ui.scrollToElement` | 滚动到包含指定文本/identifier 的元素可见 |
-| `ui.alert.respond` | 查询 UIAlertController（dryRun=true）；dryRun=false 触发指定按钮 handler 并关闭弹窗 |
-
-UIKit 命令不会自动注册，宿主 App 须显式开启：
+Debug 构建中显式启动并注册需要的模块：
 
 ```swift
+#if DEBUG
 import iOSExploreServer
 import iOSExploreUIKit
-
-let server = ExploreServer()
-server.registerUIKitCommands()   // 一次性注册 14 个 ui.* 命令
-```
-
-`ui.*` 典型闭环：先 `ui.viewTargets` 观察页面拿到 canonical target 的 `path` 与本次 `viewSnapshotID`（仅此命令签发，`ui.screenshot` / `ui.topViewHierarchy` 都不再签发）→ 优先用 `accessibilityIdentifier`，必要时用 `path + viewSnapshotID` 调动作。`ui.tap` / `ui.control.sendAction` 必填 `viewSnapshotID` 并校验 freshness；`ui.input` / `ui.scroll` 只有在 `path + viewSnapshotID` 组合下做可选陈旧防护；滚动后应重新 `ui.viewTargets`。动作后用 `ui.wait` 等待明确反馈，或重新 `ui.viewTargets` 观察页面；必要时用 `ui.screenshot` 留失败证据。`ui.tap` 成功只表示激活动作已发出，不表示测试步骤成功。外部 agent / MCP 调用约束见 `docs/uikit/agent-command-protocol.md`。
-
-**Diagnostics 扩展**（`server.registerDiagnosticsCommands()` 显式注册；不依赖 UIKit）：
-
-| action | 说明 |
-|---|---|
-| `app.logs.mark` | 建立当前进程日志检查点，返回 `captureSessionID + id` cursor |
-| `app.logs.read` | 读取 cursor 之后由 iOSExplore 实际捕获并保留的增量日志 |
-
-已支持 `explore`（iOSExplore 内部日志）、`bridge`（宿主主动 `ExploreAppLog.emit`），以及默认关闭、Debug 下显式开启的 stdout/stderr/NSLog/Apple Unified Logging 捕获。宿主用 `DiagnosticsConfiguration(captureStdout: true, captureStderr: true, captureNSLog: true, captureOSLog: true)` 开启后，stdout 每行以 `source="stdout"` / `level="info"` 写入，stderr 每行以 `source="stderr"` / `level="error"` 写入，`NSLog` 识别为 `source="nslog"`，`os_log` 与 Swift `Logger` 通过当前进程 `OSLogStore` 写入 `source="oslog"`。如果当前 OS 或沙箱不允许读取 unified logging，`capture.oslog` 会返回 `unavailable`，不会伪装成没有日志。
-
-```swift
-import iOSExploreServer
 import iOSExploreDiagnostics
 
 let server = ExploreServer()
+server.registerUIKitCommands()
 server.registerDiagnosticsCommands()
-ExploreAppLog.emit(.error, category: "auth", message: "login failed token=...")
-```
 
-`Examples/SPMExample` 已在 Debug 集成 `iOSExploreDiagnostics`，`help` 会列出 `app.logs.mark/read`。示例 App 在 Debug 构建下通过 `ViewController.exampleDiagnosticsConfiguration()` 直接打开 stdout/stderr/NSLog/os_log 四个 capture（Release 构建关闭），不再通过环境变量或启动参数控制。它提供 `debug.emitAppLog`、`debug.emitStdout`、`debug.emitStderr`、`debug.emitNSLog`、`debug.emitOSLog`、`debug.emitLogger` 六个验证命令。典型流程是先 `app.logs.mark`，再触发其中一个 debug 命令，最后 `app.logs.read(after:)` 按 `sources:["bridge"]`、`sources:["stdout"]`、`sources:["stderr"]`、`sources:["nslog"]` 或 `sources:["oslog"]` 读取对应日志。
-
-### 注册自定义命令
-
-```swift
-struct GreetInput: CommandInput {
-    static let name = CommandFields.optionalString("name", description: "姓名")
-    static let inputSchema = CommandInputSchema(fields: [name.erased])
-
-    let nameValue: String
-
-    static func parse(decoding decoder: inout CommandInputDecoder) throws -> GreetInput {
-        GreetInput(nameValue: try decoder.read(name) ?? "world")
-    }
+Task {
+    try? await server.start()
 }
-
-server.register(action: "greet", description: "按 name 打招呼", input: GreetInput.self) { input in
-    .success(["message": .string("Hello, \(input.nameValue)")])
-}
+#endif
 ```
 
-## 现状与路线图
+Core 初始化只自动注册 `ping`、`echo`、`info`、`help`。不调用 `registerUIKitCommands()` 时 `help` 不包含 `ui.*`；不调用 `registerDiagnosticsCommands()` 时 `help` 不包含 `app.logs.*`。
 
-**已实现**：core 4 个 action 自动注册；UIKit 扩展显式注册 14 个 `ui.*` action；Diagnostics 扩展显式注册 2 个 `app.logs.*` action。Example App 额外注册 `greet` / `device` / `debug.emitAppLog` / `debug.emitStdout` / `debug.emitStderr`，并显式开放 UIKit 与 Diagnostics 命令。现有能力链已覆盖查询（`viewTargets` / `topViewHierarchy`）→ 看屏（`screenshot`）→ 操作（`tap` / `input` / `scroll` / `control` / `navigation` / `keyboard`）→ 等待（`ui.wait` 单条件 / `ui.waitAny` 多分支）→ 读取动作后的进程内增量日志（`app.logs.mark/read`）。
+## Mac 侧调用
 
-**质量**：macOS `swift test` 225 用例 + iOS framework 344 用例全绿。
-
-**最近修复**：HTTPListener 连接槽耗尽后 server 不响应（Network 层 `newConnectionLimit` 被误设为业务上限，连接关闭后不释放）。
-
-**MCP bridge**：Mac 本机 MCP Server 已收敛到 `iOSDriver/`，它把现有 HTTP action 包装成 MCP tools；本仓库根不再保留单独的 Node 安装入口。
-
-## 待观察问题
-
-- **P1-6 Snapshot TTL（时间维度）的收益与代价**：当前 `UIKitSnapshotStore` 仍用 `ttlSeconds` 做 freshness 判定。时间维度能控制内存和兜底指纹盲区，但在 LLM-Agent 长思考场景下可能误报 `stale_locator`；是否改为只靠指纹 + context 匹配，先观察真实 agent 流程里的触发频率，**当前仅记录不实施**。
-
-## 调试日志
-
-组件默认不输出内部日志到 Unified Logging。调试时在 App 启动阶段开启：
-
-```swift
-ExploreLogging.setEnabled(true)
-ExploreLogging.setMinimumLevel(.debug)
-```
-
-日志走 Apple Unified Logging，subsystem 为 `iOSExploreServer`，category 包括 `server`、`listener`、`http`、`router`、`command`。可在 Xcode 控制台或 macOS Console 中按 subsystem/category 过滤查看。若已注册 `iOSExploreDiagnostics`，`ExploreLogging` 的内部日志还会进入 Diagnostics 内存 store，即使 Unified Logging output 没有开启。
-
-## 开发
+模拟器与 Mac 共享 localhost；真机需要先通过 USB 转发：
 
 ```bash
-swift test                              # macOS SPM 测试
-swift test --enable-code-coverage       # 覆盖率
-xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj \
-  -scheme iOSExploreServer -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 17' test            # iOS framework 测试
+iproxy 38321 38321
 ```
 
-更多详见 `AGENTS.md`（架构硬规则、模块边界、完整命令清单）与 `docs/`（架构总览、构建/排障 runbook、UIKit 模块档案、设计 spec）。
+最小 HTTP 检查：
 
-端口默认 `38321`，构造时可配。不强制鉴权（依赖 USB 物理连接隔离），App 须保持前台。
+```bash
+curl -s -X POST http://localhost:38321/ \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"ping"}'
+```
+
+成功响应：
+
+```json
+{"code":"ok","data":{"pong":true}}
+```
+
+CLI：
+
+```bash
+cd iOSDriver
+npm install
+npm run build
+node dist/adapters/cli/main.js doctor
+node dist/adapters/cli/main.js call ui.inspect --data '{"mode":"minimal"}'
+```
+
+安装为命令后可使用：
+
+```bash
+iosdriver doctor
+iosdriver call ping
+iosdriver mcp
+```
+
+## 协议
+
+HTTP endpoint 固定为 `POST /`：
+
+```json
+{"action":"<action-name>","data":{}}
+```
+
+响应 envelope 固定为：
+
+```json
+{"code":"ok","data":{}}
+```
+
+或：
+
+```json
+{"code":"<business-code>","message":"<message>"}
+```
+
+通信失败使用 HTTP 400/500；action 业务失败使用 HTTP 200 + 失败 envelope。完整 action、字段、结果和稳定错误索引由 `contracts/` 生成到 `docs/generated/contracts.md`，不要手写复制 schema。
+
+## 继续阅读
+
+- 开发者入口：[docs/developers/README.md](docs/developers/README.md)
+- 项目整体架构：[docs/developers/architecture.md](docs/developers/architecture.md)
+- iOSDriver 使用：[iOSDriver/README.md](iOSDriver/README.md)
+- 合同摘要：[docs/generated/contracts.md](docs/generated/contracts.md)
+- UIKit 模块：[docs/uikit/README.md](docs/uikit/README.md)
+- Diagnostics 模块：[docs/diagnostics/README.md](docs/diagnostics/README.md)
+- Agent 规则：[AGENTS.md](AGENTS.md)

@@ -4,10 +4,11 @@ import Testing
 
 @Suite("DiagnosticsContractParserCompatibilityTests")
 struct DiagnosticsContractParserCompatibilityTests {
-    @Test("mark/read 输入 schema 与 generated contract 一致")
-    func commandInputsUseGeneratedSchemas() {
-        #expect(EmptyCommandInput.inputSchema == DiagnosticsActionContracts.appLogsMarkInputSchema)
-        #expect(ESAppLogsReadInput.inputSchema == DiagnosticsActionContracts.appLogsReadInputSchema)
+    @Test("mark/read 使用 generated 输入字段")
+    func commandInputsUseGeneratedDefinitions() {
+        #expect(EmptyCommandInput.inputDefinition.fields.isEmpty)
+        #expect(ESAppLogsReadInput.inputDefinition.fields.map(\.name) ==
+                DiagnosticsActionContracts.appLogsReadInput.fields.map(\.name))
     }
 
     @Test("read 空输入使用默认值")
@@ -30,6 +31,14 @@ struct DiagnosticsContractParserCompatibilityTests {
         ])
 
         #expect(input.after == ESAppLogCursor(captureSessionID: "capture-1", id: 42))
+        let boundaryInput = try ESAppLogsReadInput.parse(from: [
+            "after": .object([
+                "captureSessionID": "capture-1",
+                "id": .double(9_007_199_254_740_991),
+            ]),
+        ])
+        #expect(boundaryInput.after == ESAppLogCursor(captureSessionID: "capture-1",
+                                                      id: 9_007_199_254_740_991))
         #expect(throws: CommandInputParseError.self) {
             _ = try ESAppLogsReadInput.parse(from: [
                 "after": .object(["id": 42]),
@@ -48,6 +57,22 @@ struct DiagnosticsContractParserCompatibilityTests {
                 "after": .object([
                     "captureSessionID": "capture-1",
                     "id": 1.5,
+                ]),
+            ])
+        }
+        #expect(throws: CommandInputParseError.self) {
+            _ = try ESAppLogsReadInput.parse(from: [
+                "after": .object([
+                    "captureSessionID": "capture-1",
+                    "id": .double(9_007_199_254_740_992),
+                ]),
+            ])
+        }
+        #expect(throws: CommandInputParseError.self) {
+            _ = try ESAppLogsReadInput.parse(from: [
+                "after": .object([
+                    "captureSessionID": "capture-1",
+                    "id": .double(Double.greatestFiniteMagnitude),
                 ]),
             ])
         }
@@ -103,11 +128,11 @@ struct DiagnosticsContractParserCompatibilityTests {
         }
     }
 
-    @Test("generated schema 中声明但未读取的字段触发守卫")
-    func generatedSchemaRejectsUnreadFields() {
+    @Test("generated definition 中声明但未读取的字段触发守卫")
+    func generatedDefinitionRejectsUnreadFields() {
         do {
             _ = try IncompleteGeneratedDiagnosticsInput.parse(from: [:])
-            Issue.record("expected generated schema unread-field guard to fail")
+            Issue.record("expected generated definition unread-field guard to fail")
         } catch let error as CommandInputParseError {
             #expect(error.message.contains("declared but not read"))
         } catch {
@@ -117,7 +142,7 @@ struct DiagnosticsContractParserCompatibilityTests {
 }
 
 private struct IncompleteGeneratedDiagnosticsInput: CommandInput {
-    static let inputSchema = DiagnosticsActionContracts.appLogsReadInputSchema
+    static let inputDefinition = DiagnosticsActionContracts.appLogsReadInput
 
     let limit: Int
 

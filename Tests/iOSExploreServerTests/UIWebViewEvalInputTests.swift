@@ -97,9 +97,9 @@ func webViewEvalInputRejectsInvalidTimeout() {
     }
 }
 
-@Test("schema 声明全部字段")
-func webViewEvalInputSchemaFields() {
-    let fields = UIWebViewEvalInput.inputSchema.fields.map(\.name)
+@Test("generated definition 声明全部字段")
+func webViewEvalInputFields() {
+    let fields = UIWebViewEvalInput.inputDefinition.fields.map(\.name)
     #expect(fields.contains("accessibilityIdentifier"))
     #expect(fields.contains("path"))
     #expect(fields.contains("viewSnapshotID"))

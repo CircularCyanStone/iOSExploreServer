@@ -5,11 +5,11 @@ import iOSExploreServer
 
 /// `ui.waitAny` 的 typed input 解析与执行测试。
 ///
-/// parse/schema 部分纯 Foundation（不依赖 UIKit），macOS SPM 与 iOS framework 均运行；
+/// parse/wire 部分纯 Foundation（不依赖 UIKit），macOS SPM 与 iOS framework 均运行；
 /// executor 部分用 `UIKitTestHost` 注入上下文，仅 iOS 运行，覆盖优先级、超时收敛、cancel 收敛、
 /// 瞬时层级不可用容忍。
 
-// MARK: - parse / schema（Foundation-only）
+// MARK: - parse / wire（Foundation-only）
 
 @Test("waitAny 合法多条件解析并填充共享字段默认值")
 func waitAnyParsesMultipleConditions() throws {
@@ -141,6 +141,23 @@ func waitAnyRejectsUnknownConditionField() {
     ])
     #expect(throws: CommandInputParseError.self) {
         try UIWaitAnyInput.parse(from: data)
+    }
+}
+
+@Test("waitAny condition 嵌套字段类型必须符合合同")
+func waitAnyRejectsInvalidNestedFieldTypes() {
+    for condition in [
+        JSON(["id": 1, "mode": "idle"]),
+        JSON(["id": "x", "mode": true]),
+        JSON(["id": "x", "mode": "idle", "text": 1]),
+        JSON(["id": "x", "mode": "idle", "viewSnapshotID": false]),
+        JSON(["id": "x", "mode": "idle", "accessibilityIdentifier": .object(JSON([:]))]),
+        JSON(["id": "x", "mode": "idle", "path": .array([])]),
+    ] {
+        let data = JSON(["conditions": .array([.object(condition)])])
+        #expect(throws: CommandInputParseError.self) {
+            try UIWaitAnyInput.parse(from: data)
+        }
     }
 }
 

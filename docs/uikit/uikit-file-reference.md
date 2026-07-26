@@ -2,8 +2,8 @@
 
 > 这是 `Sources/iOSExploreUIKit/` 全部 61 个文件的查阅手册。
 > 想知道"从哪开始读"看 [reading-guide.md](./reading-guide.md)；这里按目录逐个登记每个文件的职责、关键点与依赖关系，用于定位与改动。
-> 约定：✅ = 不含 UIKit 对象的值/解析层（macOS `swift test` 可覆盖）；🍎 = `#if canImport(UIKit)`，仅 iOS 编译。
-> 目录分两层：`Commands/` 是 `ui.*` 对外命令及其紧密配套（adapter + models + collector），`Support/` 是横切辅助（执行引擎 / 定位 / 上下文 / 快照 / 解析 / 等待 / 文本采集），根目录 3 个是模块级横切（注册 / 日志 / 错误）。
+> 约定：✅ = Foundation-only（macOS `swift test` 可覆盖）；🍎 = `#if canImport(UIKit)`，仅 iOS 编译。
+> 目录分两层：`Commands/` 是 12 个对外命令及其紧密配套（adapter + models + collector），`Support/` 是横切辅助（执行引擎 / 定位 / 上下文 / 快照 / 解析 / 等待 / 文本采集），根目录 3 个是模块级横切（注册 / 日志 / 错误）。
 > **覆盖范围说明**：keyboard / navigation / wait / scrollToElement / alert 五个新命令、scroll 原语与 wait/alert 辅助类型的逐文件档案见文末「新增命令档案（Task 2-7）」节；navigationBar 可达性（`ui.navigation.tapBarButton` + inspector/executor）见「NavigationBar 可达性档案」节；`ui.tap` 重构新增的 `UIKitDefaultActivationResolver` / `UIKitTargetSemanticDigest` 见各自节。`ui.screenshot` / `ui.input` / `ui.scroll` 三个较早命令的逐文件档案仍待补（总览已列），参见各自源码头 `///` 注释；其中 `ui.screenshot` 已不再签发 `viewSnapshotID`（只作可选视觉证据）。
 
 ## 总览
@@ -37,9 +37,9 @@
 ## 根目录
 
 ### `UIKitCommandRegistrar.swift` ✅（整体 `#if canImport(UIKit)`）
-- **职责**：`public extension ExploreServer` 的注册入口 `registerUIKitCommands()`，把当前 `ui.*` 命令集合挂到 router。
+- **职责**：`public extension ExploreServer` 的注册入口 `registerUIKitCommands()`，把 UIKit 公共命令挂到 router。当前 action 清单以 `contracts/bundle.json` 与 `docs/generated/contracts.md` 为准。
 - **关键点**：core 不自动注册 UIKit 命令，宿主必须显式调用；幂等安全；注册前后打 `uikit.registrar` 日志（started/completed count）。
-- **依赖**：UIKit 命令的各个 `*Command` 类型。
+- **依赖**：各 `*Command` 类型。
 
 ### `UIKitCommandLogger.swift` ✅
 - **职责**：UIKit 模块统一的日志入口（`info`/`error`）。
@@ -62,7 +62,7 @@
 
 ### `UIKitLocatorParseError.swift` ✅
 - **职责**：底层 locator/path 文法解析失败的错误类型。
-- **关键点**：命令输入主路径已经迁移到 core `CommandInputParseError`；本类型只保留给 `UIKitViewLookupTarget`、`UIKitLocator` 这类不含 UIKit 对象的 locator helper。命令 input 层必须把它转换为 `CommandInputParseError`，再由 `AnyCommand` 转成 `invalid_data` envelope。
+- **关键点**：命令输入主路径已经迁移到 core `CommandInputParseError`；本类型只保留给 `UIKitViewLookupTarget`、`UIKitLocator` 这类 Foundation-only helper。命令 input 层必须把它转换为 `CommandInputParseError`，再由 `AnyCommand` 转成 `invalid_data` envelope。
 - **依赖**：core `Foundation`。
 
 ### `UIKitCommandFields.swift` ✅
@@ -87,7 +87,7 @@
 
 ### `UIKitLocator.swift` ✅
 - **职责**：统一目标定位器（identifier / path 两种语义收敛到一个枚举）。
-- **关键点**：不含 UIKit 对象的 Sendable 值类型，可在 macOS 测试覆盖。`parse` 处理 identifier 与 path 的互斥关系（坐标定位/windowPoint 已移除）。
+- **关键点**：Foundation-only 值类型，可在 macOS 测试覆盖。`parse` 处理 identifier 与 path 的互斥关系（坐标定位/windowPoint 已移除）。
 - **依赖**：`UIKitViewLookupTarget`（path 文法复用）。
 
 ### `UIKitLocatorResolver.swift` 🍎
@@ -112,7 +112,7 @@
 
 ### `UIKitActionPlan.swift` ✅
 - **职责**：动作执行意图（tap / controlEvent 两种 case 的枚举）。
-- **关键点**：不含 UIKit 对象，只描述"做什么 + 作用在哪个 locator"，不持 `UIView`/`UIControl`；**tap / controlEvent 均携带必填 `viewSnapshotID`**（由 `ui.inspect` 签发，executor 执行前做陈旧校验）。
+- **关键点**：Foundation-only，只描述"做什么 + 作用在哪个 locator"，不持 UIKit 对象；**tap / controlEvent 均携带必填 `viewSnapshotID`**（由 `ui.inspect` 签发，executor 执行前做陈旧校验）。
 - **依赖**：`UIKitLocator`、`UIControlSendActionEvent`。
 
 ### `UIKitActionCapabilityResolver.swift` 🍎
@@ -166,7 +166,7 @@
 
 ### `UITapModels.swift` ✅
 - **职责**：`UITapInput`（`ui.tap` 的 typed input）。
-- **关键点**：conform core `CommandInput`；字段定义同时驱动解析和 `help.inputSchema`。**只接受 `accessibilityIdentifier` 或 `path`（二选一）+ 必填 `viewSnapshotID`**；已删除 `x`/`y`/`coordinateSpace`/`window` 坐标输入与 `UITapTarget`（目标直接复用 `UIKitViewLookupTarget`）。`ui.tap` 现是"默认激活动作"（非触摸注入），按 target 类型路由；成功响应字段为 `activated`/`activationRoute`（control.touchUpInside | switch.toggle | input.focus）/`path`/`type`/`event`（switch 另有 previousValue/currentValue，input 另有 isFirstResponder）。旧字段 `tapped`/`dispatchMode=controlActionFallback`/`x`/`y`/`hitPath`/`hitType`/`controlPath` 已删除。
+- **关键点**：conform core `CommandInput`；Swift 使用合同生成的 `inputDefinition` 做 wire 校验并驱动 typed parser，工具 schema 直接来自 `contracts/` 的 TypeScript 生成产物。**只接受 `accessibilityIdentifier` 或 `path`（二选一）+ 必填 `viewSnapshotID`**；已删除 `x`/`y`/`coordinateSpace`/`window` 坐标输入与 `UITapTarget`（目标直接复用 `UIKitViewLookupTarget`）。`ui.tap` 现是"默认激活动作"（非触摸注入），按 target 类型路由；成功响应字段为 `activated`/`activationRoute`（control.touchUpInside | switch.toggle | input.focus）/`path`/`type`/`event`（switch 另有 previousValue/currentValue，input 另有 isFirstResponder）。旧字段 `tapped`/`dispatchMode=controlActionFallback`/`x`/`y`/`hitPath`/`hitType`/`controlPath` 已删除。
 - **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitViewLookupTarget`。
 
 ### `UITapCommand.swift` 🍎
@@ -199,7 +199,7 @@
 
 ### `UIViewHierarchyCollector.swift` 🍎
 - **职责**：`@MainActor`，从真实 `UIView` 递归读取属性生成完整快照。
-- **关键点**：`collectTopViewHierarchy(query:) throws -> JSON`（无 context 入口，取真实 context 失败 throw `hierarchyUnavailable`）；`collectTopViewHierarchy(query:context:) -> JSON`（注入入口，测试用）。`UIKitViewElement` 是 `UIViewHierarchyElement` 的 UIKit 实现；读 UIKit 后交给不持有 UIKit 对象的 `UIViewHierarchyBuilder`。**不再签发 viewSnapshotID**（纯观察职责；动作所需的 `viewSnapshotID` 由 `ui.inspect` 签发）。
+- **关键点**：`collectTopViewHierarchy(query:) throws -> JSON`（无 context 入口，取真实 context 失败 throw `hierarchyUnavailable`）；`collectTopViewHierarchy(query:context:) -> JSON`（注入入口，测试用）。`UIKitViewElement` 是 `UIViewHierarchyElement` 的 UIKit 实现；读 UIKit 后交给 Foundation-only 的 `UIViewHierarchyBuilder`。**不再签发 viewSnapshotID**（纯观察职责；动作所需的 `viewSnapshotID` 由 `ui.inspect` 签发）。
 - **依赖**：UIKit、`UIKitContextProvider`、`UIViewHierarchyBuilder`/`UIViewHierarchyModels`、`UIKitCommandError`/`UIKitCommandLogger`。
 
 ### `TopViewHierarchyCommand.swift` 🍎
@@ -213,7 +213,7 @@
 
 ### `UIInspectModels.swift` ✅
 - **职责**：轻量目标的全部模型——`UIInspectInput` + `UIInspectCandidate` + `UIInspectSummary` + 角色/状态/文本裁剪。
-- **关键点**：`UIInspectInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；**`UIInspectInput.isFull(candidate:)` 是 full/minimal 分档决策核心**，只根据 collector 提供的 Sendable 候选摘要做纯值判断，真实 `UIView` 状态采集留在 `UIInspectCollector`。**full 判定**：UIControl 系（UIButton/UISwitch/UISlider/UISegmentedControl/UITextField/自定义 UIControl）+ UIScrollView 系（UIScrollView/UITableView/UICollectionView/UITextView）+ 挂有 gesture recognizer 的非 control view + 带识别信息或静态文本的节点；控件内部 label/image roll up 到父 control，cell 子树 view 保持 full，方便 agent 按 cell 文本定位。不满足 full 的节点作为 **minimal 结构节点**输出：`toJSON` 只给 `{path, type}`、不签发指纹；对 minimal 节点调 `ui.tap`/`ui.control.sendAction` 返回 `not_actionable`。disabled control 仍 include（`availableActions` 为空）。`maxTargets` 默认 200（上限 512，仅计 full 节点），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本；identifier 筛选只作用于 full 输出，不影响 minimal 节点可见性。
+- **关键点**：`UIInspectInput` conform core `CommandInput`，字段定义同时驱动解析和 schema；**`UIInspectInput.isFull` 是 full/minimal 分档决策核心**（纯 Foundation-only 逻辑），`shouldInclude` 保留为 schema 兼容字段、canonical-only 时代已不再参与决策。**full 判定**：UIControl 系（UIButton/UISwitch/UISlider/UISegmentedControl/UITextField/自定义 UIControl）+ UIScrollView 系（UIScrollView/UITableView/UICollectionView/UITextView）+ **挂有 gesture recognizer 的非 control view** + **`explore_cellAncestor != nil` 的 cell 子树 view**（含 `UIListContentView`、cell 内 `UILabel`、cell accessory）——后者让 agent 能直接按 cell 标题文本定位子 label。不满足 full 的节点（普通 UILabel/container/纯展示 view）作为 **minimal 结构节点**输出：`toJSON` 只给 `{path, type}`、强制 `availableActions=[]`、`isMinimal=true`、**不签发指纹**（仅维持层级可见性，让 agent 知道这些节点存在但不可操作）。按钮内部 label/image 不作为独立 full target，文本汇总到父 target 的 `semanticText`。disabled control 仍 include（`availableActions` 为空）。`maxTargets` 默认 200（上限 512，仅计 full 节点），`textLimit` 默认 80（上限 200）。**identifier 完整不裁剪**，只裁剪展示型文本；identifier 筛选只作用于 full 输出，不影响 minimal 节点可见性。
 - **依赖**：core `CommandInput`/`CommandFields`、`UIKitCommandFields`、`UIKitSnapshotLimits`、`UIKitActionAvailability`、`UIViewHierarchyRect`。
 
 ### `UIInspectCollector.swift` 🍎
@@ -230,7 +230,7 @@
 
 ## 新增命令档案（Task 2-7）
 
-> 以下为 agent 常用命令文件。adapter/models 保持不含 UIKit 对象的值/解析层（✅），executor/inspector/collector 整体 `#if canImport(UIKit)`（🍎）。
+> 以下为 agent 常用命令文件。adapter/models 保持 Foundation-only（✅），executor/inspector/collector 整体 `#if canImport(UIKit)`（🍎）。
 
 ### `Commands/Keyboard/`（`ui.keyboard.dismiss`）
 
@@ -244,7 +244,7 @@
 
 ### `Commands/Navigation/`（`ui.navigation.tapBarButton`）
 
-- **`UINavigationBarButtonModels.swift`** ✅ — `UINavigationBarButtonInput`：`placement`（left/right）+ `index` 定位导航栏按钮，或通过 `accessibilityIdentifier` 全局/指定侧搜索；可选 `title` / `accessibilityIdentifier` 做二次确认；`waitAfterMs` 默认 300。
+- **`UINavigationBarButtonModels.swift`** ✅ — `UINavigationBarButtonInput`：`placement`（left/right）+ `index` 定位导航栏按钮，可选 `title` / `accessibilityIdentifier` 做二次确认；`dryRun` 默认 false。
 - **`UINavigationBarButtonCommand.swift`** 🍎 — 薄 adapter，`MainActor.run` 取 context → 调 `UINavigationBarButtonExecutor`；顶层 catch `UIKitCommandError` 转 envelope（错误码：`navigation_bar_unavailable` / `navigation_bar_item_not_found` / `navigation_bar_item_mismatch` / `navigation_bar_item_disabled` / `navigation_bar_item_unsupported`）。
 
 ### `Commands/Wait/`（`ui.wait` + `ui.waitAny`）

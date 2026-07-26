@@ -14,7 +14,7 @@ import UIKit
 /// `UIKitCommandError` 在此 catch 并转为业务 envelope。executor 内部长按等待用 `await Task.sleep`
 /// yield MainActor，因此并发到达的其它 `ui.*` 命令能插队执行，不会被 longPress 的 duration 阻塞。
 struct LongPressCommand: Command {
-    /// typed 输入模型，负责 schema 暴露和 data 解析。
+    /// typed 输入模型，负责 wire 校验和 data 解析。
     typealias Input = UILongPressInput
 
     /// 固定 action 名。
@@ -32,7 +32,7 @@ struct LongPressCommand: Command {
     /// yield MainActor，让并发到达的其它 `ui.*` 命令插队执行。executor 抛出的 `UIKitCommandError`
     /// 在此 catch。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的 longPress 输入。
+    /// - Parameter input: 已通过 generated wire 校验的 longPress 输入。
     /// - Returns: 成功时返回长按结果；失败时返回业务失败 envelope。
     func handle(_ input: UILongPressInput) async -> ExploreResult {
         let durationDescription = input.duration.map { String(format: "%.2f", $0) } ?? "default"
@@ -57,7 +57,7 @@ struct LongPressCommand: Command {
     /// MainActor。executor 内部的 `await Task.sleep` 挂起时会 yield MainActor（让出 actor），
     /// 使并发到达的其它 `ui.*` 命令能插队执行，不被 longPress 的 duration 同步阻塞。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的 longPress 输入。
+    /// - Parameter input: 已通过 generated wire 校验的 longPress 输入。
     /// - Returns: 长按结果 JSON。
     /// - Throws: 定位/陈旧等 `UIKitCommandError`，以及 `Task.sleep` 的 `CancellationError`。
     @MainActor

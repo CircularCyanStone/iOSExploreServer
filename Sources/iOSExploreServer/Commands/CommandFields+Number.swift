@@ -5,16 +5,26 @@ import Foundation
 /// 工厂集中定义字段 schema 与运行时解析规则，后续命令只组合这些字段即可得到一致的
 /// JSON Schema 输出、默认值处理和错误类型。
 ///
-/// 带默认值的布尔、整数和字符串枚举在公共 schema 中保持单一非 null 类型；新客户端应省略
-/// 字段来使用默认值。decoder 仍把显式 null 当作缺失，是对既有调用方的运行时兼容，不代表
-/// canonical schema 鼓励发送 null。有限数字是否公开 nullable 则直接遵循对应合同声明。
+/// 带默认值的布尔、整数和字符串枚举在公共 schema 中保持单一非 null 类型；调用方应省略
+/// 字段来使用默认值。显式 null 会按类型错误拒绝，使字段工厂与 generated wire validator 保持一致。
+/// 有限数字是否公开 nullable 则直接遵循对应合同声明。
 public enum CommandFields {
     /// JSON/JavaScript 可精确表达的最大安全整数，避免 Double 承载协议数字时接受已失真的整数。
     private static let jsonSafeIntegerLimit = 9_007_199_254_740_991
 }
 
 public extension CommandFields {
-    /// 布尔字段：缺失或兼容性 null 使用默认值，存在但非布尔抛出解析错误。
+    /// 布尔字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - value: 字段缺失时使用的默认值。
+    /// - Returns: 解析为 `Bool` 的命令字段。
+    static func bool(_ name: String, default value: Bool) -> CommandField<Bool> {
+        bool(name, default: value, description: "")
+    }
+
+    /// 布尔字段：缺失使用默认值，存在但为 null 或非布尔时抛出解析错误。
     ///
     /// - Important (设计特性 F-26，勿当 bug 重提): 本工厂对"布尔"采用**严格**判定——只接受
     ///   JSON `true`/`false`，JSON number 一律拒绝。例如 `"submit": 1` 或 `"animated": 0`
@@ -36,12 +46,37 @@ public extension CommandFields {
                                                 required: false,
                                                 description: description,
                                                 defaultValue: .bool(value))) { raw in
-            guard let raw = raw, raw != .null else { return value }
+            guard let raw else { return value }
+            guard raw != .null else {
+                throw CommandInputParseError("\(name) must be a boolean")
+            }
             guard let parsed = raw.boolValue else {
                 throw CommandInputParseError("\(name) must be a boolean")
             }
             return parsed
         }
+    }
+
+    /// 可选有限数字字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - minimum: 可选下界。
+    ///   - maximum: 可选上界。
+    ///   - exclusiveMinimum: 是否排除下界值。
+    ///   - exclusiveMaximum: 是否排除上界值。
+    /// - Returns: 解析为 `Double?` 的命令字段。
+    static func optionalFiniteNumber(_ name: String,
+                                     minimum: Double? = nil,
+                                     maximum: Double? = nil,
+                                     exclusiveMinimum: Bool = false,
+                                     exclusiveMaximum: Bool = false) -> CommandField<Double?> {
+        optionalFiniteNumber(name,
+                             minimum: minimum,
+                             maximum: maximum,
+                             exclusiveMinimum: exclusiveMinimum,
+                             exclusiveMaximum: exclusiveMaximum,
+                             description: "")
     }
 
     /// 可选有限数字字段：缺失或 null 返回 nil，非有限数字或越界时抛出解析错误。
@@ -91,14 +126,39 @@ public extension CommandFields {
         }
     }
 
-    /// 带默认值的有限数字字段：缺失或 null 返回默认值，非有限数字或越界时抛出解析错误。
+    /// 带默认值的有限数字字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - value: 字段缺失时使用的默认值。
+    ///   - minimum: 可选下界。
+    ///   - maximum: 可选上界。
+    ///   - exclusiveMinimum: 是否排除下界值。
+    ///   - exclusiveMaximum: 是否排除上界值。
+    /// - Returns: 解析为 `Double` 的命令字段。
+    static func finiteNumber(_ name: String,
+                             default value: Double,
+                             minimum: Double? = nil,
+                             maximum: Double? = nil,
+                             exclusiveMinimum: Bool = false,
+                             exclusiveMaximum: Bool = false) -> CommandField<Double> {
+        finiteNumber(name,
+                     default: value,
+                     minimum: minimum,
+                     maximum: maximum,
+                     exclusiveMinimum: exclusiveMinimum,
+                     exclusiveMaximum: exclusiveMaximum,
+                     description: "")
+    }
+
+    /// 带默认值的有限数字字段：缺失返回默认值，null、非有限数字或越界时抛出解析错误。
     ///
     /// 默认值、inclusive/exclusive 边界和运行时校验来自同一声明；默认值必须为有限数且落在
     /// 声明范围内，否则在字段初始化时触发开发期断言。
     ///
     /// - Parameters:
     ///   - name: 字段名。
-    ///   - default: 字段缺失或显式为 null 时使用的默认值。
+    ///   - default: 字段缺失时使用的默认值。
     ///   - minimum: 可选下界。
     ///   - maximum: 可选上界。
     ///   - exclusiveMinimum: 是否排除下界值；仅在提供 `minimum` 时可设为 true。
@@ -130,7 +190,10 @@ public extension CommandFields {
                                                        maximum: maximum,
                                                        exclusiveMinimum: exclusiveMinimum,
                                                        exclusiveMaximum: exclusiveMaximum)) { raw in
-            guard let raw, raw != .null else { return value }
+            guard let raw else { return value }
+            guard raw != .null else {
+                throw CommandInputParseError("\(name) must be a finite number within the declared range")
+            }
             guard let parsed = raw.doubleValue,
                   finiteNumberIsWithinBounds(parsed,
                                              minimum: minimum,
@@ -141,6 +204,16 @@ public extension CommandFields {
             }
             return parsed
         }
+    }
+
+    /// JSON number 字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - required: 字段是否必填。
+    /// - Returns: 解析为可选 `JSONValue` 的命令字段。
+    static func number(_ name: String, required: Bool) -> CommandField<JSONValue?> {
+        number(name, required: required, description: "")
     }
 
     /// JSON number 字段：按 required 决定是否必填，并保留原始 `JSONValue` 供执行层区分数字/布尔。
@@ -178,6 +251,14 @@ public extension CommandFields {
         }
     }
 
+    /// 可选非负整数字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameter name: 字段名。
+    /// - Returns: 解析为 `Int?` 的命令字段。
+    static func optionalNonNegativeInt(_ name: String) -> CommandField<Int?> {
+        optionalNonNegativeInt(name, description: "")
+    }
+
     /// 可选非负整数字段：缺失或 null 返回 nil，存在但非 JSON safe integer 范围内的有限整数或小于 0 抛出解析错误。
     ///
     /// - Parameters:
@@ -198,6 +279,17 @@ public extension CommandFields {
             }
             return parsed
         }
+    }
+
+    /// 可选限定范围整数字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - minimum: 可选闭区间下界。
+    ///   - maximum: 可选闭区间上界。
+    /// - Returns: 解析为 `Int?` 的命令字段。
+    static func optionalInt(_ name: String, minimum: Int? = nil, maximum: Int? = nil) -> CommandField<Int?> {
+        optionalInt(name, minimum: minimum, maximum: maximum, description: "")
     }
 
     /// 可选限定范围整数字段：缺失或 null 返回 nil，非有限整数、非 JSON safe integer 或越界时抛出解析错误。
@@ -242,6 +334,16 @@ public extension CommandFields {
         }
     }
 
+    /// 必填限定范围整数字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - range: 允许的闭区间。
+    /// - Returns: 解析为 `Int` 的命令字段。
+    static func requiredInt(_ name: String, range: ClosedRange<Int>) -> CommandField<Int> {
+        requiredInt(name, range: range, description: "")
+    }
+
     /// 必填限定范围整数字段：缺失、null、非 JSON safe integer、非有限整数或越界时抛出解析错误。
     ///
     /// 用于调用方必须明确选择目标的场景，例如导航栏按钮下标。与带默认值的 `int` 不同，本字段
@@ -276,7 +378,18 @@ public extension CommandFields {
         }
     }
 
-    /// 限定范围整数字段：缺失或兼容性 null 使用默认值，非法整数或越界时抛出解析错误。
+    /// 限定范围整数字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - range: 允许的闭区间。
+    ///   - value: 字段缺失时使用的默认值。
+    /// - Returns: 解析为 `Int` 的命令字段。
+    static func int(_ name: String, range: ClosedRange<Int>, default value: Int) -> CommandField<Int> {
+        int(name, range: range, default: value, description: "")
+    }
+
+    /// 限定范围整数字段：缺失使用默认值，null、非法整数或越界时抛出解析错误。
     ///
     /// `default` 必须落在 `range` 内；这是声明字段时的开发期不变量。工厂本身非 throwing，
     /// 因此发现不一致时用 `preconditionFailure` 立即暴露，避免 schema 默认值与运行时校验漂移。
@@ -307,7 +420,10 @@ public extension CommandFields {
                                                        defaultValue: .double(Double(value)),
                                                        minimum: schemaMinimum,
                                                        maximum: schemaMaximum)) { raw in
-            guard let raw = raw, raw != .null else { return value }
+            guard let raw else { return value }
+            guard raw != .null else {
+                throw CommandInputParseError("\(name) must be an integer between \(range.lowerBound) and \(range.upperBound)")
+            }
             guard let parsed = try parseInteger(raw, name: name), range.contains(parsed) else {
                 throw CommandInputParseError("\(name) must be an integer between \(range.lowerBound) and \(range.upperBound)")
             }

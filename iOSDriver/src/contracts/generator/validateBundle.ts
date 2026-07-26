@@ -65,6 +65,7 @@ const schemaTypes = new Set<JsonSchemaType>([
   "boolean",
   "null"
 ]);
+const extensionConstraintKeywords = new Set(["exactlyOneOf", "mutuallyExclusive", "note"]);
 
 const errorSources = new Set(["appEnvelope", "transport", "http", "protocol", "contract", "config", "workflow", "artifact"]);
 const providers = new Set(["core", "uikit", "diagnostics", "extension"]);
@@ -293,8 +294,49 @@ function validateSchema(
   if (typedSchema.description !== undefined && typeof typedSchema.description !== "string") {
     fail("invalid_contract", `${path}.description`, "must be a string");
   }
-  if (typedSchema["x-iosExplore-constraints"] !== undefined && !isRecord(typedSchema["x-iosExplore-constraints"])) {
-    fail("invalid_contract", `${path}.x-iosExplore-constraints`, "must contain an object");
+  if (typedSchema["x-iosExplore-constraints"] !== undefined) {
+    validateExtensionConstraints(
+      typedSchema["x-iosExplore-constraints"],
+      type,
+      isRecord(typedSchema.properties) ? typedSchema.properties : {},
+      `${path}.x-iosExplore-constraints`
+    );
+  }
+}
+
+function validateExtensionConstraints(
+  value: Record<string, ContractJSONValue>,
+  schemaType: JsonSchemaType | JsonSchemaType[] | undefined,
+  properties: Record<string, unknown>,
+  path: string
+): void {
+  if (!isRecord(value)) fail("invalid_contract", path, "must contain an object");
+  for (const key of Object.keys(value)) {
+    if (!extensionConstraintKeywords.has(key)) {
+      fail("unknown_schema_keyword", `${path}.${key}`, `unsupported extension constraint ${key}`);
+    }
+  }
+
+  for (const key of ["exactlyOneOf", "mutuallyExclusive"] as const) {
+    const fields = value[key];
+    if (fields === undefined) continue;
+    requireSchemaType(schemaType, "object", `${path}.${key}`);
+    if (!Array.isArray(fields) || fields.length < 2 || fields.some(field => typeof field !== "string")) {
+      fail("invalid_contract", `${path}.${key}`, "must be an array of at least two property names");
+    }
+    const seen = new Set<string>();
+    for (const [index, field] of fields.entries()) {
+      const fieldName = field as string;
+      if (seen.has(fieldName)) fail("invalid_contract", `${path}.${key}[${index}]`, "must not contain duplicates");
+      seen.add(fieldName);
+      if (!Object.prototype.hasOwnProperty.call(properties, fieldName)) {
+        fail("required_property_missing", `${path}.${key}[${index}]`, `constraint property ${fieldName} is not declared`);
+      }
+    }
+  }
+
+  if (value.note !== undefined && typeof value.note !== "string") {
+    fail("invalid_contract", `${path}.note`, "must be a string");
   }
 }
 

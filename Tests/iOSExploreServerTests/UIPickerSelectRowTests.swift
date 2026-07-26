@@ -78,9 +78,9 @@ func pickerInputRejectsNeither() {
     }
 }
 
-@Test("schema 声明全部字段")
-func pickerInputSchemaFields() {
-    let fields = UIPickerSelectRowInput.inputSchema.fields.map(\.name)
+@Test("generated definition 声明全部字段")
+func pickerInputFields() {
+    let fields = UIPickerSelectRowInput.inputDefinition.fields.map(\.name)
     #expect(fields.contains("component"))
     #expect(fields.contains("row"))
     #expect(fields.contains("title"))

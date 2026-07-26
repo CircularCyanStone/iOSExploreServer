@@ -44,8 +44,8 @@ public struct UIWebViewEvalInput: CommandInput, @unchecked Sendable {
         self.timeout = timeout
     }
 
-    /// 输入 schema（暴露给 MCP 客户端）。
-    public static let inputSchema = UIKitActionContracts.uiWebViewEvalInputSchema
+    /// Swift 执行端的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiWebViewEvalInput
 
     /// 从原始 JSON data 解析输入。
     ///
@@ -57,8 +57,7 @@ public struct UIWebViewEvalInput: CommandInput, @unchecked Sendable {
     /// - Returns: 已解析的 webView.eval 输入。
     /// - Throws: 字段类型/互斥/范围校验失败时抛 `CommandInputParseError`。
     public static func parse(from data: JSON) throws -> UIWebViewEvalInput {
-        var decoder = CommandInputDecoder(data, schema: inputSchema)
-        try decoder.validateNoUnknownFields()
+        var decoder = try inputDefinition.makeDecoder(for: data)
         let viewSnapshotID = try decoder.read(UIKitActionContracts.uiWebViewEvalViewSnapshotIDField)
         let script = try decoder.read(UIKitActionContracts.uiWebViewEvalScriptField)
         let function = try decoder.read(UIKitActionContracts.uiWebViewEvalFunctionField)
@@ -113,7 +112,7 @@ public struct UIWebViewEvalInput: CommandInput, @unchecked Sendable {
     /// generated 字段完整读取断言，故真实解析收敛在 `parse(from:)`。`AnyCommand` 始终走
     /// `parse(from:)`，本方法不会被调用，仅满足协议签名；若被调用则明确报错而非静默。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已解析的 webView.eval 输入。
     /// - Throws: 始终抛出 `CommandInputParseError`，提示改用 `parse(from:)`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIWebViewEvalInput {

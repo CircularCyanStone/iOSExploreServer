@@ -130,4 +130,14 @@ public struct AnyCommandField: Sendable, Equatable {
         self.name = name
         self.schema = schema
     }
+
+    /// 创建只参与 Swift 执行定义的类型擦除字段。
+    ///
+    /// 该入口用于数组元素或多类型 raw JSON 字段：真实 wire 结构由 generated
+    /// `CommandWireValidation` 校验，Swift parser 只需要字段名来执行声明字段和全字段读取守卫。
+    ///
+    /// - Parameter name: 字段名。
+    public init(name: String) {
+        self.init(name: name, schema: CommandFieldSchema(type: .object, required: false, description: ""))
+    }
 }

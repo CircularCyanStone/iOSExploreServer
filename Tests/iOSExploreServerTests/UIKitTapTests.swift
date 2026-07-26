@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import iOSExploreServer
 @testable import iOSExploreUIKit
@@ -86,9 +87,9 @@ func tapInputRejectsOldSnapshotID() {
     }
 }
 
-@Test("UITapInput schema 不再声明坐标字段且使用 viewSnapshotID")
-func tapInputSchemaDropsCoordinatesAndUsesViewSnapshotID() {
-    #expect(UITapInput.inputSchema.fields.map(\.name) == [
+@Test("UITapInput generated definition 不再声明坐标字段且使用 viewSnapshotID")
+func tapInputDropsCoordinatesAndUsesViewSnapshotID() {
+    #expect(UITapInput.inputDefinition.fields.map(\.name) == [
         "accessibilityIdentifier",
         "path",
         "viewSnapshotID",

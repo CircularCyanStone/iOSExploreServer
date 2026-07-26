@@ -1,6 +1,14 @@
 import Foundation
 
 public extension CommandFields {
+    /// 可选字符串字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameter name: 字段名。
+    /// - Returns: 解析为 `String?` 的命令字段。
+    static func optionalString(_ name: String) -> CommandField<String?> {
+        optionalString(name, description: "")
+    }
+
     /// 可选字符串字段：缺失或 null 返回 nil，存在但非字符串抛出解析错误。
     ///
     /// - Parameters:
@@ -21,6 +29,14 @@ public extension CommandFields {
         }
     }
 
+    /// 必填字符串字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameter name: 字段名。
+    /// - Returns: 解析为 `String` 的命令字段。
+    static func requiredString(_ name: String) -> CommandField<String> {
+        requiredString(name, description: "")
+    }
+
     /// 必填字符串字段：缺失或 null 抛出解析错误，存在但非字符串也抛出解析错误。
     ///
     /// - Parameters:
@@ -38,6 +54,16 @@ public extension CommandFields {
             }
             return parsed
         }
+    }
+
+    /// 必填 raw string 枚举字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - values: 合同允许的字符串值。
+    /// - Returns: 解析为 `String` 的命令字段。
+    static func requiredStringEnum(_ name: String, values: [String]) -> CommandField<String> {
+        requiredStringEnum(name, values: values, description: "")
     }
 
     /// 必填 raw string 枚举字段：返回 wire 字符串，不引入领域枚举类型。
@@ -66,12 +92,23 @@ public extension CommandFields {
         }
     }
 
-    /// 带默认值的 raw string 枚举字段：缺失或兼容性 null 时返回合同默认字符串。
+    /// 带默认值的 raw string 枚举字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
     ///
     /// - Parameters:
     ///   - name: 字段名。
     ///   - values: 合同允许的字符串值。
-    ///   - default: 字段缺失或显式为 null 时使用的默认值。
+    ///   - value: 字段缺失时使用的默认值。
+    /// - Returns: 解析为 `String` 的命令字段。
+    static func stringEnum(_ name: String, values: [String], default value: String) -> CommandField<String> {
+        stringEnum(name, values: values, default: value, description: "")
+    }
+
+    /// 带默认值的 raw string 枚举字段：缺失时返回合同默认字符串，null 或非法值抛出解析错误。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - values: 合同允许的字符串值。
+    ///   - default: 字段缺失时使用的默认值。
     ///   - description: 字段说明。
     /// - Returns: 解析为 `String` 的命令字段。
     static func stringEnum(_ name: String,
@@ -86,12 +123,25 @@ public extension CommandFields {
                                                        description: description,
                                                        defaultValue: .string(value),
                                                        enumValues: values)) { raw in
-            guard let raw, raw != .null else { return value }
+            guard let raw else { return value }
+            guard raw != .null else {
+                throw CommandInputParseError("\(name) must be one of \(values.joined(separator: ", "))")
+            }
             guard let parsed = raw.stringValue, values.contains(parsed) else {
                 throw CommandInputParseError("\(name) must be one of \(values.joined(separator: ", "))")
             }
             return parsed
         }
+    }
+
+    /// 可选 raw string 枚举字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - values: 合同允许的字符串值。
+    /// - Returns: 解析为 `String?` 的命令字段。
+    static func optionalStringEnum(_ name: String, values: [String]) -> CommandField<String?> {
+        optionalStringEnum(name, values: values, description: "")
     }
 
     /// 可选 raw string 枚举字段：缺失或 null 返回 nil，其余值必须属于合同枚举。
@@ -121,7 +171,21 @@ public extension CommandFields {
         }
     }
 
-    /// 字符串枚举字段：缺失或兼容性 null 使用默认值，非法 rawValue 抛出解析错误。
+    /// 字符串枚举字段；用于生成代码只需要执行定义、不需要重复保存字段说明的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 字段名。
+    ///   - type: 字符串 rawValue 枚举类型。
+    ///   - value: 字段缺失时使用的默认枚举值。
+    /// - Returns: 解析为枚举值的命令字段。
+    static func enumValue<E>(_ name: String,
+                             type: E.Type,
+                             default value: E) -> CommandField<E>
+        where E: RawRepresentable & CaseIterable & Sendable, E.RawValue == String {
+        enumValue(name, type: type, default: value, description: "")
+    }
+
+    /// 字符串枚举字段：缺失使用默认值，null 或非法 rawValue 抛出解析错误。
     ///
     /// - Parameters:
     ///   - name: 字段名。
@@ -141,7 +205,10 @@ public extension CommandFields {
                                                        description: description,
                                                        defaultValue: .string(value.rawValue),
                                                        enumValues: enumValues)) { raw in
-            guard let raw = raw, raw != .null else { return value }
+            guard let raw else { return value }
+            guard raw != .null else {
+                throw CommandInputParseError("\(name) must be one of \(enumValues.joined(separator: ", "))")
+            }
             guard let string = raw.stringValue, enumValues.contains(string), let parsed = E(rawValue: string) else {
                 throw CommandInputParseError("\(name) must be one of \(enumValues.joined(separator: ", "))")
             }

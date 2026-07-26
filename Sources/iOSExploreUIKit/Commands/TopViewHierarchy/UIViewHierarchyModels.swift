@@ -349,8 +349,8 @@ public enum UIViewHierarchyDetailLevel: String, Sendable, CaseIterable {
 ///
 /// 命令会从请求 `data` 解析为该类型；测试中也直接用它约束递归和筛选行为。
 public struct UIViewHierarchyInput: CommandInput, Sendable, Equatable {
-    /// `ui.topViewHierarchy` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiTopViewHierarchyInputSchema
+    /// `ui.topViewHierarchy` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiTopViewHierarchyInput
 
     /// 详情级别。
     public let detailLevel: UIViewHierarchyDetailLevel
@@ -401,7 +401,7 @@ public struct UIViewHierarchyInput: CommandInput, Sendable, Equatable {
 
     /// 按 `CommandInputDecoder` 读取字段并构造 typed input。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已完成默认值填充和范围校验的层级查询参数。
     /// - Throws: 字段类型、枚举值或范围非法时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIViewHierarchyInput {

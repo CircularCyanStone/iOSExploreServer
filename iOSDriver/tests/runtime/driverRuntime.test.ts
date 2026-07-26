@@ -79,9 +79,10 @@ describe("DriverRuntime", () => {
       attempts: 1
     });
     if (!result.ok) {
-      const originalData = { image: "not base64", format: "png", reason: "window missing" };
-      expect(result.error.data).toEqual(originalData);
-      expect(result.data).toEqual(originalData);
+      const sanitizedData = { format: "png", reason: "window missing" };
+      expect(result.error.data).toEqual(sanitizedData);
+      expect(result.data).toEqual(sanitizedData);
+      expect(JSON.stringify(result)).not.toContain("not base64");
     }
   });
 

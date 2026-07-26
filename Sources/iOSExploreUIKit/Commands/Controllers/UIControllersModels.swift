@@ -197,8 +197,8 @@ public struct UIControllerNode: Sendable, Equatable {
 /// 限制递归深度，防止容器嵌套过深时输出过大。presented 链（alert/sheet）始终展开，是高频
 /// 关键信息，不设开关。
 public struct UIControllersInput: CommandInput, Sendable, Equatable {
-    /// `ui.controllers` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiControllersInputSchema
+    /// `ui.controllers` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiControllersInput
 
     /// 最大递归深度，`nil` 表示不限制（遍历器另有硬上限兜底防坏状态）。
     public let maxDepth: Int?
@@ -215,7 +215,7 @@ public struct UIControllersInput: CommandInput, Sendable, Equatable {
 
     /// 按 `CommandInputDecoder` 读取声明字段并构造 typed input。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已完成默认值填充和范围校验的 controller 查询参数。
     /// - Throws: `maxDepth` 非非负整数时抛出 `CommandInputParseError`（→ `invalid_data`）。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIControllersInput {

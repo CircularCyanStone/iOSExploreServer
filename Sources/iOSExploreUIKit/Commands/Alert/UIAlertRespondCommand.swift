@@ -20,7 +20,7 @@ struct AlertRespondCommand: Command {
 
     /// 执行 alert 查询/响应。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的 alert respond 输入。
+    /// - Parameter input: 已通过 generated wire 校验的 alert respond 输入。
     /// - Returns: 成功时返回 alert 信息或已触发按钮；失败返回业务失败 envelope。
     func handle(_ input: UIAlertRespondInput) async -> ExploreResult {
         UIKitCommandLogger.info("command", "command \(action) start")

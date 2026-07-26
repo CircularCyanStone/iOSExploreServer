@@ -148,7 +148,7 @@ public enum ExploreError: String, Sendable {
     /// `Router` 没有找到请求 action 对应的命令。
     case unknownAction = "unknown_action"
 
-    /// 请求 data 无法按命令 `CommandInput` schema 解析。
+    /// 请求 data 未通过 generated wire 校验或无法转换成命令 `CommandInput`。
     case invalidData = "invalid_data"
 
     /// handler 抛出异常，路由层将其兜底转换为内部错误。
@@ -223,7 +223,7 @@ public enum ExploreError: String, Sendable {
     ///「参数错」与「目标类型不支持默认 tap」。
     case unsupportedTarget = "unsupported_target"
 
-    /// 输入被业务规则拒绝（如非法文本、不可编辑元素），区别于 schema 解析失败的 `invalid_data`。
+    /// 输入被业务规则拒绝（如非法文本、不可编辑元素），区别于 wire/解析失败的 `invalid_data`。
     case inputRejected = "input_rejected"
 
     /// 视图正处于过渡态（如动画/页面切换中），当前动作无法安全执行。

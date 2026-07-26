@@ -1,248 +1,50 @@
-# ui_tap_and_inspect Implementation
+# ui_tap_and_inspect
 
-## Overview
+`ui_tap_and_inspect` 是 iOSDriver 的 MCP workflow 工具，对应 host operation `tap_and_inspect`。它把一次 tap、可选等待和随后的 `ui.inspect` 合并到一个工具调用中，减少调用方在交互后手动补 inspect 的重复步骤。
 
-Implemented `ui_tap_and_inspect` as a new static MCP tool that combines tap, wait, and inspect operations into a single call. This optimization reduces agent reasoning cycles and improves automation performance.
+## 当前位置
 
-## Motivation
+- 合同：`contracts/host-operations/tap-and-inspect.json`
+- Workflow：`iOSDriver/src/workflows/tapAndInspect.ts`
+- MCP 映射：`iOSDriver/src/adapters/mcp/toolMappings.ts`
+- MCP 执行：`iOSDriver/src/adapters/mcp/server.ts`
 
-**Problem:** 95% of tap operations require checking the resulting UI state. Previously, this required:
-1. Agent calls `ui_tap`
-2. Agent reasons about the result (1-2 seconds)
-3. Agent calls `ui_inspect`
-4. Agent reasons about the state (1-2 seconds)
-5. Agent makes decision
+## 输入
 
-**Solution:** Combine all operations into one tool call:
-1. Agent calls `ui_tap_and_inspect`
-2. Agent receives both tap result and UI state
-3. Agent makes decision
-
-**Performance Improvement:**
-- Before: 4-6 seconds (tap + reasoning + inspect + reasoning + decision)
-- After: 2-3 seconds (tap_and_inspect + reasoning + decision)
-- Savings: 2-3 seconds per interaction (50% improvement)
-
-## Implementation Details
-
-### Location
-`iOSDriver/src/staticTools.ts` - Added as a static tool in `createStaticTools()`
-
-### Parameters
-
-```typescript
-{
-  // Target locator (one required)
-  accessibilityIdentifier?: string;  // Mutually exclusive with path
-  path?: string;                     // Mutually exclusive with accessibilityIdentifier
-  viewSnapshotID: string;            // Required (from ui.inspect)
-  
-  // Wait configuration
-  waitForStable?: boolean;           // Default: true
-  stableTimeMs?: number;             // Default: 300ms
-  
-  // Inspect configuration
-  inspectDepth?: number;             // Default: 2
-  inspectMaxTargets?: number;        // Default: 20
-}
-```
-
-### Response Structure
+目标定位仍遵循 `ui.tap` 规则：
 
 ```json
 {
-  "tap": {
-    "activated": true,
-    "type": "UIButton",
-    "path": "root/0/1/0",
-    ...
+  "path": "<path-from-ui.inspect>",
+  "viewSnapshotID": "<snapshot-id>",
+  "wait": {
+    "mode": "idle",
+    "timeoutMs": 1000
   },
-  "stateAfter": {
-    "navigationBar": {...},
-    "alert": {...},
-    "targets": [...],
-    ...
-  },
-  "timing": {
-    "tapMs": 22,
-    "waitMs": 315,
-    "inspectMs": 45,
-    "totalMs": 382
+  "inspectOptions": {
+    "mode": "minimal"
   }
 }
 ```
 
-### Execution Flow
+`accessibilityIdentifier` 与 `path` 按合同互斥；`viewSnapshotID` 来自同一 UI 稳定状态下的 `ui.inspect`。
 
-1. **Execute tap** - Call `ui.tap` with provided locator parameters
-2. **Wait for UI stability** (if `waitForStable=true`)
-   - Call `ui.wait` with mode="idle"
-   - Timeout: `stableTimeMs + 1000`
-   - Continue on timeout (best-effort)
-3. **Inspect UI state** - Call `ui.inspect` with configured depth/targets
-4. **Return combined result** - Include tap result, state, and timing
+## 执行语义
 
-### Error Handling
+1. 调用 App action `ui.tap`。
+2. 如果配置了 wait，则调用 `ui.wait`。
+3. 调用 `ui.inspect` 获取操作后的最新 UI 状态。
+4. 返回每一步结果和 timing。
 
-- **Tap fails:** Return error immediately with timing, do not continue to wait/inspect
-- **Wait times out:** Continue to inspect anyway (timeout is expected for stable screens)
-- **Inspect fails:** Propagate error with timing
-- **Validation errors:** Return structured error with `isError: true`
+Tap 失败时 workflow 短路，不继续 wait/inspect。Wait 超时可以作为结果的一部分返回，是否继续 inspect 以当前合同和 WorkflowRunner 实现为准；不要在文档里复制一份独立业务规则。
 
-## Documentation Updates
+## 验证
 
-Updated the following skill documents to reference `ui_tap_and_inspect`:
-
-### Primary Skills (✅ Updated)
-- `ios-automation/skill.md` - Unified entry point, added performance tip
-- `ios-alert-handling/SKILL.md` - Updated commands table with performance note
-- `ios-form-filling/SKILL.md` - Updated commands table for submit buttons
-- `ios-navigation/SKILL.md` - Updated commands table and tap description
-
-### Secondary Skills (✅ Batch Updated)
-- `ios-screenshot/SKILL.md` - Updated all curl examples
-- `ios-dynamic-content/SKILL.md` - Updated tap references
-- `ios-date-picker/SKILL.md` - Updated tap references
-- `ios-list-interaction/SKILL.md` - Updated commands table
-- `ios-table-actions/SKILL.md` - Updated tap references
-
-## Testing
-
-### Build Verification
 ```bash
 cd iOSDriver
-npm run build
-# ✅ Build succeeded with no TypeScript errors
+npm run contracts:check
+npm test
+node scripts/mcp-inspector.mjs ui_tap_and_inspect '{"path":"<path>","viewSnapshotID":"<snapshot-id>"}'
 ```
 
-### Tool Registration
-```bash
-node scripts/mcp-inspector.mjs tools | grep ui_tap_and_inspect
-# ✅ Tool registered with correct schema
-```
-
-### Parameter Validation
-```bash
-# Test 1: Mutually exclusive parameters
-node scripts/mcp-inspector.mjs ui_tap_and_inspect \
-  '{"accessibilityIdentifier":"test","path":"root/0/1","viewSnapshotID":"snap-test"}'
-# ✅ Returns: "accessibilityIdentifier and path are mutually exclusive"
-
-# Test 2: Stale snapshot
-node scripts/mcp-inspector.mjs ui_tap_and_inspect \
-  '{"path":"root/0/1","viewSnapshotID":"snap-test"}'
-# ✅ Returns: "stale_locator" error (expected when no app running)
-```
-
-## Usage Recommendations
-
-### When to Use ui_tap_and_inspect
-
-**✅ Use for:**
-- Navigation taps (need to verify destination screen)
-- Submit buttons (need to verify form submission result)
-- Delete buttons (need to verify item removed)
-- Settings toggles (need to verify state changed)
-- Any interaction where you need to verify the result
-
-**❌ Don't use for:**
-- Situations where you already have the UI state and just need to tap
-- When you don't care about the result (rare, <5% of cases)
-- When you need custom wait conditions (use `wait_and_inspect` instead)
-
-### Migration Guide
-
-**Old pattern:**
-```typescript
-// Step 1: Tap
-const tapResult = await ui_tap({
-  path: "root/0/1/0",
-  viewSnapshotID: "snap-123"
-});
-
-// Step 2: Agent reasons (1-2 seconds)...
-
-// Step 3: Inspect
-const state = await ui_inspect({
-  maxDepth: 2,
-  maxTargets: 20
-});
-
-// Step 4: Agent reasons (1-2 seconds)...
-
-// Step 5: Make decision
-```
-
-**New pattern:**
-```typescript
-// Step 1: Tap and inspect
-const result = await ui_tap_and_inspect({
-  path: "root/0/1/0",
-  viewSnapshotID: "snap-123",
-  waitForStable: true,    // Optional, default true
-  stableTimeMs: 300,      // Optional, default 300
-  inspectDepth: 2,        // Optional, default 2
-  inspectMaxTargets: 20   // Optional, default 20
-});
-
-// Step 2: Agent reasons once...
-
-// Step 3: Make decision based on result.stateAfter
-```
-
-## Performance Metrics
-
-### Expected Improvements
-
-| Scenario | Before (seconds) | After (seconds) | Improvement |
-|----------|------------------|-----------------|-------------|
-| Login flow (2 taps) | 8-12 | 4-6 | 50% |
-| Form submission (1 tap) | 4-6 | 2-3 | 50% |
-| Navigation (3 taps) | 12-18 | 6-9 | 50% |
-| Alert handling (1 tap) | 4-6 | 2-3 | 50% |
-
-### Breakdown
-
-```
-Old: ui_tap (50ms) → Agent (1500ms) → ui_inspect (50ms) → Agent (1500ms) = 3100ms
-New: ui_tap_and_inspect (50ms + 300ms wait + 50ms inspect) → Agent (1500ms) = 1900ms
-Savings: 1200ms per interaction (39% reduction)
-```
-
-With multiple interactions:
-```
-Login flow (2 interactions):
-- Old: 3100ms × 2 = 6200ms
-- New: 1900ms × 2 = 3800ms
-- Savings: 2400ms (39% reduction)
-```
-
-## Next Steps
-
-### Verification Tasks
-
-1. **Real Device Testing** - Test with actual iOS app to verify timing
-2. **Performance Benchmarking** - Measure actual savings in real automation scenarios
-3. **Login Flow Test** - Re-run login test and compare before/after metrics
-4. **Agent Behavior** - Verify agents automatically use the new tool
-
-### Potential Enhancements
-
-1. **Smart Wait** - Auto-detect animation completion instead of fixed wait
-2. **Conditional Inspect** - Only inspect if tap succeeds
-3. **Custom Wait Conditions** - Allow specifying wait conditions like `wait_and_inspect`
-4. **Batch Operations** - Extend to support multiple taps in sequence
-
-## Conclusion
-
-The `ui_tap_and_inspect` tool successfully combines three operations (tap, wait, inspect) into one, eliminating two agent reasoning cycles and reducing automation time by 2-3 seconds per interaction. This represents a 50% improvement in interactive automation performance.
-
-All skill documents have been updated to recommend this tool for tap operations where state verification is needed (95% of cases).
-
----
-
-**Implementation Date:** 2026-07-15  
-**Implementation Time:** ~30 minutes  
-**Files Modified:** 11 (1 TypeScript, 10 Markdown)  
-**Build Status:** ✅ Passing  
-**Test Status:** ✅ Validated
+最后一条需要真实 App 已启动，并且 `<path>` / `<snapshot-id>` 来自最新 `ui.inspect`。

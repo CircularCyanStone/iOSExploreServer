@@ -20,10 +20,10 @@ public enum InputMode: String, Sendable, Equatable, CaseIterable {
 /// 必填的 `text`。`mode` 默认 `replace`（先清空），`submit` 默认 `false`，避免批量填写时
 /// 每个字段都触发结束编辑；只有业务依赖 Return / Done / Search 或 `editingDidEnd` 时才显式打开。
 ///
-/// 该类型整体 Foundation-only：字段声明与解析不依赖 UIKit，便于在 macOS 上做 schema 单测。
+/// 该类型整体 Foundation-only：字段声明与解析不依赖 UIKit，便于在 macOS 上做输入单测。
 public struct UIInputField: CommandInput, Sendable, Equatable {
-    /// 单个字段暴露给顶层 `fields.items` 的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiInputFieldsItemInputSchema
+    /// 单个 `fields.items` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiInputFieldsItemInput
 
     /// 目标控件定位方式。
     public let target: UIKitViewLookupTarget
@@ -53,7 +53,7 @@ public struct UIInputField: CommandInput, Sendable, Equatable {
 
     /// 按 `CommandInputDecoder` 读取单个字段并执行定位互斥校验。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已解析的字段输入。
     /// - Throws: 字段类型或定位互斥关系非法时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIInputField {
@@ -83,8 +83,8 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
     /// 单次 `ui.input` 最多处理的字段数，避免一次命令持有主线程过久。
     public static let maxFields = 16
 
-    /// `ui.input` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiInputInputSchema
+    /// `ui.input` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiInputInput
 
     /// 按顺序执行的字段输入列表。
     public let fields: [UIInputField]
@@ -116,8 +116,7 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已解析的批量 input 输入。
     /// - Throws: 顶层字段类型、字段数量、元素类型或单字段定位互斥关系非法时抛出 `CommandInputParseError`。
     public static func parse(from data: JSON) throws -> UIInputInput {
-        var decoder = CommandInputDecoder(data, schema: inputSchema)
-        try decoder.validateNoUnknownFields()
+        var decoder = try inputDefinition.makeDecoder(for: data)
         let rawFields = try decoder.read(UIKitActionContracts.uiInputFieldsField)
         let viewSnapshotID = try decoder.read(UIKitActionContracts.uiInputViewSnapshotIDField)
         let stopOnFailure = try decoder.read(UIKitActionContracts.uiInputStopOnFailureField)
@@ -142,7 +141,7 @@ public struct UIInputInput: CommandInput, Sendable, Equatable {
     ///
     /// `fields` 对象数组需要从原始 `data` 逐项解析并附带下标错误文案，真实入口是 `parse(from:)`。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 不返回；该入口始终抛错。
     /// - Throws: 始终抛出 `CommandInputParseError`，提示改用 `parse(from:)`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIInputInput {

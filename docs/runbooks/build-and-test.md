@@ -1,112 +1,128 @@
 # 构建与测试
 
-## SPM 库（主）
+按改动影响范围选择验证；不要为了文档或只读任务机械跑全量测试。
+
+## Swift Package
 
 ```bash
-swift build                              # 构建（core + iOSExploreUIKit + iOSExploreDiagnostics）
-swift test                               # 全量测试（macOS SPM 当前 225 个，含端到端、UIKit 模型/解析/snapshot store/Diagnostics；iOS framework 下当前 344 个，额外覆盖 UIKit 指纹状态与动作能力）
-swift test --enable-code-coverage        # 带覆盖率（当前行覆盖 86.62%）
-swift test --filter Integration          # 只跑端到端集成测试
+swift build
+swift test
+swift test --enable-code-coverage
+swift test --filter Integration
 ```
 
-- 集成测试在测试进程内起真实 `ExploreServer` + 用 `NWConnection` 走 loopback 验证往返，**模拟器/CI/本机都能跑**，无需真机。
-- 集成测试用端口 **38399**，且用 `@Suite(.serialized)` 串行（多个测试共用端口，不能并行）。iOS 模拟器上 `NWListener.cancel()` 释放端口是异步的，串行用例间偶发 `Address already in use`；测试用 `startWithPortRetry` 在端口占用时退避重试，macOS 下首次即成功。
-- UIKit 命令分两层验证：值模型、schema、parser 和 snapshot store 可由 macOS `swift test` 覆盖；真实 UIKit 状态采集、能力判断和动作执行需要 iOS framework 测试或 SPMExample 闭环。不要把 macOS 层测试通过解释成真实 UIKit 行为已经验证。
+说明：
+
+- `swift build` 覆盖 core、UIKit 扩展和 Diagnostics 扩展的 SPM 编译。
+- macOS `swift test` 覆盖 core、Foundation-only typed input、解析、snapshot store、Diagnostics 可测逻辑和 loopback 集成测试。
+- 集成测试在测试进程内启动真实 `ExploreServer`，通过 loopback 验证 HTTP 往返，不需要真机。
+- 涉及真实 UIKit 采集、target-action、fingerprint 状态和 framework 注册断言时，需要 iOS framework 测试或真实 App 验证。
 
 ## 按改动范围选择验证
 
 | 改动范围 | 首选验证 | 覆盖边界 |
-|---|---|---|
-| command parser / schema / `CommandInput` model / JSON 值转换 | 定向 `swift test --filter <相关测试名>` | 覆盖跨边界 Sendable 值、字段校验、错误码和 help schema；不证明真实 `UIView` 行为 |
+| --- | --- | --- |
+| command parser / schema / `CommandInput` model / JSON 值转换 | 定向 `swift test --filter <相关测试名>` | 覆盖跨边界 Sendable 值、字段校验、错误码和 help metadata；不证明真实 `UIView` 行为 |
 | UIKit collector / context provider / locator resolver / executor / registrar | iOS framework 定向测试或对应 scheme 的 `xcodebuild ... test` | 覆盖 `@MainActor` 上的真实 UIKit 对象采集、解析、陈旧检测和显式注册 |
 | 真实执行行为：`sendActions(for:)`、alert 响应、navigation、scroll、keyboard、WKWebView JS | SPMExample 模拟器闭环；涉及 USB/设备差异时再跑真机闭环 | 覆盖 App 运行时转场、键盘、滚动、alert dismissal、WebView 加载和 HTTP action 往返 |
 | 纯文档、README、注释 | `rg` / 链接或路径检查 | 不运行 Swift 测试；只验证文档中命令名、字段名和交叉引用没有明显漂移 |
 
-## framework 工程（手动编 `.framework`）
+## Framework 工程
 
-framework 工程有三个 framework target，与 SPM 共享同一份 `Sources/` 源码：
+三个 framework target 与 SPM 共享 `Sources/`：
 
-```bash
-# 构建三个 framework（iOSExploreServer + iOSExploreUIKit + iOSExploreDiagnostics）
-xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj \
-           -scheme iOSExploreServer \
-           -sdk iphonesimulator \
-           -destination 'generic/platform=iOS Simulator' build
+- `iOSExploreServer.framework`
+- `iOSExploreUIKit.framework`
+- `iOSExploreDiagnostics.framework`
 
-# 单独构建 UIKit framework
-xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj \
-           -scheme iOSExploreUIKit \
-           -sdk iphonesimulator \
-           -destination 'generic/platform=iOS Simulator' build
-
-# framework 测试（含 iOS 正向注册断言，需具体模拟器设备）
-xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj \
-           -scheme iOSExploreServer \
-           -sdk iphonesimulator \
-           -destination 'platform=iOS Simulator,name=iPhone 17' test
-```
-
-- `iOSExploreServer.framework`：`PBXFileSystemSynchronizedRootGroup` 指向 `../Sources/iOSExploreServer/`。
-- `iOSExploreUIKit.framework`：指向 `../Sources/iOSExploreUIKit/`，链接并依赖 core framework。测试 target 同时链接两个 framework。
-- **core/UIKit 边界**：core framework 不得 `import UIKit`；UIKit framework 只用 core 的 public 缝。
-- Debug/Release 均 `SWIFT_VERSION=5.0`、`BUILD_LIBRARY_FOR_DISTRIBUTION=NO`。
-- `BUILD_LIBRARY_FOR_DISTRIBUTION=NO`：Swift 6.2 工具链下，library-evolution 的 `.swiftinterface` 会因 `nonisolated(nonsending)` 在 `SwiftVerifyEmittedModuleInterface` 失败，故关闭。代价：不再生成跨 Xcode 版本的稳定 interface，对"手动编译嵌入同版本 Xcode 项目"无影响。
-
-## SPMExample 测试 App
-
-Xcode 打开 `Examples/SPMExample/SPMExample.xcodeproj` → 选真机或模拟器 → Run。
-App 启动后默认「○ 已停止」，点「启动 Server」开始监听 `:38321`。
-
-## 真机端到端验证（完整 USB 链路）
-
-1. 真机连数据线 → 信任此电脑。
-2. Xcode 选真机 → Run SPMExample → App 内点「启动 Server」（状态变 `● 监听中 :38321`）。
-3. Mac 终端：`iproxy 38321 38321`（前台，保持运行）。
-4. **另开一个终端**：
-   ```bash
-   curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
-   curl -X POST http://localhost:38321/ -d '{"action":"info"}'
-curl -X POST http://localhost:38321/ -d '{"action":"greet","data":{"name":"Claude"}}'
-curl -X POST http://localhost:38321/ -d '{"action":"device"}'
-curl -X POST http://localhost:38321/ -d '{"action":"ui.topViewHierarchy","data":{"maxDepth":2}}'
-curl -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}'
-# 以下两个动作必填 viewSnapshotID（snap-1 只是占位，实际取上一步 ui.inspect 返回的 data.viewSnapshotID）
-curl -X POST http://localhost:38321/ -d '{"action":"ui.control.sendAction","data":{"accessibilityIdentifier":"mine.header.avatar","viewSnapshotID":"snap-1","event":"touchUpInside"}}'
-curl -X POST http://localhost:38321/ -d '{"action":"ui.tap","data":{"accessibilityIdentifier":"mine.header.avatar","viewSnapshotID":"snap-1"}}'
-curl -X POST http://localhost:38321/ -d '{"action":"app.logs.mark"}'
-curl -X POST http://localhost:38321/ -d '{"action":"debug.emitAppLog"}'
-curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["bridge"],"limit":20}}'
-```
-5. App 日志面板应实时显示每个请求；curl 输出应为 envelope JSON。
-
-Diagnostics 示例 App 在 Debug 构建下已通过 `ViewController.exampleDiagnosticsConfiguration()` 直接打开 stdout/stderr/NSLog/os_log 四个 capture，不再使用环境变量或启动参数控制；Release 构建下四个 capture 全关。Release 构建或未开 capture 时，`app.logs.mark/read` 的 `capture.stdout`、`capture.stderr`、`capture.nslog` 与 `capture.oslog` 会显示 `notCaptured`，但 `explore` 内部日志和 `debug.emitAppLog` 写入的 `bridge` 日志仍可读取。验证进程日志捕获时，直接启动 Debug 构建即可：
+构建：
 
 ```bash
-# XcodeBuildMCP 模拟器启动示例；真机同理用 launch_app_device，并在 Mac 侧保留 iproxy。
-launch_app_sim(env={"IOS_EXPLORE_AUTOSTART":"1"})  # capture 在 Debug 代码里直配，无需 env
-
-curl -X POST http://localhost:38321/ -d '{"action":"ping"}'
-curl -X POST http://localhost:38321/ -d '{"action":"app.logs.mark"}'
-curl -X POST http://localhost:38321/ -d '{"action":"debug.emitStdout","data":{"message":"stdout-curl-check-替换为唯一值"}}'
-curl -X POST http://localhost:38321/ -d '{"action":"debug.emitStderr","data":{"message":"stderr-curl-check-替换为唯一值"}}'
-curl -X POST http://localhost:38321/ -d '{"action":"debug.emitNSLog","data":{"message":"nslog-curl-check-替换为唯一值"}}'
-curl -X POST http://localhost:38321/ -d '{"action":"debug.emitOSLog","data":{"message":"oslog-curl-check-替换为唯一值"}}'
-curl -X POST http://localhost:38321/ -d '{"action":"debug.emitLogger","data":{"message":"logger-curl-check-替换为唯一值"}}'
-curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["stdout"],"limit":20}}'
-curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["stderr"],"limit":20}}'
-curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["nslog"],"limit":20}}'
-curl -X POST http://localhost:38321/ -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"替换为 mark 返回值","id":0},"sources":["oslog"],"limit":20}}'
+xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj \
+  -scheme iOSExploreServer \
+  -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' build
 ```
 
-stdout 结果应为 `source:"stdout"`、`level:"info"`；stderr 结果应为 `source:"stderr"`、`level:"error"`；NSLog 结果应为 `source:"nslog"`；`os_log` 与 Swift `Logger` 结果统一进入 `source:"oslog"`。如果当前 OS 或沙箱不允许 `OSLogStore` 读取当前进程日志，`capture.oslog.state` 会是 `unavailable`，这种情况要按状态排查，不要解释成“没有产生日志”。
+测试需要指定当前机器存在的模拟器名称：
 
-> 已在 iPhone12,1 / iOS 26.5 验证通过（见 `.git/sdd/progress.md`）。
-
-## 模拟器快速验证（不用 iproxy）
-
-模拟器与 Mac 共享网络栈，Mac 可直接打模拟器里的 Server：
 ```bash
-curl -X POST http://127.0.0.1:38321/ -d '{"action":"ping"}'
-curl -X POST http://127.0.0.1:38321/ -d '{"action":"app.logs.mark"}'
+xcodebuild -project iOSExploreServer/iOSExploreServer.xcodeproj \
+  -scheme iOSExploreServer \
+  -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,name=<simulator-name>' test
 ```
-前提：模拟器 App 已点「启动 Server」。
+
+不要在通用文档中固化某台机器的模拟器 ID、真机 UDID 或一次性系统版本。
+
+## iOSDriver
+
+```bash
+cd iOSDriver
+npm install
+npm run contracts:check
+npm run typecheck
+npm test
+npm run build
+```
+
+合同源变更时：
+
+```bash
+cd iOSDriver
+npm run contracts:generate
+npm run contracts:check
+```
+
+`npm test` 会先 build，再运行 vitest。真实 App 端到端 MCP smoke：
+
+```bash
+cd iOSDriver
+npm run build
+node scripts/mcp-inspector.mjs
+```
+
+## App 端到端
+
+模拟器与 Mac 共享 localhost。Debug App 启动并调用 `server.start()` 后：
+
+```bash
+curl -s -X POST http://localhost:38321/ -d '{"action":"ping"}'
+curl -s -X POST http://localhost:38321/ -d '{"action":"help"}'
+curl -s -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}'
+```
+
+真机需要先通过 USB 转发：
+
+```bash
+iproxy 38321 38321
+lsof -iTCP:38321 -sTCP:LISTEN
+curl -s -X POST http://localhost:38321/ -d '{"action":"ping"}'
+```
+
+`lsof` 的 COMMAND 必须是 `iproxy`。如果是其他进程，先清理端口占用。
+
+## UIKit 操作 smoke
+
+交互命令必须先用 `ui.inspect` 取得当前 `viewSnapshotID` 和目标 `path` 或 `accessibilityIdentifier`：
+
+```bash
+curl -s -X POST http://localhost:38321/ -d '{"action":"ui.inspect"}'
+curl -s -X POST http://localhost:38321/ \
+  -d '{"action":"ui.tap","data":{"path":"<path-from-inspect>","viewSnapshotID":"<snapshot-id>"}}'
+```
+
+`ui.topViewHierarchy` 和 `ui.screenshot` 不签发 `viewSnapshotID`，不能作为 `ui.tap` / `ui.control.sendAction` 的 freshness 来源。
+
+## Diagnostics smoke
+
+宿主注册 Diagnostics 后：
+
+```bash
+curl -s -X POST http://localhost:38321/ -d '{"action":"app.logs.mark"}'
+curl -s -X POST http://localhost:38321/ -d '{"action":"ping"}'
+curl -s -X POST http://localhost:38321/ \
+  -d '{"action":"app.logs.read","data":{"after":{"captureSessionID":"<from-mark>","id":0},"limit":50}}'
+```
+
+stdout/stderr/NSLog/os_log 捕获默认关闭，只有宿主 Debug 配置显式打开后才会进入 `app.logs.read`。`capture.oslog.state="unavailable"` 表示系统或沙箱不允许读取当前进程 unified logging，不等于没有产生日志。

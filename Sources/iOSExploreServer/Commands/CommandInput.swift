@@ -19,10 +19,10 @@ public struct CommandInputParseError: Error, Sendable, Equatable {
 /// typed command 输入模型协议。
 ///
 /// 命令可以把动态 `JSON` data 先解析为实现该协议的值类型，再进入业务执行逻辑。默认解析流程
-/// 会先按 `inputSchema` 拒绝未知字段，再调用具体类型的 `parse(decoding:)` 读取字段。
+/// 会先按 generated `inputDefinition` 校验 wire data，再调用具体类型读取字段。
 public protocol CommandInput: Sendable {
-    /// 当前输入模型暴露给工具客户端的字段 schema。
-    static var inputSchema: CommandInputSchema { get }
+    /// 当前输入模型在 Swift 执行端使用的字段与 wire 校验定义。
+    static var inputDefinition: CommandInputDefinition { get }
 
     /// 从原始 JSON data 解析输入模型。
     ///
@@ -33,29 +33,22 @@ public protocol CommandInput: Sendable {
 
     /// 从声明式 decoder 解析输入模型。
     ///
-    /// - Parameter decoder: 绑定了 `inputSchema` 与原始 data 的字段读取器。
+    /// - Parameter decoder: 绑定了 `inputDefinition` 与原始 data 的字段读取器。
     /// - Returns: 已完成类型校验和默认值填充的输入模型。
     /// - Throws: 字段校验或模型自定义校验失败时抛出 `CommandInputParseError`。
     static func parse(decoding decoder: inout CommandInputDecoder) throws -> Self
 }
 
 public extension CommandInput {
-    /// 默认解析入口：先拒绝未知字段，再交给模型读取声明字段。
-    ///
-    /// - Note (设计特性 F-25): 该入口**不评估** `inputSchema.constraints`（如 `exactlyOneOf`
-    ///   声明的字段互斥关系）。跨字段约束只用于 `toJSON()` 生成给客户端的 schema 描述，
-    ///   运行时不强制。若命令需要"两个字段二选一"之类的互斥/必选语义，必须在自身
-    ///   `parse(decoding:)` 里手写校验（参考 `UIKitViewLookupTarget.parse`），否则运行时
-    ///   会静默接受 schema 上声明互斥的两个字段。
+    /// 默认解析入口：先执行 generated wire 校验，再交给模型读取声明字段。
     ///
     /// - Parameter data: `ExploreRequest.data` 中的原始参数对象。
     /// - Returns: 已完成类型校验和默认值填充的输入模型。
     /// - Throws: 字段校验或模型自定义校验失败时抛出 `CommandInputParseError`。
     static func parse(from data: JSON) throws -> Self {
-        var decoder = CommandInputDecoder(data, schema: inputSchema)
-        try decoder.validateNoUnknownFields()
+        var decoder = try inputDefinition.makeDecoder(for: data)
         let value = try parse(decoding: &decoder)
-        // 守卫：所有声明字段都必须在 parse(decoding:) 中被读取，避免“schema 暴露了字段
+        // 守卫：所有声明字段都必须在 parse(decoding:) 中被读取，避免“生成定义加入了字段
         // 但 parse 没读、调用方传值永远不生效”的静默漂移。详见 CommandInputDecoder。
         try decoder.assertAllDeclaredFieldsRead()
         return value
@@ -64,10 +57,10 @@ public extension CommandInput {
 
 /// 无参数命令的输入模型。
 ///
-/// 该类型让命令可以显式声明“没有 data 字段”，默认 schema 会拒绝任何未知字段。
+/// 该类型让命令可以显式声明“没有 data 字段”，输入定义会拒绝任何未知字段。
 public struct EmptyCommandInput: CommandInput, Sendable, Equatable {
-    /// 空对象 schema。
-    public static let inputSchema = CommandInputSchema.empty
+    /// 空输入执行定义。
+    public static let inputDefinition = CommandInputDefinition.empty
 
     /// 创建空输入。
     public init() {}
@@ -84,11 +77,11 @@ public struct EmptyCommandInput: CommandInput, Sendable, Equatable {
 
 /// 保留原始 JSON 的输入模型。
 ///
-/// 该类型用于仍需手写解析或透传全部 data 的命令。它会绕过默认未知字段校验，避免 schema
+/// 该类型用于仍需手写解析或透传全部 data 的命令。它会绕过默认未知字段校验，避免输入定义
 /// 提前丢弃未来扩展字段。
 public struct RawJSONInput: CommandInput, Sendable, Equatable {
-    /// 允许任意字段的对象 schema。
-    public static let inputSchema = CommandInputSchema(fields: [], additionalProperties: true)
+    /// 允许任意字段的执行定义。
+    public static let inputDefinition = CommandInputDefinition(fields: [], additionalProperties: true)
 
     /// 原始 `ExploreRequest.data`。
     public let data: JSON

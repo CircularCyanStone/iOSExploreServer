@@ -20,8 +20,8 @@ public enum NavigationBarPlacement: String, Sendable, Equatable, CaseIterable {
 /// - `placement` + `accessibilityIdentifier`: 只在指定侧搜索（防误点）
 /// - `placement` + `index` + `accessibilityIdentifier`: 精确定位 + 二次确认
 public struct UINavigationBarButtonInput: CommandInput, Sendable, Equatable {
-    /// `ui.navigation.tapBarButton` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiNavigationTapBarButtonInputSchema
+    /// `ui.navigation.tapBarButton` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiNavigationTapBarButtonInput
 
     /// 按钮位置（可选，与 `accessibilityIdentifier` 配合使用）。
     public let placement: NavigationBarPlacement?
@@ -56,7 +56,7 @@ public struct UINavigationBarButtonInput: CommandInput, Sendable, Equatable {
 
     /// 按 `CommandInputDecoder` 读取字段并构造 typed input。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已解析的 navigationBar 按钮输入。
     /// - Throws: 必填缺失、枚举值非法或数值越界时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UINavigationBarButtonInput {

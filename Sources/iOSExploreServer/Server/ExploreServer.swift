@@ -116,7 +116,7 @@ public final class ExploreServer: Sendable {
     ///   - logCategory: 命令执行日志归属。
     public func register<C: Command>(_ command: C, logCategory: CommandLogCategory = .core) {
         ESLogger.info(.server,
-                      "server register command action=\(command.action) provider=\(command.contract.provider.rawValue) stability=\(command.contract.stability.rawValue) source=\(command.contract.contractSource.rawValue) schemaFields=\(command.contract.inputSchema.fields.count)")
+                      "server register command action=\(command.action) provider=\(command.contract.provider.rawValue) stability=\(command.contract.stability.rawValue) source=\(command.contract.contractSource.rawValue) inputFields=\(C.Input.inputDefinition.fields.count)")
         router.register(command, logCategory: logCategory)
     }
 
@@ -136,7 +136,7 @@ public final class ExploreServer: Sendable {
                                               logCategory: CommandLogCategory = .core,
                                               _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
         ESLogger.info(.server,
-                      "server register contract action=\(contract.action) provider=\(contract.provider.rawValue) stability=\(contract.stability.rawValue) source=\(contract.contractSource.rawValue) schemaFields=\(contract.inputSchema.fields.count)")
+                      "server register contract action=\(contract.action) provider=\(contract.provider.rawValue) stability=\(contract.stability.rawValue) source=\(contract.contractSource.rawValue) inputFields=\(Input.inputDefinition.fields.count)")
         router.register(contract: contract,
                         input: input,
                         logCategory: logCategory,
@@ -154,7 +154,7 @@ public final class ExploreServer: Sendable {
     /// - Parameters:
     ///   - action: 命令名，也是请求 body 中 `action` 的匹配键。
     ///   - description: 命令说明，供 `help` 输出。
-    ///   - input: 命令输入类型，负责 schema 暴露与 data 解析。
+    ///   - input: 命令输入类型，负责 wire 校验与 data 解析。
     ///   - logCategory: 命令执行日志归属。
     ///   - handler: 实际业务处理闭包，入参已经是 typed input。
     public func register<Input: CommandInput>(action: String,

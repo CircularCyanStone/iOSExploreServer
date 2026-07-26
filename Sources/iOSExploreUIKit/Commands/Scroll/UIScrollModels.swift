@@ -44,8 +44,8 @@ public enum ScrollExtent: String, Sendable, Equatable {
 /// 最前的 scrollView。`viewSnapshotID` 可选，identifier / path 两种定位方式都支持陈旧校验
 /// （与 ui.tap 一致）；缺省时不做陈旧校验。
 public struct UIScrollInput: CommandInput, Sendable, Equatable {
-    /// `ui.scroll` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiScrollInputSchema
+    /// `ui.scroll` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiScrollInput
 
     /// 滚动方向。
     public let direction: ScrollDirection
@@ -81,7 +81,7 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
 
     /// 按 `CommandInputDecoder` 读取字段并执行 amount 组合校验。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已解析的 scroll 输入。
     /// - Throws: 字段类型、方向枚举、amount<=0 时抛出
     ///   `CommandInputParseError`。viewSnapshotID 与 identifier / path 的陈旧校验

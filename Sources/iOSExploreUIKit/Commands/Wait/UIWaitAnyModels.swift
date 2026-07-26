@@ -45,8 +45,8 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
     /// conditions 数组长度上限，避免请求体过大。
     static let maxConditions = 16
 
-    /// `ui.waitAny` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiWaitAnyInputSchema
+    /// `ui.waitAny` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiWaitAnyInput
 
     /// 等待条件列表（顺序即命中优先级）。
     public let conditions: [UIWaitAnyCondition]
@@ -85,8 +85,7 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
     ///   condition 内未知字段、重复 id、未知 mode、mode 必填字段缺失或定位字段非法时抛出
     ///   `CommandInputParseError`。
     public static func parse(from data: JSON) throws -> UIWaitAnyInput {
-        var decoder = CommandInputDecoder(data, schema: inputSchema)
-        try decoder.validateNoUnknownFields()
+        var decoder = try inputDefinition.makeDecoder(for: data)
         let rawConditions = try decoder.readRaw(UIKitActionContracts.uiWaitAnyConditionsField)
         let timeoutMs = try decoder.read(UIKitActionContracts.uiWaitAnyTimeoutMsField)
         let intervalMs = try decoder.read(UIKitActionContracts.uiWaitAnyIntervalMsField)
@@ -107,7 +106,7 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
     /// 断言，故真实解析收敛在 `parse(from:)`。`AnyCommand` 始终走 `parse(from:)`，本方法不会
     /// 被调用，仅满足协议签名；若被调用则明确报错而非静默。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已解析的 waitAny 输入。
     /// - Throws: 始终抛出 `CommandInputParseError`，提示改用 `parse(from:)`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIWaitAnyInput {
@@ -140,7 +139,7 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
             guard let obj = element.objectValue else {
                 throw CommandInputParseError("each condition must be an object")
             }
-            guard let id = stringValue(obj, "id"), !id.isEmpty else {
+            guard let id = try stringValue(obj, "id"), !id.isEmpty else {
                 throw CommandInputParseError("condition requires non-empty id")
             }
             // 与顶层 validateNoUnknownFields 一致：拒绝 condition 内未知字段，避免调用方拼错字段
@@ -153,16 +152,16 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
             guard seenIDs.insert(id).inserted else {
                 throw CommandInputParseError("duplicate condition id '\(id)'")
             }
-            guard let modeRaw = stringValue(obj, "mode") else {
+            guard let modeRaw = try stringValue(obj, "mode") else {
                 throw CommandInputParseError("condition '\(id)' requires mode")
             }
             guard let mode = WaitMode(rawValue: modeRaw) else {
                 throw CommandInputParseError("condition '\(id)' has unknown wait mode '\(modeRaw)'")
             }
-            let text = stringValue(obj, "text")
-            let viewSnapshotID = stringValue(obj, "viewSnapshotID")
-            let identifier = stringValue(obj, "accessibilityIdentifier")
-            let path = stringValue(obj, "path")
+            let text = try stringValue(obj, "text", allowsNull: true)
+            let viewSnapshotID = try stringValue(obj, "viewSnapshotID", allowsNull: true)
+            let identifier = try stringValue(obj, "accessibilityIdentifier", allowsNull: true)
+            let path = try stringValue(obj, "path", allowsNull: true)
             let target: UIKitViewLookupTarget?
             if identifier != nil || path != nil {
                 do {
@@ -198,9 +197,19 @@ public struct UIWaitAnyInput: CommandInput, Sendable, Equatable {
         return parsed
     }
 
-    /// 读取对象上可选字符串字段；缺失或非字符串均返回 nil。
-    private static func stringValue(_ json: JSON, _ key: String) -> String? {
-        if case .string(let s) = json[key] { return s }
-        return nil
+    /// 把已通过 generated wire 校验的嵌套 condition 字符串转成领域值。
+    private static func stringValue(_ json: JSON,
+                                    _ key: String,
+                                    allowsNull: Bool = false) throws -> String? {
+        guard let value = json[key] else { return nil }
+        switch value {
+        case .string(let string):
+            return string
+        case .null where allowsNull:
+            return nil
+        default:
+            let expected = allowsNull ? "a string or null" : "a string"
+            throw CommandInputParseError("condition field '\(key)' must be \(expected)")
+        }
     }
 }

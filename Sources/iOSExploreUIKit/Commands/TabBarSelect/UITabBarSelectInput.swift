@@ -45,8 +45,8 @@ public struct UITabBarSelectInput: CommandInput, Sendable, Equatable {
         self.triggerDelegate = triggerDelegate
     }
 
-    /// 输入 schema(暴露给 MCP 客户端)。
-    public static let inputSchema = UIKitActionContracts.uiTabBarSelectTabInputSchema
+    /// Swift 执行端的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiTabBarSelectTabInput
 
     /// 从声明式 decoder 解析输入。
     ///
@@ -59,7 +59,7 @@ public struct UITabBarSelectInput: CommandInput, Sendable, Equatable {
         let title = try decoder.read(UIKitActionContracts.uiTabBarSelectTabTitleField)
         let triggerDelegate = try decoder.read(UIKitActionContracts.uiTabBarSelectTabTriggerDelegateField)
 
-        // 手写互斥约束校验:index 与 title 必须且只能提供一个(schema constraints 只用于文档,不强制)
+        // 领域约束：index 与 title 必须且只能提供一个；合同扩展描述语义，parser 负责执行。
         let hasIndex = (index != nil)
         let hasTitle = (title != nil)
         if hasIndex == hasTitle {

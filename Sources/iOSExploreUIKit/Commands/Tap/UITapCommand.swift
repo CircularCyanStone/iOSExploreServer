@@ -12,7 +12,7 @@ import UIKit
 /// 不接受坐标、不做 hit-test、不找祖先 UIControl fallback。执行逻辑全部收敛在
 /// `UIKitActionExecutor` 中，本命令不再内联执行逻辑。
 struct UITapCommand: Command {
-    /// typed 输入模型，负责 schema 暴露和 data 解析。
+    /// typed 输入模型，负责 wire 校验和 data 解析。
     typealias Input = UITapInput
 
     /// 固定 action 名。
@@ -26,7 +26,7 @@ struct UITapCommand: Command {
     /// 解析请求构造 `UIKitActionPlan.tap`（locator + viewSnapshotID），在 MainActor 上
     /// `await` executor。失败时返回明确原因。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的 tap 输入。
+    /// - Parameter input: 已通过 generated wire 校验的 tap 输入。
     /// - Returns: 成功时返回 activationRoute/type 等；失败时返回明确原因。
     func handle(_ input: UITapInput) async throws -> ExploreResult {
         UIKitCommandLogger.info("command", "command \(action) start target=\(input.target.logSummary)")

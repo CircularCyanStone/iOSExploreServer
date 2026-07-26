@@ -10,7 +10,7 @@ import iOSExploreServer
 /// - `year`/`month`/`day`/`hour`/`minute` 分量:只给关心的分量,未提供分量沿用 picker 当前值。
 ///
 /// 两类来源互斥(同时给或都不给均抛 `CommandInputParseError`)。`animated` 控制过渡动画(默认 false)。
-/// 该类型整体 Foundation-only:ISO 解析与分量拼装不依赖 UIKit,便于 macOS schema 单测;UIKit 类型
+/// 该类型整体 Foundation-only：ISO 解析与分量拼装不依赖 UIKit，便于 macOS 输入解析单测；UIKit 类型
 /// 只在 executor 内部出现,不穿过 public 边界。
 public struct UIDatePickerSetDateInput: CommandInput, Sendable, Equatable {
     /// 目标 UIDatePicker 定位方式(accessibilityIdentifier / path)。
@@ -37,8 +37,8 @@ public struct UIDatePickerSetDateInput: CommandInput, Sendable, Equatable {
         self.animated = animated
     }
 
-    /// 输入 schema(暴露给 MCP 客户端)。
-    public static let inputSchema = UIKitActionContracts.uiDatePickerSetDateInputSchema
+    /// Swift 执行端的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiDatePickerSetDateInput
 
     /// 从声明式 decoder 解析输入。
     ///

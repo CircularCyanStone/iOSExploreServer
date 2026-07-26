@@ -26,7 +26,7 @@ enum UISwipeExecutor {
     /// 在已定位上下文上执行滑动，返回滑动结果摘要。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 swipe 输入。
+    ///   - input: 已通过 generated wire 校验的 swipe 输入。
     ///   - context: 当前 MainActor 查询上下文（window / rootView / topViewController）。
     /// - Returns: 滑动结果 JSON（path / route / direction / targetType 等）。
     /// - Throws: 定位失败、陈旧等 `UIKitCommandError`。

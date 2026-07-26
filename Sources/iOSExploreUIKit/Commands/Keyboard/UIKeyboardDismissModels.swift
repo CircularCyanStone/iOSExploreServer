@@ -4,7 +4,7 @@ import iOSExploreServer
 /// `ui.keyboard.dismiss` 的键盘收起策略。
 ///
 /// 枚举保持 Foundation-only，UIKit executor 再据此选择 `resignFirstResponder`、
-/// `endEditing(true)` 或两者组合。case 顺序会进入 schema 的 enum 列表，调整需同步测试。
+/// `endEditing(true)` 或两者组合。rawValue 必须与 `contracts/` 中的 enum 一致。
 public enum KeyboardDismissStrategy: String, Sendable, Equatable, CaseIterable {
     /// 自动策略：先让当前 first responder resign，仍未收起时再对 window 调用 `endEditing(true)`。
     case auto
@@ -19,8 +19,8 @@ public enum KeyboardDismissStrategy: String, Sendable, Equatable, CaseIterable {
 /// 命令可在无参数时按自动策略收起键盘；`waitAfterMs` 用于执行后短暂等待，让 UIKit first
 /// responder 状态稳定，便于 agent 紧接着读取 UI 状态。
 public struct UIKeyboardDismissInput: CommandInput, Sendable, Equatable {
-    /// `ui.keyboard.dismiss` 暴露给 help 和工具客户端的输入 schema。
-    public static let inputSchema = UIKitActionContracts.uiKeyboardDismissInputSchema
+    /// `ui.keyboard.dismiss` 在 Swift 执行端使用的 generated 输入定义。
+    public static let inputDefinition = UIKitActionContracts.uiKeyboardDismissInput
 
     /// 键盘收起策略。
     public let strategy: KeyboardDismissStrategy
@@ -39,7 +39,7 @@ public struct UIKeyboardDismissInput: CommandInput, Sendable, Equatable {
 
     /// 按 `CommandInputDecoder` 读取字段并填充默认值。
     ///
-    /// - Parameter decoder: 绑定 `inputSchema` 与请求 data 的字段读取器。
+    /// - Parameter decoder: 绑定 generated 输入定义与请求 data 的字段读取器。
     /// - Returns: 已解析的 keyboard dismiss 输入。
     /// - Throws: 字段类型、枚举值或 `waitAfterMs` 范围非法时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UIKeyboardDismissInput {

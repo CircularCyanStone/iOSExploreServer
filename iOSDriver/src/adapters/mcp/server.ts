@@ -11,6 +11,10 @@ import type { CapabilityReport } from "../../runtime/capabilityProbe.js";
 import type { InvocationOptions, InvocationPolicy } from "../../runtime/driverRuntime.js";
 import type { InvocationResult } from "../../runtime/types.js";
 import { defaultHostLogger, type HostLogger } from "../../runtime/hostLogger.js";
+import {
+  HostOperationInputValidationError,
+  validateHostOperationInput
+} from "../../runtime/hostOperationInput.js";
 import type { JSONObject } from "../../types.js";
 import type { WorkflowOperation } from "../../workflows/types.js";
 import { renderAdapterError, renderInvocationResult, renderJSONData } from "./resultRenderer.js";
@@ -173,17 +177,27 @@ async function invokeEntry(
     );
   }
 
+  let validatedInput: JSONObject;
+  try {
+    validatedInput = validateHostOperationInput(entry.mapping.operation, input);
+  } catch (error) {
+    if (error instanceof HostOperationInputValidationError) {
+      return renderAdapterError("invalid_data", error.message);
+    }
+    throw error;
+  }
+  if (entry.mapping.operation === "call_action" && (validatedInput.action as string).length === 0) {
+    return renderAdapterError("invalid_data", "call_action requires a non-empty action field");
+  }
+
   switch (entry.mapping.operation) {
     case "health":
       return renderJSONData(await options.capabilityProbe.health() as unknown as JSONObject);
     case "capabilities":
       return renderJSONData(await options.capabilityProbe.capabilities() as unknown as JSONObject);
     case "call_action": {
-      const action = typeof input.action === "string" ? input.action : "";
-      if (action.length === 0) {
-        return renderAdapterError("missing_action", "call_action requires a non-empty action field");
-      }
-      const data = objectValue(input.data) ?? {};
+      const action = validatedInput.action as string;
+      const data = (validatedInput.data ?? {}) as JSONObject;
       const policy = options.capabilityProbe.invocationPolicy(action);
       return renderInvocationResult(
         await options.runtime.invoke(action, data, policy === undefined ? {} : { policy }),
@@ -193,8 +207,8 @@ async function invokeEntry(
     case "wait_and_inspect":
     case "tap_and_inspect":
       return renderInvocationResult(
-        await options.workflowRunner.run(entry.mapping.operation, input, {
-          deadlineAtMs: now() + workflowBudgetMs(entry.mapping.operation, input)
+        await options.workflowRunner.run(entry.mapping.operation, validatedInput, {
+          deadlineAtMs: now() + workflowBudgetMs(entry.mapping.operation, validatedInput)
         }),
         "workflow"
       );
@@ -235,10 +249,4 @@ function booleanOrGeneratedDefault(value: unknown, defaultValue: unknown, field:
   if (typeof value === "boolean") return value;
   if (typeof defaultValue === "boolean") return defaultValue;
   throw new Error(`Generated workflow contract is missing boolean default for ${field}`);
-}
-
-function objectValue(value: unknown): JSONObject | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as JSONObject
-    : undefined;
 }

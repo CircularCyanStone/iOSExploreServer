@@ -26,7 +26,7 @@ enum UILongPressExecutor {
     /// （`RunLoop.current.run` 不排空 cooperative MainActor 任务队列）的本质区别。
     ///
     /// - Parameters:
-    ///   - input: 已通过 typed schema 校验的 longPress 输入。
+    ///   - input: 已通过 generated wire 校验的 longPress 输入。
     ///   - context: 当前 MainActor 查询上下文（window / rootView / topViewController）。
     /// - Returns: 长按结果 JSON（path / route / duration / targetType 等）。
     /// - Throws: 定位失败、陈旧等 `UIKitCommandError`。

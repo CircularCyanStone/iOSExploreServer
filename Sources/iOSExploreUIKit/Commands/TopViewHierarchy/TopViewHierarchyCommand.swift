@@ -30,7 +30,7 @@ import UIKit
 /// - 看 view 颜色 / 字体 / 图片 / 控件状态等验收字段 → 本命令 detailLevel=appearance/full。
 /// - 要 tap / sendAction / input 一个目标 → **不要**用本命令，先用 `ui.inspect`。
 struct TopViewHierarchyCommand: Command {
-    /// typed 输入模型，负责 schema 暴露和 data 解析。
+    /// typed 输入模型，负责 wire 校验和 data 解析。
     typealias Input = UIViewHierarchyInput
 
     /// 固定 action 名，供注册、日志和错误工厂复用。
@@ -41,7 +41,7 @@ struct TopViewHierarchyCommand: Command {
 
     /// 执行顶部视图层级采集。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的层级查询参数。
+    /// - Parameter input: 已通过 generated wire 校验的层级查询参数。
     /// - Returns: 成功时返回 root 树或 matches 列表；参数非法时返回 `invalid_data`。
     func handle(_ input: UIViewHierarchyInput) async throws -> ExploreResult {
         UIKitCommandLogger.info("command", "command \(action) start input=typed")

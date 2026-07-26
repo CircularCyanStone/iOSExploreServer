@@ -3,6 +3,10 @@ import { startMCPStdioServer } from "../mcp/server.js";
 import type { CapabilityProbe } from "../../runtime/capabilityProbe.js";
 import type { DriverError } from "../../runtime/driverErrors.js";
 import type { DriverRuntime } from "../../runtime/driverRuntime.js";
+import {
+  HostOperationInputValidationError,
+  validateHostOperationInput
+} from "../../runtime/hostOperationInput.js";
 import { defaultHostLogger, type HostLogger } from "../../runtime/hostLogger.js";
 import type { JSONObject } from "../../types.js";
 import type { WorkflowRunner } from "../../workflows/workflowRunner.js";
@@ -111,7 +115,7 @@ async function runInit(context: CLICommandContext): Promise<number> {
   return EXIT_CODES.success;
 }
 
-/** 执行 endpoint、ping/help 和合同兼容性检查，不管理任何外部进程。 */
+/** 执行 endpoint、ping/help 和合同 bundle 一致性检查，不管理任何外部进程。 */
 async function runDoctor(context: CLICommandContext): Promise<number> {
   const nodeVersion = context.nodeVersion ?? process.versions.node;
   const nodeOK = minimumNodeVersion(nodeVersion, 20);
@@ -124,13 +128,12 @@ async function runDoctor(context: CLICommandContext): Promise<number> {
     help: report.help,
     actions: report.actions,
     modules: report.modules,
-    schemaCompatibility: report.schemaCompatibility,
-    schemaDifferences: report.schemaDifferences,
+    contractCompatibility: report.contractCompatibility,
     ...(report.metadata === undefined ? {} : { metadata: report.metadata })
   };
   if (context.human) {
     printHuman(context.output, `Node ${nodeVersion}: ${nodeOK ? "ok" : "unsupported"}`);
-    printHuman(context.output, `Endpoint: ${report.connection}; ping=${report.ping.status}; help=${report.help.status}; contract=${report.schemaCompatibility}`);
+    printHuman(context.output, `Endpoint: ${report.connection}; ping=${report.ping.status}; help=${report.help.status}; contract=${report.contractCompatibility}`);
   } else {
     printJSON(context.output, result);
   }
@@ -145,7 +148,7 @@ async function runDoctor(context: CLICommandContext): Promise<number> {
   if (report.metadata?.protocolVersionMatches === false) {
     return EXIT_CODES.transportFailure;
   }
-  if (report.schemaCompatibility === "breaking") {
+  if (report.contractCompatibility !== "exact") {
     return EXIT_CODES.appFailure;
   }
   return EXIT_CODES.success;
@@ -156,7 +159,18 @@ async function runCall(options: CallCommandOptions, context: CLICommandContext):
   const action = options.action.trim();
   if (action.length === 0) throw new CLIConfigError("call 需要非空 action");
   const data = await parseData(options.data, context.readFile ?? (path => readFile(path, "utf8")));
-  const result = await context.runtime.invoke(action, data, context.signal === undefined ? {} : { signal: context.signal });
+  let operationInput: JSONObject;
+  try {
+    operationInput = validateHostOperationInput("call_action", { action, data });
+  } catch (error) {
+    if (error instanceof HostOperationInputValidationError) throw new CLIConfigError(error.message);
+    throw error;
+  }
+  const result = await context.runtime.invoke(
+    operationInput.action as string,
+    operationInput.data as JSONObject,
+    context.signal === undefined ? {} : { signal: context.signal }
+  );
   if (result.ok) {
     await printInvocationSuccess(context.output, result, options.output, context.writeArtifact);
     return EXIT_CODES.success;

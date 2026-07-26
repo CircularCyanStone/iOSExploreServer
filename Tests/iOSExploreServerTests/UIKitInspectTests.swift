@@ -17,16 +17,16 @@ func inspectQueryParsesDefaultsAndFilters() throws {
     #expect(query.textLimit == 120)
 }
 
-@Test("UIInspectInput schema 按工具展示顺序声明字段")
-func inspectInputSchemaUsesExpectedFieldOrder() {
-    #expect(UIInspectInput.inputSchema.fields.map(\.name) == [
-        "accessibilityIdentifier",
-        "accessibilityIdentifierPrefix",
+@Test("UIInspectInput generated definition 按合同顺序声明字段")
+func inspectInputUsesExpectedFieldOrder() {
+    #expect(UIInspectInput.inputDefinition.fields.map(\.name) == [
         "includeHidden",
         "maxDepth",
+        "accessibilityIdentifier",
+        "accessibilityIdentifierPrefix",
+        "textLimit",
         "maxTargets",
         "maxVisitedNodes",
-        "textLimit",
     ])
 }
 
@@ -119,7 +119,7 @@ func inspectQueryIsFullHiddenPruned() {
 
 @Test("UIInspectInput 不再声明 includeStaticText/includeContainers/includeDisabled")
 func inspectQueryDeadFieldsRemoved() {
-    // schema additionalProperties=false：删除字段后，旧字段名应作为未知字段被拒绝，
+    // generated definition 拒绝未知字段：删除字段后，旧字段名应被拒绝，
     // 避免调用方误以为传值仍生效。
     #expect(throws: CommandInputParseError.self) {
         try UIInspectInput.parse(from: ["includeStaticText": true])

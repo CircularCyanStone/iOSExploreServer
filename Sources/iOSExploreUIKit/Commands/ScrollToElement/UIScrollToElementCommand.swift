@@ -19,7 +19,7 @@ struct ScrollToElementCommand: Command {
 
     /// 执行滚动到目标。
     ///
-    /// - Parameter input: 已通过 typed schema 校验的 scroll-to-element 输入。
+    /// - Parameter input: 已通过 generated wire 校验的 scroll-to-element 输入。
     /// - Returns: 成功时返回 found/target；失败时返回业务失败 envelope。
     func handle(_ input: UIScrollToElementInput) async -> ExploreResult {
         UIKitCommandLogger.info("command", "command \(action) start match=\(input.match.rawValue) valueLength=\(input.value.count)")

@@ -39,9 +39,9 @@ function renderProviderFile(
   contracts: readonly DeviceActionContract[],
   prepared: PreparedContractBundle
 ): string {
-  const schemaMembers = contracts.flatMap(contract => renderInputSchemaMembers(contract));
-  const schemaMap = contracts
-    .map(contract => `        ${swiftString(contract.action)}: ${actionIdentifier(contract.action)}InputSchema`)
+  const inputMembers = contracts.flatMap(contract => renderInputMembers(contract));
+  const inputMap = contracts
+    .map(contract => `        ${swiftString(contract.action)}: ${actionIdentifier(contract.action)}Input`)
     .join(",\n");
   const contractMembers = contracts
     .map(contract => renderContractMember(contract))
@@ -73,12 +73,12 @@ function renderProviderFile(
     "    public static let byAction: [String: CommandContract] = Dictionary(uniqueKeysWithValues: all.map { contract in",
     "        (contract.action, contract)",
     "    })",
-    "    /// 按 action 名查询 typed 字段 schema。",
-    "    public static let inputSchemas: [String: CommandInputSchema] = [",
-    schemaMap,
+    "    /// 按 action 名查询 Swift 执行端输入定义。",
+    "    public static let inputs: [String: CommandInputDefinition] = [",
+    inputMap,
     "    ]",
     contractMembers,
-    ...schemaMembers,
+    ...inputMembers,
     "}",
     ""
   ].filter(line => line.length > 0).join("\n");
@@ -91,7 +91,6 @@ function renderContractMember(contract: DeviceActionContract): string {
     `    static let ${identifier}Contract = CommandContract(`,
     `        action: ${swiftString(contract.action)},`,
     `        description: ${swiftString(contract.description)},`,
-    `        inputSchema: ${identifier}InputSchema,`,
     `        provider: .${contract.provider},`,
     `        stability: .${contract.stability},`,
     `        resultKind: .${contract.result.kind},`,
@@ -105,12 +104,14 @@ function renderContractMember(contract: DeviceActionContract): string {
   ].join("\n");
 }
 
-function renderInputSchemaMembers(contract: DeviceActionContract): string[] {
+function renderInputMembers(contract: DeviceActionContract): string[] {
   const identifier = actionIdentifier(contract.action);
   const schema = contract.inputSchema;
   const properties = schema.properties ?? {};
   const required = new Set(schema.required ?? []);
-  const fields = Object.keys(properties).sort();
+  // JSON object insertion order is the contract declaration order. Keep it for stable generated
+  // field layout and parser read-order tests; the canonical TypeScript artifact owns tool metadata.
+  const fields = Object.keys(properties);
   const fieldMembers: string[] = [];
   const fieldReferences: string[] = [];
 
@@ -128,11 +129,16 @@ function renderInputSchemaMembers(contract: DeviceActionContract): string[] {
     fieldReferences.push(emission.typed ? `${fieldIdentifier}.erased` : fieldIdentifier);
   }
 
-  const constraints = swiftConstraints(schema["x-iosExplore-constraints"]);
-  const constraintArgument = constraints.length === 0 ? "" : `,\n        constraints: [${constraints.join(", ")}]`;
   const fieldsExpression = fieldReferences.length === 0 ? "[]" : `[${fieldReferences.join(", ")}]`;
+  const validationLines = renderObjectValidation(schema, "data", "", "            ");
   fieldMembers.push(
-    `    static let ${identifier}InputSchema = CommandInputSchema(fields: ${fieldsExpression}, additionalProperties: ${schema.additionalProperties === true}${constraintArgument})`
+    `    static let ${identifier}Input = CommandInputDefinition(`,
+    `        fields: ${fieldsExpression},`,
+    `        additionalProperties: ${schema.additionalProperties === true},`,
+    "        validate: { data in",
+    ...validationLines,
+    "        }",
+    "    )"
   );
   return fieldMembers;
 }
@@ -142,10 +148,10 @@ interface ObjectArrayItemEmission {
 }
 
 /**
- * 为可由 typed parser 逐项读取的 object-array item 生成独立字段与 schema。
+ * 为可由 typed parser 逐项读取的 object-array item 生成独立字段与输入定义。
  *
- * 顶层数组字段仍由 `emitField` 从 canonical `items` 原样发射；这里的额外声明只为
- * Foundation-only parser 提供稳定的 `CommandField` 引用，避免 parser 再次手写 scalar schema。
+ * 顶层数组字段仍由 `emitField` 从 canonical `items` 发射；这里的额外声明只为
+ * Foundation-only parser 提供稳定的 `CommandField` 引用，避免 parser 再次手写字段规则。
  */
 function renderObjectArrayItemMembers(
   actionIdentifierValue: string,
@@ -164,18 +170,23 @@ function renderObjectArrayItemMembers(
   const fieldMembers: string[] = [];
   const fieldReferences: string[] = [];
 
-  for (const name of Object.keys(properties).sort()) {
+  for (const name of Object.keys(properties)) {
     const fieldIdentifier = `${itemIdentifier}${fieldIdentifierPart(name)}Field`;
     const emission = emitField(name, properties[name]!, required.has(name));
     fieldMembers.push(`    static let ${fieldIdentifier} = ${emission.expression}`);
     fieldReferences.push(emission.typed ? `${fieldIdentifier}.erased` : fieldIdentifier);
   }
 
-  const constraints = swiftConstraints(item["x-iosExplore-constraints"]);
-  const constraintArgument = constraints.length === 0 ? "" : `,\n        constraints: [${constraints.join(", ")}]`;
   const fieldsExpression = fieldReferences.length === 0 ? "[]" : `[${fieldReferences.join(", ")}]`;
+  const validationLines = renderObjectValidation(item, "data", "", "            ");
   fieldMembers.push(
-    `    static let ${itemIdentifier}InputSchema = CommandInputSchema(fields: ${fieldsExpression}, additionalProperties: ${item.additionalProperties === true}${constraintArgument})`
+    `    static let ${itemIdentifier}Input = CommandInputDefinition(`,
+    `        fields: ${fieldsExpression},`,
+    `        additionalProperties: ${item.additionalProperties === true},`,
+    "        validate: { data in",
+    ...validationLines,
+    "        }",
+    "    )"
   );
 
   return { members: fieldMembers };
@@ -189,55 +200,164 @@ function isObjectArrayItemSchema(schema: JsonSchema, item: JsonSchema | undefine
   return isArray && item?.type === "object" && item.properties !== undefined;
 }
 
+interface ValidationRenderContext {
+  nextVariable: number;
+}
+
+/** Compile a canonical object schema into direct Swift validation calls. */
+function renderObjectValidation(
+  schema: JsonSchema,
+  objectExpression: string,
+  path: string,
+  indent: string
+): string[] {
+  const context: ValidationRenderContext = { nextVariable: 0 };
+  return renderObjectProperties(schema, objectExpression, path, indent, context);
+}
+
+function renderObjectProperties(
+  schema: JsonSchema,
+  objectExpression: string,
+  path: string,
+  indent: string,
+  context: ValidationRenderContext
+): string[] {
+  assertRuntimeSchemaSupported(schema, path.length === 0 ? "data" : path);
+  const properties = schema.properties ?? {};
+  const required = new Set(schema.required ?? []);
+  return Object.keys(properties).flatMap(name => renderValueValidation(
+    properties[name]!,
+    `${objectExpression}[${swiftString(name)}]`,
+    path.length === 0 ? name : `${path}.${name}`,
+    required.has(name),
+    true,
+    indent,
+    context
+  ));
+}
+
+function renderValueValidation(
+  schema: JsonSchema,
+  rawExpression: string,
+  path: string,
+  required: boolean,
+  optionalExpression: boolean,
+  indent: string,
+  context: ValidationRenderContext
+): string[] {
+  assertRuntimeSchemaSupported(schema, path);
+  const types = schemaTypes(schema);
+  const argumentsList = [
+    rawExpression,
+    `path: ${swiftString(path)}`,
+    `required: ${required}`,
+    `types: [${types.map(type => `.${type}`).join(", ")}]`
+  ];
+  if (schema.enum !== undefined) {
+    argumentsList.push(`enumValues: [${schema.enum.map(swiftJSONValue).join(", ")}]`);
+  }
+  if (schema.minimum !== undefined) argumentsList.push(`minimum: ${schema.minimum}`);
+  if (schema.maximum !== undefined) argumentsList.push(`maximum: ${schema.maximum}`);
+  if (schema.exclusiveMinimum !== undefined) argumentsList.push(`exclusiveMinimum: ${schema.exclusiveMinimum}`);
+  if (schema.exclusiveMaximum !== undefined) argumentsList.push(`exclusiveMaximum: ${schema.exclusiveMaximum}`);
+  if (schema.minItems !== undefined) argumentsList.push(`minimumItems: ${schema.minItems}`);
+  if (schema.maxItems !== undefined) argumentsList.push(`maximumItems: ${schema.maxItems}`);
+  if (schema.uniqueItems === true) argumentsList.push("uniqueItems: true");
+
+  const lines = [`${indent}try CommandWireValidation.value(${argumentsList.join(", ")})`];
+  if (types.includes("object") && schema.properties !== undefined) {
+    const variable = `object${context.nextVariable++}`;
+    const patternSuffix = optionalExpression ? "?" : "";
+    lines.push(`${indent}if case .object(let ${variable})${patternSuffix} = ${rawExpression} {`);
+    const allowed = Object.keys(schema.properties).map(swiftString).join(", ");
+    lines.push(
+      `${indent}    try CommandWireValidation.object(${variable}, path: ${swiftString(path)}, allowedFields: Set([${allowed}]), additionalProperties: ${schema.additionalProperties === true})`
+    );
+    lines.push(...renderObjectProperties(schema, variable, path, `${indent}    `, context));
+    lines.push(`${indent}}`);
+  }
+  if (types.includes("array") && schema.items !== undefined) {
+    const arrayVariable = `array${context.nextVariable++}`;
+    const itemVariable = `item${context.nextVariable++}`;
+    const patternSuffix = optionalExpression ? "?" : "";
+    lines.push(`${indent}if case .array(let ${arrayVariable})${patternSuffix} = ${rawExpression} {`);
+    lines.push(`${indent}    for ${itemVariable} in ${arrayVariable} {`);
+    lines.push(...renderValueValidation(
+      schema.items,
+      itemVariable,
+      `${path}[]`,
+      true,
+      false,
+      `${indent}        `,
+      context
+    ));
+    lines.push(`${indent}    }`);
+    lines.push(`${indent}}`);
+  }
+  return lines;
+}
+
+function schemaTypes(schema: JsonSchema): string[] {
+  const types = Array.isArray(schema.type) ? schema.type : schema.type === undefined ? [] : [schema.type];
+  if (types.length === 0) throw new Error("device action runtime schema requires an explicit type");
+  return types;
+}
+
+function assertRuntimeSchemaSupported(schema: JsonSchema, path: string): void {
+  if (schema.oneOf !== undefined || schema.allOf !== undefined || schema.not !== undefined) {
+    throw new Error(`device action runtime schema uses an unsupported composite at ${path}`);
+  }
+  if (typeof schema.additionalProperties === "object") {
+    throw new Error(`device action runtime schema uses an unsupported additionalProperties schema at ${path}`);
+  }
+}
+
 interface SwiftFieldEmission {
   readonly expression: string;
   readonly typed: boolean;
 }
 
 function emitField(name: string, schema: JsonSchema, required: boolean): SwiftFieldEmission {
-  const description = schema.description ?? "";
   if (isBooleanWithDefault(schema, required)) {
     return {
       typed: true,
-      expression: `CommandFields.bool(${swiftString(name)}, default: ${schema.default}, description: ${swiftString(description)})`
+      expression: `CommandFields.bool(${swiftString(name)}, default: ${schema.default})`
     };
   }
   if (isRequiredStringEnum(schema, required)) {
     return {
       typed: true,
-      expression: `CommandFields.requiredStringEnum(${swiftString(name)}, values: ${swiftStringArray(stringEnumValues(schema))}, description: ${swiftString(description)})`
+      expression: `CommandFields.requiredStringEnum(${swiftString(name)}, values: ${swiftStringArray(stringEnumValues(schema))})`
     };
   }
   if (isDefaultStringEnum(schema, required)) {
     return {
       typed: true,
-      expression: `CommandFields.stringEnum(${swiftString(name)}, values: ${swiftStringArray(stringEnumValues(schema))}, default: ${swiftString(schema.default as string)}, description: ${swiftString(description)})`
+      expression: `CommandFields.stringEnum(${swiftString(name)}, values: ${swiftStringArray(stringEnumValues(schema))}, default: ${swiftString(schema.default as string)})`
     };
   }
   if (isNullableStringEnum(schema, required)) {
     return {
       typed: true,
-      expression: `CommandFields.optionalStringEnum(${swiftString(name)}, values: ${swiftStringArray(stringEnumValues(schema))}, description: ${swiftString(description)})`
+      expression: `CommandFields.optionalStringEnum(${swiftString(name)}, values: ${swiftStringArray(stringEnumValues(schema))})`
     };
   }
   if (isRequiredString(schema, required)) {
     return {
       typed: true,
-      expression: `CommandFields.requiredString(${swiftString(name)}, description: ${swiftString(description)})`
+      expression: `CommandFields.requiredString(${swiftString(name)})`
     };
   }
   if (isNullableString(schema, required)) {
     return {
       typed: true,
-      expression: `CommandFields.optionalString(${swiftString(name)}, description: ${swiftString(description)})`
+      expression: `CommandFields.optionalString(${swiftString(name)})`
     };
   }
   if (isRequiredArray(schema, required)) {
     const argumentsList = [
-      swiftString(name),
-      `description: ${swiftString(description)}`
+      swiftString(name)
     ];
-    if (schema.items !== undefined) argumentsList.push(`itemsSchema: ${swiftJSONObject(schema.items as unknown as Record<string, ContractJSONValue>)}`);
     if (schema.minItems !== undefined) argumentsList.push(`minimumCount: ${schema.minItems}`);
     if (schema.maxItems !== undefined) argumentsList.push(`maximumCount: ${schema.maxItems}`);
     return { typed: true, expression: `CommandFields.requiredArray(${argumentsList.join(", ")})` };
@@ -248,10 +368,6 @@ function emitField(name: string, schema: JsonSchema, required: boolean): SwiftFi
       swiftString(name),
       `values: ${swiftStringArray(stringEnumValues(items))}`
     ];
-    if (items.description !== undefined) {
-      argumentsList.push(`itemDescription: ${swiftString(items.description)}`);
-    }
-    argumentsList.push(`description: ${swiftString(description)}`);
     return {
       typed: true,
       expression: `CommandFields.optionalStringEnumArray(${argumentsList.join(", ")})`
@@ -261,7 +377,6 @@ function emitField(name: string, schema: JsonSchema, required: boolean): SwiftFi
     const argumentsList = [swiftString(name)];
     if (schema.minimum !== undefined) argumentsList.push(`minimum: ${schema.minimum}`);
     if (schema.maximum !== undefined) argumentsList.push(`maximum: ${schema.maximum}`);
-    argumentsList.push(`description: ${swiftString(description)}`);
     return {
       typed: true,
       expression: `CommandFields.optionalInt(${argumentsList.join(", ")})`
@@ -282,24 +397,24 @@ function emitField(name: string, schema: JsonSchema, required: boolean): SwiftFi
   if (isNullableFiniteNumber(schema, required)) {
     return {
       typed: true,
-      expression: `CommandFields.optionalFiniteNumber(${swiftString(name)}, description: ${swiftString(description)})`
+      expression: `CommandFields.optionalFiniteNumber(${swiftString(name)})`
     };
   }
   if (isRequiredBoundedInt(schema, required)) {
     return {
       typed: true,
-      expression: `CommandFields.requiredInt(${swiftString(name)}, range: ${schema.minimum}...${schema.maximum}, description: ${swiftString(description)})`
+      expression: `CommandFields.requiredInt(${swiftString(name)}, range: ${schema.minimum}...${schema.maximum})`
     };
   }
   if (isDefaultBoundedInt(schema, required)) {
     return {
       typed: true,
-      expression: `CommandFields.int(${swiftString(name)}, range: ${schema.minimum}...${schema.maximum}, default: ${schema.default}, description: ${swiftString(description)})`
+      expression: `CommandFields.int(${swiftString(name)}, range: ${schema.minimum}...${schema.maximum}, default: ${schema.default})`
     };
   }
   return {
     typed: false,
-    expression: `AnyCommandField(name: ${swiftString(name)}, schema: ${swiftFieldSchema(schema, required)})`
+    expression: `AnyCommandField(name: ${swiftString(name)})`
   };
 }
 
@@ -432,7 +547,6 @@ function finiteNumberArguments(name: string, schema: JsonSchema, hasDefault: boo
   }
   if (schema.exclusiveMinimum !== undefined) argumentsList.push("exclusiveMinimum: true");
   if (schema.exclusiveMaximum !== undefined) argumentsList.push("exclusiveMaximum: true");
-  argumentsList.push(`description: ${swiftString(schema.description ?? "")}`);
   return argumentsList.join(", ");
 }
 
@@ -449,61 +563,6 @@ function hasOnlyKeys(schema: JsonSchema, keys: readonly string[]): boolean {
   return Object.keys(schema).every(key => allowed.has(key));
 }
 
-function swiftFieldSchema(schema: JsonSchema, required: boolean): string {
-  const types = Array.isArray(schema.type) ? schema.type : schema.type === undefined ? [] : [schema.type];
-  const nonNullType = types.find(type => type !== "null") ?? "object";
-  const allowsNull = types.includes("null");
-  const parameters = [
-    `type: .${nonNullType}`,
-    `required: ${required}`,
-    `description: ${swiftString(schema.description ?? "")}`
-  ];
-  if (schema.default !== undefined) parameters.push(`defaultValue: ${swiftJSONValue(schema.default)}`);
-  if (allowsNull) parameters.push("allowsNull: true");
-  if (schema.minimum !== undefined) parameters.push(`minimum: ${schema.minimum}`);
-  if (schema.maximum !== undefined) parameters.push(`maximum: ${schema.maximum}`);
-  if (schema.enum !== undefined && schema.enum.every(value => typeof value === "string")) {
-    parameters.push(`enumValues: [${schema.enum.map(value => swiftString(value as string)).join(", ")}]`);
-  }
-
-  const extra = withoutFieldSchemaKeys(schema);
-  if (Object.keys(extra).length > 0) parameters.push(`extraSchema: ${swiftJSONObject(extra)}`);
-  return `CommandFieldSchema(${parameters.join(", ")})`;
-}
-
-function withoutFieldSchemaKeys(schema: JsonSchema): Record<string, ContractJSONValue> {
-  const extra: Record<string, ContractJSONValue> = {};
-  for (const key of Object.keys(schema).sort()) {
-    if (["$ref", "description", "default", "minimum", "maximum"].includes(key)) continue;
-    if (key === "type" && isRepresentableFieldType(schema)) continue;
-    if (key === "enum" && schema.enum?.every(value => typeof value === "string")) continue;
-    const value = schema[key as keyof JsonSchema];
-    if (value !== undefined) extra[key] = value as ContractJSONValue;
-  }
-  return extra;
-}
-
-function isRepresentableFieldType(schema: JsonSchema): boolean {
-  if (typeof schema.type === "string") return schema.type !== "null";
-  return Array.isArray(schema.type) && schema.type.length === 2 && schema.type.includes("null") &&
-    schema.type.some(type => type !== "null");
-}
-
-function swiftConstraints(value: Record<string, ContractJSONValue> | undefined): string[] {
-  if (value === undefined) return [];
-  const constraints: string[] = [];
-  const exactlyOne = value.exactlyOneOf;
-  if (Array.isArray(exactlyOne) && exactlyOne.every(item => typeof item === "string")) {
-    constraints.push(`.exactlyOneOf([${exactlyOne.map(item => swiftString(item as string)).join(", ")}])`);
-  }
-  const mutuallyExclusive = value.mutuallyExclusive;
-  if (Array.isArray(mutuallyExclusive) && mutuallyExclusive.every(item => typeof item === "string")) {
-    constraints.push(`.extensionMessage(${swiftString(`mutuallyExclusive: ${(mutuallyExclusive as string[]).join(", ")}`)})`);
-  }
-  if (typeof value.note === "string") constraints.push(`.extensionMessage(${swiftString(value.note)})`);
-  return constraints;
-}
-
 function swiftJSON(value: ContractJSONValue): string {
   if (value === null) return ".null";
   if (typeof value === "string") return `.string(${swiftString(value)})`;
@@ -513,12 +572,6 @@ function swiftJSON(value: ContractJSONValue): string {
   const entries = Object.keys(value).sort().map(key => `${swiftString(key)}: ${swiftJSONValue(value[key]!)}`);
   if (entries.length === 0) return ".object(JSON([:]))";
   return `.object(JSON([${entries.join(", ")}]))`;
-}
-
-function swiftJSONObject(value: Record<string, ContractJSONValue>): string {
-  const entries = Object.keys(value).sort().map(key => `${swiftString(key)}: ${swiftJSONValue(value[key]!)}`);
-  if (entries.length === 0) return "JSON([:])";
-  return `JSON([${entries.join(", ")}])`;
 }
 
 function swiftJSONValue(value: ContractJSONValue): string {

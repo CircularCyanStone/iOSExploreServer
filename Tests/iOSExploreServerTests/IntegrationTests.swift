@@ -13,8 +13,8 @@ private let testPort: UInt16 = 38399
 private let uiTestPort: UInt16 = 38400
 
 private struct IntegrationGreetingInput: CommandInput, Equatable {
-    static let nameField = CommandFields.requiredString("name", description: "名字")
-    static let inputSchema = CommandInputSchema(fields: [nameField.erased])
+    static let nameField = CommandFields.requiredString("name")
+    static let inputDefinition = CommandInputDefinition(fields: [nameField.erased])
 
     let name: String
 
@@ -134,8 +134,8 @@ func endToEndHelp() async throws {
     #expect(text.contains(#""code":"ok""#))
     #expect(text.contains(#""action":"ping""#))
     #expect(text.contains(#""action":"help""#))
-    #expect(text.contains(#""inputSchema""#))
-    #expect(text.contains(#""properties""#))
+    #expect(!text.contains(#""inputSchema""#))
+    #expect(!text.contains(#""inputDefinition""#))
     #expect(!text.contains(#""parameters""#))
 }
 
@@ -299,8 +299,8 @@ func connectionLimitRejectsAdditionalConnection() async throws {
         #expect(text.contains(#""action":"ui.waitAny""#))
         #expect(text.contains(#""action":"ui.scrollToElement""#))
         #expect(text.contains(#""action":"ui.alert.respond""#))
-        // help 输出每个命令的 inputSchema。
-        #expect(text.contains(#""inputSchema""#))
+        // schema 只存在于 canonical contracts/host generated artifacts，App help 不重复传输。
+        #expect(!text.contains(#""inputSchema""#))
     }
 
     /// 响应 body 超过 `maxResponseBodyBytes` 时改发 `response_too_large` envelope。

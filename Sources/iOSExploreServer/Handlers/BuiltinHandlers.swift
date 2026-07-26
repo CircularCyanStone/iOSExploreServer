@@ -70,8 +70,8 @@ struct InfoCommand: Command {
 
 /// 内置命令自省能力。
 ///
-/// 返回所有已注册命令的 `action`、`description`、`inputSchema`，结构有意靠近 MCP
-/// tools/list 所需信息，方便后续 Mac 侧自动发现可调用能力。
+/// 返回所有已注册命令的运行时 metadata。工具输入 schema 由 Mac 侧 canonical contracts
+/// 静态生成，不通过 App help 重建。
 struct HelpCommand: Command {
     /// 无参数输入。
     typealias Input = EmptyCommandInput
@@ -99,7 +99,6 @@ struct HelpCommand: Command {
             return .object(JSON([
                 "action": .string(contract.action),
                 "description": .string(contract.description),
-                "inputSchema": .object(contract.inputSchema.toJSON()),
                 "provider": .string(contract.provider.rawValue),
                 "stability": .string(contract.stability.rawValue),
                 "result": .object([

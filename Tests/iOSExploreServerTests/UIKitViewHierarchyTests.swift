@@ -215,15 +215,15 @@ func viewHierarchyQueryControllerDefaultsToNil() throws {
     #expect(query.controller == nil)
 }
 
-@Test("UIViewHierarchyInput schema 按工具展示顺序声明字段")
-func viewHierarchyInputSchemaUsesExpectedFieldOrder() {
-    #expect(UIViewHierarchyInput.inputSchema.fields.map(\.name) == [
-        "accessibilityIdentifier",
-        "accessibilityIdentifierPrefix",
-        "controller",
+@Test("UIViewHierarchyInput generated definition 按合同顺序声明字段")
+func viewHierarchyInputUsesExpectedFieldOrder() {
+    #expect(UIViewHierarchyInput.inputDefinition.fields.map(\.name) == [
         "detailLevel",
         "includeHidden",
         "maxDepth",
+        "accessibilityIdentifier",
+        "accessibilityIdentifierPrefix",
+        "controller",
     ])
 }
 

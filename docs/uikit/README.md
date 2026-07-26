@@ -1,6 +1,6 @@
 # iOSExploreUIKit 知识库
 
-`Sources/iOSExploreUIKit/`（UIKit 扩展模块，`ui.*` 命令集合）的阅读与参考文档。
+`Sources/iOSExploreUIKit/`（UIKit 扩展模块，公共 `ui.*` 命令）的阅读与参考文档。当前 action 清单以 `contracts/bundle.json` 与 `docs/generated/contracts.md` 为准。
 
 core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 App **显式** `server.registerUIKitCommands()` 注册。
 
@@ -28,11 +28,18 @@ core 不依赖 UIKit；所有依赖 UIKit 的命令下沉到本模块，宿主 A
 | `ui.waitAny` | 一次轮询等待多个条件，第一个命中返回 matchedID/matchedIndex | `WaitAnyCommand` | `UIWaitAnyExecutor` |
 | `ui.scrollToElement` | 滚动到指定文本/identifier 元素可见 | `ScrollToElementCommand` | `UIScrollToElementExecutor` |
 | `ui.alert.respond` | 按按钮触发并关闭 UIAlertController（查询走 `ui.inspect`） | `AlertRespondCommand` | `UIAlertRespondExecutor` |
+| `ui.controllers` | 返回 controller 层级摘要 | `ControllersCommand` | `UIControllersCollector` |
+| `ui.swipe` | 触发显式 swipe gesture 或相关手势路径 | `UISwipeCommand` | `UISwipeExecutor` |
+| `ui.longPress` | 触发 long press gesture | `UILongPressCommand` | `UILongPressExecutor` |
+| `ui.tabBar.selectTab` | 按 tab bar index/title/identifier 切换 tab | `UITabBarSelectCommand` | `UITabBarSelectExecutor` |
+| `ui.datePicker.setDate` | 设置 UIDatePicker 日期 | `UIDatePickerSetDateCommand` | `UIDatePickerSetDateExecutor` |
+| `ui.picker.selectRow` | 选择 UIPickerView 行 | `UIPickerSelectRowCommand` | `UIPickerSelectRowExecutor` |
+| `ui.webView.eval` | 在 WKWebView 中执行轻量 JavaScript | `UIWebViewEvalCommand` | `UIWebViewEvalExecutor` |
 
 ## 贯穿全模块的两条铁律
 
-1. **typed factory**：UIKit 操作必须先在不含 UIKit 对象的 typed input（如 `UIViewHierarchyInput`、`UITapInput`）里解析+校验，通过后才进入 `@MainActor` 域。UIKit 类型绝不穿过 command/public/concurrency 边界，跨边界只传 `Sendable` 值或 JSON。
-2. **`#if canImport(UIKit)` + `@MainActor`**：core 不依赖 UIKit；真实 UIKit 状态采集、能力判断和动作执行留在 iOS 编译路径的 `@MainActor` 上。macOS `swift test` 覆盖值模型、schema、parser 等纯逻辑，真实 `UIView` 行为由 iOS framework 测试或 SPMExample 闭环验证。
+1. **typed factory**：UIKit 操作必须先在 Foundation-only typed input（如 `UIViewHierarchyInput`、`UITapInput`）里解析+校验，通过后才进入 `@MainActor` 域。UIKit 类型绝不穿过 public 边界。
+2. **`#if canImport(UIKit)`**：碰 UIKit 的文件整体包在该指令内；macOS 编译为空壳，UIKit 行为由 iOS framework 测试覆盖。
 
 ## 相关文档
 
