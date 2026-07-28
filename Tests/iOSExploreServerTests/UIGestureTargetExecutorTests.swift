@@ -148,11 +148,11 @@ func tapGestureWithMultipleTargetsTriggersAll() throws {
     #expect(target2.firedCount == 1)
 }
 
-@Test("executor tap gesture 的 target 已 dealloc 时安全降级到 unsupported_target") @MainActor
-func tapGestureWithDeallocatedTargetFallsThroughToUnsupported() {
+@Test("executor tap gesture 的 target 已 dealloc 时 inspect 不签发 tap") @MainActor
+func tapGestureWithDeallocatedTargetIsNotActionable() {
     // UIGestureRecognizer 的 target 是弱引用（与 UIControl 一致）：释放外部强引用后，私有
     // `_target` ivar 被 runtime 自动 nilify。adapter 用 C API 读出 nil 跳过该 pair，不 crash，
-    // 最终 0 pair → fallthrough 到 unsupported_target。
+    // 最终 0 pair → inspect 的 availableActions 不含 tap，action-aware snapshot 在执行前拒绝。
     var targetHolder: GestureTarget? = GestureTarget()
     let context = UIKitTestHost.context { root in
         let view = UIView(frame: CGRect(x: 10, y: 10, width: 200, height: 200))
@@ -166,10 +166,10 @@ func tapGestureWithDeallocatedTargetFallsThroughToUnsupported() {
     do {
         _ = try UIKitActionExecutor.execute(.tap(locator: .path([0]), viewSnapshotID: viewSnapshotID),
                                             context: context)
-        Issue.record("expected unsupported_target after target dealloc, got success")
+        Issue.record("expected not_actionable after target dealloc, got success")
     } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .unsupportedTarget,
-               "target dealloc 后读出 0 pair，应 fallthrough 到 unsupported_target 而非 crash 或假成功")
+        #expect(error.failure.code == .notActionable,
+               "target dealloc 后读出 0 pair，inspect 不应为该 view 签发 tap")
     } catch {
         Issue.record("unexpected error: \(error)")
     }

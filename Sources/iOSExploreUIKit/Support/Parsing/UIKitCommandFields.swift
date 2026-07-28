@@ -39,7 +39,8 @@ public enum UIKitFilterFields {
 /// `accessibilityIdentifier` 与 `path` 由 `UIKitLocatorInput` 统一做互斥和路径文法校验，
 /// `viewSnapshotID` 由各命令按自身语义决定是否必填：
 /// - `ui.tap` / `ui.control.sendAction`：必填，且 path 与 identifier 都走 freshness 校验；
-/// - `ui.scroll` / `ui.input`：可选，仅与 path 搭配做陈旧校验；
+/// - `ui.scroll` / `ui.input`：可选，identifier / path 都可做动作签发与陈旧校验；
+/// - picker/date/webview/swipe/longPress：可选，只做 typed target 的 freshness 校验；
 /// - `ui.wait` 的 snapshotChanged 模式：必填。
 public enum UIKitLocatorFields {
     /// 按 accessibilityIdentifier 精确定位目标 view。
@@ -56,8 +57,9 @@ public enum UIKitLocatorFields {
     ///
     /// 它是 UIKit 结构指纹快照标识，**不是**截图 ID / 图像 hash / VLM 结果。只有
     /// `ui.inspect` 会签发它（`ui.screenshot` 不再签发）。交互命令携带它时，executor
-    /// 会重采当前 target 指纹并与签发表比对，任一不一致即拒绝（`stale_locator`），
-    /// 防止页面变化后旧定位器指向错误目标。
+    /// 会重采当前 target 指纹并与签发表比对，任一不一致即拒绝（`stale_locator`）。
+    /// 对 `ui.tap`、`ui.input`、定向 `ui.scroll` 和 `ui.control.sendAction`，还会要求同次 inspect 的
+    /// `availableActions` 明确包含请求动作，否则返回 `not_actionable`。
     public static let viewSnapshotID = CommandFields.optionalString(
         "viewSnapshotID"
     )

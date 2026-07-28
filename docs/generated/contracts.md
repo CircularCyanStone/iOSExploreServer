@@ -4,7 +4,7 @@
 - Protocol version: `1`
 - Contract version: `1.0.0`
 - Generator version: `1`
-- Contract hash: `sha256:f1ca3ffa43d7418af9be345ce7daf5dcb5906e1ab6c6a764ee2faa151421d84b`
+- Contract hash: `sha256:1e7c78a9c2a9d9b632b4e50ebcd99c287a5d464217d18ef0273488198face1a0`
 - Device actions: 27
 - Host operations: 5
 
@@ -129,7 +129,7 @@ Input fields: none.
 | `event` | `string` | yes | - | 事件名。 |
 | `path` | `string \| null` | no | - | 按 path 定位。 |
 | `value` | `number \| boolean \| null` | no | - | 可选目标值；number 用于 UISlider/UISegmentedControl/UIStepper，UISwitch 同时接受 boolean 和 number 0/1。 |
-| `viewSnapshotID` | `string` | yes | - | ui.inspect 签发的快照标识。 |
+| `viewSnapshotID` | `string` | yes | - | ui.inspect 签发的快照标识；目标必须声明与 event 对应的 control.* 动作。 |
 
 ### `ui.controllers`
 
@@ -190,11 +190,11 @@ Input fields: none.
 | `fields[].submit` | `boolean` | no | `false` | 是否触发结束编辑语义。 |
 | `fields[].text` | `string` | yes | - | 要输入的文本。 |
 | `stopOnFailure` | `boolean` | no | `true` | 某个字段失败后是否停止执行后续字段。 |
-| `viewSnapshotID` | `string \| null` | no | - | ui.inspect 签发的快照标识。 |
+| `viewSnapshotID` | `string \| null` | no | - | ui.inspect 签发的快照标识；提供时，每个目标必须在同次 inspect 中声明 input。 |
 
 ### `ui.inspect`
 
-读取当前 UI 结构并签发 viewSnapshotID。
+读取当前 UI 结构，并按每个 target 的 availableActions 签发 viewSnapshotID。
 
 - Provider: `uikit`
 - Stability: `public`
@@ -337,7 +337,7 @@ Input fields: none.
 | `animated` | `boolean` | no | `false` | 是否动画。 |
 | `direction` | `string` | yes | - | 滚动方向。 |
 | `path` | `string \| null` | no | - | 按 path 定位。 |
-| `viewSnapshotID` | `string \| null` | no | - | ui.inspect 签发的快照标识。 |
+| `viewSnapshotID` | `string \| null` | no | - | ui.inspect 签发的快照标识；与定位字段同时提供时，目标必须在同次 inspect 中声明 scroll。 |
 
 ### `ui.scrollToElement`
 
@@ -400,7 +400,7 @@ Input fields: none.
 
 ### `ui.tap`
 
-点击 ui.inspect 签发的可操作目标。
+点击 ui.inspect 中 availableActions 包含 tap 的目标。
 
 - Provider: `uikit`
 - Stability: `public`
@@ -413,7 +413,7 @@ Input fields: none.
 | --- | --- | --- | --- | --- |
 | `accessibilityIdentifier` | `string \| null` | no | - | 按 accessibilityIdentifier 定位。 |
 | `path` | `string \| null` | no | - | 按 path 定位。 |
-| `viewSnapshotID` | `string` | yes | - | ui.inspect 签发的快照标识。 |
+| `viewSnapshotID` | `string` | yes | - | ui.inspect 签发的快照标识；目标必须在同次 inspect 中声明 tap。 |
 
 ### `ui.topViewHierarchy`
 

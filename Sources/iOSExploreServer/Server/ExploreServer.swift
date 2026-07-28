@@ -33,6 +33,13 @@ public enum ServerEvent: Sendable {
 /// 注册命令、启动监听、停止监听、订阅事件。库默认监听 38321 端口，Mac 侧可通过
 /// `iproxy` 把本地端口转发到手机端同端口后用 `curl` 发送 JSON 命令。
 public final class ExploreServer: Sendable {
+    /// 当前产品决策：Debug HTTP 服务不启用 token 校验，也不提供访问控制保证。
+    ///
+    /// 保留 authToken 传输与校验实现，便于未来在明确威胁模型和启用方案后恢复；在此开关
+    /// 改为 `true` 之前，即使调用方传入 `authToken`，也不会拒绝任何请求。listener 仍可能
+    /// 被同网段设备访问，因此只能在受控开发环境中启用。
+    private static let authTokenValidationEnabled = false
+
     /// 监听端口。默认值与 `scripts/proxy.sh` 保持一致。
     private let port: UInt16
 
@@ -56,7 +63,7 @@ public final class ExploreServer: Sendable {
     /// 事件流读取端，返回给集成方消费。
     private let eventStream: AsyncStream<ServerEvent>
 
-    /// 预留鉴权令牌：设置后未来版本会校验请求头 `X-Auth-Token`（MVP 不校验）。
+    /// 预留鉴权令牌。当前产品开关关闭，不校验 `X-Auth-Token`，也不提供访问控制。
     public let authToken: String?
 
     /// 创建命令服务器。
@@ -66,7 +73,7 @@ public final class ExploreServer: Sendable {
     ///
     /// - Parameters:
     ///   - port: TCP 监听端口，默认 38321。
-    ///   - authToken: 预留鉴权令牌，当前版本不校验。
+    ///   - authToken: 预留鉴权令牌；当前版本即使设置也不会校验请求 header。
     ///   - maxResponseBodyBytes: 单条响应 body 软上限（字节），默认 6MB；超过此值的响应
     ///     会被替换为 `response_too_large` envelope，避免大产物（如截图）压垮传输。
     public init(port: UInt16 = 38321,
@@ -88,7 +95,7 @@ public final class ExploreServer: Sendable {
         self.eventStream = AsyncStream { continuation = $0 }
         self.eventContinuation = continuation
         BuiltinHandlers.registerAll(into: router)
-        ESLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil) maxResponseBodyBytes=\(maxResponseBodyBytes)")
+        ESLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil) authTokenValidationEnabled=\(Self.authTokenValidationEnabled) maxResponseBodyBytes=\(maxResponseBodyBytes)")
     }
 
     /// 测试/内部入口：允许注入 listener 资源限制配置。
@@ -103,44 +110,48 @@ public final class ExploreServer: Sendable {
         self.eventStream = AsyncStream { continuation = $0 }
         self.eventContinuation = continuation
         BuiltinHandlers.registerAll(into: router)
-        ESLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil)")
+        ESLogger.info(.server, "server initialized port=\(port) authTokenConfigured=\(authToken != nil) authTokenValidationEnabled=\(Self.authTokenValidationEnabled)")
     }
 
     /// 注册一个 typed 协议命令对象。
     ///
     /// 适合把能力封装成独立 `Command` struct，便于复用、测试和被 `help` 自省。非法
-    /// action 会被拒绝并记录错误日志；方法不抛错，后续请求按未注册 action 处理。
+    /// action 会被拒绝并记录错误日志，返回 `false`；方法不抛错，后续请求按未注册 action 处理。
     ///
     /// - Parameters:
     ///   - command: 具体命令对象。
     ///   - logCategory: 命令执行日志归属。
-    public func register<C: Command>(_ command: C, logCategory: CommandLogCategory = .core) {
+    /// - Returns: 注册成功为 `true`，action 非法被拒绝为 `false`。
+    @discardableResult
+    public func register<C: Command>(_ command: C, logCategory: CommandLogCategory = .core) -> Bool {
         ESLogger.info(.server,
                       "server register command action=\(command.action) provider=\(command.contract.provider.rawValue) stability=\(command.contract.stability.rawValue) source=\(command.contract.contractSource.rawValue) inputFields=\(C.Input.inputDefinition.fields.count)")
-        router.register(command, logCategory: logCategory)
+        return router.register(command, logCategory: logCategory)
     }
 
     /// 使用显式合同注册一个 typed 闭包命令。
     ///
     /// 合同用于 help 和 metadata 输出，实际请求仍由 `Input.parse(from:)` 解析。适用于宿主
     /// 明确管理版本、错误集合和稳定性策略的公开扩展命令。非法 action 会被拒绝并记录
-    /// 错误日志；方法不抛错，后续请求按未注册 action 处理。
+    /// 错误日志，返回 `false`；方法不抛错，后续请求按未注册 action 处理。
     ///
     /// - Parameters:
     ///   - contract: 命令的完整 wire-level 合同。
     ///   - input: 命令输入类型，负责实际 JSON 解析。
     ///   - logCategory: 命令执行日志归属。
     ///   - handler: 实际业务处理闭包，入参已经是 typed input。
+    /// - Returns: 注册成功为 `true`，action 非法被拒绝为 `false`。
+    @discardableResult
     public func register<Input: CommandInput>(contract: CommandContract,
                                               input: Input.Type,
                                               logCategory: CommandLogCategory = .core,
-                                              _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
+                                              _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) -> Bool {
         ESLogger.info(.server,
                       "server register contract action=\(contract.action) provider=\(contract.provider.rawValue) stability=\(contract.stability.rawValue) source=\(contract.contractSource.rawValue) inputFields=\(Input.inputDefinition.fields.count)")
-        router.register(contract: contract,
-                        input: input,
-                        logCategory: logCategory,
-                        handler)
+        return router.register(contract: contract,
+                               input: input,
+                               logCategory: logCategory,
+                               handler)
     }
 
     /// 注册一个 runtime extension typed 闭包命令。
@@ -149,7 +160,7 @@ public final class ExploreServer: Sendable {
     /// 依赖 UIKit；如果 handler 需要访问 UIKit API，应由宿主 App 在闭包内切换到
     /// `MainActor`。该兼容入口自动创建 `provider=extension`、`stability=internal`、
     /// `contractSource=runtime` 的保守合同，公共 bundle 的版本和哈希保持不变。非法 action
-    /// 会被拒绝并记录错误日志；方法不抛错，后续请求按未注册 action 处理。
+    /// 会被拒绝并记录错误日志，返回 `false`；方法不抛错，后续请求按未注册 action 处理。
     ///
     /// - Parameters:
     ///   - action: 命令名，也是请求 body 中 `action` 的匹配键。
@@ -157,11 +168,13 @@ public final class ExploreServer: Sendable {
     ///   - input: 命令输入类型，负责 wire 校验与 data 解析。
     ///   - logCategory: 命令执行日志归属。
     ///   - handler: 实际业务处理闭包，入参已经是 typed input。
+    /// - Returns: 注册成功为 `true`，action 非法被拒绝为 `false`。
+    @discardableResult
     public func register<Input: CommandInput>(action: String,
                                               description: String = "",
                                               input: Input.Type,
                                               logCategory: CommandLogCategory = .core,
-                                              _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
+                                              _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) -> Bool {
         router.register(action: action,
                         description: description,
                         input: input,
@@ -172,10 +185,14 @@ public final class ExploreServer: Sendable {
     /// 启动 TCP HTTP server。
     ///
     /// 该方法会等待 `NWListener` 进入 ready 状态后再返回；端口不可用时会抛出底层
-    /// Network 错误。调用方应避免并发调用 `start()`/`stop()`，常见用法是在 App 主线程
-    /// 按钮事件中串行触发。
+    /// Network 错误。若 server 已处于 started 状态，重复调用会直接返回。
+    /// 调用方应避免并发调用 `start()`/`stop()`，常见用法是在 App 主线程按钮事件中串行触发。
     public func start() async throws {
         ESLogger.info(.server, "server start requested port=\(port)")
+        if listener.withLock({ $0 != nil }) {
+            ESLogger.info(.server, "server start skipped already running port=\(port)")
+            return
+        }
         if let stopping = stoppingListener.withLock({ value -> HTTPListener? in
             let pending = value
             value = nil
@@ -185,6 +202,7 @@ public final class ExploreServer: Sendable {
         }
         let l = try HTTPListener(port: port,
                                  router: router,
+                                 authToken: Self.authTokenValidationEnabled ? authToken : nil,
                                  configuration: listenerConfiguration) { [eventContinuation] event in
             eventContinuation.yield(event)
         }

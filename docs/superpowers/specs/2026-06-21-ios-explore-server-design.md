@@ -395,7 +395,7 @@ framework 工程当前用 `PBXFileSystemSynchronizedRootGroup` 同步 `iOSExplor
 
 - **默认端口 38321**（非常见、无知名服务占用），构造时可配。
 - **监听所有接口**：USB（iproxy）与同网段 Wi-Fi 均可达。
-- **MVP 不强制鉴权**：依赖 USB 物理连接 + 设备信任作为隔离层。预留 token 校验钩子（`init(authToken:)`，设置后校验请求头 `X-Auth-Token`），默认关闭，留给后续开启。
+- **MVP 不启用鉴权**：这是 Debug 产品决策，不提供访问控制保证。保留 `init(authToken:)`、host 配置和 `X-Auth-Token` 校验实现，但产品开关固定关闭；即使设置 token 也不会校验。listener 监听所有接口，真机在同一网络中可能被直接访问，因此只能在受控开发网络或 USB 转发环境中启用；只有明确评审威胁模型和启用方案后才能开启校验。
 
 ## 14. 非目标 / 未来扩展
 

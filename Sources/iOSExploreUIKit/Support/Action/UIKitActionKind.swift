@@ -3,7 +3,7 @@ import Foundation
 /// UIKit 可执行动作的语义类型。
 ///
 /// 该枚举是 Foundation-only 值类型，rawValue 与既有 executor 实际支持的行为一一对应：
-/// - `tap` 对应 `UITapCommand` 对 `UIControl` 的 `touchUpInside` fallback 派发；
+/// - `tap` 对应 `UITapCommand` 的默认激活、cell selection 或可执行 gesture adapter；
 /// - 所有 `control.*` case 都对应 `UIControlSendActionCommand` 接受的 event 名；resolver
 ///   决定具体控件在当前状态下可以使用其中哪些值。
 ///
@@ -12,13 +12,12 @@ import Foundation
 /// 判断目标可执行性的唯一动作依据（`role` 仅作类型提示，不再派生动作建议）。
 ///
 /// 动作语义分为两组：
-/// - `tap` 与 `control.*`：面向 `UIControl`，由 `UIKitActionExecutor` 的 tap / sendAction 路径派发；
-/// - `input` / `scroll`：面向非 `UIControl` 的可输入/可滚动目标（如 `UITextView`、`UIScrollView`），
-///   为 Task 8（ui.input）/ Task 9（ui.scroll）等扩展命令预留的声明位。resolver 通过协议
-///   conform 判定（`UITextInput`/`UIScrollView`）声明这两个动作，让 `ui.inspect` 提前告知
-///   agent “这个字段可输入 / 这个 scroll view 可滚动”。
+/// - `tap` 与 `control.*`：分别由默认激活/cell/gesture 路径和 UIControl sendAction 路径派发；
+/// - `input` / `scroll`：面向可输入/可滚动目标（如 `UITextView`、`UIScrollView`）。当命令
+///   携带 snapshot 时，`ui.input` 与定向 `ui.scroll` 都要求同次 inspect 签发对应动作；未携带
+///   snapshot 的可选路径仍由 executor 实时 capability 校验。
 public enum UIKitActionKind: String, Sendable, Equatable {
-    /// 点击语义。executor 对 `UIControl` 派发 `touchUpInside`。
+    /// 点击语义。executor 使用默认激活、cell selection 或可执行 gesture adapter。
     case tap
     /// UIControl 的 `touchUpInside` 事件，适用于按钮等触发型控件。
     case controlTouchUpInside = "control.touchUpInside"

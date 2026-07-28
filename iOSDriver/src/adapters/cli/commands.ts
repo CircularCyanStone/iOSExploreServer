@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
+import { DEVICE_ACTION_CONTRACTS } from "../../generated/deviceActionContracts.js";
 import { startMCPStdioServer } from "../mcp/server.js";
 import type { CapabilityProbe } from "../../runtime/capabilityProbe.js";
 import type { DriverError } from "../../runtime/driverErrors.js";
-import type { DriverRuntime } from "../../runtime/driverRuntime.js";
+import type { DriverRuntime, InvocationPolicy } from "../../runtime/driverRuntime.js";
 import {
   HostOperationInputValidationError,
   validateHostOperationInput
@@ -28,7 +29,7 @@ export interface CLICommandContext {
   readonly config: CLIConfig;
   readonly output: CLIOutput;
   readonly runtime: Pick<DriverRuntime, "invoke">;
-  readonly capabilityProbe: Pick<CapabilityProbe, "doctor">;
+  readonly capabilityProbe: Pick<CapabilityProbe, "doctor" | "invocationPolicy">;
   readonly workflowRunner: Pick<WorkflowRunner, "run">;
   readonly startMCP?: () => Promise<void>;
   readonly readFile?: (path: string) => Promise<string>;
@@ -44,6 +45,8 @@ export interface CLICommandContext {
 
 /** 固定退出码：成功、业务/workflow、配置、transport/HTTP/protocol。 */
 export const EXIT_CODES = Object.freeze({ success: 0, appFailure: 1, configError: 2, transportFailure: 3 });
+
+const GENERATED_ACTIONS: ReadonlySet<string> = new Set(DEVICE_ACTION_CONTRACTS.map(contract => contract.action));
 
 /** 执行一个已解析的 CLI 命令并负责 stdout/stderr 分离。 */
 export async function executeCLICommand(
@@ -119,7 +122,9 @@ async function runInit(context: CLICommandContext): Promise<number> {
 async function runDoctor(context: CLICommandContext): Promise<number> {
   const nodeVersion = context.nodeVersion ?? process.versions.node;
   const nodeOK = minimumNodeVersion(nodeVersion, 20);
-  const report = await context.capabilityProbe.doctor();
+  const report = await context.capabilityProbe.doctor(
+    context.signal === undefined ? {} : { signal: context.signal }
+  );
   const result = {
     node: { version: nodeVersion, status: nodeOK ? "ok" : "unsupported" },
     config: { baseURL: context.config.baseURL, requestTimeoutMs: context.config.requestTimeoutMs },
@@ -166,10 +171,14 @@ async function runCall(options: CallCommandOptions, context: CLICommandContext):
     if (error instanceof HostOperationInputValidationError) throw new CLIConfigError(error.message);
     throw error;
   }
+  const policy = await policyForAction(operationInput.action as string, context.capabilityProbe, context.signal);
   const result = await context.runtime.invoke(
     operationInput.action as string,
     operationInput.data as JSONObject,
-    context.signal === undefined ? {} : { signal: context.signal }
+    {
+      ...(context.signal === undefined ? {} : { signal: context.signal }),
+      ...(policy === undefined ? {} : { policy })
+    }
   );
   if (result.ok) {
     await printInvocationSuccess(context.output, result, options.output, context.writeArtifact);
@@ -177,6 +186,16 @@ async function runCall(options: CallCommandOptions, context: CLICommandContext):
   }
   printInvocationFailure(context.output, result);
   return exitCodeForError(result.error);
+}
+
+async function policyForAction(
+  action: string,
+  capabilityProbe: Pick<CapabilityProbe, "doctor" | "invocationPolicy">,
+  signal: AbortSignal | undefined
+): Promise<InvocationPolicy | undefined> {
+  if (GENERATED_ACTIONS.has(action)) return undefined;
+  await capabilityProbe.doctor(signal === undefined ? {} : { signal });
+  return capabilityProbe.invocationPolicy(action);
 }
 
 /** 读取 JSON data；`@path` 形式只读取文件，不把原文写入 stderr。 */

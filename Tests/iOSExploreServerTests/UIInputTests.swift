@@ -236,6 +236,51 @@ func executorRejectsLabelAndStops() throws {
     #expect(results[0]["code"]?.stringValue == "unsupported_text_input_type")
 }
 
+@Test("executor 拒绝 disabled UITextField 且不写入文本") @MainActor
+func executorRejectsDisabledTextFieldWithoutWriting() throws {
+    var field: UITextField?
+    let context = UIKitTestHost.context { root in
+        let textField = UITextField()
+        textField.text = "old"
+        textField.isEnabled = false
+        textField.frame = CGRect(x: 10, y: 10, width: 200, height: 40)
+        root.addSubview(textField)
+        field = textField
+    }
+
+    let input = UIInputInput(fields: [
+        UIInputField(target: .path([0]), text: "new"),
+    ])
+    let data = try UITextInputExecutor.execute(input: input, context: context)
+    let result = try singleResult(from: data)
+
+    #expect(data["completed"]?.boolValue == false)
+    #expect(data["failedIndex"]?.doubleValue == 0)
+    #expect(result["code"]?.stringValue == "not_actionable")
+    #expect(field?.text == "old")
+}
+
+@Test("executor 拒绝 snapshot 未声明 input 的静态 label") @MainActor
+func executorRejectsInputMissingFromSignedActions() throws {
+    let context = UIKitTestHost.context { root in
+        let label = UILabel()
+        label.text = "只读文本"
+        label.frame = CGRect(x: 10, y: 10, width: 200, height: 40)
+        root.addSubview(label)
+    }
+    let inspect = UIInspectCollector.collect(query: .default, context: context)
+    let viewSnapshotID = try #require(inspect["viewSnapshotID"]?.stringValue)
+    let input = UIInputInput(
+        fields: [UIInputField(target: .path([0]), text: "new")],
+        viewSnapshotID: viewSnapshotID
+    )
+
+    let data = try UITextInputExecutor.execute(input: input, context: context)
+    let result = try singleResult(from: data)
+
+    #expect(result["code"]?.stringValue == "not_actionable")
+}
+
 @Test("executor stopOnFailure=false 时失败后继续执行") @MainActor
 func executorContinuesWhenStopOnFailureFalse() throws {
     let context = UIKitTestHost.context { root in

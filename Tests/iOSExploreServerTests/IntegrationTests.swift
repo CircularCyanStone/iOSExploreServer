@@ -51,6 +51,67 @@ func endToEndPing() async throws {
     #expect(text.contains(#""pong":true"#))
 }
 
+@Test("authToken 校验当前关闭，缺失或错误 token 不会拒绝请求")
+func authTokenValidationRemainsDisabled() async throws {
+    let server = ExploreServer(port: testPort, authToken: "secret")
+    try await startWithPortRetry(server)
+    defer { server.stop() }
+
+    let missing = try await send(action: "ping")
+    #expect(missing.contains("200 OK"))
+    #expect(envelopeCode(missing) == "ok")
+    #expect(missing.contains(#""pong":true"#))
+
+    let wrong = try await send(action: "ping", headers: ["X-Auth-Token": "wrong"])
+    #expect(wrong.contains("200 OK"))
+    #expect(envelopeCode(wrong) == "ok")
+    #expect(wrong.contains(#""pong":true"#))
+}
+
+@Test("authToken 校验当前关闭，携带预留 header 仍可访问命令")
+func authTokenAcceptsCorrectToken() async throws {
+    let server = ExploreServer(port: testPort, authToken: "secret")
+    try await startWithPortRetry(server)
+    defer { server.stop() }
+
+    let text = try await send(action: "ping", headers: ["X-Auth-Token": "secret"])
+    #expect(text.contains("200 OK"))
+    #expect(envelopeCode(text) == "ok")
+    #expect(text.contains(#""pong":true"#))
+}
+
+@Test("parse error 写出响应时发送 responded 事件")
+func parseErrorEmitsRespondedEvent() async throws {
+    let events = Mutex<[ServerEvent]>([])
+    let server = ExploreServer(port: testPort)
+    let eventTask = Task {
+        for await event in server.events() {
+            events.withLock { $0.append(event) }
+        }
+    }
+    try await startWithPortRetry(server)
+    defer {
+        eventTask.cancel()
+        server.stop()
+    }
+
+    let request = Data("POST / HTTP/1.1\r\nContent-Length: nope\r\n\r\n".utf8)
+    let text = try await sendRaw(request: request)
+    #expect(text.contains("400 Bad Request"))
+    #expect(envelopeCode(text) == "bad_request")
+
+    try await waitUntil {
+        events.withLock { events in
+            events.contains { event in
+                if case .responded(status: 400, ok: false) = event {
+                    return true
+                }
+                return false
+            }
+        }
+    }
+}
+
 @Test("端到端 echo 回显")
 func endToEndEcho() async throws {
     let server = ExploreServer(port: testPort)
@@ -124,6 +185,18 @@ func startThrowsOnPortInUse() async throws {
     server2.stop()   // start 失败后 listener 未赋值,stop 无害
 }
 
+@Test("同一 server 重复 start 幂等")
+func repeatedStartOnSameServerIsIdempotent() async throws {
+    let server = ExploreServer(port: testPort)
+    try await startWithPortRetry(server)
+    defer { server.stop() }
+
+    try await server.start()
+
+    let text = try await send(action: "ping")
+    #expect(envelopeCode(text) == "ok")
+}
+
 @Test("help 端到端返回全部命令")
 func endToEndHelp() async throws {
     let server = ExploreServer(port: testPort)
@@ -157,17 +230,59 @@ func commandTimeoutReturnsErrorEnvelope() async throws {
     #expect(!text.contains(#""error":"#))
 }
 
+@Test("响应 body 超限改写后 responded 事件 ok=false")
+func responseTooLargeEmitsFailureRespondedEvent() async throws {
+    let events = Mutex<[ServerEvent]>([])
+    let server = ExploreServer(port: testPort, maxResponseBodyBytes: 1024)
+    let eventTask = Task {
+        for await event in server.events() {
+            events.withLock { $0.append(event) }
+        }
+    }
+    server.register(action: "big", input: EmptyCommandInput.self) { _ in
+        .success(["blob": .string(String(repeating: "x", count: 2048))])
+    }
+    try await startWithPortRetry(server)
+    defer {
+        eventTask.cancel()
+        server.stop()
+    }
+
+    let text = try await send(action: "big")
+    #expect(envelopeCode(text) == "response_too_large")
+
+    try await waitUntil {
+        events.withLock { events in
+            events.contains { event in
+                if case .responded(status: 200, ok: false) = event {
+                    return true
+                }
+                return false
+            }
+        }
+    }
+}
+
 @Test("超过连接上限时拒绝新连接并返回 503")
 func connectionLimitRejectsAdditionalConnection() async throws {
+    let events = Mutex<[ServerEvent]>([])
     let server = ExploreServer(port: testPort,
                                listenerConfiguration: .testing(maxConnections: 1,
                                                               commandTimeoutNanoseconds: 1_000_000_000))
+    let eventTask = Task {
+        for await event in server.events() {
+            events.withLock { $0.append(event) }
+        }
+    }
     server.register(action: "hold", input: EmptyCommandInput.self) { _ in
         try? await Task.sleep(nanoseconds: 200_000_000)
         return .success(["done": true])
     }
     try await startWithPortRetry(server)
-    defer { server.stop() }
+    defer {
+        eventTask.cancel()
+        server.stop()
+    }
 
     async let first = send(action: "hold")
     try await Task.sleep(nanoseconds: 30_000_000)
@@ -177,6 +292,16 @@ func connectionLimitRejectsAdditionalConnection() async throws {
     #expect(second.contains(#""code":"internal_error""#))
     #expect(!second.contains(#""ok":"#))
     #expect(!second.contains(#""error":"#))
+    try await waitUntil {
+        events.withLock { events in
+            events.contains { event in
+                if case .responded(status: 503, ok: false) = event {
+                    return true
+                }
+                return false
+            }
+        }
+    }
     _ = try await first
 }
 
@@ -335,12 +460,25 @@ func connectionLimitRejectsAdditionalConnection() async throws {
 /// 发送一条命令并返回响应文本。
 private func send(action: String,
                   data: JSON = [:],
+                  headers: [String: String] = [:],
                   port: UInt16 = testPort,
                   timeoutNanoseconds: UInt64 = 5_000_000_000) async throws -> String {
     let payload: JSON = ["action": .string(action), "data": .object(data)]
     let body = JSONCoder.encode(payload)
-    let request = Data("POST / HTTP/1.1\r\nContent-Length: \(body.count)\r\n\r\n".utf8) + body
+    var requestText = "POST / HTTP/1.1\r\nContent-Length: \(body.count)\r\n"
+    for (name, value) in headers.sorted(by: { $0.key < $1.key }) {
+        requestText += "\(name): \(value)\r\n"
+    }
+    let request = Data("\(requestText)\r\n".utf8) + body
 
+    return try await sendRaw(request: request,
+                             port: port,
+                             timeoutNanoseconds: timeoutNanoseconds)
+}
+
+private func sendRaw(request: Data,
+                     port: UInt16 = testPort,
+                     timeoutNanoseconds: UInt64 = 5_000_000_000) async throws -> String {
     let conn = NWConnection(host: .ipv4(.loopback),
                             port: NWEndpoint.Port(rawValue: port)!,
                             using: .tcp)
@@ -373,6 +511,17 @@ private func send(action: String,
             }
         })
     }
+}
+
+private func waitUntil(timeoutNanoseconds: UInt64 = 1_000_000_000,
+                       intervalNanoseconds: UInt64 = 10_000_000,
+                       _ condition: () -> Bool) async throws {
+    let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
+    while DispatchTime.now().uptimeNanoseconds < deadline {
+        if condition() { return }
+        try await Task.sleep(nanoseconds: intervalNanoseconds)
+    }
+    throw TestTimeoutError.timedOut
 }
 
 private func startClientConnection(_ conn: NWConnection, timeoutNanoseconds: UInt64) async throws {

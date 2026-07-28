@@ -25,6 +25,8 @@ ui.inspect     ────┼──>  选定 path/accessibilityIdentifier  ─�
 
 **agent 执行决策表**：先看 `ui.inspect` 返回的节点能力，再选命令；不要凭控件类型或文本猜动作。
 
+`availableActions` 表达的是通用 capability 命令：tap、input、scroll 和精确 control event。picker、datePicker、webView、swipe、longPress 走各自的 typed target/gesture 合同，`viewSnapshotID` 对它们只提供可选 freshness；它们不是 action-aware snapshot 的未完成项。`ui.wait(snapshotChanged)` 是只读比较，同样不属于动作授权。
+
 | `ui.inspect` 观察结果 | 下一步调用 | 调用方规则 |
 |---|---|---|
 | `availableActions` 含 `tap` | `ui.tap` | 带同一响应里的 `viewSnapshotID` + `path` 或 `accessibilityIdentifier` |
@@ -77,7 +79,7 @@ MCP 调用方使用 iOSDriver 的静态 `ui_inspect`、`ui_waitAny`、`wait_and_
 
 ### 1.1 它是什么、为什么必须有
 
-`viewSnapshotID` 是 `ui.inspect` 响应里**签发**的一个字符串（形如 `snap-9`），代表"那一瞬间 view 树的指纹快照"。后续 `ui.tap` / `ui.control.sendAction` 强制要求带上它；`ui.input` / `ui.scroll` 可选带上它，带上后 `accessibilityIdentifier` / `path` 两种定位都会做陈旧校验。原因在 [reading-guide.md 第 3 步](./reading-guide.md)：执行 click 期间 UI 可能正在异步变化（动画、异步 reload），用旧定位找当前 view 不一定对，所以要校验"执行时的 view 树指纹 == 发现时的指纹"，否则报 `stale_locator`。
+`viewSnapshotID` 是 `ui.inspect` 响应里**签发**的一个字符串（形如 `snap-9`），代表"那一瞬间 view 树的目标、动作与指纹快照"。后续 `ui.tap` / `ui.control.sendAction` 强制要求带上它；`ui.input` / `ui.scroll` 可选带上它，带上后 `accessibilityIdentifier` / `path` 两种定位都会先校验对应动作已签发，再校验 fingerprint。动作未签发报 `not_actionable`，snapshot 未知、过期或目标变化报 `stale_locator`。
 
 ### 1.2 调用方必须记住的三条
 

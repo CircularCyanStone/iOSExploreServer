@@ -13,6 +13,65 @@ import iOSExploreServer
 /// 用裸 `UIScrollView`（而非 UICollectionView/UITableView）：只需设置 contentSize 即可
 /// 确定性地构造超屏内容，避免 collection 视图的布局/数据源依赖。
 
+@MainActor
+private func scrollTestViewSnapshotID(context: UIKitContextProvider.Context) -> String {
+    let data = UIInspectCollector.collect(query: .default, context: context)
+    guard let id = data["viewSnapshotID"]?.stringValue else {
+        Issue.record("collect should produce viewSnapshotID")
+        return ""
+    }
+    return id
+}
+
+@Test("scroll: snapshot 未为后代静态 label 声明 scroll 时返回 not_actionable") @MainActor
+func scrollRejectsTargetWithoutSignedScrollAction() {
+    let context = UIKitTestHost.context { root in
+        let scrollView = UIScrollView()
+        scrollView.frame = CGRect(x: 0, y: 0, width: 320, height: 568)
+        scrollView.contentSize = CGSize(width: 320, height: 2000)
+
+        let label = UILabel()
+        label.text = "只读标题"
+        label.frame = CGRect(x: 10, y: 10, width: 120, height: 30)
+        scrollView.addSubview(label)
+        root.addSubview(scrollView)
+    }
+    let viewSnapshotID = scrollTestViewSnapshotID(context: context)
+    let input = UIScrollInput(direction: .down,
+                              amount: 100,
+                              locator: .path([0, 0]),
+                              viewSnapshotID: viewSnapshotID)
+
+    do {
+        _ = try UIScrollExecutor.execute(input: input, context: context)
+        Issue.record("expected not_actionable, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .notActionable)
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
+}
+
+@Test("scroll: snapshot 已为 UIScrollView 声明 scroll 时正常执行") @MainActor
+func scrollAcceptsSignedScrollAction() throws {
+    let context = UIKitTestHost.context { root in
+        let scrollView = UIScrollView()
+        scrollView.frame = CGRect(x: 0, y: 0, width: 320, height: 568)
+        scrollView.contentSize = CGSize(width: 320, height: 2000)
+        root.addSubview(scrollView)
+    }
+    let viewSnapshotID = scrollTestViewSnapshotID(context: context)
+    let input = UIScrollInput(direction: .down,
+                              amount: 100,
+                              locator: .path([0]),
+                              viewSnapshotID: viewSnapshotID)
+
+    let data = try UIScrollExecutor.execute(input: input, context: context)
+    let beforeY = try #require(nestedDouble(data, "offsetBefore", "y"))
+    let afterY = try #require(nestedDouble(data, "offsetAfter", "y"))
+    #expect(afterY - beforeY == 100)
+}
+
 @Test("scroll: down 后 offset.y 增大量恰为 amount 且回传 adjustedContentInset 全 4 字段") @MainActor
 func scrollDownIncreasesOffset() throws {
     let context = UIKitTestHost.context { root in

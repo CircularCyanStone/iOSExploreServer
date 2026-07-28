@@ -1,12 +1,12 @@
 {
   "kind": "deviceAction",
   "action": "ui.inspect",
-  "description": "读取当前 UI 结构并签发 viewSnapshotID。",
+  "description": "读取当前 UI 结构，并按每个 target 的 availableActions 签发 viewSnapshotID。",
   "provider": "uikit",
   "stability": "public",
   "inputSchema": {
     "type": "object",
-    "description": "读取当前 UI 结构并签发 viewSnapshotID。",
+    "description": "读取当前 UI 结构，并按每个 target 的 availableActions 签发 viewSnapshotID。",
     "properties": {
       "includeHidden": {
         "type": "boolean",

@@ -26,7 +26,7 @@ func businessErrorsReturnHttp200() {
     }
 }
 
-@Test("通信/协议/资源/鉴权错误用 HTTP 状态码表达传输层失败")
+@Test("通信/协议/资源错误与预留鉴权错误用 HTTP 状态码表达传输层失败")
 func transportErrorsCarryHttpStatus() {
     let expectations: [(ExploreServerError, Int, String)] = [
         (.invalidPort(65535), 500, "Internal Server Error"),
@@ -113,7 +113,7 @@ func timeoutSplitBetweenBusinessAndTransport() {
     #expect(read.category == .timeout)
 }
 
-@Test("鉴权失败的 envelope code 归为 bad_request（非独立 auth 码），锁住现有契约")
+@Test("预留鉴权失败的 envelope code 归为 bad_request（非独立 auth 码），锁住工厂契约")
 func unauthorizedMapsToBadRequestCode() {
     let error = ExploreServerError.unauthorized()
     #expect(error.httpStatus == 401)

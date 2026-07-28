@@ -6,6 +6,12 @@ describe("config", () => {
     const config = loadConfig({});
     expect(config.baseURL).toBe("http://localhost:38321/");
     expect(config.requestTimeoutMs).toBe(10000);
+    expect(config.authToken).toBeUndefined();
+  });
+
+  test("reads optional auth token from environment", () => {
+    expect(loadConfig({ IOS_EXPLORE_AUTH_TOKEN: "secret-token" }).authToken).toBe("secret-token");
+    expect(loadConfig({ IOS_EXPLORE_AUTH_TOKEN: "   " }).authToken).toBeUndefined();
   });
 
   test("normalizes base URL trailing slash", () => {

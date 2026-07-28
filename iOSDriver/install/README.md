@@ -67,9 +67,10 @@ CLI 参数 > 环境变量 > 配置文件 > 默认值
 | --- | --- | --- |
 | `IOS_EXPLORE_BASE_URL` | `http://localhost:38321/` | App HTTP endpoint。 |
 | `IOS_EXPLORE_REQUEST_TIMEOUT_MS` | `10000` | 请求超时，单位 ms。 |
+| `IOS_EXPLORE_AUTH_TOKEN` | - | 预留 token；host 可发送 header，但当前 App 明确不校验。 |
 | `IOSDRIVER_CONFIG` | - | 显式配置文件路径。 |
 
-默认配置文件路径是 `$XDG_CONFIG_HOME/iosdriver/config.json` 或 `~/.config/iosdriver/config.json`。
+默认配置文件路径是 `$XDG_CONFIG_HOME/iosdriver/config.json` 或 `~/.config/iosdriver/config.json`。配置文件也可保留 `authToken`；环境变量中的 token 不会由 `iosdriver init` 写入文件。当前 App 端忽略该 token，它不提供访问控制。
 
 ## 常用 CLI 命令
 

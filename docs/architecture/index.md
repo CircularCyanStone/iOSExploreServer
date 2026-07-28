@@ -62,7 +62,9 @@ Core 初始化只注册 core actions。UIKit 和 Diagnostics 未注册时，`hel
 
 ## UIKit 关键语义
 
-`ui.inspect` 是操作前的主要发现命令。它返回 full/minimal 两档节点，并只为 full 可操作目标签发 `viewSnapshotID`。`ui.tap` 与 `ui.control.sendAction` 必须携带 `ui.inspect` 签发的 `viewSnapshotID`；minimal 节点不可直接操作，调用交互命令会返回 `not_actionable`。
+`ui.inspect` 是操作前的主要发现命令。它返回 full/minimal 两档节点，并为每个 full 节点签发 fingerprint 与同次响应中的 `availableActions`；静态展示节点也可以是 full，但动作集合为空。`ui.tap` 与 `ui.control.sendAction` 必须携带 `viewSnapshotID`，`ui.input` 和定向 `ui.scroll` 在携带它时也会检查对应动作。有效 snapshot 中 path 未签发或请求动作不在目标的动作集合里时返回 `not_actionable`；未知、过期或 fingerprint 已变化时返回 `stale_locator`。
+
+这里的 action-aware snapshot 只负责 `availableActions` 表达的通用 capability：tap、input、scroll 和精确 control event。picker、datePicker、webView、swipe、longPress 使用各自的 typed input 与目标类型/gesture executor，snapshot 对它们是可选 freshness guard；这是另一类稳定合同，不是 action-aware 迁移的延期项。`ui.wait(snapshotChanged)` 只读取 snapshot，也不属于动作授权。
 
 定位优先级：
 

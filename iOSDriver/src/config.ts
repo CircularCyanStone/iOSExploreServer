@@ -3,6 +3,8 @@ import type { JSONObject } from "./types.js";
 export type MCPServerConfig = {
   baseURL: string;
   requestTimeoutMs: number;
+  /** 预留 header token；当前 App 产品开关关闭，不执行校验。 */
+  authToken?: string;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): MCPServerConfig {
@@ -25,10 +27,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MCPServerConfi
   if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs <= 0) {
     throw new Error(`IOS_EXPLORE_REQUEST_TIMEOUT_MS must be a positive integer, got '${timeoutRaw}'`);
   }
+  const authToken = normalizedAuthToken(env.IOS_EXPLORE_AUTH_TOKEN);
 
   return {
     baseURL: baseURL.toString(),
-    requestTimeoutMs
+    requestTimeoutMs,
+    ...(authToken === undefined ? {} : { authToken })
   };
 }
 
@@ -38,4 +42,9 @@ export function requestTimeoutForAction(config: MCPServerConfig, action: string,
   }
   const timeoutMs = typeof data.timeoutMs === "number" ? data.timeoutMs : 0;
   return Math.max(config.requestTimeoutMs, timeoutMs + 5000);
+}
+
+function normalizedAuthToken(value: string | undefined): string | undefined {
+  const token = value?.trim();
+  return token === undefined || token.length === 0 ? undefined : token;
 }

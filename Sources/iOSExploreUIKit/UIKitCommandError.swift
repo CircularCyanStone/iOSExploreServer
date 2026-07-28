@@ -144,12 +144,12 @@ struct UIKitCommandError: Error, Sendable, Equatable {
                           logMessage: "ui action unsupported action=\(action) target=\(targetDescription) requestedAction=\(requestedAction)")
     }
 
-    /// 节点 `availableActions` 为空，是 `ui.inspect` 标注的 minimal 结构节点，不支持任何动作。
+    /// snapshot 未为当前 path + action 组合签发执行许可。
     ///
     /// 区别于 `unsupportedTarget`（目标类型有默认 tap 路由但不在 UIButton/UISwitch/文本输入白名单内）
-    /// 与 `unsupportedAction`（控件存在、有能力表，但请求的事件不在表里）：这里是 inspect 阶段就
-    /// 判定该节点无任何可用动作（容器/装饰 view），message 引导调用方回到 `ui.inspect` 结果里挑
-    /// `availableActions` 非空的目标再操作。
+    /// 与 `unsupportedAction`（没有 snapshot 时由当前控件能力拒绝事件）：这里由同一次 inspect
+    /// 保存的 action-aware snapshot 判定 path 未签发，或请求动作不在该 target 的
+    /// `availableActions` 中。调用方必须按新的 inspect 结果选择明确包含该动作的目标。
     ///
     /// - Parameters:
     ///   - action: 触发失败的 action 名，用于日志关联。
@@ -157,7 +157,7 @@ struct UIKitCommandError: Error, Sendable, Equatable {
     /// - Returns: `not_actionable` 失败描述。
     static func notActionable(action: String, path: String) -> UIKitCommandError {
         UIKitCommandError(code: .notActionable,
-                          message: "节点 \(path) 不可操作（availableActions 为空）。请在 ui.inspect 结果里找 availableActions 非空的目标再操作。",
+                          message: "节点 \(path) 未为 \(action) 签发执行许可。请重新调用 ui.inspect，并选择 availableActions 包含对应动作的目标。",
                           logMessage: "uikit not_actionable action=\(action) path=\(path)")
     }
 

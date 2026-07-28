@@ -13,7 +13,7 @@
           "string",
           "null"
         ],
-        "description": "ui.inspect 签发的快照标识。"
+        "description": "ui.inspect 签发的快照标识；提供时，每个目标必须在同次 inspect 中声明 input。"
       },
       "stopOnFailure": {
         "type": "boolean",

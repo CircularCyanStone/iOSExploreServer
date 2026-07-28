@@ -9,6 +9,8 @@ export type FetchLike = (input: string | URL | Request, init?: RequestInit) => P
 /** HTTP transport 构造选项。 */
 export interface HttpActionTransportOptions {
   readonly fetchImpl?: FetchLike;
+  /** 预留的请求 token；当前 App 产品开关关闭，会忽略对应 header。 */
+  readonly authToken?: string;
   /** App 原始 JSON response body 上限，默认 8 MiB。 */
   readonly maxResponseBodyBytes?: number;
 }
@@ -18,6 +20,7 @@ const DEFAULT_MAX_RESPONSE_BODY_BYTES = 8 * 1024 * 1024;
 /** 使用 `POST /` JSON 协议访问 App 的唯一 HTTP transport 实现。 */
 export class HttpActionTransport implements ActionTransport {
   private readonly fetchImpl: FetchLike;
+  private readonly authToken: string | undefined;
   private readonly maxResponseBodyBytes: number;
 
   /**
@@ -32,6 +35,7 @@ export class HttpActionTransport implements ActionTransport {
   ) {
     const options = typeof fetchOrOptions === "function" ? { fetchImpl: fetchOrOptions } : fetchOrOptions;
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.authToken = normalizedAuthToken(options.authToken);
     this.maxResponseBodyBytes = options.maxResponseBodyBytes ?? DEFAULT_MAX_RESPONSE_BODY_BYTES;
     if (!Number.isSafeInteger(this.maxResponseBodyBytes) || this.maxResponseBodyBytes <= 0) {
       throw new RangeError("maxResponseBodyBytes must be a positive safe integer");
@@ -67,9 +71,11 @@ export class HttpActionTransport implements ActionTransport {
     }, options.timeoutMs);
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (this.authToken !== undefined) headers["X-Auth-Token"] = this.authToken;
       const response = await this.fetchImpl(this.baseURL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(request),
         signal: controller.signal
       });
@@ -142,6 +148,11 @@ export class HttpActionTransport implements ActionTransport {
       options.signal?.removeEventListener("abort", onExternalAbort);
     }
   }
+}
+
+function normalizedAuthToken(value: string | undefined): string | undefined {
+  const token = value?.trim();
+  return token === undefined || token.length === 0 ? undefined : token;
 }
 
 async function readResponseText(response: Response, maxBytes: number, action: string): Promise<string> {

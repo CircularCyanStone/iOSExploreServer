@@ -1,6 +1,7 @@
 import { HOST_OPERATION_SPECS } from "../generated/hostOperationSpecs.js";
 import type { InvocationResult } from "../runtime/types.js";
 import type { JSONObject, JSONValue } from "../types.js";
+import { shouldContinueAfterWaitFailure } from "./errorPolicy.js";
 import { stepValue, workflowFailure, workflowSuccess } from "./resultAggregation.js";
 import type { WorkflowExecutionContext, WorkflowResult } from "./types.js";
 
@@ -70,6 +71,14 @@ export async function runTapAndInspect(
     });
     waitMs = context.now() - waitStartedAt;
     results.push(waitResult);
+    if (!waitResult.ok && !shouldContinueAfterWaitFailure(waitResult.error)) {
+      const totalMs = context.now() - workflowStartedAt;
+      return workflowFailure(waitResult.error, "wait", {
+        tap: stepValue(tapResult),
+        wait: stepValue(waitResult),
+        timing: tapTiming(tapMs, waitMs, 0, totalMs)
+      }, results, totalMs);
+    }
   }
 
   const inspectStartedAt = context.now();

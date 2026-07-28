@@ -41,8 +41,8 @@ public enum ScrollExtent: String, Sendable, Equatable {
 ///
 /// 命令要求调用方明确给出 `direction`；`amount` 缺省时按可见区一半滚动；定位条件
 /// （`accessibilityIdentifier` / `path`）可同时缺省——此时 executor 回退到 keyWindow
-/// 最前的 scrollView。`viewSnapshotID` 可选，identifier / path 两种定位方式都支持陈旧校验
-/// （与 ui.tap 一致）；缺省时不做陈旧校验。
+/// 最前的 scrollView。`viewSnapshotID` 可选；与 locator 同时提供时，目标必须在同次
+/// `ui.inspect` 中声明 `scroll`，并通过 fingerprint freshness 校验。缺省时使用实时能力校验。
 public struct UIScrollInput: CommandInput, Sendable, Equatable {
     /// `ui.scroll` 在 Swift 执行端使用的 generated 输入定义。
     public static let inputDefinition = UIKitActionContracts.uiScrollInput
@@ -53,8 +53,7 @@ public struct UIScrollInput: CommandInput, Sendable, Equatable {
     public let amount: Double?
     /// 目标定位方式，缺省表示滚动 keyWindow 最前的 scrollView。
     public let locator: UIKitViewLookupTarget?
-    /// `ui.inspect` 签发的结构化快照标识，可选，identifier / path 两种定位方式都支持陈旧校验
-    ///（与 ui.tap 一致）；缺省时不校验。
+    /// `ui.inspect` 签发的结构化快照标识，可选；提供时校验目标的 `scroll` 签发与 freshness。
     public let viewSnapshotID: String?
     /// 是否动画。默认 false（`setContentOffset` 同步更新，after/reachedExtent 为确定值）。
     public let animated: Bool

@@ -95,7 +95,7 @@ func inspectQueryIsFullRollsUpControlSubtreeLabel() {
     let input = UIInspectInput()
     // 按钮内部 title label（UIButtonLabel）：hasStaticText + isInControlSubtree（祖先含 UIControl）。
     // 文本已通过父 control 的 semanticText（buttonTitle）汇总，独立签发只会让 agent tap 到
-    // 返回 unsupported_target 的死节点，破坏"签发=可操作"——故 rollup，不独立 full。
+    // 重复暴露 UIKit 内部渲染节点，增加 agent 目标噪音——故 rollup，不独立 full。
     #expect(input.isFull(candidate: .testCandidate(hasStaticText: true, isInControlSubtree: true)) == false)
     // 即便同时带 accessibilityLabel，控件子树内仍 rollup（label 也属控件内嵌展示语义）。
     #expect(input.isFull(candidate: .testCandidate(hasAccessibilityLabel: true,

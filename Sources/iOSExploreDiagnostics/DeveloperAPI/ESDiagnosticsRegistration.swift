@@ -10,18 +10,28 @@ public struct ESDiagnosticsRegistration: Sendable, Equatable {
     public let captureSessionID: String?
     /// 未启用或降级原因。
     public let reason: String?
+    /// 本次注册是否替换了已存在的 capture session。
+    public let replacedExistingSession: Bool
 
     /// 创建启用结果。
     ///
     /// - Parameter captureSessionID: 当前 capture session id。
-    public static func enabled(captureSessionID: String) -> ESDiagnosticsRegistration {
-        ESDiagnosticsRegistration(enabled: true, captureSessionID: captureSessionID, reason: nil)
+    /// - Parameter replacedExistingSession: 是否替换了旧 capture session。
+    public static func enabled(captureSessionID: String,
+                               replacedExistingSession: Bool = false) -> ESDiagnosticsRegistration {
+        ESDiagnosticsRegistration(enabled: true,
+                                  captureSessionID: captureSessionID,
+                                  reason: nil,
+                                  replacedExistingSession: replacedExistingSession)
     }
 
     /// 创建禁用结果。
     ///
     /// - Parameter reason: 禁用原因。
     public static func disabled(reason: String) -> ESDiagnosticsRegistration {
-        ESDiagnosticsRegistration(enabled: false, captureSessionID: nil, reason: reason)
+        ESDiagnosticsRegistration(enabled: false,
+                                  captureSessionID: nil,
+                                  reason: reason,
+                                  replacedExistingSession: false)
     }
 }

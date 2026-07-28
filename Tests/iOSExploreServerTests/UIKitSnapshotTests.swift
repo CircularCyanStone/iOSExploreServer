@@ -13,12 +13,26 @@ import UIKit
 /// 虽 `@MainActor` 但无 UIKit 调用），可在 macOS 测试覆盖。这组测试验证容量/TTL/LRU 与
 /// viewSnapshotID 陈旧检测。
 
+private func snapshotTargets(
+    _ fingerprints: [String: UIKitTargetFingerprint],
+    actions: [UIKitActionKind] = []
+) -> [String: UIKitSnapshotTarget] {
+    fingerprints.mapValues {
+        UIKitSnapshotTarget(
+            fingerprint: $0,
+            availableActions: UIKitActionAvailability(actions: actions)
+        )
+    }
+}
+
 @Test("snapshot TTL=120s：110s 仍有效，130s 过期") @MainActor
 func snapshotTTL120sBoundary() {
     // spec §3.6（重构）：TTL 从 30s 增至 120s，匹配多次 curl 往返的同步节奏。
     // 110s 不应过期、130s 必须过期。
     let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
-    guard let id = store.insert(context: .test, targets: ["root/0": .test], query: .default) else {
+    guard let id = store.insert(context: .test,
+                                targets: snapshotTargets(["root/0": .test]),
+                                query: .default) else {
         Issue.record("small snapshot should be stored"); return
     }
     // 110s：仍在 TTL 窗口内，指纹匹配 → 非陈旧
@@ -33,7 +47,9 @@ func snapshotTTL120sBoundary() {
 @Test("超过 TTL 的 snapshot 被判定陈旧") @MainActor
 func expiredSnapshotIsStale() {
     let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
-    guard let id = store.insert(context: .test, targets: ["root/0": .test], query: .default) else {
+    guard let id = store.insert(context: .test,
+                                targets: snapshotTargets(["root/0": .test]),
+                                query: .default) else {
         Issue.record("small snapshot should be stored"); return
     }
     store.setNow(Date(timeIntervalSince1970: 221))
@@ -43,7 +59,8 @@ func expiredSnapshotIsStale() {
 @Test("超过 512 条指纹时不签发 snapshot") @MainActor
 func oversizedSnapshotIsNotStored() {
     let store = UIKitSnapshotStore()
-    let targets = Dictionary(uniqueKeysWithValues: (0...512).map { ("root/\($0)", UIKitTargetFingerprint.test) })
+    let fingerprints = Dictionary(uniqueKeysWithValues: (0...512).map { ("root/\($0)", UIKitTargetFingerprint.test) })
+    let targets = snapshotTargets(fingerprints)
     #expect(store.insert(context: .test, targets: targets, query: .default) == nil)
 }
 
@@ -58,7 +75,9 @@ func snapshotRejectsChangedContextOrAncestorDigest() {
                                           isEnabled: true,
                                           isSelected: false,
                                           ancestorDigest: 10)
-    guard let id = store.insert(context: context, targets: [original.path: original], query: .default) else {
+    guard let id = store.insert(context: context,
+                                targets: snapshotTargets([original.path: original]),
+                                query: .default) else {
         Issue.record("small snapshot should be stored")
         return
     }
@@ -92,7 +111,9 @@ func snapshotRejectsChangedSemanticDigest() {
                                           isEnabled: true,
                                           isSelected: false,
                                           semanticDigest: 100)
-    guard let id = store.insert(context: context, targets: [original.path: original], query: .default) else {
+    guard let id = store.insert(context: context,
+                                targets: snapshotTargets([original.path: original]),
+                                query: .default) else {
         Issue.record("small snapshot should be stored")
         return
     }
@@ -150,20 +171,56 @@ func snapshotResponseFieldsForOverLimit() {
 @Test("isPathSigned: id 有效且 path 在指纹表 → true") @MainActor
 func isPathSignedTrueForSignedPath() {
     let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
-    guard let id = store.insert(context: .test, targets: ["root/1": .test], query: .default) else {
+    guard let id = store.insert(context: .test,
+                                targets: snapshotTargets(["root/1": .test]),
+                                query: .default) else {
         Issue.record("small snapshot should be stored"); return
     }
     #expect(store.isPathSigned(viewSnapshotID: id, path: "root/1") == true)
 }
 
+@Test("action-aware snapshot 只签发 inspect 声明的动作") @MainActor
+func snapshotSignsOnlyDeclaredActions() {
+    let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
+    let target = UIKitSnapshotTarget(
+        fingerprint: .test,
+        availableActions: UIKitActionAvailability(actions: [.tap])
+    )
+    guard let id = store.insert(context: .test, targets: ["root/1": target], query: .default) else {
+        Issue.record("small snapshot should be stored"); return
+    }
+
+    #expect(store.isActionSigned(viewSnapshotID: id, path: "root/1", action: .tap))
+    #expect(store.isActionSigned(viewSnapshotID: id, path: "root/1", action: .input) == false)
+}
+
+@Test("full 静态节点未声明动作时不能用于 tap 或 input") @MainActor
+func snapshotRejectsActionsMissingFromInspectAvailability() {
+    let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
+    let staticTarget = UIKitSnapshotTarget(
+        fingerprint: .test,
+        availableActions: UIKitActionAvailability(actions: [])
+    )
+    guard let id = store.insert(context: .test, targets: ["root/1": staticTarget], query: .default) else {
+        Issue.record("small snapshot should be stored"); return
+    }
+
+    #expect(store.isPathSigned(viewSnapshotID: id, path: "root/1"))
+    #expect(store.isActionSigned(viewSnapshotID: id, path: "root/1", action: .tap) == false)
+    #expect(store.isActionSigned(viewSnapshotID: id, path: "root/1", action: .input) == false)
+}
+
 @Test("isPathSigned: id 有效但 path 不在指纹表 → false（not_actionable 判据）") @MainActor
 func isPathSignedFalseForUnsignedPath() {
     let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
-    guard let id = store.insert(context: .test, targets: ["root/1": .test], query: .default) else {
+    guard let id = store.insert(context: .test,
+                                targets: snapshotTargets(["root/1": .test]),
+                                query: .default) else {
         Issue.record("small snapshot should be stored"); return
     }
     // root/9 是 minimal 结构节点，未签发指纹 → executor 应返回 not_actionable
     #expect(store.isPathSigned(viewSnapshotID: id, path: "root/9") == false)
+    #expect(store.isActionSigned(viewSnapshotID: id, path: "root/9", action: .tap) == false)
 }
 
 @Test("isPathSigned: unknown id → true（交 isStale 裁决，不误报 not_actionable）") @MainActor
@@ -171,17 +228,21 @@ func isPathSignedTrueForUnknownSnapshotID() {
     let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
     // entries 无该 id → 视为「可能签发过」，交 isStale 裁决 stale_locator
     #expect(store.isPathSigned(viewSnapshotID: "snap-nonexistent", path: "root/1") == true)
+    #expect(store.isActionSigned(viewSnapshotID: "snap-nonexistent", path: "root/1", action: .tap))
 }
 
 @Test("isPathSigned: 过期 id（超 TTL）→ true（交 isStale 裁决）") @MainActor
 func isPathSignedTrueForExpiredSnapshotID() {
     let store = UIKitSnapshotStore(now: { Date(timeIntervalSince1970: 100) })
-    guard let id = store.insert(context: .test, targets: ["root/1": .test], query: .default) else {
+    guard let id = store.insert(context: .test,
+                                targets: snapshotTargets(["root/1": .test]),
+                                query: .default) else {
         Issue.record("small snapshot should be stored"); return
     }
-    // 推进时间超过 30s TTL → id 失效，视为「可能签发过」
-    store.setNow(Date(timeIntervalSince1970: 131))
+    // 推进时间超过 120s TTL → id 失效，视为「可能签发过」
+    store.setNow(Date(timeIntervalSince1970: 221))
     #expect(store.isPathSigned(viewSnapshotID: id, path: "root/1") == true)
+    #expect(store.isActionSigned(viewSnapshotID: id, path: "root/1", action: .tap))
 }
 
 #if canImport(UIKit)

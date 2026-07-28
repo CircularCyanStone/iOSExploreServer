@@ -59,9 +59,11 @@ public struct UIInspectInput: CommandInput, Sendable, Equatable {
 
     /// 判定节点是 full（带识别信息或可操作）还是 minimal（仅结构）。
     ///
-    /// `ui.inspect` 的目标筛选口径：full 节点签发 fingerprint、可被
-    /// `ui.tap`/`ui.control.sendAction` 操作，并进入轻量 targets；minimal 节点只输出 path+type
-    /// 维持层级，强制 `actions=[]`、不签发。六条规则任一命中即 full：
+    /// `ui.inspect` 的目标筛选口径：full 节点进入轻量 targets，并签发 fingerprint 与
+    /// `availableActions`；通用 capability 命令携带 snapshot 时，只有动作集合明确包含对应动作
+    /// 才能执行。静态文本等观察型 full 节点可以保留空动作集合。minimal 节点只输出 path+type
+    /// 维持层级且完全不签发。专用 typed 命令继续按目标类型/gesture 合同校验。
+    /// 六条规则任一命中即 full：
     /// - `isControl` / `isScrollView` / `hasGestureRecognizers`：可操作（control/scroll 走
     ///   executor 默认路由，gesture 走 adapter 派发 target-action）；
     /// - `hasStaticText` / `hasAccessibilityLabel` / `hasAccessibilityIdentifier`：带识别信息，
@@ -70,8 +72,8 @@ public struct UIInspectInput: CommandInput, Sendable, Equatable {
     /// **rollup 例外（控件内嵌展示节点）**：`hasStaticText` 的节点若同时
     /// `isInControlSubtree`（自身非 `UIControl`、祖先链含 `UIControl`，典型如按钮内部
     /// 渲染 title 的 `UIButtonLabel`），不作为独立 full target——它的文本已通过父 control 的
-    /// `semanticText`（buttonTitle 等）汇总给父 target，独立签发只会让 agent tap 到一个
-    /// 返回 `unsupported_target` 的死节点，破坏"签发=可操作"不变式。
+    /// `semanticText`（buttonTitle 等）汇总给父 target；独立输出只会重复展示 UIKit 内部
+    /// 渲染节点，增加 target 噪音。
     ///
     /// cell 子树不受 rollup 影响：`UITableViewCell`/`UICollectionViewCell` 不是 `UIControl`，
     /// cell 内 label 的 `isInControlSubtree=false`，仍按 `hasStaticText` 进 full（spec §3.4
@@ -89,7 +91,7 @@ public struct UIInspectInput: CommandInput, Sendable, Equatable {
     public func isFull(candidate: UIInspectCandidate) -> Bool {
         if !includeHidden, candidate.isHidden { return false }
         // rollup：控件内嵌展示节点（hasStaticText 且在 UIControl 子树内）rollup 到父 control，
-        // 不独立 full。父 control 的 semanticText 已含其文本，独立签发会破坏"签发=可操作"。
+        // 不独立 full。父 control 的 semanticText 已含其文本，继续输出只会重复内部渲染节点。
         // cell 内 label 因 cell 非 UIControl 不命中此处，仍 full（详见上方文档）。
         if candidate.hasStaticText, candidate.isInControlSubtree {
             return false
@@ -142,8 +144,7 @@ public struct UIInspectCandidate: Sendable, Equatable {
     /// 是否位于 `UIControl` 子树内（自身非 `UIControl` 且祖先链含 `UIControl`）。
     ///
     /// 用于 rollup 判定：控件内嵌展示节点（如按钮内部 title label）的文本已通过父 control 的
-    /// `semanticText`（buttonTitle 等）汇总，无需作为独立 full target 签发；独立签发其 tap 会
-    /// 返回 `unsupported_target`，破坏"签发=可操作"不变式。cell 子树不受影响——
+    /// `semanticText`（buttonTitle 等）汇总，无需作为独立 full target 签发。cell 子树不受影响——
     /// `UITableViewCell`/`UICollectionViewCell` 不是 `UIControl`，cell 内 label 仍 full。
     public let isInControlSubtree: Bool
 

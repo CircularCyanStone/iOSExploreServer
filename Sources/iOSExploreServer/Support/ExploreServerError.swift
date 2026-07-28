@@ -21,7 +21,7 @@ struct ExploreServerError: Error, Sendable, Equatable {
         case resourceLimit
         /// 超时（读、命令）。
         case timeout
-        /// 鉴权（预留，当前未启用）。
+        /// 预留鉴权分类；当前产品开关关闭，不会由 HTTP 请求路径产生。
         case auth
     }
 
@@ -267,7 +267,7 @@ struct ExploreServerError: Error, Sendable, Equatable {
                            logMessage: "response too large action=\(action) bytes=\(bytes) limit=\(limit)")
     }
 
-    /// 鉴权失败（预留，当前 USB 物理隔离未启用校验）。
+    /// 预留的鉴权失败响应。当前产品开关关闭，HTTP 请求路径不会调用该工厂。
     static func unauthorized() -> ExploreServerError {
         ExploreServerError(category: .auth,
                            httpStatus: 401,

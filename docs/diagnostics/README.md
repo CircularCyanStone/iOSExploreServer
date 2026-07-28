@@ -311,6 +311,7 @@ curl -s -X POST http://localhost:38321/ \
 | `hasMore` | 是否还有更多日志可以继续分页读取 |
 | `gap` | 如果 cursor 太旧、日志已被 ring buffer 覆盖，这里说明丢失范围 |
 | `capture` | 每个来源当前是 enabled、notCaptured 还是 unavailable |
+| `flushRequested` | 本次读取前已请求异步捕获源刷新；它不表示刷新已经同步完成 |
 
 ## capture 状态怎么看
 

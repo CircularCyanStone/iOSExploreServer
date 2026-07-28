@@ -107,7 +107,8 @@ enum UITextInputExecutor {
                 located: located,
                 viewSnapshotID: viewSnapshotID,
                 context: context,
-                action: action
+                action: action,
+                requiredAction: .input
             )
         }
 
@@ -115,6 +116,11 @@ enum UITextInputExecutor {
         let view = located.view
         guard (view is UITextField) || (view is UITextView) || (view is UISearchTextField) else {
             throw UIKitCommandError.unsupportedTextInputType(action: action, type: String(describing: type(of: view)))
+        }
+
+        let availability = UIKitActionCapabilityResolver.resolve(view: view, rootView: context.rootView)
+        guard availability.actions.contains(.input) else {
+            throw UIKitCommandError.notActionable(action: action, path: located.pathString)
         }
 
         let responder = view as! UIResponder

@@ -1,6 +1,7 @@
 import { HOST_OPERATION_SPECS } from "../generated/hostOperationSpecs.js";
 import type { InvocationResult } from "../runtime/types.js";
 import type { JSONObject, JSONValue } from "../types.js";
+import { shouldContinueAfterWaitFailure } from "./errorPolicy.js";
 import { stepValue, workflowFailure, workflowSuccess } from "./resultAggregation.js";
 import type { WorkflowExecutionContext, WorkflowResult } from "./types.js";
 
@@ -43,7 +44,7 @@ export async function runWaitAndInspect(
   const waitMs = context.now() - waitStartedAt;
   const results: InvocationResult[] = [waitResult];
 
-  if (!waitResult.ok && waitResult.error.code !== "wait_timeout") {
+  if (!waitResult.ok && !shouldContinueAfterWaitFailure(waitResult.error)) {
     return workflowFailure(waitResult.error, "wait", {
       wait: stepValue(waitResult),
       timing: waitTiming(waitMs, 0, context.now() - workflowStartedAt)

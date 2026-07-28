@@ -34,9 +34,31 @@ struct DiagnosticsCommandTests {
         }
     }
 
+    @Test("重复注册 Diagnostics 时结果标记替换了旧 capture session")
+    func repeatedRegistrationReportsReplacedSession() async {
+        await withProcessDiagnosticsTestIsolation {
+            ESDiagnosticsRuntime.shared.resetForTesting()
+            defer { ESDiagnosticsRuntime.shared.resetForTesting() }
+            let server = ExploreServer()
+
+            let first = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
+                                                                 captureStdout: false,
+                                                                 captureStderr: false))
+            let second = server.registerDiagnosticsCommands(.init(captureExploreLogs: false,
+                                                                  captureStdout: false,
+                                                                  captureStderr: false))
+
+            #expect(first.enabled)
+            #expect(first.replacedExistingSession == false)
+            #expect(second.enabled)
+            #expect(second.replacedExistingSession == true)
+            #expect(first.captureSessionID != second.captureSessionID)
+        }
+    }
+
     @Test("app.logs.read help 不携带 inputSchema")
-    func readHelpOmitsInputSchema() async throws {
-        try await withProcessDiagnosticsTestIsolation {
+    func readHelpOmitsInputSchema() async {
+        await withProcessDiagnosticsTestIsolation {
             ESDiagnosticsRuntime.shared.resetForTesting()
             defer { ESDiagnosticsRuntime.shared.resetForTesting() }
             let server = ExploreServer()
@@ -139,8 +161,10 @@ struct DiagnosticsCommandTests {
                                                                                "sources": .array([.string("bridge")])]))
             let elapsed = Date().timeIntervalSince(start)
             let entries = try entries(from: result)
+            let data = try successData(from: result)
 
             #expect(elapsed < 1.0)
+            #expect(data["flushRequested"]?.boolValue == true)
             #expect(entries.contains { entry in
                 entry["source"]?.stringValue == "bridge" &&
                 entry["category"]?.stringValue == "test.flush"
@@ -520,6 +544,13 @@ private func entries(from result: ExploreResult) throws -> [JSON] {
         throw TestFailure("missing entries")
     }
     return values.compactMap(\.objectValue)
+}
+
+private func successData(from result: ExploreResult) throws -> JSON {
+    guard case .success(let data) = result else {
+        throw TestFailure("missing success data")
+    }
+    return data
 }
 
 private func nextCursor(from result: ExploreResult) throws -> ESAppLogCursor {

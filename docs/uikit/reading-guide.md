@@ -54,7 +54,7 @@
                     │ UIKitLocatorResolver   locator → 真实 UIView │
                     │ UIKitActionExecutor    tap / sendActions 实际执行 │
                     │ UIKitActionCapabilityResolver  什么 view 能做什么动作 │
-                    │ UIKitSnapshotStore     陈旧检测（指纹比对） │
+                    │ UIKitSnapshotStore     动作授权 + 陈旧检测  │
                     │ UIKitFingerprintCollector  从 UIView 抽指纹 │
                     └─────────────────────────────────────────┘
                                        │
@@ -100,17 +100,17 @@
 
 > 目标：理解"一个交互命令从参数到真实 `sendActions(for:)` 的完整路径"。
 
-### 第 3 步：陈旧防护（决定正确性，~470 行）
+### 第 3 步：动作授权与陈旧防护（决定正确性，~480 行）
 为什么 tap 带了 `viewSnapshotID` 才安全？读这块就懂：
-- `Support/Snapshot/UIKitSnapshotStore.swift`——指纹快照存储，**重点看 `isStale` 方法和容量/淘汰策略**。
+- `Support/Snapshot/UIKitSnapshotStore.swift`——保存每个 path 的 fingerprint 与 inspect 当时的 `availableActions`，**重点看 `isActionSigned`、`isStale` 和容量/淘汰策略**。
 - `Support/Snapshot/UIKitFingerprintCollector.swift`（114 行）——从 `UIView` 抽指纹（含新增 `semanticDigest`：按钮标题 / a11y label / a11y value / switch isOn / segment index / 默认激活路由的稳定哈希，参与陈旧检测）；注意 identifier 只存哈希、不存原文。
 
-> 目标：理解"path 陈旧问题怎么被解决的"——这是 `ui.inspect` 返回 `viewSnapshotID` 的全部理由。
+> 目标：理解“动作必须由同次 inspect 授权”和“path 陈旧时拒绝执行”如何同时成立。
 
 ### 第 4 步：辅助基础设施（按需查，~330 行）
 用到时再翻，不必通读：
 - `Support/Context/UIKitContextProvider.swift`——怎么找前台 window 和顶部 VC（`currentContext(action:) throws`）。
-- `Support/Action/UIKitActionCapabilityResolver.swift`（91 行）——UIControl 各 event 的可用性规则（collector 声明 `availableActions` 时用）。tap 的默认激活路由判定已拆到 `UIKitDefaultActivationResolver`（V1：UIButton/UISwitch/文本输入；UISlider/UISegmentedControl/普通 UIView 无默认激活路由，tap 返回 `unsupported_target`）。
+- `Support/Action/UIKitActionCapabilityResolver.swift`——`availableActions` 的唯一生成规则。tap 来自默认激活、cell selection 或 Debug 下可读取 target-action 的 gesture；slider/segmented 等没有 tap 语义的 control 只声明精确 `control.*` event。
 - `UIKitCommandError.swift`——错误工厂（conform `Error`，可被 throw），**查的时候看**，不需要通读。
 - `Support/Parsing/`——UIKit 共享 command 字段、定位 input helper 与安全整数转换。
 
@@ -126,7 +126,7 @@
 
 - **core 不依赖 UIKit** → UIKit 能力做成独立 product，宿主**显式** `registerUIKitCommands()`。core 初始化不自动注册任何 `ui.*`，未注册时 `help` 不含 UIKit action（这是回归保护点）。
 - **adapter 薄、executor 厚** → 所有"真实 UIKit 操作"集中在 `@MainActor` 的 executor/collector，adapter 只接收已解析的 typed input。这让执行逻辑可在 iOS 测试里用注入的 view 树驱动（看每个类型有没有 `execute(_:context:)` / `collect(query:context:)` 这种"注入入口"）。
-- **availableActions 与可执行性对齐** → `ui.inspect` 声明的 `availableActions` 由 `UIKitActionCapabilityResolver` 给出（UIControl 各 event）；`ui.tap` 的默认激活路由由 `UIKitDefaultActivationResolver` 判定（V1：UIButton/UISwitch/文本输入）。二者口径一致，避免"声明可点但实际点不动"的分叉。
+- **availableActions 与可执行性对齐** → `ui.inspect` 和 executor 共用 `UIKitActionCapabilityResolver`；snapshot 保存同次响应的动作集合。`ui.tap`、携带 snapshot 的 `ui.input`、定向 `ui.scroll`、`ui.control.sendAction` 会先验证动作已签发，再做 freshness 校验。picker/datePicker/webView/swipe/longPress 是 typed executor，不属于这组通用 capability。
 - **定位二选一、identifier 精确不截断** → 历史上有过截断 prefix 的 bug；现在 `identifier` 完整匹配，匹配多个返回 `ambiguous`。
 
 ## 下一步

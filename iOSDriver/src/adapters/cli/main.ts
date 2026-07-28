@@ -32,7 +32,9 @@ export async function main(
     if (handlesSIGINT) process.once("SIGINT", onSIGINT);
     const config = await resolveCLIConfig(parsed.config, dependencies.env ?? process.env);
     const runtime = new DriverRuntime({
-      transport: new HttpActionTransport(config.baseURL),
+      transport: new HttpActionTransport(config.baseURL, {
+        ...(config.authToken === undefined ? {} : { authToken: config.authToken })
+      }),
       configuredRequestTimeoutMs: config.requestTimeoutMs,
       logger
     });

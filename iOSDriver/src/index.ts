@@ -13,7 +13,9 @@ import { defaultHostLogger } from "./runtime/hostLogger.js";
 export async function startLegacyMCP(): Promise<void> {
   const logger = defaultHostLogger;
   const config = loadConfig();
-  const transport = new HttpActionTransport(config.baseURL);
+  const transport = new HttpActionTransport(config.baseURL, {
+    ...(config.authToken === undefined ? {} : { authToken: config.authToken })
+  });
   const runtime = new DriverRuntime({
     transport,
     configuredRequestTimeoutMs: config.requestTimeoutMs,

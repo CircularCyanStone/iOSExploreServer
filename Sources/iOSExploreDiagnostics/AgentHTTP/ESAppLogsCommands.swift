@@ -64,6 +64,7 @@ struct ESAppLogsReadCommand: Command {
             "hasMore": .bool(result.hasMore),
             "gap": result.gap.map { .object($0.toJSON()) } ?? .null,
             "oldestAvailableID": result.oldestAvailableID.map { .double(Double($0)) } ?? .null,
+            "flushRequested": .bool(true),
             "capture": .object(capture),
         ]
     }

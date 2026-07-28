@@ -32,7 +32,8 @@ private func routerTestContract(action: String,
 @Test("注册的 action 被命中并返回 success")
 func routeHitsRegistered() async {
     let router = Router()
-    router.register(action: "hello", input: EmptyCommandInput.self) { _ in .success(["msg": "hi"]) }
+    let registered = router.register(action: "hello", input: EmptyCommandInput.self) { _ in .success(["msg": "hi"]) }
+    #expect(registered)
     let result = await router.route(ExploreRequest(action: "hello"))
     if case .success(let data) = result {
         #expect(data["msg"]?.stringValue == "hi")
@@ -55,8 +56,9 @@ func routeUnknown() async {
 @Test("注册拒绝非法 action 且不污染 metadata")
 func registrationRejectsInvalidAction() async {
     let router = Router()
-    router.register(action: "bad action", input: EmptyCommandInput.self) { _ in .success([:]) }
+    let registered = router.register(action: "bad action", input: EmptyCommandInput.self) { _ in .success([:]) }
 
+    #expect(!registered)
     #expect(router.commandMetadata().isEmpty)
     let result = await router.route(ExploreRequest(action: "bad action"))
     guard case .failure(let code, _, _) = result else {
@@ -130,7 +132,8 @@ func routeProtocolRegistration() async {
         let contract = routerTestContract(action: "ping2")
         func handle(_ input: EmptyCommandInput) async throws -> ExploreResult { .success(["ok": .bool(true)]) }
     }
-    router.register(Ping())
+    let registered = router.register(Ping())
+    #expect(registered)
     let result = await router.route(ExploreRequest(action: "ping2"))
     if case .success(let data) = result {
         #expect(data["ok"] == .bool(true))
@@ -177,10 +180,11 @@ func explicitContractRegistrationPreservesMetadataAndTypedParser() async {
                                    contractHash: "sha256:" + String(repeating: "a", count: 64),
                                    contractSource: .generated)
     let router = Router()
-    router.register(contract: contract, input: RouterGreetingInput.self) { input in
+    let registered = router.register(contract: contract, input: RouterGreetingInput.self) { input in
         .success(["message": .string(input.name)])
     }
 
+    #expect(registered)
     #expect(router.commandMetadata() == [contract])
 
     let missingName = await router.route(ExploreRequest(action: contract.action))

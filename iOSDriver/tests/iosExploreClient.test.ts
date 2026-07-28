@@ -13,6 +13,22 @@ describe("IOSExploreClient compatibility facade", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  test("兼容 facade 会把 authToken 传给 HTTP transport", async () => {
+    const fetchImpl = vi.fn(async () => response({ code: "ok", data: { pong: true } }));
+    vi.stubGlobal("fetch", fetchImpl);
+    const client = new IOSExploreClient({
+      baseURL: "http://localhost:38321/",
+      requestTimeoutMs: 1000,
+      authToken: "secret-token"
+    });
+
+    await client.call("ping", {});
+
+    expect(fetchImpl).toHaveBeenCalledWith("http://localhost:38321/", expect.objectContaining({
+      headers: expect.objectContaining({ "X-Auth-Token": "secret-token" })
+    }));
+  });
+
   test("App failure 转回既有 IOSExploreStructuredError 语义并保留 data", async () => {
     vi.stubGlobal("fetch", async () => response({
       code: "wait_timeout",

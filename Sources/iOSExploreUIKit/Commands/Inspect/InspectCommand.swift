@@ -5,16 +5,17 @@ import UIKit
 
 /// 当前顶部控制器可操作交互目标查询命令。
 ///
-/// action 为 `ui.inspect`。命令面向**事件下发前的目标发现**：返回可被现有公开命令
-/// （`ui.tap` / `ui.control.sendAction` / `ui.input`）直接操作的 canonical target——
-/// `UIControl`、`UIScrollView` 系、挂有 `UIGestureRecognizer` 的 view、**以及含静态文本、
-/// accessibility label 或 accessibility identifier 的展示节点**。容器、纯装饰 view、
-/// 无文本无 a11y 信息的非交互节点不进入列表。
+/// action 为 `ui.inspect`。命令面向**事件下发前的目标发现**：返回可识别或可操作的 full
+/// target，包括 `UIControl`、`UIScrollView`、可执行 gesture view，以及含静态文本或 a11y
+/// 信息的展示节点。每个 target 的 `availableActions` 是通用 capability 命令（tap、input、
+/// scroll、control event）的动作依据；展示节点可以被签发用于 freshness/snapshotChanged，
+/// 但不会因此自动获得动作权限。picker/date/webview/swipe/longPress 等专用命令按 typed target
+/// 合同执行，不伪装成通用 capability，也不是本 snapshot 动作枚举的延期项。
 ///
 /// 与 `ui.topViewHierarchy` 的关键差异：
-/// - **签发 `viewSnapshotID`**——`ui.tap` / `ui.control.sendAction` / `ui.input` 调用前
-///   **必须**先调本命令，并把同响应返回的 `viewSnapshotID` 原样传入；`topViewHierarchy`
-///   不签发指纹，不能用于事件下发。**注意**：`viewSnapshotID` 在响应的顶层 `data.viewSnapshotID`
+/// - **签发 `viewSnapshotID`**——`ui.tap` / `ui.control.sendAction` 必须携带本命令返回的 ID；
+///   `ui.input` 的 ID 按合同可选，但提供时同样校验 `.input` 动作。`topViewHierarchy`
+///   不签发 target，不能用于事件下发。**注意**：`viewSnapshotID` 在响应的顶层 `data.viewSnapshotID`
 ///   字段（全局快照标识，覆盖本次返回的所有 targets），而非单个 target 对象内部——每个
 ///   target 的 `viewSnapshotID` 字段为 `null`（设计如此）。
 /// - **扁平 targets 数组** vs 后者的嵌套 root 树；本命令只覆盖 canonical target（典型页面

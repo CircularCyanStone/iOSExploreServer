@@ -21,6 +21,26 @@ describe("HttpActionTransport", () => {
     }));
   });
 
+  test("配置 authToken 时发送 X-Auth-Token 请求头", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ code: "ok", data: { pong: true } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+    const transport = new HttpActionTransport("http://localhost:38321/", {
+      fetchImpl,
+      authToken: "secret-token"
+    });
+
+    await transport.execute({ action: "ping", data: {} }, { timeoutMs: 1000 });
+
+    expect(fetchImpl).toHaveBeenCalledWith("http://localhost:38321/", expect.objectContaining({
+      headers: {
+        "Content-Type": "application/json",
+        "X-Auth-Token": "secret-token"
+      }
+    }));
+  });
+
   test.each([
     ["connect", Object.assign(new TypeError("connect failed"), { cause: { code: "ECONNREFUSED" } })],
     ["reset", Object.assign(new TypeError("socket reset"), { cause: { code: "ECONNRESET" } })]

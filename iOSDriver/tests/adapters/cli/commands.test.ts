@@ -1,30 +1,54 @@
 import { describe, expect, test } from "vitest";
 import { executeCLICommand, type CLICommandContext } from "../../../src/adapters/cli/commands.js";
 import type { CLIConfig, ConfigFileSystem } from "../../../src/adapters/cli/config.js";
+import type { InvocationPolicy } from "../../../src/runtime/driverRuntime.js";
 import type { InvocationResult } from "../../../src/runtime/types.js";
 import type { JSONObject } from "../../../src/types.js";
 import { hostLogRecorder } from "../../support/hostLogRecorder.js";
 
 const config: CLIConfig = Object.freeze({ baseURL: "http://localhost:38321/", requestTimeoutMs: 10000, configPath: "/tmp/config.json", fileValues: {} });
 
-function fixture(result: InvocationResult, report: Record<string, unknown> = { connection: "reachable", ping: { status: "ok" }, help: { status: "available" }, contractCompatibility: "exact" }) {
+function fixture(
+  result: InvocationResult,
+  report: Record<string, unknown> = { connection: "reachable", ping: { status: "ok" }, help: { status: "available" }, contractCompatibility: "exact" },
+  policy?: InvocationPolicy
+) {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const artifactWrites: Array<{ path: string; data: Uint8Array }> = [];
-  const runtimeCalls: Array<{ action: string; data: JSONObject }> = [];
+  const runtimeCalls: Array<{ action: string; data: JSONObject; options: unknown }> = [];
+  const doctorSignals: Array<AbortSignal | undefined> = [];
+  let doctorCalls = 0;
   const recorded = hostLogRecorder();
   const context: CLICommandContext = {
     config,
     output: { stdout: value => stdout.push(value), stderr: value => stderr.push(value) },
-    runtime: { async invoke(action, data = {}) { runtimeCalls.push({ action, data }); return result; } },
-    capabilityProbe: { async doctor() { return report as never; } },
+    runtime: { async invoke(action, data = {}, options = {}) { runtimeCalls.push({ action, data, options }); return result; } },
+    capabilityProbe: {
+      async doctor(options?: { readonly signal?: AbortSignal }) {
+        doctorCalls += 1;
+        doctorSignals.push(options?.signal);
+        return report as never;
+      },
+      invocationPolicy(action: string) { return action.startsWith("extension.") ? policy : undefined; }
+    },
     workflowRunner: { async run() { return result; } },
     startMCP: async () => { stdout.push("mcp-frame\n"); },
     readFile: async () => "{}",
     writeArtifact: async (path, data) => { artifactWrites.push({ path, data }); },
     logger: recorded.logger
   };
-  return { context, stdout, stderr, artifactWrites, runtimeCalls, logLines: recorded.lines, logEntries: recorded.entries };
+  return {
+    context,
+    stdout,
+    stderr,
+    artifactWrites,
+    runtimeCalls,
+    getDoctorCalls: () => doctorCalls,
+    getDoctorSignals: () => doctorSignals,
+    logLines: recorded.lines,
+    logEntries: recorded.entries
+  };
 }
 
 describe("CLI commands", () => {
@@ -52,7 +76,36 @@ describe("CLI commands", () => {
       data: JSON.stringify(data)
     })).toBe(0);
 
-    expect(state.runtimeCalls).toEqual([{ action: "ui.inspect", data }]);
+    expect(state.runtimeCalls).toEqual([{ action: "ui.inspect", data, options: {} }]);
+    expect(state.getDoctorCalls()).toBe(0);
+  });
+
+  test("call 对 extension action 使用 capability probe 发布的 invocation policy", async () => {
+    const policy: InvocationPolicy = { idempotency: "readOnly", timeoutClass: "wait" };
+    const state = fixture({ ok: true, data: {}, artifacts: [], elapsedMs: 0, attempts: 1 }, undefined, policy);
+
+    expect(await executeCLICommand("call", state.context, {
+      action: "extension.wait",
+      data: "{}"
+    })).toBe(0);
+
+    expect(state.getDoctorCalls()).toBe(1);
+    expect(state.runtimeCalls).toEqual([
+      { action: "extension.wait", data: {}, options: { policy } }
+    ]);
+  });
+
+  test("call 对 extension action 的 capability probe 传递 AbortSignal", async () => {
+    const controller = new AbortController();
+    const policy: InvocationPolicy = { idempotency: "readOnly", timeoutClass: "wait" };
+    const state = fixture({ ok: true, data: {}, artifacts: [], elapsedMs: 0, attempts: 1 }, undefined, policy);
+
+    expect(await executeCLICommand("call", { ...state.context, signal: controller.signal }, {
+      action: "extension.wait",
+      data: "{}"
+    })).toBe(0);
+
+    expect(state.getDoctorSignals()).toEqual([controller.signal]);
   });
 
   test("init 只写配置并输出 iosdriver mcp 片段", async () => {
@@ -153,6 +206,15 @@ describe("CLI commands", () => {
       contractCompatibility: "exact",
       metadata: { protocolVersionMatches: true, contractVersionMatches: true, hashMatches: true }
     });
+  });
+
+  test("doctor 向 capability probe 传递 AbortSignal", async () => {
+    const controller = new AbortController();
+    const state = fixture({ ok: true, data: {}, artifacts: [], elapsedMs: 0, attempts: 1 });
+
+    expect(await executeCLICommand("doctor", { ...state.context, signal: controller.signal })).toBe(0);
+
+    expect(state.getDoctorSignals()).toEqual([controller.signal]);
   });
 
   test("doctor 将合同 bundle 不匹配视为 App 失败，将协议版本不匹配视为 protocol 失败", async () => {

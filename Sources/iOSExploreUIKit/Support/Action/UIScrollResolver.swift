@@ -26,9 +26,9 @@ enum UIScrollResolver {
     /// `ui.scroll` 语义：locator 是触发滚动的目标 view，executor 找其最近 scrollView 祖先。
     ///
     /// locator 缺省时回退到 keyWindow 最前 scrollView。`viewSnapshotID` 由调用方
-    /// 可选传入（`ui.inspect` 签发），配合 locator（identifier / path 均可）走
-    /// `UIKitActionExecutor.validateViewSnapshot` 同一陈旧校验入口，与 ui.tap 行为一致；
-    /// 缺省时跳过陈旧校验。全程排除 `UITextView`（其内部滚动语义不同，按 spec 不作为滚动容器）。
+    /// 可选传入（`ui.inspect` 签发）。同时提供 locator 与 snapshot 时，要求同次 inspect
+    /// 为该目标声明 `.scroll`，再走 fingerprint freshness；缺省 snapshot 时仍由实时类型和
+    /// `isScrollEnabled` 校验决定能否执行。全程排除 `UITextView`。
     ///
     /// - Parameters:
     ///   - locator: 触发滚动的目标定位（identifier/path），nil 表示回退 foremost。
@@ -57,7 +57,8 @@ enum UIScrollResolver {
                     located: located,
                     viewSnapshotID: viewSnapshotID,
                     context: context,
-                    action: action
+                    action: action,
+                    requiredAction: .scroll
                 )
             }
             guard let candidate = nearestScrollView(from: located.view) else {

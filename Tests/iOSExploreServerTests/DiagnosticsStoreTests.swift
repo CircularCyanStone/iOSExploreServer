@@ -125,6 +125,41 @@ struct DiagnosticsStoreTests {
         #expect(result.entries[0].metadata == ["token": "[REDACTED]"])
     }
 
+    @Test("脱敏覆盖 camelCase token key 与 api_key")
+    func redactionCoversCamelCaseTokensAndAPIKey() {
+        let store = ESAppLogStore(captureSessionID: "session-a", capacity: 10, maximumEntryBytes: 1024)
+
+        _ = store.append(source: .bridge,
+                         level: .error,
+                         category: "auth",
+                         message: #"accessToken=abc refreshToken=def api_key=ghi authToken=jkl sessionToken=mno {"apiKey":"json-secret","sessionToken":"json-session-secret"}"#,
+                         metadata: [
+                             "accessToken": "abc",
+                             "authToken": "jkl",
+                             "refreshToken": "def",
+                             "api_key": "ghi",
+                             "sessionToken": "mno",
+                         ])
+
+        let result = store.read(after: nil, limit: 10, sources: nil, minimumLevel: nil)
+        let entry = result.entries[0]
+
+        #expect(entry.message.contains("abc") == false)
+        #expect(entry.message.contains("def") == false)
+        #expect(entry.message.contains("ghi") == false)
+        #expect(entry.message.contains("jkl") == false)
+        #expect(entry.message.contains("mno") == false)
+        #expect(entry.message.contains("json-secret") == false)
+        #expect(entry.message.contains("json-session-secret") == false)
+        #expect(entry.metadata == [
+            "accessToken": "[REDACTED]",
+            "authToken": "[REDACTED]",
+            "api_key": "[REDACTED]",
+            "refreshToken": "[REDACTED]",
+            "sessionToken": "[REDACTED]",
+        ])
+    }
+
     @Test("metadata 写入前会限制数量和 key/value 长度并保持脱敏")
     func appendBoundsMetadataSizeAfterRedaction() {
         let store = ESAppLogStore(captureSessionID: "session-a",

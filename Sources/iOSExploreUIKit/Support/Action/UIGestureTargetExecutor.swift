@@ -55,6 +55,22 @@ struct UIGestureTriggeredPair: Sendable {
 ///    见 spec `docs/superpowers/specs/2026-07-05-uitableviewcell-tap-selection-design.md`。
 @MainActor
 enum UIGestureTargetExecutor {
+    /// 判断当前 view 的手势 adapter 是否能为 `ui.tap` 派发至少一个 target-action。
+    ///
+    /// inspect 用该结果声明 `.tap`，executor 再用同一底层 target-action 读取逻辑执行，保证
+    /// `availableActions` 与 action-aware snapshot 不会屏蔽原有手势路径，也不会仅凭“挂了手势”
+    /// 就声明一个实际无法触发的动作。Release 构建不读取私有 ivar，因此固定返回 `false`。
+    static func supportsTap(on view: UIView) -> Bool {
+        guard !(view is UIControl), let gestures = view.gestureRecognizers, !gestures.isEmpty else {
+            return false
+        }
+        #if DEBUG
+        return gestures.contains { !$0.explore_targetActionPairs().isEmpty }
+        #else
+        return false
+        #endif
+    }
+
     /// 对 view 上所有手势的所有 target-action 按签名派发。
     ///
     /// - Parameter view: 已定位的目标 view（`executeTap` 传入的 canonical target）。

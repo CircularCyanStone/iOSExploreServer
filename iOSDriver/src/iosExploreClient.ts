@@ -19,7 +19,9 @@ export class IOSExploreClient {
    */
   constructor(private readonly config: MCPServerConfig) {
     this.runtime = new DriverRuntime({
-      transport: new HttpActionTransport(config.baseURL),
+      transport: new HttpActionTransport(config.baseURL, {
+        ...(config.authToken === undefined ? {} : { authToken: config.authToken })
+      }),
       configuredRequestTimeoutMs: config.requestTimeoutMs
     });
   }

@@ -17,37 +17,44 @@ public final class Router: Sendable {
     /// 注册一个协议命令对象。
     ///
     /// 如果同名 action 已存在，新命令会覆盖旧命令。注册过程同步完成，不会触发 handler。
-    /// 非法 action 会被拒绝并记录错误日志；方法不抛错，后续请求按未注册 action 处理。
+    /// 非法 action 会被拒绝并记录错误日志，返回 `false`；方法不抛错，后续请求按未注册
+    /// action 处理。
     ///
     /// - Parameters:
     ///   - command: 具体命令对象。
     ///   - logCategory: 命令执行日志归属。
-    public func register<C: Command>(_ command: C, logCategory: CommandLogCategory = .core) {
+    /// - Returns: 注册成功为 `true`，action 非法被拒绝为 `false`。
+    @discardableResult
+    public func register<C: Command>(_ command: C, logCategory: CommandLogCategory = .core) -> Bool {
         register(AnyCommand(command, logCategory: logCategory))
     }
 
     /// 注册一个已类型擦除的命令。
     ///
-    /// 非法 action 会被拒绝并记录错误日志；方法不抛错，后续请求按未注册 action 处理。
+    /// 非法 action 会被拒绝并记录错误日志，返回 `false`；方法不抛错，后续请求按未注册
+    /// action 处理。
     ///
     /// - Parameter command: 已完成 typed input 适配和日志归属配置的命令。
-    public func register(_ command: AnyCommand) {
+    /// - Returns: 注册成功为 `true`，action 非法被拒绝为 `false`。
+    @discardableResult
+    public func register(_ command: AnyCommand) -> Bool {
         do {
             try CommandContract.validateAction(command.action)
         } catch {
             ESLogger.error(.router,
                            "router registration rejected action=\(command.action) reason=invalid_action")
-            return
+            return false
         }
         handlers.withLock { $0[command.action] = command }
         ESLogger.info(.router,
                       "router registered action=\(command.action) provider=\(command.contract.provider.rawValue) stability=\(command.contract.stability.rawValue) source=\(command.contract.contractSource.rawValue) inputFields=\(command.inputDefinition.fields.count)")
+        return true
     }
 
     /// 使用显式合同注册一个 typed 闭包命令。
     ///
     /// 如果同名 action 已存在，新命令会覆盖旧命令。合同用于 metadata 输出，输入仍由
-    /// `Input.parse(from:)` 解析。非法 action 会被拒绝并记录错误日志；方法不抛错，后续
+    /// `Input.parse(from:)` 解析。非法 action 会被拒绝并记录错误日志，返回 `false`；方法不抛错，后续
     /// 请求按未注册 action 处理。
     ///
     /// - Parameters:
@@ -55,10 +62,12 @@ public final class Router: Sendable {
     ///   - input: 命令输入类型，负责实际 JSON 解析。
     ///   - logCategory: 命令执行日志归属。
     ///   - handler: 实际业务处理闭包，入参已经是 typed input。
+    /// - Returns: 注册成功为 `true`，action 非法被拒绝为 `false`。
+    @discardableResult
     public func register<Input: CommandInput>(contract: CommandContract,
                                               input: Input.Type,
                                               logCategory: CommandLogCategory = .core,
-                                              _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
+                                              _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) -> Bool {
         register(AnyCommand(contract: contract,
                             input: input,
                             logCategory: logCategory,
@@ -70,7 +79,7 @@ public final class Router: Sendable {
     /// 这是集成方最轻量的扩展入口，适合在 App 启动时注册少量命令。内部会构造
     /// `provider=extension`、`stability=internal`、`contractSource=runtime` 的保守合同，
     /// 并适配成 `AnyCommand`，因此它和协议命令共享同一条路由路径。非法 action 会被拒绝
-    /// 并记录错误日志；方法不抛错，后续请求按未注册 action 处理。
+    /// 并记录错误日志，返回 `false`；方法不抛错，后续请求按未注册 action 处理。
     ///
     /// - Parameters:
     ///   - action: 命令名。
@@ -78,11 +87,13 @@ public final class Router: Sendable {
     ///   - input: 命令输入类型，负责 wire 校验与 data 解析。
     ///   - logCategory: 命令执行日志归属。
     ///   - handler: 实际业务处理闭包，入参已经是 typed input。
+    /// - Returns: 注册成功为 `true`，action 非法被拒绝为 `false`。
+    @discardableResult
     public func register<Input: CommandInput>(action: String,
                                               description: String = "",
                                               input: Input.Type,
                                               logCategory: CommandLogCategory = .core,
-                                              _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) {
+                                              _ handler: @escaping @Sendable (Input) async throws -> ExploreResult) -> Bool {
         register(AnyCommand(action: action,
                             description: description,
                             input: input,

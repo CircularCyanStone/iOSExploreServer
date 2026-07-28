@@ -45,7 +45,7 @@
           "string",
           "null"
         ],
-        "description": "ui.inspect 签发的快照标识。"
+        "description": "ui.inspect 签发的快照标识；与定位字段同时提供时，目标必须在同次 inspect 中声明 scroll。"
       },
       "animated": {
         "type": "boolean",

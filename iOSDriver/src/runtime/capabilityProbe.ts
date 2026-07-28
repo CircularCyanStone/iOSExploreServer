@@ -8,7 +8,12 @@ import { noopHostLogger, type HostLogger } from "./hostLogger.js";
 
 /** CapabilityProbe 所需的最小 runtime 边界，便于 adapter 和测试注入。 */
 export interface CapabilityInvoker {
-  invoke(action: string, data?: JSONObject): Promise<InvocationResult>;
+  invoke(action: string, data?: JSONObject, options?: CapabilityProbeInvocationOptions): Promise<InvocationResult>;
+}
+
+/** capability probe 透传给 runtime 的可选调用参数。 */
+export interface CapabilityProbeInvocationOptions {
+  readonly signal?: AbortSignal;
 }
 
 /** 显式能力检查入口；不会在构造或工具发现阶段访问网络。 */
@@ -90,16 +95,19 @@ export class CapabilityProbe {
   }
 
   /** 显式执行 doctor/health/capabilities 检查。 */
-  async probe(mode: CapabilityProbeMode = "capabilities"): Promise<CapabilityReport> {
+  async probe(
+    mode: CapabilityProbeMode = "capabilities",
+    options: CapabilityProbeInvocationOptions = {}
+  ): Promise<CapabilityReport> {
     const generation = ++this.probeGeneration;
     // 一旦开始重新探测，旧 App 的扩展策略便不再可信；探测期间保持保守默认值。
     this.actionPolicies = new Map();
     const startedAt = Date.now();
     this.logger.emit("info", "capability.probe.start", { mode });
     try {
-      const pingResult = await this.runtime.invoke("ping", {});
+      const pingResult = await this.runtime.invoke("ping", {}, options);
       const ping = pingStatus(pingResult);
-      const helpResult = await this.runtime.invoke("help", {});
+      const helpResult = await this.runtime.invoke("help", {}, options);
       const help = helpStatus(helpResult);
       const connection: ConnectionStatus = ping.status === "malformed"
         ? "malformed"
@@ -156,11 +164,11 @@ export class CapabilityProbe {
   }
 
   /** doctor 的显式别名。 */
-  async doctor(): Promise<CapabilityReport> { return this.probe("doctor"); }
+  async doctor(options: CapabilityProbeInvocationOptions = {}): Promise<CapabilityReport> { return this.probe("doctor", options); }
   /** health 的显式别名。 */
-  async health(): Promise<CapabilityReport> { return this.probe("health"); }
+  async health(options: CapabilityProbeInvocationOptions = {}): Promise<CapabilityReport> { return this.probe("health", options); }
   /** capabilities 的显式别名。 */
-  async capabilities(): Promise<CapabilityReport> { return this.probe("capabilities"); }
+  async capabilities(options: CapabilityProbeInvocationOptions = {}): Promise<CapabilityReport> { return this.probe("capabilities", options); }
 
   /**
    * 返回最近一次完整成功 probe 中严格校验过的 action 策略。

@@ -136,7 +136,7 @@ UIKit 模块分成四类代码：
 | `Commands/*` | 每个 `ui.*` action 的 command、input、response model。 |
 | `Support/Context` | 获取当前 window、root/top controller、root view。 |
 | `Support/Locator` | 用 `accessibilityIdentifier`、`path`、`viewSnapshotID` 定位 view。 |
-| `Support/Snapshot` | 维护 inspect 后签发的 snapshot/fingerprint，用于陈旧防护。 |
+| `Support/Snapshot` | 保存 inspect 的 target fingerprint 与 availableActions，用于动作授权和陈旧防护。 |
 | `Support/Action` | tap、input、scroll、navigation、alert、picker、webview 等实际执行器。 |
 | `Support/Runtime` | Debug runtime hook 或私有 target-action 读取辅助。 |
 
@@ -145,12 +145,12 @@ UIKit 的核心工作流通常是：
 ```text
 ui.inspect
   -> 采集当前可见 view 树
-  -> 为可操作 full 节点签发 viewSnapshotID
+  -> 为 full 节点签发 fingerprint + availableActions
   -> 返回文本、控件类型、path、identifier、frame、能力摘要
 
-ui.tap / ui.input / ui.scroll ...
+ui.tap / ui.input / ui.control.sendAction
   -> 解析 locator
-  -> 验证 viewSnapshotID 未过期且仍匹配
+  -> 验证目标为本次动作签发，且 viewSnapshotID 未过期、fingerprint 仍匹配
   -> 执行具体 UIKit 操作
   -> 返回 action 结果或业务错误
 ```
@@ -163,6 +163,8 @@ ui.tap / ui.input / ui.scroll ...
 - `path` 是当前 root view 树上的相对路径，UI 变化后可能失效。
 - `accessibilityIdentifier` 优先用于稳定定位；没有 identifier 时才依赖 path。
 - `ui.tap` 现在是“默认激活动作”，不是真实触摸注入。它按目标类型走 control、switch、input、gesture 等分支。
+- action-aware snapshot 覆盖 `availableActions` 表达的通用 capability：`ui.tap`、携带 snapshot 的 `ui.input`、定向 `ui.scroll`、`ui.control.sendAction`。picker、datePicker、webView、swipe、longPress 是独立 typed executor 合同，snapshot 仅作可选 freshness guard；这不是延期项。`ui.wait(snapshotChanged)` 只读取 snapshot，不属于动作授权。
+- 公开 Swift API `UIKitSnapshotStore.insert` 接收 `[String: UIKitSnapshotTarget]`。这是有意的 source-breaking 迁移：旧的 fingerprint-only 入参无法证明 inspect 当时授权了哪些动作，因此不保留兼容 overload。
 
 ## Diagnostics 模块边界
 
@@ -374,6 +376,7 @@ CLI 参数 > 环境变量 > 配置文件 > 默认值
 | --- | --- | --- |
 | `baseURL` | `http://localhost:38321/` | `--base-url`、`IOS_EXPLORE_BASE_URL`、配置文件。 |
 | `requestTimeoutMs` | `10000` | `--timeout`、`IOS_EXPLORE_REQUEST_TIMEOUT_MS`、配置文件。 |
+| `authToken` | 未设置 | 预留配置；host 可从 `IOS_EXPLORE_AUTH_TOKEN` 或配置文件读取，但当前 App 产品开关关闭，不校验。 |
 | config path | `~/.config/iosdriver/config.json` | `--config`、`IOSDRIVER_CONFIG`、`XDG_CONFIG_HOME`。 |
 
 ## 扩展一个新能力时改哪里
@@ -444,7 +447,7 @@ npm test
 - App endpoint 固定 `POST /`。
 - action 字段、默认值、错误码以 `contracts/` 为准。
 - UIKit 和 Diagnostics 都是显式注册扩展。
-- `viewSnapshotID` 只由 `ui.inspect` 为可操作 full 节点签发。
+- `viewSnapshotID` 只由 `ui.inspect` 签发；full 节点是否可执行某动作以同次响应的 `availableActions` 为准。
 - CLI 和 MCP 共用 runtime/workflow，不各自实现协议逻辑。
 - MCP tools/list 静态，不从 App help 动态生成。
 - stdout 用于机器可读结果；stderr 用于 host 日志。

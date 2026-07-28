@@ -40,17 +40,18 @@ final class ESDiagnosticsRuntime: Sendable {
         ESLogger.emitExtension(level: .info,
                                category: "diagnostics.runtime",
                                message: "diagnostics register started bufferCapacity=\(configuration.bufferCapacity) captureExploreLogs=\(configuration.captureExploreLogs) bridge=\(configuration.enableBridge) stdout=\(configuration.captureStdout) stderr=\(configuration.captureStderr) nslog=\(configuration.captureNSLog) oslog=\(configuration.captureOSLog)")
-        let previousCaptures = state.withLock { state -> (ESNSLogHookCapture?, ESStdIOCapture?, ESUnifiedLogCapture?) in
+        let previous = state.withLock { state -> (captures: (ESNSLogHookCapture?, ESStdIOCapture?, ESUnifiedLogCapture?), hadStore: Bool) in
             if let observation = state.observation {
                 ESLogger.removeObserver(observation)
             }
             let captures = (state.nslogHookCapture, state.stdioCapture, state.unifiedLogCapture)
+            let hadStore = state.store != nil
             state = ESDiagnosticsRuntimeState()
-            return captures
+            return (captures, hadStore)
         }
-        previousCaptures.0?.stop()
-        previousCaptures.1?.stop()
-        previousCaptures.2?.stop()
+        previous.captures.0?.stop()
+        previous.captures.1?.stop()
+        previous.captures.2?.stop()
 
         let store = ESAppLogStore(captureSessionID: UUID().uuidString,
                                   capacity: configuration.bufferCapacity,
@@ -92,7 +93,8 @@ final class ESDiagnosticsRuntime: Sendable {
         ESLogger.emitExtension(level: .info,
                                category: "diagnostics.runtime",
                                message: "diagnostics register completed captureSessionID=\(store.mark().cursor.captureSessionID)")
-        return .enabled(captureSessionID: store.mark().cursor.captureSessionID)
+        return .enabled(captureSessionID: store.mark().cursor.captureSessionID,
+                        replacedExistingSession: previous.hadStore)
 #else
         _ = server
         _ = configuration

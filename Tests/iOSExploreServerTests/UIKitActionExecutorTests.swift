@@ -86,8 +86,8 @@ func tapTextFieldFocusesFirstResponder() throws {
     #expect(data["isFirstResponder"]?.boolValue == true)
 }
 
-@Test("executor tap UISlider 无默认激活路由返回 unsupported_target") @MainActor
-func tapSliderReturnsUnsupportedTarget() {
+@Test("executor tap UISlider 未声明 tap 返回 not_actionable") @MainActor
+func tapSliderReturnsNotActionable() {
     let context = UIKitTestHost.context { root in
         let slider = UISlider()
         slider.frame = CGRect(x: 100, y: 100, width: 200, height: 30)
@@ -98,16 +98,16 @@ func tapSliderReturnsUnsupportedTarget() {
     do {
         _ = try UIKitActionExecutor.execute(.tap(locator: .path([0]), viewSnapshotID: viewSnapshotID),
                                             context: context)
-        Issue.record("expected unsupported_target, got success")
+        Issue.record("expected not_actionable, got success")
     } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .unsupportedTarget)
+        #expect(error.failure.code == .notActionable)
     } catch {
         Issue.record("unexpected error: \(error)")
     }
 }
 
-@Test("executor tap UISegmentedControl 无默认激活路由返回 unsupported_target") @MainActor
-func tapSegmentedControlReturnsUnsupportedTarget() {
+@Test("executor tap UISegmentedControl 未声明 tap 返回 not_actionable") @MainActor
+func tapSegmentedControlReturnsNotActionable() {
     let context = UIKitTestHost.context { root in
         let segmented = UISegmentedControl(items: ["一", "二"])
         segmented.frame = CGRect(x: 100, y: 100, width: 200, height: 30)
@@ -118,18 +118,16 @@ func tapSegmentedControlReturnsUnsupportedTarget() {
     do {
         _ = try UIKitActionExecutor.execute(.tap(locator: .path([0]), viewSnapshotID: viewSnapshotID),
                                             context: context)
-        Issue.record("expected unsupported_target, got success")
+        Issue.record("expected not_actionable, got success")
     } catch let error as UIKitCommandError {
-        #expect(error.failure.code == .unsupportedTarget)
+        #expect(error.failure.code == .notActionable)
     } catch {
         Issue.record("unexpected error: \(error)")
     }
 }
 
-@Test("F-18: executor tap disabled UIButton 返回 activated:false + reason:disabled") @MainActor
-func tapDisabledButtonReturnsNotActivated() throws {
-    // isEnabled=false 的按钮不应被 sendActions(for:) 绕过：UIKit 中 isEnabled 只拦截真实触摸追踪，
-    // 不拦截编程式 sendActions。executor 必须在此拦截，返回 activated:false 让 agent 知晓按钮未响应。
+@Test("executor tap disabled UIButton 未声明 tap 返回 not_actionable") @MainActor
+func tapDisabledButtonReturnsNotActionable() {
     let context = UIKitTestHost.context { root in
         let button = UIButton(type: .system)
         button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
@@ -138,14 +136,15 @@ func tapDisabledButtonReturnsNotActivated() throws {
     }
     let viewSnapshotID = testViewSnapshotID(context: context)
 
-    let data = try UIKitActionExecutor.execute(.tap(locator: .path([0]), viewSnapshotID: viewSnapshotID),
-                                               context: context)
-
-    #expect(data["activated"]?.boolValue == false)
-    #expect(data["reason"]?.stringValue == "disabled")
-    #expect(data["activationRoute"]?.stringValue == "control.touchUpInside")
-    #expect(data["path"]?.stringValue == "root/0")
-    #expect(data["type"]?.stringValue == "UIButton")
+    do {
+        _ = try UIKitActionExecutor.execute(.tap(locator: .path([0]), viewSnapshotID: viewSnapshotID),
+                                            context: context)
+        Issue.record("expected not_actionable, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .notActionable)
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
 }
 
 @Test("F-18: executor tap enabled UIButton 正常激活（回归保障）") @MainActor
@@ -176,10 +175,31 @@ func tapUnsignedPathReturnsNotActionable() {
         root.addSubview(view)
     }
     let viewSnapshotID = testViewSnapshotID(context: context)
-    // 普通 UIView 非 canonical，collect 不为其签发指纹 → isPathSigned 返回 false → not_actionable。
+    // 普通 UIView 非 canonical，collect 不为其签发 target → action-aware 查询返回 false。
     // 区分语义：stale_locator 表示"快照陈旧需重新 inspect 再观察"（如 id 过期、context 变化、
-    // 指纹漂移）；not_actionable 表示"该 path 本就不是可操作目标（availableActions 为空）"，
-    // 调用方应换目标而非重新观察。这是 Task 7 在 freshness 校验前前置 isPathSigned 的目的。
+    // 指纹漂移）；not_actionable 表示 path 或本次动作未被同次 inspect 签发，
+    // 调用方应换目标而非重新观察。这是 freshness 校验前先查签发声明的目的。
+
+    do {
+        _ = try UIKitActionExecutor.execute(.tap(locator: .path([0]), viewSnapshotID: viewSnapshotID),
+                                            context: context)
+        Issue.record("expected not_actionable, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .notActionable)
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
+}
+
+@Test("executor tap 已签发但未声明 tap 的静态 label 返回 not_actionable") @MainActor
+func tapSignedStaticLabelReturnsNotActionable() {
+    let context = UIKitTestHost.context { root in
+        let label = UILabel()
+        label.text = "仅展示"
+        label.frame = CGRect(x: 20, y: 20, width: 120, height: 30)
+        root.addSubview(label)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
 
     do {
         _ = try UIKitActionExecutor.execute(.tap(locator: .path([0]), viewSnapshotID: viewSnapshotID),
@@ -202,10 +222,10 @@ func tapChildLabelPathReturnsNotActionable() {
     }
     let viewSnapshotID = testViewSnapshotID(context: context)
     // collect 只签 canonical target（button root/0）；内部 label/image 在 root/0/0 等子节点是
-    // minimal（未签发指纹）→ isPathSigned 返回 false → not_actionable。
+    // minimal（未签发 target）→ action-aware 查询返回 false → not_actionable。
     // 关键：绝不沿祖先 fallback 激活父 button——返回 not_actionable 而非激活父节点，
-    // 因为 minimal 节点的 availableActions 为空，本就不是有效操作目标（语义比原 stale_locator
-    // 更准确：调用方应换目标而非重新 inspect）。
+    // 因为 minimal 节点完全未签发，本就不是有效操作目标（语义比 stale_locator 更准确：
+    // 调用方应按 inspect 的 availableActions 换目标）。
 
     do {
         _ = try UIKitActionExecutor.execute(.tap(locator: .path([0, 0]), viewSnapshotID: viewSnapshotID),
@@ -227,9 +247,8 @@ func sendActionMinimalNodeReturnsNotActionable() {
         root.addSubview(button)
     }
     let viewSnapshotID = testViewSnapshotID(context: context)
-    // root/0/0 是 button 内部 label（minimal，未签发指纹）→ isPathSigned 返回 false → not_actionable。
-    // 验证 isPathSigned 前置在 validateViewSnapshot 共用入口，覆盖 tap 与 control.sendAction 两条路径，
-    // 而非只在 tap 分支生效。
+    // root/0/0 是 button 内部 label（minimal，未签发 target）→ action-aware 查询返回 false。
+    // 验证 validateViewSnapshot 的动作签发前置同时覆盖 tap 与 control.sendAction。
 
     do {
         _ = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0, 0]),
@@ -251,7 +270,7 @@ func tapUnknownViewSnapshotReturnsStaleLocator() {
         button.frame = CGRect(x: 100, y: 100, width: 120, height: 60)
         root.addSubview(button)
     }
-    // isPathSigned 三态：unknown id（store 中无此 entry）→ 返回 true，交 isStale 裁决；
+    // action-aware 查询三态：unknown id（store 中无此 entry）→ 返回 true，交 isStale 裁决；
     // isStale 对 unknown id 返回 true → stale_locator。
     // 这保证 not_actionable 只在"id 有效但 path 确实未签发"时抛出，绝不把"传错 id / 过期 id"
     // 误判成 not_actionable——后者应引导调用方重新 inspect，而非放弃目标。
@@ -322,6 +341,28 @@ func sendActionOnUIControlReturnsSent() throws {
     #expect(data["sent"]?.boolValue == true)
     #expect(data["event"]?.stringValue == "touchUpInside")
     #expect(data["type"]?.stringValue == "UIButton")
+}
+
+@Test("executor control.sendAction 拒绝 inspect 未声明的具体 event") @MainActor
+func sendActionRejectsEventMissingFromSignedActions() {
+    let context = UIKitTestHost.context { root in
+        let slider = UISlider()
+        slider.frame = CGRect(x: 100, y: 100, width: 200, height: 30)
+        root.addSubview(slider)
+    }
+    let viewSnapshotID = testViewSnapshotID(context: context)
+
+    do {
+        _ = try UIKitActionExecutor.execute(.controlEvent(locator: .path([0]),
+                                                           event: .touchUpInside,
+                                                           viewSnapshotID: viewSnapshotID),
+                                            context: context)
+        Issue.record("expected not_actionable, got success")
+    } catch let error as UIKitCommandError {
+        #expect(error.failure.code == .notActionable)
+    } catch {
+        Issue.record("unexpected error: \(error)")
+    }
 }
 
 @Test("executor control.sendAction valueChanged 可设置 UISlider value") @MainActor

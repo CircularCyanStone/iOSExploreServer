@@ -310,7 +310,7 @@ D. 覆盖率不下降:swift test --enable-code-coverage(当前 86.62%)。
 
 ### 9.1 最终实现（3 处源码改动 + 关联测试）
 
-修复没有给 `Context` 加新字段，而是**改变 `Context.rootView` 的来源**——这是关键设计决策。原因：`ui.inspect` 的采集（`UIInspectCollector.collect` 从 `context.rootView` 起）、`ui.tap`/`ui.input`/`ui.control.sendAction` 的 locator 解析（`UIKitLocatorResolver.locate(in: context.rootView)`）、`ui.wait` 的文本/目标判断（`UIWaitExecutor` 从 `context.rootView` 采集）、fingerprint 的 `ancestorDigest`（基于 `context.rootView`）**全都用同一个 `context.rootView`**。只要让 `currentContext` 把 `rootView` 算成「最外层容器 VC 的 view」，inspect 采集根与操作命令 locator 根自动落在同一棵树，`path` 天然一致，spec §7 的「inspect 签发 path == tap 可操作 path」不变式保持。`topViewController` 字段语义不动（仍钻到叶子 VC），继续喂给 `UINavigationBarInspector` / `UIAlertInspector` / `UIKitFingerprintCollector.digest` / `UIKitFingerprintCollector.context` 等「栈顶操作语义」摘要。
+修复没有给 `Context` 加新字段，而是**改变 `Context.rootView` 的来源**——这是关键设计决策。原因：`ui.inspect` 的采集（`UIInspectCollector.collect` 从 `context.rootView` 起）、`ui.tap`/`ui.input`/`ui.control.sendAction` 的 locator 解析（`UIKitLocatorResolver.locate(in: context.rootView)`）、`ui.wait` 的文本/目标判断（`UIWaitExecutor` 从 `context.rootView` 采集）、fingerprint 的 `ancestorDigest`（基于 `context.rootView`）**全都用同一个 `context.rootView`**。只要让 `currentContext` 把 `rootView` 算成「最外层容器 VC 的 view」，inspect 采集根与操作命令 locator 根自动落在同一棵树，`path` 天然一致。这里原设计的 path-only 不变式后来已升级为 action-aware：full returned paths 等于 snapshot target paths，但某个 path 只有在同次 inspect 的 `availableActions` 包含请求动作时才可执行。`topViewController` 字段语义不动（仍钻到叶子 VC），继续喂给 `UINavigationBarInspector` / `UIAlertInspector` / `UIKitFingerprintCollector.digest` / `UIKitFingerprintCollector.context` 等「栈顶操作语义」摘要。
 
 具体改动：
 

@@ -1,12 +1,12 @@
 {
   "kind": "deviceAction",
   "action": "ui.tap",
-  "description": "点击 ui.inspect 签发的可操作目标。",
+  "description": "点击 ui.inspect 中 availableActions 包含 tap 的目标。",
   "provider": "uikit",
   "stability": "public",
   "inputSchema": {
     "type": "object",
-    "description": "点击 ui.inspect 签发的可操作目标。",
+    "description": "点击 ui.inspect 中 availableActions 包含 tap 的目标。",
     "properties": {
       "accessibilityIdentifier": {
         "type": [
@@ -24,7 +24,7 @@
       },
       "viewSnapshotID": {
         "type": "string",
-        "description": "ui.inspect 签发的快照标识。"
+        "description": "ui.inspect 签发的快照标识；目标必须在同次 inspect 中声明 tap。"
       }
     },
     "required": [

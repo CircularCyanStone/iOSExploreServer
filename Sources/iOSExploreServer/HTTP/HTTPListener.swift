@@ -49,6 +49,10 @@ final class HTTPListener: @unchecked Sendable {
     /// 命令路由器。连接处理任务只捕获该引用，不捕获 `self`。
     private let router: Router
 
+    /// 可选请求鉴权令牌，非空时由每个 `ClientSession` 校验 `X-Auth-Token`。
+    /// 当前 `ExploreServer` 产品开关关闭，只会向这里传 `nil`。
+    private let authToken: String?
+
     /// listener/session 资源限制配置。
     private let configuration: Configuration
 
@@ -74,10 +78,12 @@ final class HTTPListener: @unchecked Sendable {
     ///   - onEvent: 服务事件回调。
     /// - Throws: 端口非法或 `NWListener` 创建失败时抛错。
     init(port: UInt16, router: Router,
+         authToken: String? = nil,
          configuration: Configuration = .default,
          onEvent: @escaping @Sendable (ServerEvent) -> Void) throws {
         self.port = port
         self.router = router
+        self.authToken = authToken
         self.configuration = configuration
         self.onEvent = onEvent
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -194,13 +200,14 @@ final class HTTPListener: @unchecked Sendable {
         guard let (sessionID, activeAfterAccept) = sessionInfo else {
             let error = ExploreServerError.tooManyConnections(limit: configuration.maxConnections)
             ESLogger.error(.listener, error.logMessage)
-            Self.reject(conn, queue: networkQueue, error: error)
+            Self.reject(conn, queue: networkQueue, error: error, onEvent: onEvent)
             return
         }
         ESLogger.debug(.listener, "connection accepted session=\(sessionID) active=\(activeAfterAccept) limit=\(configuration.maxConnections)")
         let session = ClientSession(sessionID: sessionID,
                                     connection: conn,
                                     router: router,
+                                    authToken: authToken,
                                     configuration: configuration.session,
                                     networkQueue: networkQueue,
                                     onEvent: onEvent) { [weak self] closedID in
@@ -218,13 +225,17 @@ final class HTTPListener: @unchecked Sendable {
         ESLogger.debug(.listener, "session removed id=\(sessionID) active=\(remaining)")
     }
 
-    private static func reject(_ conn: NWConnection, queue: DispatchQueue, error: ExploreServerError) {
+    private static func reject(_ conn: NWConnection,
+                               queue: DispatchQueue,
+                               error: ExploreServerError,
+                               onEvent: @escaping @Sendable (ServerEvent) -> Void) {
         let response = HTTPParser.errorResponse(for: error)
         conn.start(queue: queue)
         conn.send(content: response.serialized(), completion: .contentProcessed { error in
             if let error {
                 ESLogger.error(.http, "http reject send error=\(error)")
             }
+            onEvent(.responded(status: response.status, ok: false))
             conn.cancel()
         })
     }

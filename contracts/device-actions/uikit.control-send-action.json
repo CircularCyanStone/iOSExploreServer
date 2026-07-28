@@ -24,7 +24,7 @@
       },
       "viewSnapshotID": {
         "type": "string",
-        "description": "ui.inspect 签发的快照标识。"
+        "description": "ui.inspect 签发的快照标识；目标必须声明与 event 对应的 control.* 动作。"
       },
       "event": {
         "type": "string",

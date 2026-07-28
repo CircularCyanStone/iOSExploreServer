@@ -61,10 +61,10 @@ func inspectCollectsCanonicalTargetsOnly() {
     #expect(buttonActions.isEmpty == false)
 }
 
-@Test("ui.inspect 签发的指纹集合等于返回的 target path 集合") @MainActor
+@Test("ui.inspect 签发的 target 集合等于返回的 full target path 集合") @MainActor
 func inspectSignsFingerprintsForReturnedPathsOnly() throws {
-    // 不变式：returned target paths == viewSnapshotID 签发 fingerprint paths == tap/sendAction 可执行集合。
-    // 用 maxTargets 截断验证：两个 button 但 maxTargets=1，只返回/签发 1 个，第 2 个 path 视为 stale。
+    // 不变式：returned full target paths == viewSnapshotID 签发 target paths；具体动作权限由每个
+    // target 同源保存的 availableActions 决定。用 maxTargets 截断验证第 2 个 path 不会被签发。
     let context = UIKitTestHost.context { root in
         let button1 = UIButton(type: .system)
         button1.frame = CGRect(x: 10, y: 10, width: 80, height: 40)
@@ -138,9 +138,8 @@ func inspectRollsUpButtonInternalLabel() throws {
         root.addSubview(button)
     }
     // UIButton(type:.system) 内部有渲染 title 的 UIButtonLabel（UILabel 子类，有 .text）。
-    // 不做 rollup 时它命中 hasStaticText → full → 被签发，agent tap 它会返回 unsupported_target
-    // （label 无默认激活路由），破坏"签发=可操作"。rollup 后控件子树整棵剪枝：内部 label 既不
-    // 进 full 也不进 minimal，更不签发 fingerprint（Task 6 的 isInControlSubtree 剪枝）。
+    // 不做 rollup 时它命中 hasStaticText → full，但其语义已经汇总到父 button，会重复暴露 UIKit
+    // 内部渲染细节。rollup 后控件子树整棵剪枝：内部 label 既不进 full 也不进 minimal。
 
     let data = UIInspectCollector.collect(query: .default, context: context)
     // root（minimal）+ button（full）。内部 title label 被剪枝，不出现在 targets。

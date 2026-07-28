@@ -140,12 +140,11 @@ describe("tap_and_inspect", () => {
     });
   });
 
-  it("非 wait_timeout 的 wait 失败也继续 inspect 并保留过程结果", async () => {
+  it("非 wait_timeout 的 wait 失败立即短路", async () => {
     const clock = new FakeClock();
     const runtime = new FakeRuntime(clock, [
       { result: success({ performed: true }), advanceMs: 2 },
-      { result: failure("transport_unavailable", "Connection lost"), advanceMs: 7 },
-      { result: success({ viewSnapshotID: "after-recovery" }), advanceMs: 4 }
+      { result: failure("transport_unavailable", "Connection lost"), advanceMs: 7 }
     ]);
     const runner = new WorkflowRunner({ runtime, clock });
 
@@ -154,14 +153,15 @@ describe("tap_and_inspect", () => {
       viewSnapshotID: "before"
     }, { deadlineAtMs: 100 });
 
-    expect(runtime.calls.map(call => call.action)).toEqual(["ui.tap", "ui.wait", "ui.inspect"]);
+    expect(runtime.calls.map(call => call.action)).toEqual(["ui.tap", "ui.wait"]);
     expect(result).toMatchObject({
-      ok: true,
+      ok: false,
+      error: { code: "transport_unavailable" },
       data: {
+        stage: "wait",
         tap: { performed: true },
         wait: { code: "transport_unavailable" },
-        stateAfter: { viewSnapshotID: "after-recovery" },
-        timing: { tapMs: 2, waitMs: 7, inspectMs: 4, totalMs: 13 }
+        timing: { tapMs: 2, waitMs: 7, inspectMs: 0, totalMs: 9 }
       }
     });
   });

@@ -50,6 +50,8 @@ Task {
 
 Core 初始化只自动注册 `ping`、`echo`、`info`、`help`。不调用 `registerUIKitCommands()` 时 `help` 不包含 `ui.*`；不调用 `registerDiagnosticsCommands()` 时 `help` 不包含 `app.logs.*`。
 
+当前版本明确不启用鉴权：`ExploreServer(authToken:)`、`IOS_EXPLORE_AUTH_TOKEN` 和 `X-Auth-Token` 只保留未来接线，即使配置 token 也不会校验或拒绝请求。该 Debug 服务不提供访问控制；listener 监听所有接口，真机在同一网络中可能被直接访问，因此只应在受控开发网络或 USB 转发环境中启用，不要把预留 token 当作安全机制。
+
 ## Mac 侧调用
 
 模拟器与 Mac 共享 localhost；真机需要先通过 USB 转发：

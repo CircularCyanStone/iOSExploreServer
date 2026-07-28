@@ -62,9 +62,10 @@ iosdriver mcp
 | --- | --- | --- |
 | `IOS_EXPLORE_BASE_URL` | `http://localhost:38321/` | App HTTP endpoint。 |
 | `IOS_EXPLORE_REQUEST_TIMEOUT_MS` | `10000` | 普通请求超时。 |
+| `IOS_EXPLORE_AUTH_TOKEN` | - | 预留 token；host 可发送 header，但当前 App 明确不校验。 |
 | `IOSDRIVER_CONFIG` | - | 显式配置文件路径。 |
 
-默认配置路径：`$XDG_CONFIG_HOME/iosdriver/config.json` 或 `~/.config/iosdriver/config.json`。
+默认配置路径：`$XDG_CONFIG_HOME/iosdriver/config.json` 或 `~/.config/iosdriver/config.json`。配置文件也可保留 `authToken`；`iosdriver init` 不会把环境变量中的 token 写入文件。当前 App 端忽略该 token，它不提供访问控制。
 
 退出码：
 

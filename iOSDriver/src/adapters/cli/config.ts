@@ -14,6 +14,8 @@ export interface CLIConfigOverrides {
 export interface CLIConfig {
   readonly baseURL: string;
   readonly requestTimeoutMs: number;
+  /** 预留 header token；当前 App 产品开关关闭，不执行校验。 */
+  readonly authToken?: string;
   readonly configPath: string;
   readonly fileValues: Readonly<Record<string, unknown>>;
 }
@@ -66,9 +68,11 @@ export async function resolveCLIConfig(
     ?? numberValue(fileValues.requestTimeoutMs, fileValues.request_timeout_ms)
     ?? 10_000;
   const requestTimeoutMs = positiveInteger(timeoutRaw, "requestTimeoutMs");
+  const authToken = authTokenValue(env.IOS_EXPLORE_AUTH_TOKEN) ?? authTokenValue(stringValue(fileValues.authToken, fileValues.auth_token));
   return Object.freeze({
     baseURL,
     requestTimeoutMs,
+    ...(authToken === undefined ? {} : { authToken }),
     configPath,
     fileValues: Object.freeze({ ...fileValues })
   });
@@ -92,6 +96,7 @@ export async function initCLIConfig(
       ?? 10_000,
     "requestTimeoutMs"
   );
+  const authToken = authTokenValue(env.IOS_EXPLORE_AUTH_TOKEN) ?? authTokenValue(stringValue(existing.authToken, existing.auth_token));
   const next: Record<string, unknown> = {
     ...existing,
     baseURL: existing.baseURL ?? baseURL,
@@ -107,7 +112,16 @@ export async function initCLIConfig(
     await fileSystem.rename(temporary, configPath);
     configChanged = true;
   }
-  return { config: Object.freeze({ baseURL, requestTimeoutMs, configPath, fileValues: Object.freeze(next) }), configChanged };
+  return {
+    config: Object.freeze({
+      baseURL,
+      requestTimeoutMs,
+      ...(authToken === undefined ? {} : { authToken }),
+      configPath,
+      fileValues: Object.freeze(next)
+    }),
+    configChanged
+  };
 }
 
 async function readConfigFile(path: string, fileSystem: ConfigFileSystem): Promise<Record<string, unknown>> {
@@ -152,6 +166,11 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
   const number = Number(value);
   if (!Number.isInteger(number)) throw new CLIConfigError("IOS_EXPLORE_REQUEST_TIMEOUT_MS 必须是正整数");
   return number;
+}
+
+function authTokenValue(value: string | undefined): string | undefined {
+  const token = value?.trim();
+  return token === undefined || token.length === 0 ? undefined : token;
 }
 
 function isMissingFile(error: unknown): boolean {

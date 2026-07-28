@@ -84,6 +84,10 @@ final class ClientSession: Sendable {
     /// 命令分发器，`process` 阶段把请求交给它路由。
     private let router: Router
 
+    /// 可选鉴权令牌；非空时要求请求 header `x-auth-token` 完全匹配。
+    /// 当前 `ExploreServer` 不启用该路径，保留实现供未来显式开启。
+    private let authToken: String?
+
     /// 会话运行参数。
     private let configuration: Configuration
 
@@ -114,6 +118,7 @@ final class ClientSession: Sendable {
     init(sessionID: String,
          connection: NWConnection,
          router: Router,
+         authToken: String? = nil,
          configuration: Configuration,
          networkQueue: DispatchQueue,
          onEvent: @escaping @Sendable (ServerEvent) -> Void,
@@ -121,6 +126,7 @@ final class ClientSession: Sendable {
         self.sessionID = sessionID
         self.connection = connection
         self.router = router
+        self.authToken = authToken
         self.configuration = configuration
         self.networkQueue = networkQueue
         self.onEvent = onEvent
@@ -191,7 +197,10 @@ final class ClientSession: Sendable {
             await process(request: request)
         } catch SessionError.server(let error) {
             ESLogger.error(.listener, "session error id=\(sessionID) category=\(error.category.rawValue) message=\(error.logMessage)")
-            await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "read_timeout")
+            await sendAndReport(HTTPParser.errorResponse(for: error),
+                                action: nil,
+                                closeReason: "read_timeout",
+                                ok: false)
         } catch SessionError.closed {
             close(reason: "connection_closed")
         } catch {
@@ -221,7 +230,10 @@ final class ClientSession: Sendable {
                 continue
             case .invalid(let error):
                 ESLogger.error(.http, "http parse failed session=\(sessionID) category=\(error.category.rawValue) message=\(error.logMessage)")
-                await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "bad_request")
+                await sendAndReport(HTTPParser.errorResponse(for: error),
+                                    action: nil,
+                                    closeReason: "bad_request",
+                                    ok: false)
                 throw SessionError.closed
             }
         }
@@ -261,8 +273,20 @@ final class ClientSession: Sendable {
         guard request.method == "POST", request.path == "/" else {
             let error = ExploreServerError.invalidMethod(method: request.method, path: request.path)
             ESLogger.error(.http, "http rejected session=\(sessionID) message=\(error.logMessage)")
-            await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "bad_request")
-            onEvent(.responded(status: 400, ok: false))
+            await sendAndReport(HTTPParser.errorResponse(for: error),
+                                action: nil,
+                                closeReason: "bad_request",
+                                ok: false)
+            return
+        }
+
+        if let authToken, request.headers["x-auth-token"] != authToken {
+            let error = ExploreServerError.unauthorized()
+            ESLogger.error(.http, "http rejected session=\(sessionID) message=\(error.logMessage)")
+            await sendAndReport(HTTPParser.errorResponse(for: error),
+                                action: nil,
+                                closeReason: "unauthorized",
+                                ok: false)
             return
         }
 
@@ -272,8 +296,10 @@ final class ClientSession: Sendable {
             exploreReq = req
         case .failure(let error):
             ESLogger.error(.http, "http rejected session=\(sessionID) message=\(error.logMessage)")
-            await send(HTTPParser.errorResponse(for: error), action: nil, closeReason: "bad_request")
-            onEvent(.responded(status: 400, ok: false))
+            await sendAndReport(HTTPParser.errorResponse(for: error),
+                                action: nil,
+                                closeReason: "bad_request",
+                                ok: false)
             return
         }
 
@@ -300,11 +326,29 @@ final class ClientSession: Sendable {
             result = .failure(code: serverError.code, message: serverError.message)
         }
 
-        await send(HTTPParser.response(for: result), action: exploreReq.action, closeReason: "response_sent")
         let ok: Bool
         if case .success = result { ok = true } else { ok = false }
-        onEvent(.responded(status: 200, ok: ok))
+        await sendAndReport(HTTPParser.response(for: result),
+                            action: exploreReq.action,
+                            closeReason: "response_sent",
+                            ok: ok)
         ESLogger.info(.http, "http responded session=\(sessionID) status=200 ok=\(ok) action=\(exploreReq.action)")
+    }
+
+    private func sendAndReport(_ response: HTTPResponse,
+                               action: String?,
+                               closeReason: String,
+                               ok: Bool) async {
+        let sentResponse = await send(response, action: action, closeReason: closeReason)
+        let reportedOK = finalResponseIsOK(sentResponse) ?? ok
+        onEvent(.responded(status: sentResponse.status, ok: reportedOK))
+    }
+
+    private func finalResponseIsOK(_ response: HTTPResponse) -> Bool? {
+        guard let code = JSONCoder.decode(response.body)?["code"]?.stringValue else {
+            return nil
+        }
+        return code == "ok"
     }
 
     /// 发送 HTTP 响应并随后关闭连接。
@@ -318,15 +362,15 @@ final class ClientSession: Sendable {
     ///   - action: 触发该响应的命令名；早于命令解析的通信层失败传 `nil`，业务响应传
     ///     `exploreReq.action`，仅用于日志关联与错误 envelope 上下文。
     ///   - closeReason: 发送完成后的关闭原因，写入日志。
-    private func send(_ response: HTTPResponse, action: String?, closeReason: String) async {
+    @discardableResult
+    private func send(_ response: HTTPResponse, action: String?, closeReason: String) async -> HTTPResponse {
         if response.body.count > configuration.maxResponseBodyBytes {
             let resolvedAction = action ?? "unknown"
             let error = ExploreServerError.responseTooLarge(action: resolvedAction,
                                                             bytes: response.body.count,
                                                             limit: configuration.maxResponseBodyBytes)
             ESLogger.error(.listener, "session response too large id=\(sessionID) action=\(action ?? "?") bytes=\(response.body.count) limit=\(configuration.maxResponseBodyBytes)")
-            await send(HTTPParser.errorResponse(for: error), action: action, closeReason: "response_too_large")
-            return
+            return await send(HTTPParser.errorResponse(for: error), action: action, closeReason: "response_too_large")
         }
         ESLogger.debug(.http, "http send session=\(sessionID) status=\(response.status) bodyBytes=\(response.body.count)")
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
@@ -338,6 +382,7 @@ final class ClientSession: Sendable {
             })
         }
         close(reason: closeReason)
+        return response
     }
 
     /// 给异步操作套一个超时外壳。

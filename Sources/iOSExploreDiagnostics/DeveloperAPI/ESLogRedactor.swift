@@ -13,8 +13,11 @@ public struct ESLogRedactor: Sendable, Equatable {
         "cookie",
         "password",
         "token",
-        "access_token",
-        "refresh_token",
+        "accesstoken",
+        "refreshtoken",
+        "authtoken",
+        "sessiontoken",
+        "apikey",
     ]
 
     /// 创建脱敏器。
@@ -29,8 +32,8 @@ public struct ESLogRedactor: Sendable, Equatable {
         result = replace(pattern: #"(?i)Authorization:\s*Bearer\s+[^\s,;]+"#, in: result, with: "Authorization: [REDACTED]")
         result = replace(pattern: #"(?i)Authorization:\s*[^\s,;]+"#, in: result, with: "Authorization: [REDACTED]")
         result = replace(pattern: #"(?i)Cookie:\s*[^\n]+"#, in: result, with: "Cookie: [REDACTED]")
-        result = replace(pattern: #"(?i)(password|token|access_token|refresh_token)=([^&\s,;]+)"#, in: result, with: "$1=[REDACTED]")
-        result = replace(pattern: #"(?i)"(password|token|authorization|cookie)"\s*:\s*"[^"]*""#, in: result, with: "\"$1\":\"[REDACTED]\"")
+        result = replace(pattern: #"(?i)\b(password|[A-Za-z0-9_-]*token|api[_-]?key)\b\s*=\s*([^&\s,;]+)"#, in: result, with: "$1=[REDACTED]")
+        result = replace(pattern: #"(?i)"(password|[A-Za-z0-9_-]*token|api[_-]?key|authorization|cookie)"\s*:\s*"[^"]*""#, in: result, with: "\"$1\":\"[REDACTED]\"")
         return result
     }
 
@@ -43,13 +46,22 @@ public struct ESLogRedactor: Sendable, Equatable {
         guard let metadata else { return nil }
         var redacted: [String: String] = [:]
         for (key, value) in metadata {
-            if sensitiveKeys.contains(key.lowercased()) {
+            if isSensitiveKey(key) {
                 redacted[key] = "[REDACTED]"
             } else {
                 redacted[key] = redactMessage(value)
             }
         }
         return redacted
+    }
+
+    private func isSensitiveKey(_ key: String) -> Bool {
+        let normalized = normalizedKey(key)
+        return sensitiveKeys.contains(normalized) || normalized.hasSuffix("token")
+    }
+
+    private func normalizedKey(_ key: String) -> String {
+        key.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 
     private func replace(pattern: String, in text: String, with template: String) -> String {

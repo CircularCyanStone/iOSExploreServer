@@ -8,11 +8,9 @@ import UIKit
 /// 采集器运行在 `MainActor`，从当前顶部控制器根 view 递归读取 canonical interaction target
 /// 摘要。它刻意不复用完整层级快照，避免读取颜色、字体、图片等高成本验收字段。
 ///
-/// 重构后的核心不变式（spec §7）：`ui.inspect` 最终返回的 canonical target path 集合
-/// **等于** `viewSnapshotID` 内签发 fingerprint 的 path 集合，也**等于** `ui.tap` /
-/// `ui.control.sendAction` 允许操作的 path 集合。为此采集器先完成所有筛选与 `maxTargets`
-/// 截断，再只为最终返回的 target 逐个采集指纹并签发，禁止签发未返回的 path（否则 Agent 仍
-/// 可猜 path 执行）。
+/// 核心不变式：`ui.inspect` 最终返回的 full target path 集合等于 `viewSnapshotID` 内签发
+/// target 的 path 集合；每个 path 签发的动作集合又必须等于同一响应里的 `availableActions`。
+/// executor 因而同时校验“目标是否仍是观察时的目标”和“本次动作是否曾被该次观察声明”。
 @MainActor
 enum UIInspectCollector {
     /// 采集当前顶部控制器 view 下的轻量目标列表。
@@ -62,22 +60,27 @@ enum UIInspectCollector {
             }
         }()
 
-        // 只为最终返回的 full target 签发指纹：returned full paths == viewSnapshotID 签发
-        // fingerprint paths == tap/sendAction 可执行集合。minimal 节点不签发（强制 actions=[]、
-        // toJSON 只输出 path+type），避免 agent 对不可操作的结构节点发起操作。
+        // 只为最终返回的 full target 签发；每条声明同时保存 fingerprint 与响应中同源的
+        // availableActions。full 静态节点仍可供观察和 snapshotChanged 使用，但动作集合为空，
+        // 不能再仅凭“path 已签发”执行 tap/input/control.sendAction。
         let snapContext = UIKitFingerprintCollector.context(window: context.window,
                                                              topViewController: context.topViewController)
-        let fingerprints = Dictionary(
+        let snapshotTargets = Dictionary(
             uniqueKeysWithValues: collected.filter { $0.isFull }.map { target in
                 (target.summary.path,
-                 UIKitFingerprintCollector.fingerprint(for: target.view,
-                                                        path: target.summary.path,
-                                                        rootView: context.rootView,
-                                                        digest: digest))
+                 UIKitSnapshotTarget(
+                     fingerprint: UIKitFingerprintCollector.fingerprint(
+                         for: target.view,
+                         path: target.summary.path,
+                         rootView: context.rootView,
+                         digest: digest
+                     ),
+                     availableActions: target.summary.availableActions
+                 ))
             }
         )
         let viewSnapshotID = UIKitSnapshotStore.shared.insert(context: snapContext,
-                                                              targets: fingerprints,
+                                                              targets: snapshotTargets,
                                                               query: query)
         let snapshotFields = UIKitSnapshotResponse.fields(for: viewSnapshotID)
 
@@ -115,7 +118,7 @@ enum UIInspectCollector {
                 )
             )
         )
-        UIKitCommandLogger.info("command", "ui.inspect collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(collected.count) fullCount=\(fullCount) minimalCount=\(minimalCount) fingerprints=\(fingerprints.count) topViewController=\(String(describing: type(of: context.topViewController)))")
+        UIKitCommandLogger.info("command", "ui.inspect collect completed visitedNodeCount=\(visitedNodeCount) targetCount=\(collected.count) fullCount=\(fullCount) minimalCount=\(minimalCount) signedTargets=\(snapshotTargets.count) topViewController=\(String(describing: type(of: context.topViewController)))")
         return data
     }
 

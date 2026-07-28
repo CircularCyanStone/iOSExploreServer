@@ -17,8 +17,8 @@ import UIKit
 ///   `valueChanged`；文本输入 → `becomeFirstResponder`（聚焦）。无确定路由的目标抛
 ///   `unsupported_target`。
 /// - `ui.control.sendAction` 对自身为 `UIControl` 的 canonical target 发送显式 event。
-/// - 两者都用同一 `validateViewSnapshot`：path 与 identifier 都走 path/context/fingerprint/
-///   semanticDigest 陈旧校验，identifier 不再是绕过 stale guard 的后门。
+/// - 两者都用同一 `validateViewSnapshot`：先确认同一次 inspect 为 path 签发了请求动作，再走
+///   path/context/fingerprint/semanticDigest 陈旧校验；identifier 不再是绕过校验的后门。
 ///
 /// 该类型是 `@MainActor`：adapter（network queue 上的命令 handler）只能 `await` 其入口，
 /// 不能把解析出的 `UIView`/`UIControl` 返回到非隔离域——跨边界只传 `Sendable` 的成功 `JSON`
@@ -81,15 +81,12 @@ enum UIKitActionExecutor {
         }
     }
 
-    /// 统一的 viewSnapshot 校验入口（tap 与 control.sendAction 共用），前置 not_actionable 裁决。
+    /// 统一的 viewSnapshot 校验入口，前置 action-aware `not_actionable` 裁决。
     ///
     /// 两阶段裁决，刻意区分两类失败语义，避免调用方对不可操作目标反复重新 inspect：
-    /// 1. `isPathSigned` 前置——若 snapshotID 有效但 path 不在其指纹表（即 minimal 节点，
-    ///    `ui.inspect` 未为其签发指纹、availableActions 为空），直接抛 `not_actionable`，
-    ///    提示调用方该目标本就不可操作、应换目标。这与 stale_locator 的语义对立：stale_locator
-    ///    表示"快照陈旧需重新 inspect 再观察"（id 未知/过期、context 变化、指纹漂移），调用方应
-    ///    重新观察而非放弃目标。`isPathSigned` 对 unknown/expired snapshotID 返回 true（交第 2
-    ///    阶段裁决），故"传错 id / 过期 id"不会被误判成 not_actionable——那类情况仍走 isStale。
+    /// 1. 签发声明前置——有 `requiredAction` 时检查 path 对应 target 的 `availableActions`，否则
+    ///    只检查 path。有效 snapshot 中 path 缺失或动作未声明时抛 `not_actionable`。unknown/expired
+    ///    snapshot 返回 true 交第 2 阶段，因此不会把过期 id 误判成目标本身不可操作。
     /// 2. `isStale` freshness——重采该 path 指纹（含 `semanticDigest`）与 store 记录比对，陈旧
     ///    （snapshot 未知/过期、context 变化、指纹不匹配）时抛 `stale_locator`。
     ///
@@ -101,17 +98,29 @@ enum UIKitActionExecutor {
     ///   - viewSnapshotID: `ui.inspect` 签发的结构化快照标识。
     ///   - context: 当前 UIKit 上下文（用于重采指纹）。
     ///   - action: 触发校验的 action 名（错误关联）。
-    /// - Throws: `UIKitCommandError.notActionable`（minimal 节点未签发指纹）；或
+    ///   - requiredAction: inspect 必须为该 target 声明的动作；nil 表示仅做 path freshness。
+    /// - Throws: `UIKitCommandError.notActionable`（path 或动作未签发）；或
     ///   `UIKitCommandError.staleLocator`（快照陈旧）。
     static func validateViewSnapshot(located: UIKitLocatorResolver.LocatedView,
-                                             viewSnapshotID: String,
-                                             context: UIKitContextProvider.Context,
-                                             action: String) throws {
+                                     viewSnapshotID: String,
+                                     context: UIKitContextProvider.Context,
+                                     action: String,
+                                     requiredAction: UIKitActionKind? = nil) throws {
         let path = located.pathString
-        // minimal 节点（未被 ui.inspect 签发指纹）优先裁决 not_actionable，置于 isStale 之前：
-        // isPathSigned 三态保证只有"id 有效 + path 确实未签发"才返回 false，unknown/expired id
-        // 返回 true 继续走 isStale（→ stale_locator），不会把传错/过期 id 误判成 not_actionable。
-        guard UIKitSnapshotStore.shared.isPathSigned(viewSnapshotID: viewSnapshotID, path: path) else {
+        // 有明确动作语义的命令校验 path + availableActions；其余只把 snapshot 用于 freshness。
+        // 两种查询都保留三态：unknown/expired id 返回 true，继续由 isStale 裁决 stale_locator；
+        // 只有有效 snapshot 中 path 未签发或动作未声明时才返回 not_actionable。
+        let isSigned: Bool
+        if let requiredAction {
+            isSigned = UIKitSnapshotStore.shared.isActionSigned(
+                viewSnapshotID: viewSnapshotID,
+                path: path,
+                action: requiredAction
+            )
+        } else {
+            isSigned = UIKitSnapshotStore.shared.isPathSigned(viewSnapshotID: viewSnapshotID, path: path)
+        }
+        guard isSigned else {
             throw UIKitCommandError.notActionable(action: action, path: path)
         }
         let current = UIKitFingerprintCollector.fingerprint(for: located.view,
@@ -154,15 +163,19 @@ enum UIKitActionExecutor {
             in: context.rootView,
             notFound: { UIKitCommandError.targetNotFound(action: tapAction, targetDescription: target) },
             ambiguous: { UIKitCommandError.targetAmbiguous(action: tapAction, targetDescription: target, count: $0) })
-        try validateViewSnapshot(located: located, viewSnapshotID: viewSnapshotID, context: context, action: tapAction)
+        try validateViewSnapshot(located: located,
+                                 viewSnapshotID: viewSnapshotID,
+                                 context: context,
+                                 action: tapAction,
+                                 requiredAction: .tap)
 
         guard let route = UIKitDefaultActivationResolver.route(for: located.view) else {
             // 无 default 公开路由：尝试手势 target-action adapter（依赖 `UIGestureRecognizer` 的
             // 自定义 view）。adapter 是 executeTap 内部补充分支，不改 default 三路行为，也不改
             // `ui.tap` 合同——agent 据 `ui.inspect` 响应的 `hasGestureRecognizers` 字段
             // 推断可试 tap，用 path/identifier + viewSnapshotID 发 `ui.tap`，executor 在此触发。
-            // `availableActions` 不声明 tap：gesture 触发是启发式补充（runtime 读私有 ivar 派发），
-            // 非 UIButton/UISwitch/文本输入那样的确定公开激活路由。
+            // inspect 仅在 runtime 能读到至少一个 gesture target-action 时声明 tap；snapshot
+            // action 校验因此能保留这条 Debug adapter 路径，同时拒绝只有静态文本的 full target。
             //
             // 只对非 `UIControl` 的 view 触发：`UISlider`/`UISegmentedControl` 等 UIControl 内部
             // 也挂 gesture（用于自身交互），adapter 若介入会误触发其内部 target-action，破坏原本
@@ -209,21 +222,6 @@ enum UIKitActionExecutor {
                 throw UIKitCommandError.unsupportedTarget(action: tapAction,
                                                           targetDescription: located.pathString,
                                                           type: String(describing: Swift.type(of: located.view)))
-            }
-            // isEnabled 守卫：UIKit 中 `isEnabled` 只拦截真实触摸追踪，不拦截编程式
-            // `sendActions(for:)`。若不在此拦截，agent 对 disabled 按钮的 tap 仍会触发
-            // target-action，绕过 App 的防重入逻辑（如 loading 中 loginButton.isEnabled=false），
-            // 与人类触摸语义不一致。disabled 时返回 activated:false 让 agent 知晓按钮未响应。
-            // 见 F-18。
-            if !control.isEnabled {
-                UIKitCommandLogger.info("command", "ui tap default activation route=control.touchUpInside skipped disabled path=\(located.pathString) type=\(String(describing: Swift.type(of: control)))")
-                return [
-                    "activated": .bool(false),
-                    "activationRoute": .string(route.rawValue),
-                    "path": .string(located.pathString),
-                    "type": .string(String(describing: Swift.type(of: control))),
-                    "reason": .string("disabled"),
-                ]
             }
             UIKitCommandLogger.info("command", "ui tap default activation route=control.touchUpInside path=\(located.pathString) type=\(String(describing: Swift.type(of: control)))")
             control.sendActions(for: .touchUpInside)
@@ -305,7 +303,12 @@ enum UIKitActionExecutor {
             in: context.rootView,
             notFound: { UIKitCommandError.controlTargetNotFound(action: controlAction, targetDescription: target) },
             ambiguous: { UIKitCommandError.controlTargetAmbiguous(action: controlAction, targetDescription: target, count: $0) })
-        try validateViewSnapshot(located: located, viewSnapshotID: viewSnapshotID, context: context, action: controlAction)
+        let requestedAction = UIKitActionCapabilityResolver.actionKind(for: event)
+        try validateViewSnapshot(located: located,
+                                 viewSnapshotID: viewSnapshotID,
+                                 context: context,
+                                 action: controlAction,
+                                 requiredAction: requestedAction)
 
         guard let control = located.view as? UIControl else {
             throw UIKitCommandError.controlTargetNotControl(action: controlAction,
@@ -313,7 +316,6 @@ enum UIKitActionExecutor {
                                                             type: String(describing: Swift.type(of: located.view)))
         }
 
-        let requestedAction = UIKitActionCapabilityResolver.actionKind(for: event)
         let availability = UIKitActionCapabilityResolver.resolve(view: control, rootView: context.rootView)
         guard availability.actions.contains(requestedAction) else {
             throw UIKitCommandError.unsupportedAction(action: controlAction,

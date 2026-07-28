@@ -9,9 +9,9 @@ import UIKit
 /// 决定 tap / control 派发）共用本类型，确保"声明可执行"与"实际可派发"走同一份规则。
 ///
 /// 重构后的规则：
-/// - `tap` 仅在目标存在默认激活路由（`UIKitDefaultActivationResolver`）时声明——即
-///   `UIButton`/`UISwitch`/文本输入。`UISlider`/`UISegmentedControl`/未知自定义 `UIControl`
-///   不声明 `tap`（tap 语义不明确），但仍可暴露精确 `control.*` 事件；
+/// - `tap` 在目标存在默认激活路由、cell selection 路由，或 Debug gesture adapter 能读到
+///   target-action 时声明。`UISlider`/`UISegmentedControl`/未知自定义 `UIControl` 不声明
+///   `tap`（tap 语义不明确），但仍可暴露精确 `control.*` 事件；
 /// - `control.*` 按真实控件类型选择自然事件；
 /// - `input` 对 conform `UITextInput` 的 view 声明（覆盖 `UITextField`/`UITextView`/
 ///   `UISearchTextField`），为 `ui.input` 类命令预留可输入声明；
@@ -46,12 +46,12 @@ enum UIKitActionCapabilityResolver {
         }
 
         // 三条声明路径并列累加（用 Set 去重，再按 UIKitActionKind 声明顺序稳定排序输出）：
-        // 1. 默认激活路由：UIButton/UISwitch/文本输入 → tap；
+        // 1. 默认激活路由或可执行手势 adapter → tap；
         // 2. UIControl 路径：精确 control.* 事件（不含 tap，tap 已由路由决定）；
         // 3. UITextInput 路径：input；
         // 4. UIScrollView 路径：scroll（UITextView 显式排除）。
         var collected = Set<UIKitActionKind>()
-        if UIKitDefaultActivationResolver.route(for: view) != nil {
+        if UIKitDefaultActivationResolver.route(for: view) != nil || UIGestureTargetExecutor.supportsTap(on: view) {
             collected.insert(.tap)
         }
         // cell 子树：cellSelection adapter（executeTap 的 cellSelection 分支）能为其派发

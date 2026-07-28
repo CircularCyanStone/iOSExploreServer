@@ -9,6 +9,17 @@ import iOSExploreServer
 /// 覆盖 5 种模式的主路径、超时收敛、cancel 收敛（防 CancellationError 泄漏成 internal_error）。
 /// executor 通过注入 `contextProvider` 闭包驱动，不依赖真实 App scene。
 
+private func waitSnapshotTargets(
+    _ fingerprints: [String: UIKitTargetFingerprint]
+) -> [String: UIKitSnapshotTarget] {
+    fingerprints.mapValues {
+        UIKitSnapshotTarget(
+            fingerprint: $0,
+            availableActions: UIKitActionAvailability(actions: [])
+        )
+    }
+}
+
 @Test("wait textExists 找到 UILabel 文本") @MainActor
 func waitTextExistsFindsLabel() async throws {
     let context = UIKitTestHost.context { root in
@@ -99,7 +110,9 @@ func waitSnapshotChangedSatisfiedOnContentChange() async throws {
     let snapshotContext = UIKitFingerprintCollector.context(
         window: context.window, topViewController: context.topViewController)
     let snapshotStore = UIKitSnapshotStore()
-    let snapshotID = try #require(snapshotStore.insert(context: snapshotContext, targets: initialTable, query: .default))
+    let snapshotID = try #require(snapshotStore.insert(context: snapshotContext,
+                                                       targets: waitSnapshotTargets(initialTable),
+                                                       query: .default))
 
     // 第二轮改 button.enabled → fingerprint 的 isEnabled 字段变化 → whole table 不同 → satisfied。
     // 注意：fingerprint 不含 text（防泄露），text 变化应用 textExists；snapshotChanged 检测结构/控件状态变化。
@@ -129,7 +142,9 @@ func waitSnapshotChangedUnchangedWhenViewTreeStable() async throws {
     let snapshotContext = UIKitFingerprintCollector.context(
         window: context.window, topViewController: context.topViewController)
     let snapshotStore = UIKitSnapshotStore()
-    let snapshotID = try #require(snapshotStore.insert(context: snapshotContext, targets: initialTable, query: .default))
+    let snapshotID = try #require(snapshotStore.insert(context: snapshotContext,
+                                                       targets: waitSnapshotTargets(initialTable),
+                                                       query: .default))
 
     // 不改任何东西 → 重采 whole table 与签发表逐字相等 → matchesWholeTable 返回 true（未变化）
     // → executor 永远不 satisfied → 超时收敛 waitTimeout。这条保护「未变化」负样本，
@@ -170,7 +185,9 @@ func waitSnapshotChangedDetectsFullNodeLabelTextChange() async throws {
     let snapshotContext = UIKitFingerprintCollector.context(
         window: context.window, topViewController: context.topViewController)
     let snapshotStore = UIKitSnapshotStore()
-    let snapshotID = try #require(snapshotStore.insert(context: snapshotContext, targets: initialTable, query: .default))
+    let snapshotID = try #require(snapshotStore.insert(context: snapshotContext,
+                                                       targets: waitSnapshotTargets(initialTable),
+                                                       query: .default))
 
     // 第二轮隐藏 label → fingerprint 的 isHidden 字段从 false 变 true → whole table 不同 → satisfied。
     var callCount = 0

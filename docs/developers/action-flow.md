@@ -52,7 +52,7 @@ CLI 和 MCP 的分界点在 adapter。adapter 之后都共用 `DriverRuntime`、
 
 ## 示例输入
 
-一次真实的 `ui.tap` 通常不是第一步。Agent 先调用 `ui_inspect`，拿到目标的 `path` 或 `accessibilityIdentifier`，以及本次 inspect 顶层返回的 `viewSnapshotID`。
+一次真实的 `ui.tap` 通常不是第一步。Agent 先调用 `ui_inspect`，选择 `availableActions` 包含 `tap` 的目标，再拿它的 `path` 或 `accessibilityIdentifier` 以及响应顶层的 `viewSnapshotID`。
 
 MCP 工具调用形态：
 
@@ -392,8 +392,8 @@ UIKitContextProvider.currentContext
 | --- | --- | --- |
 | 获取 context | 找当前前台 window、root view、top controller。 | `hierarchy_unavailable` |
 | resolve locator | 用 `accessibilityIdentifier` 或 `path` 找 view。 | `target_not_found`、`target_ambiguous` |
-| freshness 校验 | 用 `viewSnapshotID` 对比 path/context/fingerprint/semantic digest。 | `stale_locator` |
-| actionable 校验 | 判断目标是否由 inspect 签发，minimal 节点不可操作。 | `not_actionable` |
+| action 签发校验 | snapshot 中 path 存在，且同次 inspect 的 `availableActions` 包含请求动作。 | `not_actionable` |
+| freshness 校验 | 用 `viewSnapshotID` 对比 context/fingerprint/semantic digest。 | `stale_locator` |
 | capability/route | 判断目标是否有默认激活路线。 | `unsupported_target` |
 | 执行动作 | UIButton、UISwitch、文本输入、gesture/cell fallback 等。 | 具体 UIKit command error |
 | 组装结果 | 返回 `JSON`，例如 activated/route/type/path。 | - |
@@ -559,7 +559,7 @@ Workflow 的关键区别：
 | `ui_tap` 返回 `unknown_action` | App router 注册 | App 是否调用 `registerUIKitCommands()`，`help` 是否列出 `ui.tap`。 |
 | 返回 `invalid_data` | CommandInput 解析 | 参数字段名、类型、必填项是否符合 `docs/generated/contracts.md`。 |
 | 返回 `stale_locator` | UIKit snapshot | 重新调用 `ui.inspect`，使用最新 `viewSnapshotID`。 |
-| 返回 `not_actionable` | UIKit inspect 签发策略 | 目标是 minimal/展示节点，不应直接操作，换可操作 target。 |
+| 返回 `not_actionable` | UIKit action-aware snapshot | path 未签发，或目标的 `availableActions` 不包含本次动作；重新 inspect 后换匹配 target。 |
 | 返回 `unsupported_target` | UIKit action route | 当前 view 没有确定默认激活路线，改用更具体 action 或补能力。 |
 | HTTP 400 | HTTP/parser 层 | method/path/body 是否是 `POST /` 和合法 JSON 对象。 |
 | `protocol_error` | App response / host parsing | App 返回是否符合 envelope，是否被非业务日志污染 stdout。 |
@@ -575,7 +575,7 @@ iosdriver call ping
 iosdriver call ui.inspect --data '{"mode":"minimal"}'
 ```
 
-如果 `ui.inspect` 成功，再用返回的 `path` 和 `viewSnapshotID` 调：
+如果 `ui.inspect` 成功，选择 `availableActions` 包含 `tap` 的 target，再用其 `path` 和顶层 `viewSnapshotID` 调：
 
 ```bash
 iosdriver call ui.tap --data '{"path":"root/0/2","viewSnapshotID":"snapshot-..."}'
