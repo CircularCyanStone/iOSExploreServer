@@ -1,3 +1,10 @@
+/**
+ * iOSDriver 的 stdio MCP adapter。
+ *
+ * 本模块只绑定 SDK request/response；工具目录、runtime、能力探测和 workflow 都通过
+ * SDK 无关接口注入。stdout 由 `StdioServerTransport` 独占，所有生命周期日志必须写
+ * stderr，否则任何普通日志都会破坏 MCP 帧。
+ */
 import { createRequire } from "node:module";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -76,9 +83,13 @@ export interface MCPWorkflowRunner {
 
 /** MCP adapter 的依赖；均为 SDK 无关 runtime/workflow 接口。 */
 export interface MCPAdapterOptions {
+  /** 所有 device action（含动态 call_action）的统一执行入口。 */
   readonly runtime: MCPRuntime;
+  /** 只在显式 health/capabilities 或动态策略查询时访问。 */
   readonly capabilityProbe: MCPCapabilityProbe;
+  /** 两个 host workflow 的总 deadline 执行入口。 */
   readonly workflowRunner: MCPWorkflowRunner;
+  /** workflow 绝对 deadline 的时钟基准，测试可替换。 */
   readonly now?: () => number;
   /** MCP 生命周期与工具调用 logger；默认固定写 stderr。 */
   readonly logger?: HostLogger;
@@ -110,6 +121,7 @@ export function createMCPToolHandlers(options: MCPAdapterOptions): MCPToolHandle
   const logger = options.logger ?? defaultHostLogger;
   return {
     async listTools() {
+      // listTools 只读取进程内目录；设备离线、App 未启动时仍返回相同集合。
       return { tools: TOOL_CATALOG.map(toMCPTool) };
     },
     async callTool(name: string, args: JSONObject = {}) {
@@ -170,6 +182,7 @@ export async function startMCPStdioServer(options: MCPAdapterOptions): Promise<v
   }
 }
 
+/** 从随包发布的 manifest 读取 server 版本，避免源码常量与 npm version 漂移。 */
 function packageVersion(): string {
   const manifest: unknown = createRequire(import.meta.url)("../../../package.json");
   if (typeof manifest !== "object" || manifest === null || !("version" in manifest)) {
@@ -186,6 +199,7 @@ async function invokeEntry(
   options: MCPAdapterOptions,
   now: () => number
 ): Promise<CallToolResult> {
+  // device action 的字段由 App typed input factory 校验，host 不重复解释 schema。
   if (entry.mapping.kind === "deviceAction") {
     return renderInvocationResult(
       await options.runtime.invoke(entry.mapping.action, input),
@@ -193,6 +207,7 @@ async function invokeEntry(
     );
   }
 
+  // host operation 在 Mac 上执行，必须先按 generated host schema 校验包装层字段。
   let validatedInput: JSONObject;
   try {
     validatedInput = validateHostOperationInput(entry.mapping.operation, input);
@@ -214,6 +229,7 @@ async function invokeEntry(
     case "call_action": {
       const action = validatedInput.action as string;
       const data = (validatedInput.data ?? {}) as JSONObject;
+      // 只使用最近一次可信 help 的策略；没有策略时 runtime 对未知 action 不做自动重试。
       const policy = options.capabilityProbe.invocationPolicy(action);
       return renderInvocationResult(
         await options.runtime.invoke(action, data, policy === undefined ? {} : { policy }),
@@ -239,6 +255,12 @@ function toMCPTool(entry: ToolCatalogEntry): Tool {
   };
 }
 
+/**
+ * 从 generated 默认值推导 workflow 的总 host 预算。
+ *
+ * 业务等待之外固定预留 5 秒调度余量和 5 秒 inspect 余量；这不是给每个子 action 各加
+ * 一份预算，runner 会把总值转换为所有阶段共享的绝对 deadline。
+ */
 function workflowBudgetMs(operation: WorkflowOperation, input: JSONObject): number {
   const spec = HOST_OPERATION_SPECS.find(candidate => candidate.operation === operation);
   if (spec === undefined) throw new Error(`Missing generated workflow contract: ${operation}`);

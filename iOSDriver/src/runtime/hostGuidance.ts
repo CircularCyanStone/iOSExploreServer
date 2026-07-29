@@ -1,3 +1,9 @@
+/**
+ * 将稳定错误补充为面向调用者的下一步操作。
+ *
+ * 指引按错误来源和 code 生成，不检查 message 文本，因此 App 文案调整不会改变 host
+ * 决策。该模块不依赖 CLI 或 MCP SDK，同一建议可被多个 adapter 一致投影。
+ */
 import type { DriverError } from "./driverErrors.js";
 import type { JSONObject } from "../types.js";
 
@@ -30,6 +36,7 @@ function nextStepsFor(
   error: DriverError,
   context: HostGuidanceContext
 ): readonly string[] | undefined {
+  // transport 故障优先恢复连接；在 endpoint 未恢复前建议重试业务 action 没有意义。
   if (error.source === "transport") {
     return [
       "确认目标 App 正在运行并已启动 iOSExplore HTTP server。",
@@ -43,6 +50,7 @@ function nextStepsFor(
       "仅在 UI 仍持续进展时扩大业务 timeout，再重试 workflow。"
     ];
   }
+  // 只有已知 App envelope code 才给 UI 级建议，未知 host 错误保持原样，避免误导调用者。
   if (error.source !== "appEnvelope") return undefined;
   switch (error.code) {
     case "invalid_data":

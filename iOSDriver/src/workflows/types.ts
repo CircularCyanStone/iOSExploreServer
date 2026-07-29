@@ -1,3 +1,9 @@
+/**
+ * Host workflow 的公共类型边界。
+ *
+ * workflow 只依赖 `invoke` 和可注入时钟，不持有 HTTP transport。所有子 action 共用一个
+ * 绝对 deadline，防止每个阶段各自重新获得完整 timeout 而让总耗时无限增长。
+ */
 import type { JSONObject } from "../types.js";
 import type { InvocationResult } from "../runtime/types.js";
 import type { HostLogger } from "../runtime/hostLogger.js";
@@ -46,7 +52,9 @@ export interface WorkflowClock {
 
 /** WorkflowRunner 的构造参数。 */
 export interface WorkflowRunnerOptions {
+  /** 子 action 仍经完整 runtime 归一化，不允许 workflow 绕过协议与 artifact 检查。 */
   readonly runtime: WorkflowRuntime;
+  /** 测试可用虚拟时钟精确推进 deadline，无需真实等待。 */
   readonly clock?: WorkflowClock;
   /** Host 命令链 logger；CLI/MCP 入口注入共享 stderr logger。 */
   readonly logger?: HostLogger;
@@ -68,7 +76,7 @@ export interface WorkflowExecutionContext {
    *
    * @param action action 名称。
    * @param data 已投影的 action 参数。
-   * @returns runtime 结果；预算耗尽时返回稳定的 `workflow_timeout` 失败。
+   * @returns runtime 结果；预算耗尽时不抛异常，而是返回稳定的 `workflow_timeout` 失败。
    */
   invoke(action: string, data: JSONObject): Promise<InvocationResult>;
 }

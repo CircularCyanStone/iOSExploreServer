@@ -1,3 +1,10 @@
+/**
+ * SDK 无关 runtime 结果到 MCP content 的最终投影。
+ *
+ * 图片作为 MCP image content 返回，清理后的业务数据作为 JSON text 返回。App envelope
+ * 失败是否设置 `isError` 取决于调用入口：动态 `call_action` 的 unknown_action 是可探索
+ * 结果，而固定工具的同一错误表示客户端调用了当前 App 未注册的能力。
+ */
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { DriverError } from "../../runtime/driverErrors.js";
 import { failurePayload, type HostGuidanceContext } from "../../runtime/hostGuidance.js";
@@ -69,6 +76,11 @@ export function renderAdapterError(code: string, message: string): CallToolResul
   };
 }
 
+/**
+ * 区分“工具执行失败”与“工具返回了可供模型继续判断的业务状态”。
+ * transport/protocol/workflow 等 host 失败一律为 tool error；App 的普通业务失败默认作为
+ * 数据返回，仅参数、定位器和能力注册这类需要调用方改正的错误升级为 tool error。
+ */
 function isToolError(error: DriverError, context: ResultRenderContext): boolean {
   if (error.source !== "appEnvelope") return true;
   if (context === "callAction" && error.code === "unknown_action") return false;

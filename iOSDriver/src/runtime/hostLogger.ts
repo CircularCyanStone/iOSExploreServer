@@ -1,3 +1,10 @@
+/**
+ * Host 侧结构化日志及敏感字段过滤。
+ *
+ * CLI 与 MCP 都把日志固定写到 stderr，MCP stdout 因而只包含协议帧。logger 接口只接受
+ * 标量，默认实现还会按字段名丢弃 payload/token/响应正文等高风险内容；sink 故障永远
+ * 不得改变自动化调用结果。
+ */
 /** Host 日志等级；用于区分正常生命周期、可恢复失败和未分类异常。 */
 export type HostLogLevel = "debug" | "info" | "warn" | "error";
 
@@ -47,7 +54,9 @@ export function createHostLogger(options: HostLoggerOptions = {}): HostLogger {
     emit(level, event, fields = {}) {
       const safeFields: Record<string, string | number | boolean | null> = {};
       for (const [key, value] of Object.entries(fields)) {
+        // 归一化字段名后过滤，避免用大小写、连字符或下划线绕过敏感字段名单。
         if (BLOCKED_FIELD_NAMES.has(normalizeFieldName(key))) continue;
+        // 字符串截断限制日志行大小；非有限数值和 undefined 不进入 JSON。
         if (typeof value === "string") safeFields[key] = value.slice(0, 256);
         else if (typeof value === "number" && Number.isFinite(value)) safeFields[key] = value;
         else if (value === null || typeof value === "boolean") safeFields[key] = value;

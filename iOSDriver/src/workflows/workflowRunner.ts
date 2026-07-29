@@ -1,3 +1,10 @@
+/**
+ * workflow 的总 deadline 执行器。
+ *
+ * runner 为每个子 action 根据同一个绝对截止时间创建 AbortSignal，并在阶段返回后再次
+ * 检查时钟。后置检查用于处理不遵守 abort 的注入 runtime，保证即使底层晚返回，整个
+ * workflow 也不会把 deadline 之后的结果误报为成功。
+ */
 import type { JSONObject } from "../types.js";
 import type { InvocationResult } from "../runtime/types.js";
 import type { DriverError } from "../runtime/driverErrors.js";
@@ -21,7 +28,9 @@ const SYSTEM_CLOCK: WorkflowClock = {
 
 /** 在一个总 deadline 内串行执行 host workflow。 */
 export class WorkflowRunner {
+  /** 只暴露 invoke，复合操作无法直接访问 transport。 */
   private readonly runtime: WorkflowRunnerOptions["runtime"];
+  /** 生产使用系统时间，测试使用可控时钟。 */
   private readonly clock: WorkflowClock;
   private readonly logger: HostLogger;
 
@@ -50,6 +59,7 @@ export class WorkflowRunner {
     options: WorkflowRunOptions
   ): Promise<WorkflowResult> {
     const startedAt = this.clock.now();
+    // 过去的 deadline 被压为 0，后续 context 会在发请求前返回 workflow_timeout。
     const totalBudgetMs = Math.max(0, options.deadlineAtMs - startedAt);
     const context = this.context(operation, options.deadlineAtMs, totalBudgetMs);
     this.logger.emit("info", "workflow.operation.start", { operation, totalBudgetMs });
@@ -83,6 +93,7 @@ export class WorkflowRunner {
     }
   }
 
+  /** 创建只暴露剩余预算调用能力的阶段上下文。 */
   private context(
     operation: WorkflowOperation,
     deadlineAtMs: number,
@@ -99,6 +110,7 @@ export class WorkflowRunner {
         }
 
         const controller = new AbortController();
+        // timer 只覆盖当前阶段，但到期点始终是 workflow 的同一个绝对 deadline。
         const timer = this.clock.setTimeout(() => controller.abort(), remainingMs);
         let result: InvocationResult;
         try {
@@ -115,6 +127,7 @@ export class WorkflowRunner {
           this.clock.clearTimeout(timer);
         }
 
+        // 某些 runtime/mock 可能忽略 AbortSignal；返回后再次核对时间可维持总预算合同。
         if (this.clock.now() >= deadlineAtMs) {
           this.logger.emit("warn", "workflow.stage.timeout", { operation, action, timeoutMs: totalBudgetMs });
           return workflowTimeout(operation, action, totalBudgetMs);
@@ -144,6 +157,7 @@ function workflowErrorFields(error: DriverError): Record<string, string | number
   };
 }
 
+/** 构造不依赖底层 action 错误格式的稳定 workflow deadline 失败。 */
 function workflowTimeout(
   operation: WorkflowOperation,
   stageAction: string,

@@ -4,6 +4,7 @@
 
 ## 使用
 
+- [cli-reference.md](./cli-reference.md)：CLI 每条命令的目的、参数、执行效果、输出通道和退出码。
 - [local-mcp-test.md](./local-mcp-test.md)：不安装到任何 MCP 客户端，直接用仓库脚本做端到端 MCP smoke。
 
 ## 行为约束

@@ -9,6 +9,7 @@ iOSDriver 包含两个本地入口：
 | MCP setup | 把 iOSDriver 注册到指定 MCP 客户端。 | `iosdriver mcp setup <client>` |
 
 本文说明通用安装方式；具体客户端配置见同目录的客户端文档。
+CLI 的完整行为说明见 [CLI 命令参考](../docs/cli-reference.md)。
 
 ## 前提
 

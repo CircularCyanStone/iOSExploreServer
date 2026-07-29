@@ -1,3 +1,10 @@
+/**
+ * 显式能力探测与扩展 action 策略缓存。
+ *
+ * 工具发现阶段绝不访问 App；只有 doctor/health/capabilities 或调用未知 action 时才执行
+ * `ping -> help`。报告会同时给出连接状态、模块注册完整度和本地/设备合同一致性，避免
+ * 把“App 可达”“UIKit 已注册”“两端合同完全一致”混成一个布尔值。
+ */
 import { DEVICE_ACTION_CONTRACTS, type DeviceActionContract } from "../generated/deviceActionContracts.js";
 import { CONTRACT_BUNDLE_METADATA } from "../generated/contractBundle.js";
 import type { JSONObject } from "../types.js";
@@ -73,9 +80,12 @@ export interface CapabilityReport {
 
 /** 调用 ping/help 并将 App 能力投影为 adapter 可消费的稳定报告。 */
 export class CapabilityProbe {
+  /** 用于计算缺失 action 和 provider 注册比例的本地 canonical 基线。 */
   private readonly expectedContracts: readonly DeviceActionContract[];
   private readonly logger: HostLogger;
+  /** 只保存最近一次完整可信 ping/help 中的扩展 action 策略。 */
   private actionPolicies: ReadonlyMap<string, InvocationPolicy> = new Map();
+  /** 防止并发 probe 中较早完成的旧请求覆盖较新一轮缓存。 */
   private probeGeneration = 0;
 
   /**
@@ -124,6 +134,7 @@ export class CapabilityProbe {
           ? validatedActionPolicies(help.commands)
           : new Map();
       }
+      // help 不可信时不能对 action 缺失或模块注册做负面判断，只能返回 unknown。
       if (help.status !== "available" || connection === "unreachable" || connection === "malformed") {
         return this.complete({
           mode, connection, ping, help,
@@ -163,11 +174,11 @@ export class CapabilityProbe {
     }
   }
 
-  /** doctor 的显式别名。 */
+  /** 以 doctor 模式标记报告；探测步骤与其他模式一致，区别留给 adapter 展示。 */
   async doctor(options: CapabilityProbeInvocationOptions = {}): Promise<CapabilityReport> { return this.probe("doctor", options); }
-  /** health 的显式别名。 */
+  /** 以 health 模式标记报告，供 MCP `health_check` 使用。 */
   async health(options: CapabilityProbeInvocationOptions = {}): Promise<CapabilityReport> { return this.probe("health", options); }
-  /** capabilities 的显式别名。 */
+  /** 以 capabilities 模式标记报告，供 MCP `check_capabilities` 使用。 */
   async capabilities(options: CapabilityProbeInvocationOptions = {}): Promise<CapabilityReport> { return this.probe("capabilities", options); }
 
   /**
@@ -181,6 +192,7 @@ export class CapabilityProbe {
     return this.actionPolicies.get(action);
   }
 
+  /** 记录不含完整 action 列表的探测摘要，避免日志随合同规模膨胀。 */
   private complete(report: CapabilityReport, startedAt: number): CapabilityReport {
     this.logger.emit(report.connection === "reachable" ? "info" : "warn", "capability.probe.complete", {
       mode: report.mode,
@@ -207,10 +219,12 @@ type HelpCommand = {
 };
 type HelpData = { readonly commands: readonly HelpCommand[]; readonly metadata?: CapabilityReport["metadata"] };
 
+/** ping 成功还必须包含 `pong: true`；仅 envelope ok 不足以证明协议兼容。 */
 function pingStatus(result: InvocationResult): CapabilityReport["ping"] {
   if (!result.ok) return { status: result.error.source === "protocol" ? "malformed" : "failed", error: result.error };
   return result.data.pong === true ? { status: "ok" } : { status: "malformed" };
 }
+/** 只提取后续比较需要的 help 字段，不把未知 App 元数据扩散到 host 类型。 */
 function helpStatus(result: InvocationResult): CapabilityReport["help"] & { readonly commands: readonly HelpCommand[]; readonly metadata?: CapabilityReport["metadata"] } {
   if (!result.ok) return { status: result.error.source === "protocol" ? "malformed" : "failed", error: result.error, commands: [] };
   const commands = Array.isArray(result.data.commands) ? result.data.commands.filter(isObject) : undefined;
@@ -222,12 +236,14 @@ function helpStatus(result: InvocationResult): CapabilityReport["help"] & { read
   };
   return { status: "available", commands, ...(Object.keys(metadata).length === 0 ? {} : { metadata }) };
 }
+/** 按 provider 的合同全集计算 registered/partial/not_registered，而不是猜测模块开关。 */
 function moduleStatus(contracts: readonly DeviceActionContract[], provider: "uikit" | "diagnostics", registered: Set<string>): ModuleCapabilityStatus {
   const required = contracts.filter(contract => contract.provider === provider).map(contract => contract.action);
   const missing = required.filter(action => !registered.has(action));
   const count = required.length - missing.length;
   return { status: count === required.length ? "registered" : count === 0 ? "not_registered" : "partial", registeredCount: count, requiredCount: required.length, missingActions: missing };
 }
+/** 三项元数据全部出现且相等才是 exact；缺字段保持 unknown，显式不等才是 mismatch。 */
 function contractCompatibility(metadata: CapabilityReport["metadata"]): ContractCompatibility {
   if (metadata === undefined) return "unknown";
   const matches = [
@@ -240,6 +256,12 @@ function contractCompatibility(metadata: CapabilityReport["metadata"]): Contract
 }
 function isObject(value: unknown): value is HelpCommand { return typeof value === "object" && value !== null && !Array.isArray(value); }
 
+/**
+ * 从 help 创建扩展 action 策略快照。
+ *
+ * 同名 action 重复或任一策略字段非法时整项拒绝，而不是选择其中一个声明；这样未知
+ * side effect 的 action 会回到“不自动重试”的保守行为。
+ */
 function validatedActionPolicies(commands: readonly HelpCommand[]): ReadonlyMap<string, InvocationPolicy> {
   const policies = new Map<string, InvocationPolicy>();
   const rejected = new Set<string>();

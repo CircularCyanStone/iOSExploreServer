@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Minimal MCP stdio client.
-//   node scripts/mcp-inspector.mjs                       -> runs a fixed smoke sequence
-//   node scripts/mcp-inspector.mjs <tool> '<json>'       -> calls one tool with raw JSON args
+// 轻量 MCP stdio smoke client：它刻意通过构建后的 CLI 入口启动 server，以同时验证
+// CLI 分流、stdio framing、工具目录和 runtime 调用，而不是直接 import MCP handlers。
+//   node scripts/mcp-inspector.mjs                       -> 执行固定 smoke 序列
+//   node scripts/mcp-inspector.mjs <tool> '<json>'       -> 用原始 JSON 参数调用一个工具
 //   node scripts/mcp-inspector.mjs <tool> '<json>' <tool2> '<json2>' ...
-// Calls go through the iosdriver CLI MCP entry over stdio.
+// 所有调用都通过 iosdriver CLI 的 MCP stdio 入口。
 //
 // 完整使用说明（前置条件、工具名映射、排障、边界）见：
 //   docs/local-mcp-test.md
@@ -16,6 +17,7 @@ const server = spawn("node", ["dist/adapters/cli/main.js", "mcp"], {
 
 let buffer = "";
 let nextId = 1;
+// 只追踪由本脚本发出的 request；server notification 或未知响应不会混入 smoke 输出。
 const pending = new Map();
 
 const send = (method, params) => {
@@ -27,6 +29,7 @@ const send = (method, params) => {
 };
 
 server.stdout.on("data", (chunk) => {
+  // stdio chunk 不保证按 JSON-RPC 行切分，因此先累积到换行，再逐帧 JSON.parse。
   buffer += chunk.toString();
   let idx;
   while ((idx = buffer.indexOf("\n")) >= 0) {
@@ -49,6 +52,7 @@ server.stdout.on("data", (chunk) => {
 
 const calls = [];
 if (process.argv.length > 2) {
+  // 自定义模式按 <tool> <json> 成对读取，便于一次进程内串行 smoke 多个工具。
   for (let i = 2; i < process.argv.length; i += 2) {
     const name = process.argv[i];
     const raw = process.argv[i + 1] ?? "{}";
@@ -58,6 +62,7 @@ if (process.argv.length > 2) {
     calls.push({ name, arguments: args });
   }
 } else {
+  // 默认序列覆盖能力探测、直接 action、动态 action 和 host workflow 四条路由。
   calls.push({ name: "health_check", arguments: {} });
   calls.push({ name: "ui_inspect", arguments: {} });
   calls.push({
@@ -78,6 +83,7 @@ send("initialize", {
 
 let t = 300;
 send("tools/list", {});
+// 简单错峰避免在未完成 initialize 握手时同时灌入全部 tools/call。
 for (const call of calls) {
   setTimeout(() => send("tools/call", call), (t += 300));
 }

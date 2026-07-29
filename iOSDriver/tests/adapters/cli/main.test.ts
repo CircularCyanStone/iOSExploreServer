@@ -1,5 +1,9 @@
+import { mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, test } from "vitest";
-import { main } from "../../../src/adapters/cli/main.js";
+import { isMainModule, main } from "../../../src/adapters/cli/main.js";
 import { noopHostLogger } from "../../../src/runtime/hostLogger.js";
 import type { MCPClientSetupInput, MCPClientSetupResult } from "../../../src/registration/mcpClientSetup.js";
 
@@ -14,6 +18,27 @@ function outputFixture() {
 }
 
 describe("CLI main", () => {
+  test("构建产物保留 CLI 可执行权限", () => {
+    const entryPath = fileURLToPath(new URL("../../../dist/adapters/cli/main.js", import.meta.url));
+
+    expect(statSync(entryPath).mode & 0o111).not.toBe(0);
+  });
+
+  test("通过 npm link 风格的符号链接启动时识别为主模块", () => {
+    const directory = mkdtempSync(join(tmpdir(), "iosdriver-main-"));
+    const entryPath = join(directory, "main.js");
+    const linkedPath = join(directory, "iosdriver");
+
+    try {
+      writeFileSync(entryPath, "");
+      symlinkSync(entryPath, linkedPath);
+
+      expect(isMainModule(pathToFileURL(entryPath).href, linkedPath)).toBe(true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("mcp setup 在 App 配置解析和 runtime 构造前分流", async () => {
     const streams = outputFixture();
     let received: MCPClientSetupInput | undefined;

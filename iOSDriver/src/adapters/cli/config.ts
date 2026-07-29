@@ -1,3 +1,9 @@
+/**
+ * CLI 配置的读取、合并与原子初始化。
+ *
+ * 有效值优先级固定为 CLI override > 环境变量 > 配置文件 > 默认值。读取时同时接受
+ * 早期 snake_case 键，但初始化只补写 canonical camelCase 键，并始终保留未知字段。
+ */
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -5,18 +11,25 @@ import type { JSONObject } from "../../types.js";
 
 /** CLI 可覆盖的配置字段。值在解析时会被规范化并冻结。 */
 export interface CLIConfigOverrides {
+  /** 最高优先级 endpoint 覆盖值。 */
   readonly baseURL?: string;
+  /** 最高优先级请求超时覆盖值，必须为毫秒正整数。 */
   readonly requestTimeoutMs?: number;
+  /** 同时决定读取位置和 `init` 写入位置。 */
   readonly configPath?: string;
 }
 
 /** iosdriver 使用的不可变配置，以及 init 所需的原始用户字段。 */
 export interface CLIConfig {
+  /** 已规范化为 http(s) 且 pathname 以 `/` 结尾。 */
   readonly baseURL: string;
+  /** 已验证的毫秒正整数。 */
   readonly requestTimeoutMs: number;
   /** 预留 header token；当前 App 产品开关关闭，不执行校验。 */
   readonly authToken?: string;
+  /** 本次解析实际使用的配置文件路径，即使文件尚不存在也会返回。 */
   readonly configPath: string;
+  /** 未经丢字段投影的原始文件对象，供 `init` 幂等合并。 */
   readonly fileValues: Readonly<Record<string, unknown>>;
 }
 
@@ -32,9 +45,13 @@ export class CLIConfigError extends Error {
 
 /** 配置文件 IO 边界，测试可注入内存或临时文件实现。 */
 export interface ConfigFileSystem {
+  /** 缺失文件应以带 `code: ENOENT` 的错误表示。 */
   readonly readFile: (path: string) => Promise<string>;
+  /** 实现必须支持递归创建父目录。 */
   readonly mkdir: (path: string) => Promise<void>;
+  /** 临时文件按仅当前用户可读写的权限创建。 */
   readonly writeFile: (path: string, data: string) => Promise<void>;
+  /** 最终替换步骤；生产实现借此避免留下半写配置。 */
   readonly rename: (from: string, to: string) => Promise<void>;
 }
 
@@ -52,7 +69,12 @@ export function configPathFor(env: NodeJS.ProcessEnv = process.env, home = homed
   return join(home, ".config", "iosdriver", "config.json");
 }
 
-/** 解析 CLI、环境变量、配置文件和默认值，并拒绝无效配置。 */
+/**
+ * 解析 CLI、环境变量、配置文件和默认值，并拒绝无效配置。
+ *
+ * 返回对象及 `fileValues` 均被冻结，后续 runtime/adapter 只能消费，不能在命令执行
+ * 过程中改变已解析配置。该函数只读，不会因为配置文件缺失而创建文件。
+ */
 export async function resolveCLIConfig(
   overrides: CLIConfigOverrides = {},
   env: NodeJS.ProcessEnv = process.env,
@@ -78,7 +100,12 @@ export async function resolveCLIConfig(
   });
 }
 
-/** 原子、幂等地初始化配置；保留已有用户字段和未知字段。 */
+/**
+ * 原子、幂等地初始化配置；保留已有用户字段和未知字段。
+ *
+ * 环境变量只影响本次解析，不会把 `IOS_EXPLORE_AUTH_TOKEN` 等进程秘密持久化到磁盘。
+ * 需要写入时先创建同目录临时文件再 rename；序列化内容未变化时完全不触碰文件系统。
+ */
 export async function initCLIConfig(
   overrides: CLIConfigOverrides = {},
   env: NodeJS.ProcessEnv = process.env,
@@ -139,6 +166,7 @@ async function readConfigFile(path: string, fileSystem: ConfigFileSystem): Promi
   }
 }
 
+/** 规范化 endpoint，确保相对 URL 解析和固定 `POST /` 行为不会受缺失尾斜杠影响。 */
 function normalizeBaseURL(raw: unknown): string {
   if (typeof raw !== "string" || raw.trim().length === 0) throw new CLIConfigError("baseURL 必须是非空 URL");
   let url: URL;
@@ -168,6 +196,7 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
   return number;
 }
 
+/** 空白 token 等价于未配置，避免发送无意义的认证 header。 */
 function authTokenValue(value: string | undefined): string | undefined {
   const token = value?.trim();
   return token === undefined || token.length === 0 ? undefined : token;
@@ -179,7 +208,11 @@ function isMissingFile(error: unknown): boolean {
 
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 
-/** 将 CLI 传入的 data 限制为 JSON 对象。 */
+/**
+ * 将 CLI 传入的 data 限制为 JSON 对象。
+ *
+ * App wire 协议固定要求 `data` 为对象；数组、null 和标量在发送网络请求前就应失败。
+ */
 export function asJSONObject(value: unknown): JSONObject {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new CLIConfigError("data 必须是 JSON 对象");
   return value as JSONObject;

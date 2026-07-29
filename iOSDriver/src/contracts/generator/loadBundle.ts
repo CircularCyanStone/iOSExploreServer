@@ -1,3 +1,10 @@
+/**
+ * canonical 合同文件加载器。
+ *
+ * 加载阶段只做安全路径解析、JSON 对象外形检查和 bundle 聚合；语义校验独立放在
+ * `validateBundle.ts`。所有报错使用 contracts 相对标签，既便于 CI 定位，也不会把开发机
+ * 的绝对目录写进日志。
+ */
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, posix, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +43,7 @@ export function loadContractBundle(root?: string | URL): RawDriverContractBundle
   const hostOperations: RawContractDocument[] = [];
   const sourceFiles = new Map<object, string>();
 
+  // 只加载 manifest 显式列出的 action/operation；目录中未登记的草稿不会进入生成物。
   for (const manifestPath of files) {
     assertSafeManifestPath(manifestPath);
     const absolutePath = resolveContractFile(contractsRoot, realContractsRoot, manifestPath);
@@ -77,6 +85,7 @@ export function loadAndValidateContractBundle(root?: string | URL): DriverContra
   return bundle;
 }
 
+/** 从编译前或编译后的模块位置向上寻找事实源，不依赖调用进程的 cwd。 */
 function discoverRepositoryRoot(): string {
   let current = dirname(fileURLToPath(import.meta.url));
   while (true) {
@@ -95,6 +104,10 @@ function normalizeRoot(root: string | URL): string {
   return absolute;
 }
 
+/**
+ * 限制 manifest 只能引用两个受管子目录中的规范 POSIX 相对路径。
+ * 反斜杠、`..` 和非规范形式会在 realpath 前拒绝，防止跨平台路径穿越。
+ */
 function assertSafeManifestPath(path: string): void {
   if (
     isAbsolute(path) ||
@@ -112,6 +125,7 @@ function assertSafeManifestPath(path: string): void {
   }
 }
 
+/** stat 后再比较 realpath，连到 contracts 目录外的符号链接也会被拒绝。 */
 function resolveContractFile(contractsRoot: string, realContractsRoot: string, label: string): string {
   const candidate = join(contractsRoot, label);
   let stats: ReturnType<typeof statSync>;
@@ -129,6 +143,7 @@ function resolveContractFile(contractsRoot: string, realContractsRoot: string, l
   return realPath;
 }
 
+/** definitions 不经 manifest 枚举，但文件名排序后加载，保证生成和错误顺序确定。 */
 function readDefinitions(contractsRoot: string, realContractsRoot: string): Record<string, RawContractDocument> {
   const directory = join(contractsRoot, "definitions");
   if (!existsSync(directory)) return {};
@@ -154,6 +169,7 @@ function readDefinitions(contractsRoot: string, realContractsRoot: string): Reco
   return definitions;
 }
 
+/** 只接受顶层 JSON 对象；数组和标量不能冒充合同文档。 */
 function readJSONObject(path: string, label: string): RawContractDocument {
   let source: string;
   try {

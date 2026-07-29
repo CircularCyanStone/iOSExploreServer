@@ -1,3 +1,10 @@
+/**
+ * MCP 客户端注册的跨客户端实现。
+ *
+ * Codex 通过官方 `codex mcp` 命令管理配置；Claude Code/TRAE 使用各自 JSON 文件。本模块
+ * 保留其他 server 和未知顶层字段，同名不同配置默认拒绝覆盖，JSON 写入采用临时文件
+ * rename，确保 setup 可重复执行且不会留下半写文件。
+ */
 import { spawn } from "node:child_process";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -8,18 +15,27 @@ export type MCPClientName = "codex" | "claude" | "trae";
 export type MCPRegistrationScope = "user" | "project";
 
 export interface MCPLaunchCommand {
+  /** setup 调用方已解析出的绝对 Node 可执行文件。 */
   readonly command: string;
+  /** 包含绝对 CLI 入口、`mcp --config <absolute-path>` 的固定参数。 */
   readonly args: readonly string[];
 }
 
 export interface MCPClientSetupInput {
   readonly client: MCPClientName;
+  /** 省略时 Codex 默认 user，Claude/TRAE 默认 project。 */
   readonly scope?: MCPRegistrationScope;
+  /** 计算并返回 create/update 计划，但不运行命令或写 JSON。 */
   readonly dryRun?: boolean;
+  /** 只影响同名不同配置；完全相同的配置仍返回 unchanged。 */
   readonly force?: boolean;
+  /** project 配置定位基准，也是 Codex 子命令的工作目录。 */
   readonly cwd: string;
+  /** Claude user scope 默认配置位置的解析基准。 */
   readonly homeDir: string;
+  /** 透传给 Codex CLI，并读取 `CLAUDE_CONFIG_DIR`。 */
   readonly env: NodeJS.ProcessEnv;
+  /** 要写入客户端的完整 stdio 启动合同。 */
   readonly launch: MCPLaunchCommand;
 }
 
@@ -27,23 +43,32 @@ export interface MCPClientSetupResult {
   readonly client: MCPClientName;
   readonly scope: MCPRegistrationScope;
   readonly status: "created" | "updated" | "unchanged" | "planned";
+  /** planned 时表示将执行的动作；unchanged 时为 none。 */
   readonly operation: "create" | "update" | "none";
   readonly registrationName: typeof REGISTRATION_NAME;
   readonly manager: "codex-cli" | "json-file";
+  /** JSON 客户端的目标文件；Codex 由 CLI 管理，不暴露内部路径。 */
   readonly configPath?: string;
   readonly launch: MCPLaunchCommand;
 }
 
 export interface MCPSetupFileSystem {
+  /** 缺失配置必须以 `code: ENOENT` 表示，setup 才会按空文档创建。 */
   readonly readFile: (path: string) => Promise<string>;
+  /** 实现需支持递归父目录创建。 */
   readonly mkdir: (path: string) => Promise<void>;
+  /** 只用于同目录临时文件，生产实现权限固定为 0600。 */
   readonly writeFile: (path: string, data: string) => Promise<void>;
+  /** 原子替换最终配置，失败时由 setup 转为稳定错误。 */
   readonly rename: (from: string, to: string) => Promise<void>;
 }
 
+/** 外部客户端管理命令的完整捕获结果；不会直接继承到当前进程 stdout/stderr。 */
 export interface MCPSetupCommandResult {
   readonly exitCode: number;
+  /** Codex `mcp get --json` 的解析来源，失败时最多取 500 字符作为摘要。 */
   readonly stdout: string;
+  /** 优先用于构造外部命令失败摘要。 */
   readonly stderr: string;
 }
 
@@ -54,7 +79,9 @@ export type MCPSetupCommandRunner = (
 ) => Promise<MCPSetupCommandResult>;
 
 export interface MCPClientSetupDependencies {
+  /** Claude/TRAE JSON 写入边界；Codex 路径不使用。 */
   readonly fileSystem?: MCPSetupFileSystem;
+  /** Codex CLI 执行边界；JSON 客户端路径不使用。 */
   readonly runCommand?: MCPSetupCommandRunner;
 }
 
@@ -74,7 +101,12 @@ const defaultFileSystem: MCPSetupFileSystem = {
   rename
 };
 
-/** 把 iOSDriver 注册到指定 MCP 客户端；客户端差异全部封装在本模块内。 */
+/**
+ * 把 iOSDriver 注册到指定 MCP 客户端。
+ *
+ * 先解析 client/scope 的合法组合，再路由到官方 CLI 或 JSON 管理器。函数不检查 App
+ * 连接，因为注册只描述未来如何启动 `iosdriver mcp`。
+ */
 export async function setupMCPClient(
   input: MCPClientSetupInput,
   dependencies: MCPClientSetupDependencies = {}
@@ -102,6 +134,7 @@ async function setupCodex(
   scope: MCPRegistrationScope,
   run: MCPSetupCommandRunner
 ): Promise<MCPClientSetupResult> {
+  // 先读取现状实现幂等与冲突保护；--force 只允许更新，不会跳过读取。
   const current = await readCodexRegistration(input, run);
   if (current !== undefined && launchMatches(current, input.launch, true)) {
     return result(input, scope, "unchanged", "none", "codex-cli");
@@ -168,6 +201,7 @@ async function setupJSONClient(
   if (input.dryRun === true) return result(input, scope, "planned", operation, "json-file", configPath);
 
   const next = {
+    // 保留客户端配置中的其他功能和 server，只替换固定注册名 iOSDriver。
     ...document,
     mcpServers: {
       ...servers,
@@ -185,6 +219,7 @@ async function setupJSONClient(
   );
 }
 
+/** 按客户端官方约定解析配置位置；相对 CLAUDE_CONFIG_DIR 以 project cwd 为基准。 */
 function jsonConfigPath(input: MCPClientSetupInput, scope: MCPRegistrationScope): string {
   if (input.client === "trae") return join(input.cwd, ".trae", "mcp.json");
   if (scope === "project") return join(input.cwd, ".mcp.json");
@@ -251,6 +286,10 @@ function result(
   };
 }
 
+/**
+ * 比较真正影响 stdio 启动的字段。
+ * Codex JSON 把启动配置嵌在 transport；空 env 与省略 env 等价，非空 env 视为不同配置。
+ */
 function launchMatches(current: Record<string, unknown>, launch: MCPLaunchCommand, codex: boolean): boolean {
   const transport = codex && isRecord(current.transport) ? current.transport : current;
   if (transport.type !== undefined && transport.type !== "stdio") return false;
@@ -265,6 +304,7 @@ function stringArrayEqual(value: unknown, expected: readonly string[]): boolean 
     && value.every((item, index) => item === expected[index]);
 }
 
+/** 与对象键顺序无关的 JSON 深比较，用于识别可幂等跳过的现有注册。 */
 function jsonEqual(left: unknown, right: unknown): boolean {
   if (left === right) return true;
   if (Array.isArray(left) || Array.isArray(right)) {
@@ -289,6 +329,7 @@ async function runCommand(
   args: readonly string[],
   options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv }
 ): Promise<MCPSetupCommandResult> {
+  // 不继承 stdin，防止 setup 卡在交互提示；完整输出只用于分类并截断错误摘要。
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(command, [...args], {
       cwd: options.cwd,

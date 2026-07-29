@@ -1,7 +1,13 @@
+/**
+ * canonical 合同的人类可读 Markdown emitter。
+ *
+ * 文档直接消费与代码生成相同的 prepared bundle，action 字段、默认值和错误列表因此无需
+ * 在 README/CLI 文档中手写复制。所有表格内容在插入前转义，保证合同说明不会破坏结构。
+ */
 import type { ContractJSONValue, JsonSchema } from "./model.js";
 import type { GeneratedArtifact, PreparedContractBundle } from "./emitTypeScript.js";
 
-/** Emit a deterministic human-readable summary of the canonical contract bundle. */
+/** 生成包含版本、action、host operation 和 error index 的确定性 Markdown。 */
 export function emitDocs(prepared: PreparedContractBundle): GeneratedArtifact {
   const { bundle, hash } = prepared;
   const lines = [
@@ -81,6 +87,7 @@ function schemaSummary(schema: JsonSchema): string[] {
   return lines;
 }
 
+/** 扁平字段表的一行；嵌套对象以点路径表示，object array 以 `[]` 表示。 */
 interface FieldSummary {
   readonly path: string;
   readonly type: string;
@@ -89,6 +96,7 @@ interface FieldSummary {
   readonly description: string;
 }
 
+/** 深度优先展开属性，并按字段名排序以保持文档 diff 稳定。 */
 function flattenFields(schema: JsonSchema, prefix = ""): FieldSummary[] {
   const properties = schema.properties ?? {};
   const required = new Set(schema.required ?? []);
@@ -128,6 +136,7 @@ function escapeInline(value: string): string {
   return value.replace(/`/g, "\\`");
 }
 
+/** 转义表格分隔符并压平换行，避免 description 注入额外 Markdown 行。 */
 function escapeTable(value: string): string {
   return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }

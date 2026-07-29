@@ -1,7 +1,14 @@
+/**
+ * Foundation-only Swift 合同元数据与 typed input 定义生成器。
+ *
+ * 按 provider 拆分输出，保证 Core 产物不 import UIKit；每个 action 同时生成命令元数据、
+ * 字段 parser 和 wire 校验闭包。生成器只对可精确映射的 schema 选择 typed field helper，
+ * 其余字段回退到 `AnyCommandField`，但仍生成完整 wire validation，避免静默放宽合同。
+ */
 import type { ContractJSONValue, DeviceActionContract, JsonSchema } from "./model.js";
 import type { GeneratedArtifact, PreparedContractBundle } from "./emitTypeScript.js";
 
-/** Emit Foundation-only Swift wire metadata grouped by provider. */
+/** 按 core/uikit/diagnostics provider 生成三个互不越界的 Swift 文件。 */
 export function emitSwift(prepared: PreparedContractBundle): GeneratedArtifact[] {
   const providers = [
     {
@@ -33,6 +40,10 @@ export function emitSwift(prepared: PreparedContractBundle): GeneratedArtifact[]
   });
 }
 
+/**
+ * 组装单个 provider 文件。
+ * `all/byAction/inputs` 共享同一 action 集合，注册、自省与执行端 parser 因而不会各自漂移。
+ */
 function renderProviderFile(
   typeName: string,
   moduleImport: string,
@@ -84,6 +95,7 @@ function renderProviderFile(
   ].filter(line => line.length > 0).join("\n");
 }
 
+/** 把 action 元数据渲染为 `CommandContract`，不包含 UIKit 类型或 handler 实现。 */
 function renderContractMember(contract: DeviceActionContract): string {
   const identifier = actionIdentifier(contract.action);
   const errors = contract.errors.map(error => swiftString(error)).join(", ");
@@ -104,13 +116,17 @@ function renderContractMember(contract: DeviceActionContract): string {
   ].join("\n");
 }
 
+/**
+ * 为一个 action 生成字段声明和 `CommandInputDefinition`。
+ * JSON properties 的插入顺序会影响 parser 读取顺序测试，不能在这里重新排序。
+ */
 function renderInputMembers(contract: DeviceActionContract): string[] {
   const identifier = actionIdentifier(contract.action);
   const schema = contract.inputSchema;
   const properties = schema.properties ?? {};
   const required = new Set(schema.required ?? []);
-  // JSON object insertion order is the contract declaration order. Keep it for stable generated
-  // field layout and parser read-order tests; the canonical TypeScript artifact owns tool metadata.
+  // JSON 对象插入顺序就是合同声明顺序。保留它以稳定字段布局和 parser 读取顺序测试；
+  // MCP 工具元数据由 canonical TypeScript 产物负责。
   const fields = Object.keys(properties);
   const fieldMembers: string[] = [];
   const fieldReferences: string[] = [];
@@ -144,6 +160,7 @@ function renderInputMembers(contract: DeviceActionContract): string[] {
 }
 
 interface ObjectArrayItemEmission {
+  /** 插入 provider enum 的 Swift 静态成员源码行。 */
   readonly members: string[];
 }
 
@@ -200,11 +217,12 @@ function isObjectArrayItemSchema(schema: JsonSchema, item: JsonSchema | undefine
   return isArray && item?.type === "object" && item.properties !== undefined;
 }
 
+/** 在一次 action validation 中分配不重复的 Swift 临时变量名。 */
 interface ValidationRenderContext {
   nextVariable: number;
 }
 
-/** Compile a canonical object schema into direct Swift validation calls. */
+/** 把 canonical object schema 编译为直接的 Swift `CommandWireValidation` 调用。 */
 function renderObjectValidation(
   schema: JsonSchema,
   objectExpression: string,
@@ -215,6 +233,7 @@ function renderObjectValidation(
   return renderObjectProperties(schema, objectExpression, path, indent, context);
 }
 
+/** 按合同声明顺序递归渲染 object properties 的校验代码。 */
 function renderObjectProperties(
   schema: JsonSchema,
   objectExpression: string,
@@ -236,6 +255,11 @@ function renderObjectProperties(
   ));
 }
 
+/**
+ * 渲染单个值及其嵌套 object/array 的校验。
+ * context 分配的变量名让多层容器生成合法 Swift，同时 optionalExpression 决定 pattern
+ * matching 是否需要 `?`，不会把缺失可选字段误判成类型错误。
+ */
 function renderValueValidation(
   schema: JsonSchema,
   rawExpression: string,
@@ -303,6 +327,10 @@ function schemaTypes(schema: JsonSchema): string[] {
   return types;
 }
 
+/**
+ * 拒绝 Swift wire validator 尚不能等价表达的 schema。
+ * 与其生成看似可用但实际放宽校验的代码，构建应在具体字段路径上直接失败。
+ */
 function assertRuntimeSchemaSupported(schema: JsonSchema, path: string): void {
   if (schema.oneOf !== undefined || schema.allOf !== undefined || schema.not !== undefined) {
     throw new Error(`device action runtime schema uses an unsupported composite at ${path}`);
@@ -313,10 +341,17 @@ function assertRuntimeSchemaSupported(schema: JsonSchema, path: string): void {
 }
 
 interface SwiftFieldEmission {
+  /** 可插入 Swift 静态成员右侧的表达式。 */
   readonly expression: string;
+  /** true 表示结果需通过 `.erased` 放入异构字段集合。 */
   readonly typed: boolean;
 }
 
+/**
+ * 为 schema 选择语义完全匹配的 typed `CommandFields` helper。
+ * 下方 shape predicate 不做近似匹配：只有 required/default/nullable/bounds/enum 和 keyword
+ * 集合都能由 helper 完整表达时才返回 typed，否则使用 AnyCommandField 并依赖 wire 校验。
+ */
 function emitField(name: string, schema: JsonSchema, required: boolean): SwiftFieldEmission {
   if (isBooleanWithDefault(schema, required)) {
     return {
@@ -418,6 +453,7 @@ function emitField(name: string, schema: JsonSchema, required: boolean): SwiftFi
   };
 }
 
+// 以下 predicate 共同定义 typed field helper 能无损覆盖的 schema 形状。
 function isBooleanWithDefault(schema: JsonSchema, required: boolean): boolean {
   return !required && schema.type === "boolean" && typeof schema.default === "boolean" && hasOnlyKeys(schema, ["type", "description", "default"]);
 }
@@ -532,6 +568,7 @@ function numericFieldKeys(hasDefault: boolean): string[] {
   ];
 }
 
+/** 按 inclusive/exclusive bounds 生成 Swift helper 参数，并显式保留排他性标志。 */
 function finiteNumberArguments(name: string, schema: JsonSchema, hasDefault: boolean): string {
   const argumentsList = [swiftString(name)];
   if (hasDefault) argumentsList.push(`default: ${schema.default}`);
@@ -563,6 +600,7 @@ function hasOnlyKeys(schema: JsonSchema, keys: readonly string[]): boolean {
   return Object.keys(schema).every(key => allowed.has(key));
 }
 
+/** 把合同 JSON 值递归转义为 Swift `JSONValue` 构造表达式。 */
 function swiftJSON(value: ContractJSONValue): string {
   if (value === null) return ".null";
   if (typeof value === "string") return `.string(${swiftString(value)})`;
@@ -578,6 +616,10 @@ function swiftJSONValue(value: ContractJSONValue): string {
   return swiftJSON(value);
 }
 
+/**
+ * 生成 Swift 字符串字面量。
+ * 显式处理控制字符而非依赖 JSON.stringify，因为 Swift 与 JSON 的转义语法并不完全相同。
+ */
 function swiftString(value: string): string {
   let escaped = "";
   for (const character of value) {
@@ -598,6 +640,7 @@ function swiftString(value: string): string {
   return `"${escaped}"`;
 }
 
+/** 把点号/连字符 action 转为稳定 lowerCamelCase Swift 成员名。 */
 function actionIdentifier(action: string): string {
   const parts = action.split(/[^A-Za-z0-9]+/).filter(Boolean);
   if (parts.length === 0) return "action";

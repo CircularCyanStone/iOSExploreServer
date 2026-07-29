@@ -1,3 +1,10 @@
+/**
+ * `wait_and_inspect` 的固定阶段实现。
+ *
+ * 输入字段白名单来自 generated host contract，避免 schema 增减后这里继续维护一份手写
+ * 参数表。等待未命中仍执行 inspect，让调用方看到 timeout 当下的真实 UI；其他错误则
+ * 立即结束，避免在连接或协议已经失败时追加无意义请求。
+ */
 import { HOST_OPERATION_SPECS } from "../generated/hostOperationSpecs.js";
 import type { InvocationResult } from "../runtime/types.js";
 import type { JSONObject, JSONValue } from "../types.js";
@@ -6,6 +13,7 @@ import { stepValue, workflowFailure, workflowSuccess } from "./resultAggregation
 import type { WorkflowExecutionContext, WorkflowResult } from "./types.js";
 
 interface ContractProperty {
+  /** 这里只需要递归读取嵌套 `inspectOptions` 的属性名。 */
   readonly properties?: Readonly<Record<string, ContractProperty>>;
 }
 
@@ -44,6 +52,7 @@ export async function runWaitAndInspect(
   const waitMs = context.now() - waitStartedAt;
   const results: InvocationResult[] = [waitResult];
 
+  // wait_timeout 是观察窗口结束，不是连接终止；除此之外的失败都短路 workflow。
   if (!waitResult.ok && !shouldContinueAfterWaitFailure(waitResult.error)) {
     return workflowFailure(waitResult.error, "wait", {
       wait: stepValue(waitResult),
@@ -73,6 +82,7 @@ function waitTiming(waitMs: number, inspectMs: number, totalMs: number): JSONObj
   return { waitMs, inspectMs, totalMs };
 }
 
+/** 只把合同属于当前子 action 的字段向下传递，workflow 控制字段不会泄漏到 App parser。 */
 function project(input: JSONObject, allowedKeys: readonly string[]): JSONObject {
   return Object.fromEntries(
     allowedKeys.flatMap(key => input[key] === undefined ? [] : [[key, input[key] as JSONValue]])

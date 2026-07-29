@@ -1,3 +1,9 @@
+/**
+ * CLI 结果的终端投影。
+ *
+ * 成功业务结果只写 stdout，失败对象只写 stderr，结构化 Host 日志也使用 stderr。
+ * 因此脚本可以安全地把 stdout 交给 JSON parser；MCP 模式完全绕过本模块的进程输出。
+ */
 import { writeFile } from "node:fs/promises";
 import type { InvocationResult } from "../../runtime/types.js";
 import type { DriverError } from "../../runtime/driverErrors.js";
@@ -42,6 +48,7 @@ export async function printInvocationSuccess(
   write: ArtifactWriter = writeArtifact
 ): Promise<void> {
   const image = result.artifacts.find(artifact => artifact.kind === "image");
+  // 不提供 --output 时绝不隐式落盘；MCP adapter 会用自己的 image content 投影附件。
   if (artifactOutput !== undefined && image !== undefined) {
     await write(artifactOutput, image.data);
   }
@@ -59,7 +66,12 @@ export async function printInvocationSuccess(
   printJSON(output, metadata);
 }
 
-/** 将失败结果写到 stderr，并返回可机器读取的稳定错误对象。 */
+/**
+ * 将失败结果写到 stderr，并保留可机器读取的稳定字段。
+ *
+ * 这里不直接打印 `DriverError`，是为了省略不存在的可选键，并优先使用 runtime 已清理
+ * 的 data，防止失败 envelope 中的非法或超限 artifact 原文绕过 decoder。
+ */
 export function printInvocationFailure(output: CLIOutput, result: Extract<InvocationResult, { readonly ok: false }>): void {
   const error = result.error;
   printJSON({ ...output, stdout: output.stderr }, {

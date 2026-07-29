@@ -1,3 +1,9 @@
+/**
+ * MCP `tools/list` 的离线目录。
+ *
+ * 工具名来自显式兼容映射，description/inputSchema 来自 generated contracts。构造过程不
+ * 调用 App help，保证客户端即使在设备离线时也能发现完整、稳定的工具集合。
+ */
 import { DEVICE_ACTION_CONTRACTS } from "../../generated/deviceActionContracts.js";
 import { HOST_OPERATION_SPECS } from "../../generated/hostOperationSpecs.js";
 import type { JSONObject } from "../../types.js";
@@ -5,11 +11,11 @@ import { TOOL_MAPPINGS, type ToolMapping } from "./toolMappings.js";
 
 /** tools/list 暴露的 SDK 无关工具定义。 */
 export interface CatalogTool {
-  /** 稳定历史工具名。 */
+  /** 来自显式兼容映射，不随 App help 或 action 注册状态变化。 */
   readonly name: string;
-  /** 来自 generated contract 的用途说明。 */
+  /** 直接读取 generated contract，避免 adapter 维护第二份说明。 */
   readonly description: string;
-  /** 来自 generated contract 的输入 schema。 */
+  /** 直接读取 generated contract，供 SDK 原样发布到 tools/list。 */
   readonly inputSchema: JSONObject;
 }
 
@@ -34,6 +40,7 @@ const HOST_SPECS: ReadonlyMap<string, typeof HOST_OPERATION_SPECS[number]> = new
 export function createToolCatalog(): readonly ToolCatalogEntry[] {
   const names = new Set<string>();
   return Object.freeze(TOOL_MAPPINGS.map(mapping => {
+    // 重名和缺合同属于构建时编程错误，必须在 MCP server 启动时暴露，不能静默少工具。
     if (names.has(mapping.toolName)) throw new Error(`Duplicate MCP tool mapping: ${mapping.toolName}`);
     names.add(mapping.toolName);
 

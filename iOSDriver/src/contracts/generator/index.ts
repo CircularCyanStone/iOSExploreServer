@@ -1,3 +1,9 @@
+/**
+ * 合同生成器的公共导出面与命令行入口。
+ *
+ * `generate` 写入所有产物；`check` 只在内存中重新渲染并逐字节比较，用于 CI 检测漂移。
+ * 两种模式都先加载和完整校验 bundle，不允许基于无效事实源产生部分文件。
+ */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -44,13 +50,18 @@ export type {
   ResultSpec
 } from "./model.js";
 
-/** Render every checked-in contract artifact without touching the file system. */
+/** 一次预处理后渲染全部 TS/Swift/Markdown 产物，不访问目标文件系统。 */
 export function renderContractArtifacts(bundle: DriverContractBundle): GeneratedArtifact[] {
   const prepared = prepareContractBundle(bundle);
   return [...emitTypeScript(prepared), ...emitSwift(prepared), emitDocs(prepared)];
 }
 
-/** Generate or check all contract artifacts in a repository. */
+/**
+ * 生成或检查仓库全部合同产物。
+ *
+ * generate 为每个目标创建父目录并覆写完整内容；check 不写文件，收集全部漂移路径后
+ * 一次报错，避免开发者修复一个文件后才看到下一个。
+ */
 export function runContractGenerator(command: "generate" | "check", repositoryRoot = discoverRepositoryRoot()): void {
   const artifacts = renderContractArtifacts(loadAndValidateContractBundle(repositoryRoot));
   if (command === "generate") {
@@ -72,10 +83,12 @@ export function runContractGenerator(command: "generate" | "check", repositoryRo
   }
 }
 
+/** 从 generator 源码/构建产物的固定层级定位仓库根，不依赖执行 cwd。 */
 function discoverRepositoryRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 }
 
+/** 被测试或作为库 import 时不读取 argv、不设置进程退出码。 */
 function isMainModule(): boolean {
   const entry = process.argv[1];
   return entry !== undefined && import.meta.url === pathToFileURL(resolve(entry)).href;

@@ -17,7 +17,7 @@
     "clean": "node scripts/clean-dist.mjs",
     "contracts:generate": "tsx src/contracts/generator/index.ts generate",
     "contracts:check": "tsx src/contracts/generator/index.ts check",
-    "build": "npm run clean && npm run contracts:check && tsc -p tsconfig.json",
+    "build": "npm run clean && npm run contracts:check && tsc -p tsconfig.json && node scripts/make-cli-executable.mjs",
     "dev": "tsx src/adapters/cli/main.ts mcp",
     "test": "npm run build && vitest run",
     "test:watch": "vitest",

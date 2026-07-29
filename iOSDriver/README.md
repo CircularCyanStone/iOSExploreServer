@@ -42,6 +42,9 @@ iosdriver mcp
 
 ## CLI
 
+完整的参数、执行过程、输出结构、文件副作用和退出码说明见
+[CLI 命令参考](docs/cli-reference.md)。
+
 | 命令 | 职责 |
 | --- | --- |
 | `iosdriver init` | 初始化或更新本机配置文件，保留未知字段和已有值。 |

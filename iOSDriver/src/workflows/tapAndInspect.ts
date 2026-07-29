@@ -1,3 +1,9 @@
+/**
+ * `tap_and_inspect` 的固定阶段实现。
+ *
+ * 成功 tap 后可选等待 UI idle，再获取最新 inspect 快照。阶段参数和默认值来自 generated
+ * host contract；workflow 只做字段投影和编排，不复制 device action 的 UIKit 校验规则。
+ */
 import { HOST_OPERATION_SPECS } from "../generated/hostOperationSpecs.js";
 import type { InvocationResult } from "../runtime/types.js";
 import type { JSONObject, JSONValue } from "../types.js";
@@ -6,6 +12,7 @@ import { stepValue, workflowFailure, workflowSuccess } from "./resultAggregation
 import type { WorkflowExecutionContext, WorkflowResult } from "./types.js";
 
 interface ContractProperty {
+  /** workflow 控制字段的 canonical 默认值。 */
   readonly default?: unknown;
 }
 
@@ -49,6 +56,7 @@ export async function runTapAndInspect(
   const tapMs = context.now() - tapStartedAt;
   results.push(tapResult);
 
+  // tap 是产生后续 UI 状态的前置条件，失败时绝不继续 wait/inspect。
   if (!tapResult.ok) {
     const totalMs = context.now() - workflowStartedAt;
     return workflowFailure(tapResult.error, "tap", {
@@ -71,6 +79,7 @@ export async function runTapAndInspect(
     });
     waitMs = context.now() - waitStartedAt;
     results.push(waitResult);
+    // idle 等待超时仍有可观察界面；连接、协议等失败则必须在 wait 阶段结束。
     if (!waitResult.ok && !shouldContinueAfterWaitFailure(waitResult.error)) {
       const totalMs = context.now() - workflowStartedAt;
       return workflowFailure(waitResult.error, "wait", {
@@ -102,6 +111,10 @@ export async function runTapAndInspect(
   return workflowSuccess(data, results, totalMs);
 }
 
+/**
+ * 从已校验输入读取值，省略时回到 generated schema 默认值。
+ * 缺少默认值属于构建产物/实现不一致，作为编程错误抛出而非伪造运行时默认值。
+ */
 function valueOrDefault<T extends boolean | number>(input: JSONObject, key: string): T {
   const value = input[key];
   if (typeof value === "boolean" || typeof value === "number") return value as T;
@@ -126,6 +139,7 @@ function tapTiming(
   };
 }
 
+/** 从 host 输入中移除 wait/inspect 控制字段，只留下 `ui.tap` 合同字段。 */
 function project(input: JSONObject, allowedKeys: readonly string[]): JSONObject {
   return Object.fromEntries(
     allowedKeys.flatMap(key => input[key] === undefined ? [] : [[key, input[key] as JSONValue]])

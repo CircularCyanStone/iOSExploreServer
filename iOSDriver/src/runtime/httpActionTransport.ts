@@ -1,3 +1,10 @@
+/**
+ * 固定 `POST /` action 协议的 HTTP 实现。
+ *
+ * 本层只保证请求可达、响应体不超过上限且 JSON 顶层为对象；`code/data/message` 由
+ * `DriverRuntime` 解释。所有可预期网络/HTTP/协议失败都转为 `DriverFailure`，并携带
+ * `responseReceived` 供 runtime 判断是否可能安全重试。
+ */
 import type { JSONObject } from "../types.js";
 import type { ActionTransport, ActionTransportResponse } from "./actionTransport.js";
 import { DriverFailure, type DriverError, type TransportPhase } from "./driverErrors.js";
@@ -7,6 +14,7 @@ export type FetchLike = (input: string | URL | Request, init?: RequestInit) => P
 
 /** HTTP transport 构造选项。 */
 export interface HttpActionTransportOptions {
+  /** 注入 fetch 后测试无需绑定端口，也能覆盖 abort 和非法响应。 */
   readonly fetchImpl?: FetchLike;
   /** 预留的请求 token；当前 App 产品开关关闭，会忽略对应 header。 */
   readonly authToken?: string;
@@ -18,8 +26,11 @@ const DEFAULT_MAX_RESPONSE_BODY_BYTES = 8 * 1024 * 1024;
 
 /** 使用 `POST /` JSON 协议访问 App 的唯一 HTTP transport 实现。 */
 export class HttpActionTransport implements ActionTransport {
+  /** 保存已绑定的 fetch，避免调用时丢失 globalThis 上下文。 */
   private readonly fetchImpl: FetchLike;
+  /** 构造时去除空白；为空则不发送 header。 */
   private readonly authToken: string | undefined;
+  /** 同时约束 Content-Length 快速路径和流式累计字节数。 */
   private readonly maxResponseBodyBytes: number;
 
   /**
@@ -53,6 +64,7 @@ export class HttpActionTransport implements ActionTransport {
     request: { action: string; data: JSONObject },
     options: { timeoutMs: number; signal?: AbortSignal }
   ): Promise<ActionTransportResponse> {
+    // 内部 controller 合并外部取消与本次请求 timer，同时用两个标志保留真实取消原因。
     const controller = new AbortController();
     let timedOut = false;
     let externallyAborted = false;
@@ -79,6 +91,7 @@ export class HttpActionTransport implements ActionTransport {
         signal: controller.signal
       });
       responseReceived = true;
+      // 在 JSON.parse 前限制原始 UTF-8 body，避免恶意或异常 App 响应造成无界内存占用。
       const text = await readResponseText(response, this.maxResponseBodyBytes, request.action);
 
       if (!response.ok) {
@@ -117,6 +130,8 @@ export class HttpActionTransport implements ActionTransport {
       return { httpStatus: response.status, envelope: parsed };
     } catch (error) {
       if (error instanceof DriverFailure) throw error;
+      // fetch 在不同 Node/undici 版本下错误类型不同，因此同时结合 abort 标志、错误码
+      // 和是否已收到 response 来归一化阶段。
       const phase: TransportPhase = timedOut
         ? "timeout"
         : externallyAborted
@@ -143,6 +158,7 @@ export class HttpActionTransport implements ActionTransport {
           };
       throw new DriverFailure(driverError, responseReceived);
     } finally {
+      // 无论成功、分类失败还是未知异常，都解除 timer/listener，避免长生命周期 MCP 泄漏。
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", onExternalAbort);
     }
@@ -154,6 +170,12 @@ function normalizedAuthToken(value: string | undefined): string | undefined {
   return token === undefined || token.length === 0 ? undefined : token;
 }
 
+/**
+ * 在固定字节预算内读取响应。
+ *
+ * 可信 Content-Length 可提前拒绝；缺失或伪造长度时仍逐 chunk 累计。流被拒绝后主动
+ * cancel，并让原始的 `response_too_large` 保持为最终错误。
+ */
 async function readResponseText(response: Response, maxBytes: number, action: string): Promise<string> {
   const declaredBytes = contentLength(response.headers.get("content-length"));
   if (declaredBytes !== undefined && declaredBytes > maxBytes) {
@@ -205,21 +227,22 @@ function responseTooLarge(action: string, maxBytes: number): DriverFailure {
 
 async function cancelQuietly(body: ReadableStream<Uint8Array> | null): Promise<void> {
   if (body === null) return;
-  try { await body.cancel(); } catch { /* The classified size error remains authoritative. */ }
+  try { await body.cancel(); } catch { /* 保留已分类的响应体超限错误。 */ }
 }
 
 async function cancelReaderQuietly(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
-  try { await reader.cancel(); } catch { /* The classified size error remains authoritative. */ }
+  try { await reader.cancel(); } catch { /* 保留已分类的响应体超限错误。 */ }
 }
 
 function releaseReaderQuietly(reader: ReadableStreamDefaultReader<Uint8Array>): void {
-  try { reader.releaseLock(); } catch { /* Cleanup must not replace the classified read failure. */ }
+  try { reader.releaseLock(); } catch { /* 清理失败不能覆盖正文读取失败。 */ }
 }
 
 function isJSONObject(value: unknown): value is JSONObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** 将 Node、undici 和浏览器风格 fetch 错误压缩为 runtime 需要的有限阶段集合。 */
 function networkPhase(error: unknown, responseReceived: boolean): TransportPhase {
   const code = errorCode(error);
   if (code === "ECONNRESET" || code === "EPIPE" || code === "UND_ERR_SOCKET") return "reset";
@@ -244,6 +267,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** 限制 HTTP/JSON 诊断正文，避免意外把大型 App 页面或 payload 写入错误输出。 */
 function bodySnippet(body: string): string {
   return body.length > 500 ? `${body.slice(0, 500)}...` : body;
 }

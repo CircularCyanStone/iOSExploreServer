@@ -1,3 +1,9 @@
+/**
+ * MCP 历史工具名与 canonical 合同标识之间的唯一手写映射。
+ *
+ * 映射必须显式维护，因为 MCP 工具名属于客户端兼容表面，不能随 App action 名或 help
+ * 返回动态变化；字段 schema、说明和错误列表仍由合同生成，避免在 adapter 重复定义。
+ */
 /** MCP 工具映射到的宿主操作名称。 */
 export type MappedHostOperation =
   | "health"
@@ -8,8 +14,20 @@ export type MappedHostOperation =
 
 /** 历史 MCP 工具名到 generated contract 标识的显式映射。 */
 export type ToolMapping =
-  | Readonly<{ toolName: string; kind: "deviceAction"; action: string }>
-  | Readonly<{ toolName: string; kind: "hostOperation"; operation: MappedHostOperation }>;
+  | Readonly<{
+      /** 对 MCP 客户端保持稳定的外部名称。 */
+      toolName: string;
+      kind: "deviceAction";
+      /** 直接交给 App `POST /` 的 canonical action。 */
+      action: string;
+    }>
+  | Readonly<{
+      /** 对 MCP 客户端保持稳定的外部名称。 */
+      toolName: string;
+      kind: "hostOperation";
+      /** 在 Mac 侧执行的能力检查、动态调用或复合 workflow。 */
+      operation: MappedHostOperation;
+    }>;
 
 /**
  * 冻结的 28 个历史 MCP 工具映射。
@@ -48,6 +66,7 @@ const MAPPINGS: readonly ToolMapping[] = [
 ];
 
 export const TOOL_MAPPINGS: readonly ToolMapping[] = Object.freeze(
+  // 同时冻结数组和元素，防止长生命周期 MCP 进程中被意外改写。
   MAPPINGS.map(mapping => Object.freeze(mapping))
 );
 

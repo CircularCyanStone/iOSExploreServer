@@ -1,3 +1,10 @@
+/**
+ * iOSDriver 的协议解释层。
+ *
+ * transport 只负责 HTTP 和 JSON 对象，本模块再解释统一 envelope、选择超时与重试策略、
+ * 解码 artifact，并把所有预期失败转换为 `InvocationResult`。adapter 因此不需要理解网络
+ * 异常或 App envelope 的细节。
+ */
 import { DEVICE_ACTION_CONTRACTS, type DeviceActionContract } from "../generated/deviceActionContracts.js";
 import type { JSONObject } from "../types.js";
 import type { ActionTransport } from "./actionTransport.js";
@@ -12,8 +19,11 @@ const ACTION_METADATA: ReadonlyMap<string, DeviceActionContract> = new Map(
 
 /** DriverRuntime 的构造参数。 */
 export interface DriverRuntimeOptions {
+  /** 唯一网络边界，可替换为测试 transport。 */
   readonly transport: ActionTransport;
+  /** standard/screenshot action 的 transport 超时基线。 */
   readonly configuredRequestTimeoutMs: number;
+  /** 负责从 envelope data 剥离并验证二进制字段。 */
   readonly artifactDecoder?: ArtifactDecoder;
   /** Host 命令链 logger；CLI/MCP 入口注入共享 stderr logger。 */
   readonly logger?: HostLogger;
@@ -21,6 +31,7 @@ export interface DriverRuntimeOptions {
 
 /** 单次 invoke 的调用参数。 */
 export interface InvocationOptions {
+  /** 外部取消只终止当前调用，不改变 runtime 实例状态。 */
   readonly signal?: AbortSignal;
   /** 仅供已严格验证的 help metadata 覆盖未知 action 的保守默认策略。 */
   readonly policy?: InvocationPolicy;
@@ -36,9 +47,13 @@ export interface InvocationPolicy {
 
 /** 把 transport 返回值归一化为稳定 InvocationResult 的 Host runtime。 */
 export class DriverRuntime {
+  /** 不解释业务字段的可注入传输实现。 */
   private readonly transport: ActionTransport;
+  /** 配置解析完成后固定，避免同一调用的多次尝试使用不同超时。 */
   private readonly configuredRequestTimeoutMs: number;
+  /** 所有成功/失败 envelope 都经过同一附件大小和格式检查。 */
   private readonly artifactDecoder: ArtifactDecoder;
+  /** 默认无输出；生产入口显式注入 stderr logger。 */
   private readonly logger: HostLogger;
 
   /**
@@ -73,6 +88,7 @@ export class DriverRuntime {
       timeoutClass: policy?.timeoutClass ?? "unknown"
     });
 
+    // 循环最多执行两次；是否进入第二次由 shouldRetry 的幂等性和传输阶段共同决定。
     while (true) {
       attempts += 1;
       try {
@@ -80,6 +96,7 @@ export class DriverRuntime {
           timeoutMs,
           ...(options.signal === undefined ? {} : { signal: options.signal })
         });
+        // 自定义 transport 可能直接返回非 2xx；HTTP 实现通常会先抛 DriverFailure。
         if (response.httpStatus < 200 || response.httpStatus >= 300) {
           return this.finish(action, this.failure({
             source: "http",
@@ -115,6 +132,12 @@ export class DriverRuntime {
     }
   }
 
+  /**
+   * 将 App wire envelope 投影为 runtime 结果。
+   *
+   * `code`、`message`、`data` 的结构错误统一归为 protocol；业务失败仍可携带清理后的
+   * data/artifact，使 workflow 和 adapter 在报告终态错误时保留已经获得的上下文。
+   */
   private fromEnvelope(
     action: string,
     envelope: JSONObject,
@@ -164,6 +187,13 @@ export class DriverRuntime {
     }, startedAt, attempts, failureData, artifacts);
   }
 
+  /**
+   * 判断一次失败是否能自动重放。
+   *
+   * 只有尚未收到任何 HTTP response 的 connect/reset，且合同声明 action 为只读或幂等时
+   * 才允许第二次请求。sideEffecting、未知策略、timeout、abort 和所有 response 后失败
+   * 都不会重试，避免重复触发 UI 操作。
+   */
   private shouldRetry(policy: InvocationPolicy | undefined, failure: DriverFailure, attempts: number): boolean {
     if (attempts >= 2 || failure.responseReceived) return false;
     const idempotency = policy?.idempotency;
@@ -174,6 +204,7 @@ export class DriverRuntime {
       && (failure.driverError.transportPhase === "connect" || failure.driverError.transportPhase === "reset");
   }
 
+  /** 统一补齐失败耗时与尝试次数，并按实际存在情况保留 data/artifact。 */
   private failure(
     error: DriverError,
     startedAt: number,
@@ -191,6 +222,7 @@ export class DriverRuntime {
     };
   }
 
+  /** 在返回 adapter 前记录不含 payload 的终态摘要。 */
   private finish(action: string, result: InvocationResult): InvocationResult {
     if (result.ok) {
       this.logger.emit("info", "runtime.invoke.success", {
@@ -212,12 +244,14 @@ export class DriverRuntime {
   }
 }
 
+/** wait action 的业务 timeout 之外预留 5 秒，让 App 有时间编码并传回终态 envelope。 */
 function requestTimeout(policy: InvocationPolicy | undefined, data: JSONObject, configuredRequestTimeoutMs: number): number {
   if (policy?.timeoutClass !== "wait") return configuredRequestTimeoutMs;
   const businessTimeoutMs = typeof data.timeoutMs === "number" ? data.timeoutMs : 0;
   return Math.max(configuredRequestTimeoutMs, businessTimeoutMs + 5000);
 }
 
+/** canonical 合同永远优先；per-call 策略只服务于通过 help 校验的扩展 action。 */
 function invocationPolicy(action: string, perCallPolicy: InvocationPolicy | undefined): InvocationPolicy | undefined {
   const generated = ACTION_METADATA.get(action);
   if (generated !== undefined) {

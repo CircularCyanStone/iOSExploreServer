@@ -1,9 +1,17 @@
+/**
+ * host operation 输入的轻量合同校验器。
+ *
+ * 这里只校验在 Mac 上执行的 `call_action` 与 workflow 包装参数。device action 的业务
+ * data 仍由 App 端 Foundation-only `CommandInput` 解析，避免 TypeScript 和 Swift 对同一
+ * action 维护两套默认值与约束逻辑。
+ */
 import { HOST_OPERATION_SPECS, type HostOperationSpec } from "../generated/hostOperationSpecs.js";
 import type { JSONObject } from "../types.js";
 
 type HostOperation = HostOperationSpec["operation"];
 type SchemaType = "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
 
+/** generated host schema 在运行时实际消费的受控 JSON Schema 子集。 */
 interface RuntimeSchema {
   readonly type?: SchemaType | readonly SchemaType[];
   readonly properties?: Readonly<Record<string, RuntimeSchema>>;
@@ -25,7 +33,9 @@ interface RuntimeSchema {
 }
 
 interface ValidationIssue {
+  /** 只包含合同字段位置，不包含用户实际值。 */
   readonly path: string;
+  /** 稳定、无 payload 的失败原因。 */
   readonly reason: string;
 }
 
@@ -35,7 +45,9 @@ const HOST_INPUT_SCHEMAS = new Map<string, RuntimeSchema>(
 
 /** Host operation 输入不符合 generated contract。 */
 export class HostOperationInputValidationError extends Error {
+  /** 失败所属 host operation，便于 adapter 记录安全上下文。 */
   readonly operation: HostOperation;
+  /** 第一个失败字段的 JSON 风格路径。 */
   readonly path: string;
 
   constructor(operation: HostOperation, issue: ValidationIssue) {
@@ -66,6 +78,7 @@ export function validateHostOperationInput(operation: HostOperation, input: unkn
 }
 
 function firstIssue(schema: RuntimeSchema, value: unknown, path: string): ValidationIssue | undefined {
+  // 按 type -> enum/range -> container -> composite 顺序返回首个问题，使错误位置确定且简短。
   if (schema.type !== undefined && !matchesType(value, schema.type)) {
     return { path, reason: `expected ${describeType(schema.type)}` };
   }
@@ -114,6 +127,7 @@ function firstIssue(schema: RuntimeSchema, value: unknown, path: string): Valida
       const issue = firstIssue(propertySchema, value[name], `${path}.${name}`);
       if (issue !== undefined) return issue;
     }
+    // 先检查已声明字段，再处理 additionalProperties，避免未知字段掩盖更具体的字段错误。
     for (const [name, propertyValue] of Object.entries(value)) {
       if (Object.hasOwn(properties, name)) continue;
       if (schema.additionalProperties === false) {
@@ -144,6 +158,7 @@ function firstIssue(schema: RuntimeSchema, value: unknown, path: string): Valida
   return undefined;
 }
 
+/** 执行标准 JSON Schema 无法直接表达的跨字段 exactly-one/mutual-exclusion 约束。 */
 function validateExtensionConstraints(
   schema: RuntimeSchema,
   value: JSONObject,
@@ -196,10 +211,12 @@ function stringArray(value: unknown): readonly string[] | undefined {
     : undefined;
 }
 
+/** 使用结构化 JSON 相等而非对象引用相等实现 `uniqueItems`。 */
 function hasDuplicate(values: readonly unknown[]): boolean {
   return values.some((value, index) => values.slice(0, index).some(previous => jsonEqual(previous, value)));
 }
 
+/** 与对象键顺序无关的递归 JSON 相等比较。 */
 function jsonEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
   if (Array.isArray(left) && Array.isArray(right)) {
