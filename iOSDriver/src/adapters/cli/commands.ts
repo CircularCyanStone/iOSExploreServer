@@ -1,9 +1,9 @@
 /**
  * CLI 命令的行为层。
  *
- * argv 解析和进程退出由 `main.ts` 负责；这里接收已经解析的值，调用 runtime/probe，
- * 并维持 stdout、stderr 与退出码的稳定合同。这样同一命令可以在不启动真实进程的
- * 情况下测试，且不会把业务 JSON 与诊断日志混在同一个输出通道。
+ * `arguments.ts` 负责 argv 解析，`application.ts` 负责依赖组装；这里接收已经解析的
+ * 值，调用 runtime/probe，并维持 stdout、stderr 与退出码的稳定合同。这样同一命令
+ * 可以在不启动真实进程的情况下测试，且不会把业务 JSON 与诊断日志混在同一通道。
  */
 import { readFile } from "node:fs/promises";
 import { DEVICE_ACTION_CONTRACTS } from "../../generated/deviceActionContracts.js";
