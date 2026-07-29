@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createMCPToolHandlers, type MCPCapabilityProbe } from "../../../src/adapters/mcp/server.js";
+import { MCP_SERVER_INFO, createMCPToolHandlers, type MCPCapabilityProbe } from "../../../src/adapters/mcp/server.js";
 import { STATIC_TOOL_NAMES } from "../../../src/adapters/mcp/toolMappings.js";
 import type { CapabilityReport } from "../../../src/runtime/capabilityProbe.js";
 import type { InvocationOptions, InvocationPolicy } from "../../../src/runtime/driverRuntime.js";
@@ -9,6 +9,10 @@ import type { WorkflowOperation } from "../../../src/workflows/types.js";
 import { hostLogRecorder } from "../../support/hostLogRecorder.js";
 
 describe("MCP adapter handlers", () => {
+  test("握手身份使用产品名和 package 版本", () => {
+    expect(MCP_SERVER_INFO).toEqual({ name: "iOSDriver", version: "1.0.0" });
+  });
+
   test("tools/list 离线返回固定 28 项且不调用 runtime/probe/workflow", async () => {
     const fixture = createFixture();
     const handlers = createMCPToolHandlers(fixture.options);

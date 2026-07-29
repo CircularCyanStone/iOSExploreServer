@@ -108,7 +108,7 @@ describe("CLI commands", () => {
     expect(state.getDoctorSignals()).toEqual([controller.signal]);
   });
 
-  test("init 只写配置并输出 iosdriver mcp 片段", async () => {
+  test("init 只写 App 连接配置，不承担 MCP 客户端注册", async () => {
     const state = fixture({ ok: true, data: {}, artifacts: [], elapsedMs: 0, attempts: 1 });
     const files: Record<string, string> = {};
     const fileSystem: ConfigFileSystem = {
@@ -125,9 +125,9 @@ describe("CLI commands", () => {
 
     expect(await executeCLICommand("init", state.context)).toBe(0);
     expect(JSON.parse(state.stdout.join(""))).toMatchObject({
-      configChanged: true,
-      mcp: { command: "iosdriver", args: ["mcp"] }
+      configChanged: true
     });
+    expect(JSON.parse(state.stdout.join(""))).not.toHaveProperty("mcp");
     expect(JSON.parse(state.stdout.join(""))).not.toHaveProperty("created");
     expect(JSON.parse(files[config.configPath]!)).toMatchObject({ baseURL: config.baseURL, requestTimeoutMs: config.requestTimeoutMs });
     expect(state.stderr).toEqual([]);

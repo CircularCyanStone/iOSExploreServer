@@ -1,6 +1,6 @@
 # iOSDriver 本地安装与更新（TRAE Work）
 
-本文用于把当前仓库里的 iOSDriver 注册到 TRAE Work。它面向本地开发和验证，不是 npm 发布说明。
+本文用于把当前仓库构建出的 iOSDriver 注册到 TRAE Work 的项目级 MCP 配置。
 
 ## 准备
 
@@ -8,106 +8,49 @@
 cd <repo>/iOSDriver
 npm install
 npm run build
-```
-
-本地源码构建后的 CLI 入口：
-
-```bash
-node <repo>/iOSDriver/dist/adapters/cli/main.js init
-node <repo>/iOSDriver/dist/adapters/cli/main.js doctor
-node <repo>/iOSDriver/dist/adapters/cli/main.js call ping
-```
-
-如果希望直接使用 `iosdriver` 命令，可以在当前仓库 link：
-
-```bash
-cd <repo>/iOSDriver
 npm link
+iosdriver init
 iosdriver doctor
-iosdriver call ping
 ```
 
-MCP 推荐入口是同一个 CLI 的 `mcp` 子命令：
+## 注册
+
+TRAE 使用项目根目录下的 `.trae/mcp.json`。先预览，再执行：
 
 ```bash
-iosdriver mcp
-node <repo>/iOSDriver/dist/adapters/cli/main.js mcp
+iosdriver mcp setup trae \
+  --project-dir <project-root> \
+  --dry-run
+
+iosdriver mcp setup trae \
+  --project-dir <project-root>
 ```
 
-配置优先级：CLI 参数 > 环境变量 > 配置文件 > 默认值。默认配置文件是 `~/.config/iosdriver/config.json`；可用 `IOSDRIVER_CONFIG` 或 `--config` 指定。
+setup 会保留 `.trae/mcp.json` 中其他 MCP server，只管理 `mcpServers.iOSDriver`。已有同名不同配置时使用：
 
-## 项目级配置
-
-如果已经 `npm link`，可以直接启动 `iosdriver mcp`：
-
-```json
-{
-  "mcpServers": {
-    "iOSDriver": {
-      "command": "iosdriver",
-      "args": ["mcp"],
-      "env": {
-        "IOS_EXPLORE_BASE_URL": "http://localhost:38321",
-        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "10000"
-      }
-    }
-  }
-}
+```bash
+iosdriver mcp setup trae --project-dir <project-root> --force
 ```
 
-如果 TRAE Work 支持项目级 `${workspaceFolder}` 且不想 link，使用：
+没有 link 时可直接运行构建产物：
 
-```json
-{
-  "mcpServers": {
-    "iOSDriver": {
-      "command": "bash",
-      "args": [
-        "-lc",
-        "cd \"${workspaceFolder}/iOSDriver\" && exec node dist/adapters/cli/main.js mcp"
-      ],
-      "env": {
-        "IOS_EXPLORE_BASE_URL": "http://localhost:38321",
-        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "10000"
-      }
-    }
-  }
-}
+```bash
+node <repo>/iOSDriver/dist/adapters/cli/main.js mcp setup trae \
+  --project-dir <project-root>
 ```
 
-如果当前窗口没有 `${workspaceFolder}`，改用绝对路径：
-
-```json
-{
-  "mcpServers": {
-    "iOSDriver": {
-      "command": "node",
-      "args": [
-        "<repo>/iOSDriver/dist/adapters/cli/main.js",
-        "mcp"
-      ],
-      "env": {
-        "IOS_EXPLORE_BASE_URL": "http://localhost:38321",
-        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "10000"
-      }
-    }
-  }
-}
-```
-
-只保留一个名为 `iOSDriver` 的配置；如果项目里还有其他 MCP 服务，在同一个 `mcpServers` 对象中并列添加。
+在 TRAE 设置中打开项目级 MCP 开关；项目文件只有在项目受信任时才应启用。
 
 ## 验证
 
+重启或重连 TRAE Work 后，在 MCP 面板确认 `iOSDriver` 已连接，并调用 `health_check`。
+
+App 连接检查：
+
 ```bash
 curl -s -X POST http://localhost:38321/ -d '{"action":"ping"}'
+iosdriver doctor
 ```
-
-真机需要先启动 `iproxy 38321 38321`，并确认 `lsof -iTCP:38321 -sTCP:LISTEN` 的 COMMAND 是 `iproxy`。
-
-重启 TRAE Work 后，在 MCP 面板确认 `iOSDriver` 已连接，并调用 `health_check`。
-
-如果 `health_check` 可达但 `ui.*` 工具返回 `unknown_action`，检查 App 是否调用了 `registerUIKitCommands()`。
 
 ## 更新
 
@@ -116,11 +59,4 @@ cd <repo>/iOSDriver
 npm run build
 ```
 
-编译后需要重启 TRAE Work 或重连 MCP。重新编译不会重启已有 stdio MCP 子进程。
-
-## 常见问题
-
-- `Cannot find module`：检查 `<repo>` 路径和 `dist/adapters/cli/main.js` 是否存在。
-- 工具仍是旧版本：重启 TRAE Work 或重连 MCP。
-- 连接失败：先 curl `ping`；真机检查 `iproxy`。
-- JSON 配置解析失败：检查逗号、引号和是否重复配置 `iOSDriver`。
+绝对路径没有变化时不需要重复 setup。重新构建后需要重启 TRAE Work 或重连 MCP Server。

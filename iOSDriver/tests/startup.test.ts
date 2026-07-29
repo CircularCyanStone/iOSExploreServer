@@ -20,6 +20,7 @@ describe("stdio startup", () => {
     const second = await client.listTools();
     expect(first).toEqual(second);
     expect(first.tools.map(tool => tool.name).sort()).toEqual([...STATIC_TOOL_NAMES].sort());
+    expect(client.getServerVersion()).toEqual({ name: "iOSDriver", version: "1.0.0" });
     expect(client.getServerCapabilities()?.tools?.listChanged).not.toBe(true);
     expect(connected.stderr()).toContain('"event":"mcp.server.start"');
     expect(connected.stderr()).toContain('"event":"mcp.server.connected"');
@@ -31,12 +32,6 @@ describe("stdio startup", () => {
     await client.callTool({ name: "health_check", arguments: {} });
     const after = await client.listTools();
     expect(after).toEqual(before);
-  });
-
-  test("兼容 bin 入口仍可启动 MCP server", async () => {
-    const { client } = await connectClient("http://127.0.0.1:1/", ["dist/index.js"]);
-    const tools = await client.listTools();
-    expect(tools.tools.map(tool => tool.name).sort()).toEqual([...STATIC_TOOL_NAMES].sort());
   });
 });
 

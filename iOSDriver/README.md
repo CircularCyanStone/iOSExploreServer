@@ -4,6 +4,7 @@ Mac 侧 iOSExplore host。它读取仓库根 `contracts/` 生成的合同，提�
 
 - CLI：`iosdriver init|doctor|call|mcp`
 - MCP：`iosdriver mcp`
+- MCP 客户端注册：`iosdriver mcp setup <codex|claude|trae>`
 
 CLI 与 MCP 共用同一套 host runtime、workflow 和错误归一化逻辑。MCP 工具列表是静态合同投影，不从 App `help` 动态生成；`help` 只用于运行时能力检查。
 
@@ -47,6 +48,7 @@ iosdriver mcp
 | `iosdriver doctor` | 检查 Node、配置、端点、`ping`、`help` 和合同兼容性。 |
 | `iosdriver call <action>` | 调用任意 App action，支持 `--data JSON`、`--data @file` 和截图 `--output <path>`。 |
 | `iosdriver mcp` | 启动 stdio MCP adapter。stdout 只输出 MCP 协议帧，日志写 stderr。 |
+| `iosdriver mcp setup <client>` | 把绝对启动命令注册到 Codex、Claude Code 或 TRAE；不连接 App。 |
 
 通用参数：
 
@@ -55,6 +57,14 @@ iosdriver mcp
 - `--config <path>`
 
 配置优先级：命令行参数 > 环境变量 > 配置文件 > 默认值。
+
+MCP setup 参数：
+
+- `--scope user|project`：Codex 仅支持 user，Claude Code 支持 user/project，TRAE 仅支持 project；
+- `--project-dir <path>`：project scope 的项目根，默认当前目录；
+- `--dry-run`：只输出新增或更新计划；
+- `--force`：替换已有的同名不同配置；
+- `--config <path>`：注册时显式交给 `iosdriver mcp` 的 App 配置文件。
 
 环境变量：
 
@@ -77,6 +87,24 @@ iosdriver mcp
 | `3` | transport、HTTP、protocol 或 artifact 失败 |
 
 ## MCP
+
+先初始化并检查 App 连接配置：
+
+```bash
+iosdriver init
+iosdriver doctor
+```
+
+再注册 MCP 客户端：
+
+```bash
+iosdriver mcp setup codex --dry-run
+iosdriver mcp setup codex
+iosdriver mcp setup claude --scope project --project-dir <project-root>
+iosdriver mcp setup trae --project-dir <project-root>
+```
+
+setup 使用当前 Node 和 CLI 入口的绝对路径，保留客户端中的其他 MCP server。相同配置重复执行返回 `unchanged`；同名配置不同则需要 `--force`。
 
 本地 MCP 客户端应启动：
 

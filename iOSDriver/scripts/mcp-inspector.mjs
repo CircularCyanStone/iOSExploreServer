@@ -3,13 +3,13 @@
 //   node scripts/mcp-inspector.mjs                       -> runs a fixed smoke sequence
 //   node scripts/mcp-inspector.mjs <tool> '<json>'       -> calls one tool with raw JSON args
 //   node scripts/mcp-inspector.mjs <tool> '<json>' <tool2> '<json2>' ...
-// Calls go through the Mac MCP server (dist/index.js) over stdio.
+// Calls go through the iosdriver CLI MCP entry over stdio.
 //
 // 完整使用说明（前置条件、工具名映射、排障、边界）见：
 //   docs/local-mcp-test.md
 import { spawn } from "node:child_process";
 
-const server = spawn("node", ["dist/index.js"], {
+const server = spawn("node", ["dist/adapters/cli/main.js", "mcp"], {
   cwd: process.cwd(),
   stdio: ["pipe", "pipe", "inherit"]
 });

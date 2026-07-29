@@ -36,6 +36,9 @@ public struct UITapInput: CommandInput, Sendable, Equatable {
     /// - Returns: 已解析的 tap 命令输入。
     /// - Throws: 字段类型、定位互斥关系或 viewSnapshotID 缺失时抛出 `CommandInputParseError`。
     public static func parse(decoding decoder: inout CommandInputDecoder) throws -> UITapInput {
+        
+        /// 校验参数的key，是否在定义的信息里面
+        /// 并从参数中读取viewSnapshotID的值。
         let viewSnapshotID = try decoder.read(UIKitActionContracts.uiTapViewSnapshotIDField)
         let target = try UIKitLocatorInput.parse(decoder: &decoder,
                                                   identifierField: UIKitActionContracts.uiTapAccessibilityIdentifierField,

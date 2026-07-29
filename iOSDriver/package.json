@@ -1,24 +1,24 @@
 {
   "name": "ios-explore-mcp-server",
   "version": "1.0.0",
-  "description": "MCP server for iOS app automation via iOSExploreServer",
+  "description": "CLI and MCP server for iOS app automation via iOSExploreServer",
   "private": false,
   "type": "module",
   "bin": {
-    "iosdriver": "./dist/adapters/cli/main.js",
-    "ios-explore-mcp-server": "./dist/index.js"
+    "iosdriver": "./dist/adapters/cli/main.js"
   },
-  "main": "./dist/index.js",
+  "exports": {},
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "install"
   ],
   "scripts": {
     "clean": "node scripts/clean-dist.mjs",
     "contracts:generate": "tsx src/contracts/generator/index.ts generate",
     "contracts:check": "tsx src/contracts/generator/index.ts check",
     "build": "npm run clean && npm run contracts:check && tsc -p tsconfig.json",
-    "dev": "tsx src/index.ts",
+    "dev": "tsx src/adapters/cli/main.ts mcp",
     "test": "npm run build && vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",

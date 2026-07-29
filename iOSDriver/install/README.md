@@ -4,8 +4,9 @@ iOSDriver 包含两个本地入口：
 
 | 入口 | 用途 | 命令 |
 | --- | --- | --- |
-| CLI | 给开发者和脚本直接调用 App action。 | `iosdriver init|doctor|call|mcp` |
+| CLI | 给开发者和脚本直接调用 App action。 | `iosdriver init|doctor|call` |
 | MCP | 给 Codex、Claude Code、TRAE Work 等 MCP 客户端暴露工具。 | `iosdriver mcp` |
+| MCP setup | 把 iOSDriver 注册到指定 MCP 客户端。 | `iosdriver mcp setup <client>` |
 
 本文说明通用安装方式；具体客户端配置见同目录的客户端文档。
 
@@ -39,12 +40,13 @@ node <repo>/iOSDriver/dist/adapters/cli/main.js mcp
 cd <repo>/iOSDriver
 npm link
 iosdriver doctor
+iosdriver mcp setup codex --dry-run
 ```
 
-不用全局 link 时，MCP 客户端建议直接配置绝对路径：
+不用全局 link 时，可以直接从构建产物运行 CLI：
 
 ```bash
-node <repo>/iOSDriver/dist/adapters/cli/main.js mcp
+node <repo>/iOSDriver/dist/adapters/cli/main.js doctor
 ```
 
 ## CLI 配置
@@ -88,6 +90,30 @@ node <repo>/iOSDriver/dist/adapters/cli/main.js doctor
 ```
 
 ## MCP 配置原则
+
+setup 会登记当前 Node、CLI 入口和 iOSDriver 配置文件的绝对路径：
+
+```bash
+iosdriver mcp setup codex
+iosdriver mcp setup claude --scope project --project-dir <repo>
+iosdriver mcp setup trae --project-dir <repo>
+```
+
+从源码构建但没有 link 时，也可以执行：
+
+```bash
+node <repo>/iOSDriver/dist/adapters/cli/main.js mcp setup codex
+```
+
+先使用 `--dry-run` 检查计划；同名配置不同时使用 `--force` 更新。project scope 以 `--project-dir` 为根，不能误指向 `<repo>/iOSDriver`。
+
+客户端支持范围：
+
+| client | 默认 scope | 可选 scope |
+| --- | --- | --- |
+| Codex | `user` | `user` |
+| Claude Code | `project` | `user`、`project` |
+| TRAE Work | `project` | `project` |
 
 MCP 客户端应启动 stdio 进程：
 

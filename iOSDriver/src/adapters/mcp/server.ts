@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -22,6 +23,11 @@ import { TOOL_CATALOG, type ToolCatalogEntry } from "./toolCatalog.js";
 
 const WORKFLOW_FIXED_MARGIN_MS = 5_000;
 const WORKFLOW_INSPECT_BUDGET_MS = 5_000;
+
+export const MCP_SERVER_INFO = Object.freeze({
+  name: "iOSDriver",
+  version: packageVersion()
+});
 
 /** MCP adapter 调用 DriverRuntime 所需的最小边界。 */
 export interface MCPRuntime {
@@ -141,7 +147,7 @@ export async function startMCPStdioServer(options: MCPAdapterOptions): Promise<v
   const logger = options.logger ?? defaultHostLogger;
   logger.emit("info", "mcp.server.start", { transport: "stdio" });
   const server = new Server(
-    { name: "ios-explore-mcp-server", version: "0.1.0" },
+    MCP_SERVER_INFO,
     { capabilities: { tools: {} } }
   );
   const handlers = createMCPToolHandlers(options);
@@ -162,6 +168,16 @@ export async function startMCPStdioServer(options: MCPAdapterOptions): Promise<v
     });
     throw error;
   }
+}
+
+function packageVersion(): string {
+  const manifest: unknown = createRequire(import.meta.url)("../../../package.json");
+  if (typeof manifest !== "object" || manifest === null || !("version" in manifest)) {
+    throw new Error("package.json 缺少 version");
+  }
+  const version = (manifest as { readonly version?: unknown }).version;
+  if (typeof version !== "string" || version.length === 0) throw new Error("package.json version 必须是非空字符串");
+  return version;
 }
 
 async function invokeEntry(

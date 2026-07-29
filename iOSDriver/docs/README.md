@@ -12,6 +12,7 @@
 
 ## 设计与决策
 
+- [mcp-cli-design-discussion.md](./mcp-cli-design-discussion.md)：CLI、MCP stdio 入口与客户端 setup 的最终设计。
 - [ui-tap-and-inspect-implementation.md](./ui-tap-and-inspect-implementation.md)：复合工具的输入输出和执行流程。
 
 一次性报告、旧迁移清单和本机路径不进入这里。可重复验证请使用 `npm test`、`npm run contracts:check` 和 `scripts/mcp-inspector.mjs`。

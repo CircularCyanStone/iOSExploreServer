@@ -103,7 +103,7 @@ export async function executeCLICommand(
   }
 }
 
-/** 初始化配置并打印可复制的 MCP 配置片段。 */
+/** 初始化 iOSDriver App 连接配置。 */
 async function runInit(context: CLICommandContext): Promise<number> {
   const result = await initCLIConfig({
     configPath: context.config.configPath,
@@ -112,8 +112,7 @@ async function runInit(context: CLICommandContext): Promise<number> {
   }, context.env ?? process.env, context.fileSystem);
   printJSON(context.output, {
     configPath: result.config.configPath,
-    configChanged: result.configChanged,
-    mcp: { command: "iosdriver", args: ["mcp"] }
+    configChanged: result.configChanged
   });
   return EXIT_CODES.success;
 }

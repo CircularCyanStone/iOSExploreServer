@@ -1,4 +1,3 @@
-import { bodySnippet } from "../errors.js";
 import type { JSONObject } from "../types.js";
 import type { ActionTransport, ActionTransportResponse } from "./actionTransport.js";
 import { DriverFailure, type DriverError, type TransportPhase } from "./driverErrors.js";
@@ -243,4 +242,8 @@ function errorCode(error: unknown): string | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function bodySnippet(body: string): string {
+  return body.length > 500 ? `${body.slice(0, 500)}...` : body;
 }
