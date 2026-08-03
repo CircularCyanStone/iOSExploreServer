@@ -1,8 +1,14 @@
 /**
- * iOSDriver CLI 的应用编排模块。
+ * iOSDriver CLI 的应用编排层：一次命令行调用从 argv 到退出码的「指挥中心」。
  *
- * `main.ts` 只处理 Node 进程入口；本模块在 argv parser、配置、runtime 与命令行为层之间
- * 编排一次 CLI 调用。它不直接终止进程，而是返回稳定退出码，便于入口和测试共同调用。
+ * `main.ts` 只负责进程入口；本模块负责编排：解析 argv → 分流（`mcp setup` 走
+ * host-only 路径，其余命令组装连接 App 的 runtime）→ 交给 `commands.ts` 执行 →
+ * 返回稳定退出码。它不直接终止进程，因此入口和测试可以共同调用同一套逻辑。
+ *
+ * 典型调用链（`call ping`）：
+ *   main(argv) → runCLI → parseCLIArguments → resolveCLIConfig
+ *     → new HttpActionTransport → new DriverRuntime → new CapabilityProbe
+ *     → executeCLICommand("call", context, {action}) → 退出码
  */
 import { homedir } from "node:os";
 import { resolve } from "node:path";
@@ -27,29 +33,40 @@ import { executeCLICommand, EXIT_CODES, type CLICommandContext } from "./command
 import { CLIConfigError, configPathFor, resolveCLIConfig } from "./config.js";
 import { processOutput, type CLIOutput } from "./output.js";
 
-/** `runCLI` 可注入的进程与 IO 依赖；生产入口只需要提供 `cliEntryPath`。 */
+/**
+ * `runCLI` 可注入的进程与 IO 依赖。
+ *
+ * 所有字段都有默认实现（见 `resolveApplicationDependencies`），生产入口只需提供
+ * 必填的 `cliEntryPath`；测试注入 fake 以替换真实 IO（不写 stdout、不读真实环境变量、
+ * 不修改客户端配置）。
+ */
 export interface CLIApplicationDependencies {
-  /** 当前可执行 CLI JS 文件，用于生成 MCP 客户端的启动参数。 */
+  /** 当前可执行 CLI JS 文件的绝对路径；用于生成 MCP 客户端启动命令（`mcp setup`）。 */
   readonly cliEntryPath: string;
-  /** stdout/stderr 写入点；测试注入后不会污染真实标准流。 */
+  /** stdout/stderr 写入点；默认 `processOutput`（真实标准流），测试注入收集数组。 */
   readonly output?: CLIOutput;
-  /** 配置解析和 MCP 注册读取的环境变量集合。 */
+  /** 配置解析与 MCP 注册读取的环境变量集合；默认 `process.env`。 */
   readonly env?: NodeJS.ProcessEnv;
-  /** `doctor` 最低版本检查使用的版本字符串。 */
+  /** `doctor` 最低版本检查使用的 Node 版本字符串（如 "24.16.0"）；默认 `process.versions.node`。 */
   readonly nodeVersion?: string;
-  /** 贯穿 CLI、runtime、workflow 和 MCP 的结构化日志器。 */
+  /** 贯穿 CLI、runtime、workflow、MCP 的结构化日志器；默认写 stderr，测试可用 noop。 */
   readonly logger?: HostLogger;
-  /** 相对 `--config` 与 `--project-dir` 的解析基准。 */
+  /** 相对 `--config` 与 `--project-dir` 的解析基准目录；默认 `process.cwd()`。 */
   readonly cwd?: string;
-  /** 默认配置路径及 user scope 客户端配置的用户目录。 */
+  /** 默认配置路径（`configPathFor`）与 user scope 客户端配置的用户目录；默认 `os.homedir()`。 */
   readonly homeDir?: string;
-  /** MCP 客户端注册最终调用的 Node 可执行文件。 */
+  /** MCP 客户端注册命令使用的 Node 可执行文件；默认 `process.execPath`。 */
   readonly nodePath?: string;
-  /** MCP 注册写入实现；测试可替换以避免修改真实客户端配置。 */
+  /** MCP 客户端注册的实现；默认真实写入客户端配置，测试注入 fake 以避免改本机配置。 */
   readonly setupMCPClient?: (input: MCPClientSetupInput) => Promise<MCPClientSetupResult>;
 }
 
-/** 解析默认值后的进程环境，后续方法不再直接读取可变全局状态。 */
+/**
+ * 补齐默认值后的「全必填」依赖集合。
+ *
+ * 与 `CLIApplicationDependencies` 的差异：可选字段全部被 `resolveApplicationDependencies`
+ * 填上默认实现变成必填，后续编排代码只面对「一定有值」的对象，不需要到处 `??`。
+ */
 interface ResolvedApplicationDependencies {
   readonly cliEntryPath: string;
   readonly output: CLIOutput;
@@ -63,10 +80,18 @@ interface ResolvedApplicationDependencies {
 }
 
 /**
- * 执行一次完整 CLI 调用并返回退出码。
+ * 执行一次完整的 CLI 调用并返回退出码（不终止进程）。
  *
- * 执行阶段固定为：解析 argv；无网络地处理 `mcp setup`，或解析 App 配置并组装 runtime；
- * 将已解析命令交给 `executeCLICommand`；最后清理本次调用安装的 SIGINT listener。
+ * 执行顺序固定为：
+ * 1. 解析 argv（`parseCLIArguments`）；
+ * 2. `mcp setup` 走 host-only 路径（不组装 runtime、不碰 App）；
+ * 3. 其他命令：解析配置 → 组装 transport/runtime/probe/workflow → 执行命令；
+ * 4. 启动阶段的任何异常统一投影为退出码 2；
+ * 5. finally 摘掉本次挂上的 SIGINT listener（防多次调用时监听器残留）。
+ *
+ * @param argv 命令行参数（不含 node 与脚本路径），如 `["call", "ping"]`。
+ * @param dependencies 进程/IO 依赖；生产只需 `{ cliEntryPath }`。
+ * @returns 退出码：0=成功，1=App 业务失败，2=配置/参数错误，3=网络/协议失败。
  */
 export async function runCLI(
   argv: readonly string[],
@@ -96,9 +121,13 @@ export async function runCLI(
 }
 
 /**
- * 一次性解析所有默认进程依赖。
+ * 把可选的注入依赖全部补齐默认值，返回「全必填」版本。
  *
- * 集中读取 `process` 和用户目录可以让后续编排只依赖稳定值，也让测试无需替换全局对象。
+ * 集中在这里读取 `process`/用户目录，让后续编排只依赖稳定值（不会被测试过程中的
+ * 全局状态污染），也避免每个使用点各自写一遍 `?? 默认值`。
+ *
+ * @param dependencies 调用方传入的可选依赖（可能为空对象）。
+ * @returns 每个字段都有值的依赖集合；`cliEntryPath` 必填、`nodeVersion` 保持可选。
  */
 function resolveApplicationDependencies(
   dependencies: CLIApplicationDependencies
@@ -119,8 +148,15 @@ function resolveApplicationDependencies(
 /**
  * 执行 `mcp setup` 的 host-only 路径。
  *
- * 相对路径在这里统一转为绝对路径，确保写入客户端配置的启动命令不依赖客户端将来的
- * 工作目录。该路径不会创建 transport、probe 或 workflow runner。
+ * 与普通命令路径的关键差异：这里**不创建** transport/runtime/probe/workflow——
+ * setup 只修改 host 侧客户端配置文件，不连接 App，也不应被 App 配置问题连累。
+ * 所有相对路径（`--config`/`--project-dir`）在此统一转为绝对路径，因为写入客户端
+ * 配置的启动命令将来可能在任意工作目录被执行。
+ *
+ * @param parsed 已解析的 `mcp setup` 参数（client/scope/dryRun/force 等）。
+ * @param dependencies 已补齐默认值的依赖集合。
+ * @returns 固定 `EXIT_CODES.success`（0）；注册本身抛错则由 `runCLI` 的 catch 兜底。
+ *   示例：`mcp setup codex --dry-run` → stdout 输出 status="planned" 的 JSON，返回 0。
  */
 async function executeMCPSetup(
   parsed: MCPSetupArguments,
@@ -159,10 +195,17 @@ async function executeMCPSetup(
 }
 
 /**
- * 构造连接 App 所需的共享对象并执行普通命令。
+ * 构造连接 App 所需的共享对象，并执行普通命令（init/doctor/call/mcp）。
  *
- * transport、runtime、probe 与 workflow runner 每次调用只创建一份；同一组实例也传给
- * MCP stdio server，避免 CLI 层和 MCP adapter 各自持有状态不一致的连接对象。
+ * 组装顺序即依赖顺序：`HttpActionTransport`（唯一网络边界）→ `DriverRuntime`（协议
+ * 解释）→ `CapabilityProbe` / `WorkflowRunner`（都只依赖 runtime）。四个对象每次调用
+ * 只创建一份；同一组实例也传给 MCP stdio server，保证 CLI 与 MCP 不持有状态不一致的
+ * 连接对象。
+ *
+ * @param parsed 已解析的普通命令参数（kind="operational"）。
+ * @param dependencies 已补齐默认值的依赖集合。
+ * @param signal 取消信号（`call` 命令由 Ctrl-C 触发，其他命令始终不触发）。
+ * @returns 命令执行后的退出码。
  */
 async function executeOperationalCommand(
   parsed: OperationalArguments,
@@ -209,10 +252,17 @@ async function executeOperationalCommand(
 }
 
 /**
- * 把 argv、配置读取和依赖组装阶段的异常投影为 exit code 2。
+ * 把启动阶段（解析/配置/组装）的异常投影为退出码 2。
  *
- * 命令行为层有自己的错误分类；到达这里的异常都发生在命令启动阶段。日志只包含白名单
- * 命令名和错误类型，用户原始 argv 与 data 不会进入结构化日志。
+ * 到达这里的异常都发生在命令执行之前，不可能是网络错误（网络对象尚未发起请求）；
+ * 命令执行阶段的错误由 `commands.ts` 自行分类（1 或 3）。日志只包含白名单命令名和
+ * 错误类型，用户原始 argv 与 data 绝不进入结构化日志。
+ *
+ * @param error 启动阶段抛出的任意异常。
+ * @param argv 原始命令行参数（仅用于提取白名单命令名）。
+ * @param dependencies 依赖集合（用于取 logger/output）。
+ * @returns 固定 `EXIT_CODES.configError`（2）。
+ *   示例：无参数运行 → usage 错误 → stderr 输出用法提示，返回 2。
  */
 function reportStartupError(
   error: unknown,

@@ -1,0 +1,130 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "iOSDriver CLI: init (no App)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/src/adapters/cli/main.ts",
+      "args": [
+        "init",
+        "--config",
+        "/tmp/iosdriver-debug-config.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "15000"
+      }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "iOSDriver CLI: doctor",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/src/adapters/cli/main.ts",
+      "args": [
+        "doctor",
+        "--human",
+        "--config",
+        "/tmp/iosdriver-debug-config.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "15000"
+      }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "iOSDriver CLI: call ping",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/src/adapters/cli/main.ts",
+      "args": [
+        "call",
+        "ping",
+        "--config",
+        "/tmp/iosdriver-debug-config.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "15000"
+      }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "iOSDriver CLI: mcp setup dry-run (no App)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/src/adapters/cli/main.ts",
+      "args": [
+        "mcp",
+        "setup",
+        "claude",
+        "--scope",
+        "project",
+        "--project-dir",
+        "${workspaceFolder}",
+        "--config",
+        "/tmp/iosdriver-debug-config.json",
+        "--dry-run"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "15000"
+      }
+    }
+  ]
+}

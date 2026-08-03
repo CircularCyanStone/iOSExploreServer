@@ -1,8 +1,10 @@
 /**
- * 将稳定错误补充为面向调用者的下一步操作。
+ * 将稳定错误补充为面向调用者（AI 或开发者）的下一步操作指引。
  *
- * 指引按错误来源和 code 生成，不检查 message 文本，因此 App 文案调整不会改变 host
- * 决策。该模块不依赖 CLI 或 MCP SDK，同一建议可被多个 adapter 一致投影。
+ * 设计要点：指引按 `source` 和 `code` 生成，**不检查 message 文本**——App 调整文案
+ * 不会改变 host 决策；只有已知的 App envelope code 才给 UI 级建议，未知 host 错误
+ * 保持原样，避免误导调用者。本模块不依赖 CLI 或 MCP SDK，同一建议可被多个 adapter
+ * 一致投影（MCP 的 failurePayload、CLI 的错误输出）。
  */
 import type { DriverError } from "./driverErrors.js";
 import type { JSONObject } from "../types.js";
@@ -11,12 +13,14 @@ import type { JSONObject } from "../types.js";
 export type HostGuidanceContext = "deviceAction" | "callAction" | "workflow";
 
 /**
- * 生成 SDK 无关的失败负载和后续操作指引。
+ * 生成 SDK 无关的失败负载：错误本体 + 保留的失败数据 + 下一步操作指引。
  *
  * @param error runtime 或 workflow 的稳定错误。
- * @param data 调用结果中优先保留的失败数据。
- * @param context 宿主调用入口，用于区分动态 action 的探索语义。
- * @returns 可由 MCP、CLI 或其他 adapter 直接投影的 JSON 对象。
+ * @param data 调用结果中优先保留的失败数据（优先于 error.data）。
+ * @param context 宿主调用入口（影响 unknown_action 等指引的措辞）。
+ * @returns 可直接被 MCP、CLI 或其他 adapter 投影的 JSON 对象：
+ *   { …error 字段, data?, nextSteps? }。
+ *   示例：transport 错误 → 含 3 条连接恢复指引的 nextSteps。
  */
 export function failurePayload(
   error: DriverError,
@@ -32,6 +36,17 @@ export function failurePayload(
   };
 }
 
+/**
+ * 按错误 source/code 生成下一步操作指引。
+ *
+ * 规则：transport 故障优先恢复连接（endpoint 未恢复前建议重试业务 action 没意义）；
+ * workflow_timeout 提示检查 UI 进展；**只有已知的 appEnvelope code** 才给具体 UI 建议，
+ * 其余返回 undefined（不臆造指引）。
+ *
+ * @param error 稳定错误。
+ * @param context 宿主调用入口（unknown_action 区分「检查注册 action」与「检查模块」）。
+ * @returns 中文指引列表；没有合适建议时 undefined。
+ */
 function nextStepsFor(
   error: DriverError,
   context: HostGuidanceContext

@@ -29,7 +29,9 @@ export interface JsonSchema {
   additionalProperties?: boolean | JsonSchema;
   /** 数组元素合同；数组约束出现时 schema type 必须包含 array。 */
   items?: JsonSchema;
+  /** 数组最少元素数；出现时 schema type 必须包含 array。 */
   minItems?: number;
+  /** 数组最多元素数；出现时 schema type 必须包含 array。 */
   maxItems?: number;
   /** host validator 使用结构化 JSON 相等判断唯一性。 */
   uniqueItems?: boolean;
@@ -37,9 +39,13 @@ export interface JsonSchema {
   enum?: ContractJSONValue[];
   /** 生成器只记录默认值，不在 host validator 中自动补值。 */
   default?: ContractJSONValue;
+  /** 数值下限（含）；出现时 schema type 必须为 number/integer。 */
   minimum?: number;
+  /** 数值上限（含）；出现时 schema type 必须为 number/integer。 */
   maximum?: number;
+  /** 数值下限（不含）。 */
   exclusiveMinimum?: number;
+  /** 数值上限（不含）。 */
   exclusiveMaximum?: number;
   /** 仅 host schema runtime 支持；device action Swift emitter 会显式拒绝复合 schema。 */
   oneOf?: JsonSchema[];

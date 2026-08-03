@@ -1,14 +1,24 @@
 /**
  * Foundation-only Swift 合同元数据与 typed input 定义生成器。
  *
- * 按 provider 拆分输出，保证 Core 产物不 import UIKit；每个 action 同时生成命令元数据、
- * 字段 parser 和 wire 校验闭包。生成器只对可精确映射的 schema 选择 typed field helper，
- * 其余字段回退到 `AnyCommandField`，但仍生成完整 wire validation，避免静默放宽合同。
+ * 职责：按 provider（core/uikit/diagnostics）拆分输出到三个模块的 Generated 目录，
+ * 保证 Core 产物不 import UIKit（硬规则 2 的构建期保证）；每个 action 同时生成三样
+ * 东西：命令元数据（CommandContract）、字段声明与 parser 输入定义（CommandInputDefinition）、
+ * wire 校验闭包。
+ *
+ * 类型策略：只对能精确映射的 schema 选择 typed field helper；其余字段回退到
+ * `AnyCommandField`，但仍生成完整 wire validation——不因类型无法表达而静默放宽合同。
  */
 import type { ContractJSONValue, DeviceActionContract, JsonSchema } from "./model.js";
 import type { GeneratedArtifact, PreparedContractBundle } from "./emitTypeScript.js";
 
-/** 按 core/uikit/diagnostics provider 生成三个互不越界的 Swift 文件。 */
+/**
+ * 按 core/uikit/diagnostics provider 生成三个互不越界的 Swift 文件。
+ *
+ * @param prepared 已预处理的合同 bundle（含 hash）。
+ * @returns 三个 Swift 产物（path + content）。
+ *   示例：core → Sources/iOSExploreServer/Generated/CoreActionContracts.swift
+ */
 export function emitSwift(prepared: PreparedContractBundle): GeneratedArtifact[] {
   const providers = [
     {
@@ -41,8 +51,16 @@ export function emitSwift(prepared: PreparedContractBundle): GeneratedArtifact[]
 }
 
 /**
- * 组装单个 provider 文件。
- * `all/byAction/inputs` 共享同一 action 集合，注册、自省与执行端 parser 因而不会各自漂移。
+ * 组装单个 provider 文件（一个 enum，含 all/byAction/inputs 三份索引与全部成员）。
+ *
+ * `all`（合同数组）、`byAction`（按名查询）、`inputs`（执行端 parser）共享同一
+ * action 集合——注册、自省与解析不会各自漂移。
+ *
+ * @param typeName 生成的 Swift 类型名（如 "CoreActionContracts"）。
+ * @param moduleImport 顶部 import 行（uikit/diagnostics 需要 import iOSExploreServer）。
+ * @param contracts 属于该 provider 的 action 列表。
+ * @param prepared 已预处理的 bundle（取 hash 与版本）。
+ * @returns Swift 文件内容。
  */
 function renderProviderFile(
   typeName: string,
@@ -95,7 +113,13 @@ function renderProviderFile(
   ].filter(line => line.length > 0).join("\n");
 }
 
-/** 把 action 元数据渲染为 `CommandContract`，不包含 UIKit 类型或 handler 实现。 */
+/**
+ * 把单个 action 的元数据渲染为 `CommandContract` 成员。
+ * 只含 Foundation 元数据，不包含 UIKit 类型或 handler 实现。
+ *
+ * @param contract 设备 action 合同。
+ * @returns Swift 成员声明文本。
+ */
 function renderContractMember(contract: DeviceActionContract): string {
   const identifier = actionIdentifier(contract.action);
   const errors = contract.errors.map(error => swiftString(error)).join(", ");
@@ -117,8 +141,13 @@ function renderContractMember(contract: DeviceActionContract): string {
 }
 
 /**
- * 为一个 action 生成字段声明和 `CommandInputDefinition`。
- * JSON properties 的插入顺序会影响 parser 读取顺序测试，不能在这里重新排序。
+ * 为一个 action 生成字段声明与 `CommandInputDefinition`（含 wire 校验闭包）。
+ *
+ * 注意：JSON properties 的**插入顺序**就是合同声明顺序，会影响 parser 读取顺序
+ * 测试与字段布局——这里不能重新排序（MCP 工具元数据由 canonical TypeScript 产物负责）。
+ *
+ * @param contract 设备 action 合同。
+ * @returns Swift 成员声明文本行列表。
  */
 function renderInputMembers(contract: DeviceActionContract): string[] {
   const identifier = actionIdentifier(contract.action);

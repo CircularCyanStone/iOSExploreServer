@@ -1,8 +1,13 @@
 /**
- * `tap_and_inspect` 的固定阶段实现。
+ * `tap_and_inspect` 的固定阶段实现：`ui.tap → [可选 ui.wait(idle)] → ui.inspect`。
  *
- * 成功 tap 后可选等待 UI idle，再获取最新 inspect 快照。阶段参数和默认值来自 generated
- * host contract；workflow 只做字段投影和编排，不复制 device action 的 UIKit 校验规则。
+ * 成功 tap 后可选等待 UI idle（`waitForStable`），再获取最新 inspect 快照。阶段参数
+ * 与默认值来自 generated host contract；workflow 只做字段投影与编排，**不复制**
+ * device action 的 UIKit 校验规则。
+ *
+ * 典型流程：
+ *   tap(…tap 合同字段…) → [waitForStable ? wait(mode:"idle") : 跳过] → inspect(maxDepth,
+ *   maxTargets) → 结果聚合 { tap, wait?, stateAfter, timing }
  */
 import { HOST_OPERATION_SPECS } from "../generated/hostOperationSpecs.js";
 import type { InvocationResult } from "../runtime/types.js";
@@ -11,6 +16,7 @@ import { shouldContinueAfterWaitFailure } from "./errorPolicy.js";
 import { stepValue, workflowFailure, workflowSuccess } from "./resultAggregation.js";
 import type { WorkflowExecutionContext, WorkflowResult } from "./types.js";
 
+/** 合同 schema 的运行时最小形状（只需读取各字段的 canonical 默认值）。 */
 interface ContractProperty {
   /** workflow 控制字段的 canonical 默认值。 */
   readonly default?: unknown;
@@ -20,6 +26,7 @@ interface ContractObjectSchema {
   readonly properties: Readonly<Record<string, ContractProperty>>;
 }
 
+/** 从 generated 产物中查找 tap_and_inspect 的输入 schema（启动期校验存在）。 */
 const TAP_AND_INSPECT_SPEC = HOST_OPERATION_SPECS.find(
   spec => spec.operation === "tap_and_inspect"
 );
@@ -28,7 +35,9 @@ if (TAP_AND_INSPECT_SPEC === undefined) {
   throw new Error("Missing generated host operation contract: tap_and_inspect");
 }
 
+/** 输入 schema 的 properties。 */
 const INPUT_SCHEMA = TAP_AND_INSPECT_SPEC.inputSchema as unknown as ContractObjectSchema;
+/** workflow 控制字段（不给 ui.tap 传）；其余键都属于 ui.tap 合同。 */
 const WORKFLOW_KEYS = new Set([
   "waitForStable",
   "stableTimeMs",
@@ -38,12 +47,15 @@ const WORKFLOW_KEYS = new Set([
 const TAP_KEYS = Object.keys(INPUT_SCHEMA.properties).filter(key => !WORKFLOW_KEYS.has(key));
 
 /**
- * 固定执行 `ui.tap -> 可选 ui.wait(idle) -> ui.inspect`。
+ * 固定执行 `ui.tap → [可选 ui.wait(idle)] → ui.inspect`。
+ *
+ * 阶段语义：tap 是后续 UI 状态的前置条件，**失败时绝不继续** wait/inspect；idle 等待
+ * 超时（wait_timeout）仍有可观察界面可继续 inspect，连接/协议失败则在 wait 阶段结束。
  *
  * @param context 由 WorkflowRunner 提供的 deadline 受限调用上下文。
  * @param input host operation 输入。
- * @param workflowStartedAt workflow 起始时间戳。
- * @returns inspect 成功时返回整体成功；任一终态失败保留已执行阶段和 timing。
+ * @param workflowStartedAt workflow 起始时间戳（计算 totalMs）。
+ * @returns inspect 成功时返回整体成功；任一终态失败保留已执行阶段与 timing。
  */
 export async function runTapAndInspect(
   context: WorkflowExecutionContext,
@@ -112,8 +124,14 @@ export async function runTapAndInspect(
 }
 
 /**
- * 从已校验输入读取值，省略时回到 generated schema 默认值。
- * 缺少默认值属于构建产物/实现不一致，作为编程错误抛出而非伪造运行时默认值。
+ * 从已校验输入读取值；省略时回到 generated schema 默认值。
+ *
+ * 默认值缺失属于构建产物/实现不一致——作为编程错误抛出，而不是伪造运行时默认值。
+ *
+ * @param input host 输入。
+ * @param key 字段名（如 "waitForStable"）。
+ * @returns 用户值或合同默认值。
+ * @throws {Error} 两者都缺失或类型非法时抛出。
  */
 function valueOrDefault<T extends boolean | number>(input: JSONObject, key: string): T {
   const value = input[key];
@@ -125,6 +143,15 @@ function valueOrDefault<T extends boolean | number>(input: JSONObject, key: stri
   return defaultValue as T;
 }
 
+/**
+ * 构造 tap_and_inspect 的阶段耗时统计。
+ *
+ * @param tapMs tap 阶段耗时。
+ * @param waitMs wait 阶段耗时（未执行 wait 时 undefined，不输出该键）。
+ * @param inspectMs inspect 阶段耗时。
+ * @param totalMs workflow 总耗时。
+ * @returns 计时 JSON 对象。
+ */
 function tapTiming(
   tapMs: number,
   waitMs: number | undefined,
@@ -139,7 +166,13 @@ function tapTiming(
   };
 }
 
-/** 从 host 输入中移除 wait/inspect 控制字段，只留下 `ui.tap` 合同字段。 */
+/**
+ * 从 host 输入中移除 wait/inspect 控制字段，只留下 `ui.tap` 合同字段。
+ *
+ * @param input 完整 host 输入。
+ * @param allowedKeys 允许传给 ui.tap 的键（TAP_KEYS）。
+ * @returns 只含允许键中实际存在字段的新对象。
+ */
 function project(input: JSONObject, allowedKeys: readonly string[]): JSONObject {
   return Object.fromEntries(
     allowedKeys.flatMap(key => input[key] === undefined ? [] : [[key, input[key] as JSONValue]])

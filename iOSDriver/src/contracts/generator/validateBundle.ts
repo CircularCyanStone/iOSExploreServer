@@ -179,13 +179,25 @@ function validateHostOperation(operation: unknown, source: string, bundle: RawDr
   return operation.operation;
 }
 
+/**
+ * 校验 result 声明：kind 必须是 json/image/text 之一。
+ *
+ * @param result 原始 result 字段。
+ * @param path 错误路径前缀。
+ */
 function validateResult(result: unknown, path: string): void {
   if (!isRecord(result) || !isAllowedString(result.kind, resultKinds)) {
     fail("invalid_contract", path, "kind must be json, image, or text");
   }
 }
 
-/** 所有 action/operation 声明的错误都必须复用 `errors.json` 的机器语义。 */
+/**
+ * 校验错误码数组：所有 action/operation 声明的错误都必须复用 `errors.json` 的机器语义。
+ *
+ * @param codes 原始 errors 数组。
+ * @param path 错误路径前缀。
+ * @param errors 全局错误索引。
+ */
 function validateErrorCodes(codes: unknown, path: string, errors: object): void {
   if (!Array.isArray(codes) || codes.some(code => typeof code !== "string")) {
     fail("invalid_contract", path, "must be an array of error code strings");
@@ -195,6 +207,19 @@ function validateErrorCodes(codes: unknown, path: string, errors: object): void 
   }
 }
 
+/**
+ * 递归校验单个 schema 节点（含 $ref 解析与循环检测）。
+ *
+ * 检查顺序：未知 keyword 拒绝 → $ref 解析（含循环检测）→ type 归一化 → 容器
+ * keyword（properties/required/additionalProperties/items/数值约束）→ enum/default
+ * 类型相容 → 复合 schema（oneOf/allOf/not）→ 扩展约束。
+ *
+ * @param schema 原始 schema 节点。
+ * @param path 错误路径（如 "device-actions/core.ping.json.inputSchema"）。
+ * @param sourceFile 当前源文件标签（用于解析相对 $ref）。
+ * @param bundle 原始 bundle（用于查 definitions）。
+ * @param refStack 当前 $ref 链（循环检测）。
+ */
 function validateSchema(
   schema: unknown,
   path: string,
@@ -329,8 +354,13 @@ function validateSchema(
 }
 
 /**
- * 校验项目扩展的跨字段约束。
+ * 校验项目扩展的跨字段约束：
  * exactlyOneOf/mutuallyExclusive 只能引用同一 object 中已声明且不重复的属性名。
+ *
+ * @param value x-iosExplore-constraints 原始值。
+ * @param schemaType 已归一化的 type（必须含 object）。
+ * @param properties 已声明的属性表（约束引用的字段必须在此）。
+ * @param path 错误路径前缀。
  */
 function validateExtensionConstraints(
   value: Record<string, ContractJSONValue>,
@@ -368,6 +398,15 @@ function validateExtensionConstraints(
   }
 }
 
+/**
+ * 校验 oneOf/allOf 数组：非空数组，逐项递归校验。
+ *
+ * @param schemas 原始数组（可能 undefined）。
+ * @param path 错误路径。
+ * @param sourceFile 源文件标签。
+ * @param bundle 原始 bundle。
+ * @param refStack $ref 链。
+ */
 function validateSchemaArray(
   schemas: JsonSchema[] | undefined,
   path: string,
@@ -383,6 +422,10 @@ function validateSchemaArray(
 /**
  * 把相对 `$ref` 规范化到 definitions 标签。
  * URI、fragment、绝对路径和逃出 definitions 的引用一律不属于受控方言。
+ *
+ * @param sourceFile 当前源文件标签（相对引用的基准目录）。
+ * @param reference 原始 $ref 值。
+ * @returns 规范化后的 definitions 标签（如 "definitions/locator.json"）。
  */
 function resolveReference(sourceFile: string, reference: string): string {
   if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(reference) || reference.startsWith("/") || reference.includes("#")) {
@@ -397,6 +440,14 @@ function resolveReference(sourceFile: string, reference: string): string {
   return normalized;
 }
 
+/**
+ * 校验 minItems/maxItems：非负整数且 schema type 必须为 array。
+ *
+ * @param value 原始值（可能 undefined=未声明）。
+ * @param path 错误路径。
+ * @param schemaType 已归一化的 type。
+ * @param requiredType 关键字要求的类型（array）。
+ */
 function validateNonNegativeInteger(
   value: number | undefined,
   path: string,
@@ -408,6 +459,13 @@ function validateNonNegativeInteger(
   if (!Number.isInteger(value) || value < 0) fail("invalid_contract", path, "must be a non-negative integer");
 }
 
+/**
+ * 断言 schema type 必须包含期望类型（容器关键字出现时的前置条件）。
+ *
+ * @param actual 已归一化的 type（可能 undefined）。
+ * @param expected 期望类型。
+ * @param path 错误路径。
+ */
 function requireSchemaType(actual: JsonSchemaType | JsonSchemaType[] | undefined, expected: JsonSchemaType, path: string): void {
   if (actual === undefined) fail("invalid_contract", path, `requires schema type ${expected}`);
   if (Array.isArray(actual)) {
@@ -417,6 +475,13 @@ function requireSchemaType(actual: JsonSchemaType | JsonSchemaType[] | undefined
   if (actual !== expected) fail("invalid_contract", path, `requires schema type ${expected}`);
 }
 
+/**
+ * 判断值是否与（可能联合的）类型相容。
+ *
+ * @param value 待检查值。
+ * @param type 类型或类型数组。
+ * @returns true=相容。
+ */
 function matchesType(value: ContractJSONValue, type: JsonSchemaType | JsonSchemaType[]): boolean {
   if (Array.isArray(type)) return type.some(item => matchesType(value, item));
   switch (type) {
@@ -430,19 +495,34 @@ function matchesType(value: ContractJSONValue, type: JsonSchemaType | JsonSchema
   }
 }
 
+/**
+ * 断言值为非空字符串（校验后收窄类型）。
+ *
+ * @param value 待断言值。
+ * @param path 错误路径。
+ * @param code 错误类别。
+ */
 function requireNonEmptyString(value: unknown, path: string, code: ContractValidationCode): asserts value is string {
   if (typeof value !== "string" || value.length === 0) fail(code, path, "must be a non-empty string");
 }
 
+/** 类型守卫：未知值是否为普通对象（非 null、非数组）。 */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** 类型守卫：值是否在允许的字符串集合内。 */
 function isAllowedString(value: unknown, values: ReadonlySet<string>): value is string {
   return typeof value === "string" && values.has(value);
 }
 
-/** 集中构造稳定错误，保证所有校验分支都带 code 与非敏感 path。 */
+/**
+ * 集中构造稳定错误，保证所有校验分支都带 code 与非敏感 path。
+ *
+ * @param code 错误类别。
+ * @param path 错误路径。
+ * @param message 错误描述。
+ */
 function fail(code: ContractValidationCode, path: string, message: string): never {
   throw new ContractValidationError(code, path, message);
 }

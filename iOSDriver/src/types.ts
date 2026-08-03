@@ -1,7 +1,13 @@
-/** JSON 能直接编码的标量；不包含 `undefined`、`bigint`、函数或类实例。 */
+/**
+ * JSON 能直接编码的标量类型：字符串、数字、布尔、null。
+ * 不包含 `undefined`、`bigint`、函数或类实例（这些无法被 JSON.stringify 编码）。
+ */
 export type JSONPrimitive = string | number | boolean | null;
 
-/** iOSDriver 各层允许交换的递归 JSON 值。 */
+/**
+ * 递归 JSON 值：标量、JSON 对象或 JSON 值数组。
+ * 用于描述「一定能被 JSON 序列化」的值。
+ */
 export type JSONValue = JSONPrimitive | JSONObject | JSONValue[];
 
 /**

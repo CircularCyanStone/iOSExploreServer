@@ -1,13 +1,21 @@
 /**
  * canonical 合同的人类可读 Markdown emitter。
  *
- * 文档直接消费与代码生成相同的 prepared bundle，action 字段、默认值和错误列表因此无需
- * 在 README/CLI 文档中手写复制。所有表格内容在插入前转义，保证合同说明不会破坏结构。
+ * 文档直接消费与代码生成相同的 prepared bundle——action 字段、默认值与错误列表
+ * 因此无需在 README/CLI 文档中手写复制（避免漂移）。所有表格内容在插入前转义，
+ * 保证合同说明里的反引号/竖线/换行不会破坏 Markdown 结构。
+ *
+ * 产物路径：`docs/generated/contracts.md`（禁止手改，由 generator 维护）。
  */
 import type { ContractJSONValue, JsonSchema } from "./model.js";
 import type { GeneratedArtifact, PreparedContractBundle } from "./emitTypeScript.js";
 
-/** 生成包含版本、action、host operation 和 error index 的确定性 Markdown。 */
+/**
+ * 生成包含版本、action、host operation 与 error index 的确定性 Markdown。
+ *
+ * @param prepared 已预处理的合同 bundle（含 hash）。
+ * @returns docs/generated/contracts.md 的产物（path + content）。
+ */
 export function emitDocs(prepared: PreparedContractBundle): GeneratedArtifact {
   const { bundle, hash } = prepared;
   const lines = [
@@ -72,6 +80,12 @@ export function emitDocs(prepared: PreparedContractBundle): GeneratedArtifact {
   return { path: "docs/generated/contracts.md", content: lines.join("\n") };
 }
 
+/**
+ * 把 schema 渲染成「输入字段」Markdown 表格（无字段时输出一行说明）。
+ *
+ * @param schema 输入 schema。
+ * @returns 表格行数组。
+ */
 function schemaSummary(schema: JsonSchema): string[] {
   const fields = flattenFields(schema);
   if (fields.length === 0) return ["Input fields: none."];
@@ -96,7 +110,14 @@ interface FieldSummary {
   readonly description: string;
 }
 
-/** 深度优先展开属性，并按字段名排序以保持文档 diff 稳定。 */
+/**
+ * 深度优先展开属性并排序，生成扁平字段表。
+ * 嵌套对象以点路径表示（如 "conditions.idle"），object array 以 `[]` 表示。
+ *
+ * @param schema 当前层 schema。
+ * @param prefix 路径前缀（递归用）。
+ * @returns 排序后的字段行。
+ */
 function flattenFields(schema: JsonSchema, prefix = ""): FieldSummary[] {
   const properties = schema.properties ?? {};
   const required = new Set(schema.required ?? []);
@@ -117,6 +138,7 @@ function flattenFields(schema: JsonSchema, prefix = ""): FieldSummary[] {
   return fields;
 }
 
+/** 把 schema 类型渲染为可读字符串（支持联合类型与数组展开）。 */
 function schemaType(schema: JsonSchema): string {
   const type = schema.type;
   if (Array.isArray(type)) return type.join(" | ");
@@ -124,19 +146,27 @@ function schemaType(schema: JsonSchema): string {
   return type ?? "any";
 }
 
+/** 把错误码数组渲染为行内反引号列表；空数组显示 "none"。 */
 function formatErrors(errors: readonly string[]): string {
   return errors.length === 0 ? "none" : errors.map(error => `\`${escapeInline(error)}\``).join(", ");
 }
 
+/** JSON 序列化默认值（表格展示用）。 */
 function formatJSON(value: ContractJSONValue): string {
   return JSON.stringify(value);
 }
 
+/** 转义行内反引号，防止合同文本破坏 Markdown 行内代码。 */
 function escapeInline(value: string): string {
   return value.replace(/`/g, "\\`");
 }
 
-/** 转义表格分隔符并压平换行，避免 description 注入额外 Markdown 行。 */
+/**
+ * 转义表格分隔符并压平换行，避免 description 注入额外 Markdown 行。
+ *
+ * @param value 原始文本。
+ * @returns 可安全放入表格单元格的文本。
+ */
 function escapeTable(value: string): string {
   return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }

@@ -10,6 +10,8 @@
 //   docs/local-mcp-test.md
 import { spawn } from "node:child_process";
 
+// 以子进程方式启动 iosdriver CLI 的 mcp 命令：stdin/stdout 接协议帧（pipe），
+// stderr 直接继承到终端（inherit）——这样 server 的日志可见且不会混入协议流。
 const server = spawn("node", ["dist/adapters/cli/main.js", "mcp"], {
   cwd: process.cwd(),
   stdio: ["pipe", "pipe", "inherit"]
@@ -17,9 +19,16 @@ const server = spawn("node", ["dist/adapters/cli/main.js", "mcp"], {
 
 let buffer = "";
 let nextId = 1;
-// 只追踪由本脚本发出的 request；server notification 或未知响应不会混入 smoke 输出。
+// 只追踪由本脚本发出的 request（按 id）；server 主动 notification 或未知响应不混入输出。
 const pending = new Map();
 
+/**
+ * 发送一条 JSON-RPC request（每帧一行 JSON + 换行，写进 server 的 stdin）。
+ *
+ * @param method 方法名（"initialize"/"tools/list"/"tools/call"）。
+ * @param params 方法参数对象。
+ * @returns 本次 request 的 id（用于匹配响应）。
+ */
 const send = (method, params) => {
   const id = nextId++;
   const msg = { jsonrpc: "2.0", id, method, params };
@@ -81,13 +90,15 @@ send("initialize", {
   clientInfo: { name: "mcp-inspector", version: "0.0.1" }
 });
 
+// 错峰发送：initialize 之后 300ms 发 tools/list，再每隔 300ms 发一个 tools/call，
+// 避免在握手完成前同时灌入全部请求（server 按顺序处理帧）。
 let t = 300;
 send("tools/list", {});
-// 简单错峰避免在未完成 initialize 握手时同时灌入全部 tools/call。
 for (const call of calls) {
   setTimeout(() => send("tools/call", call), (t += 300));
 }
 
+// 全部调用预期完成后收尾：打印结束标记、SIGTERM 关闭 server、退出。
 setTimeout(() => {
   console.log("\n=== done ===");
   server.kill("SIGTERM");

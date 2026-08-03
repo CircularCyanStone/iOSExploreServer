@@ -1,9 +1,13 @@
 /**
  * host operation 输入的轻量合同校验器。
  *
- * 这里只校验在 Mac 上执行的 `call_action` 与 workflow 包装参数。device action 的业务
- * data 仍由 App 端 Foundation-only `CommandInput` 解析，避免 TypeScript 和 Swift 对同一
- * action 维护两套默认值与约束逻辑。
+ * 职责边界：只校验**在 Mac 上执行**的包装层参数（`call_action` 与 workflow 的
+ * 输入）；device action 的业务 data 仍由 App 端 Foundation-only 的 `CommandInput`
+ * 解析——避免 TypeScript 和 Swift 对同一 action 维护两套默认值与约束逻辑。
+ *
+ * 校验基于生成的 host schema（src/generated/hostOperationSpecs.ts），实现的是受控的
+ * JSON Schema 子集（type/enum/数值范围/数组约束/required/additionalProperties/
+ * allOf/oneOf/not + 跨字段扩展约束）。错误只携带字段路径，不回显用户值。
  */
 import { HOST_OPERATION_SPECS, type HostOperationSpec } from "../generated/hostOperationSpecs.js";
 import type { JSONObject } from "../types.js";
@@ -11,7 +15,7 @@ import type { JSONObject } from "../types.js";
 type HostOperation = HostOperationSpec["operation"];
 type SchemaType = "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
 
-/** generated host schema 在运行时实际消费的受控 JSON Schema 子集。 */
+/** 受控 JSON Schema 子集的运行时表示（只包含生成器实际会输出的关键字）。 */
 interface RuntimeSchema {
   readonly type?: SchemaType | readonly SchemaType[];
   readonly properties?: Readonly<Record<string, RuntimeSchema>>;
@@ -29,25 +33,30 @@ interface RuntimeSchema {
   readonly oneOf?: readonly RuntimeSchema[];
   readonly allOf?: readonly RuntimeSchema[];
   readonly not?: RuntimeSchema;
+  /** 标准 JSON Schema 之外的跨字段约束（exactlyOneOf/mutuallyExclusive）。 */
   readonly "x-iosExplore-constraints"?: Readonly<Record<string, unknown>>;
 }
 
+/** 单个校验失败：只含合同字段位置与稳定原因，不含用户实际值（防泄漏）。 */
 interface ValidationIssue {
-  /** 只包含合同字段位置，不包含用户实际值。 */
+  /** JSON 风格字段路径，如 "$.data.timeoutMs"。 */
   readonly path: string;
-  /** 稳定、无 payload 的失败原因。 */
+  /** 稳定、无 payload 的失败原因（英文，供机器识别）。 */
   readonly reason: string;
 }
 
+/** 构建时从生成产物建立的「operation 名 → 输入 schema」索引。 */
 const HOST_INPUT_SCHEMAS = new Map<string, RuntimeSchema>(
   HOST_OPERATION_SPECS.map(spec => [spec.operation, spec.inputSchema as unknown as RuntimeSchema])
 );
 
-/** Host operation 输入不符合 generated contract。 */
+/**
+ * host operation 输入不符合 generated contract 时抛出的错误。
+ */
 export class HostOperationInputValidationError extends Error {
-  /** 失败所属 host operation，便于 adapter 记录安全上下文。 */
+  /** 失败所属 host operation（供 adapter 记录安全上下文）。 */
   readonly operation: HostOperation;
-  /** 第一个失败字段的 JSON 风格路径。 */
+  /** 第一个失败字段的 JSON 风格路径（如 "$.data"）。 */
   readonly path: string;
 
   constructor(operation: HostOperation, issue: ValidationIssue) {
@@ -59,15 +68,13 @@ export class HostOperationInputValidationError extends Error {
 }
 
 /**
- * 按 generated host-operation contract 校验包装层输入。
+ * 按 generated host-operation contract 校验包装层输入（只用于 Mac 侧 host operation）。
  *
- * 该入口只用于在 Mac 上执行的 host operation。device action data 必须继续由 App 端
- * `CommandInput.parse(from:)` 校验，避免 Swift 与 TypeScript 各维护一套业务 parser。
- *
- * @param operation host operation 名称。
- * @param input MCP/CLI 提供的原始包装层输入。
- * @returns 已确认符合 object schema 的输入对象；不会填充或改写默认值。
- * @throws `HostOperationInputValidationError`，错误只包含合同路径，不回显用户值。
+ * @param operation host operation 名称（如 "call_action"、"wait_and_inspect"）。
+ * @param input MCP/CLI 提供的原始包装层输入（任意 JSON 值）。
+ * @returns 已确认符合 object schema 的输入对象；**不会**填充或改写默认值。
+ * @throws {HostOperationInputValidationError} 首个不合规字段（错误只含合同路径，
+ *   不回显用户值）；schema 缺失时抛普通 Error。
  */
 export function validateHostOperationInput(operation: HostOperation, input: unknown): JSONObject {
   const schema = HOST_INPUT_SCHEMAS.get(operation);
@@ -77,6 +84,17 @@ export function validateHostOperationInput(operation: HostOperation, input: unkn
   return input as JSONObject;
 }
 
+/**
+ * 深度校验任意值是否符合 schema，返回**第一个**问题（检查顺序固定，错误可预期）。
+ *
+ * 检查顺序：type → enum → 数值范围 → 数组约束 → 对象字段（required → 声明字段 →
+ * additionalProperties → 扩展约束）→ allOf/oneOf/not。数组项与嵌套对象递归。
+ *
+ * @param schema 节点 schema。
+ * @param value 待校验值。
+ * @param path 当前 JSON 路径（如 "$.data"）。
+ * @returns 第一个问题；全部通过返回 undefined。
+ */
 function firstIssue(schema: RuntimeSchema, value: unknown, path: string): ValidationIssue | undefined {
   // 按 type -> enum/range -> container -> composite 顺序返回首个问题，使错误位置确定且简短。
   if (schema.type !== undefined && !matchesType(value, schema.type)) {
@@ -159,6 +177,14 @@ function firstIssue(schema: RuntimeSchema, value: unknown, path: string): Valida
 }
 
 /** 执行标准 JSON Schema 无法直接表达的跨字段 exactly-one/mutual-exclusion 约束。 */
+/**
+ * 执行标准 JSON Schema 无法表达的跨字段约束（exactlyOneOf/mutuallyExclusive）。
+ *
+ * @param schema 含 x-iosExplore-constraints 的节点 schema。
+ * @param value 待校验对象。
+ * @param path 当前 JSON 路径。
+ * @returns 约束违规的问题；无约束或通过返回 undefined。
+ */
 function validateExtensionConstraints(
   schema: RuntimeSchema,
   value: JSONObject,
@@ -179,6 +205,13 @@ function validateExtensionConstraints(
   return undefined;
 }
 
+/**
+ * 校验值是否匹配类型（支持 "type": ["string","null"] 这类联合类型）。
+ *
+ * @param value 待校验值。
+ * @param type 类型或类型数组。
+ * @returns true=匹配。
+ */
 function matchesType(value: unknown, type: SchemaType | readonly SchemaType[]): boolean {
   if (typeof type !== "string") return type.some(candidate => matchesType(value, candidate));
   switch (type) {
@@ -193,30 +226,45 @@ function matchesType(value: unknown, type: SchemaType | readonly SchemaType[]): 
   return false;
 }
 
+/** 把类型（或类型数组）转为错误信息可读的描述。 */
 function describeType(type: SchemaType | readonly SchemaType[]): string {
   return typeof type === "string" ? type : type.join(" or ");
 }
 
+/** 类型守卫：未知值是否为 JSON 对象（非 null、非数组）。 */
 function isObject(value: unknown): value is JSONObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** 判断字段是否存在且非 null（用于跨字段约束的「提供」判定）。 */
 function hasNonNullValue(value: JSONObject, name: string): boolean {
   return Object.hasOwn(value, name) && value[name] !== null;
 }
 
+/** 提取字符串数组；非全字符串数组返回 undefined（约束声明非法则忽略）。 */
 function stringArray(value: unknown): readonly string[] | undefined {
   return Array.isArray(value) && value.every(item => typeof item === "string")
     ? value as string[]
     : undefined;
 }
 
-/** 使用结构化 JSON 相等而非对象引用相等实现 `uniqueItems`。 */
+/**
+ * 使用结构化 JSON 相等（而非对象引用相等）实现 uniqueItems。
+ *
+ * @param values 待检查数组。
+ * @returns true=存在重复项。
+ */
 function hasDuplicate(values: readonly unknown[]): boolean {
   return values.some((value, index) => values.slice(0, index).some(previous => jsonEqual(previous, value)));
 }
 
-/** 与对象键顺序无关的递归 JSON 相等比较。 */
+/**
+ * 与对象键顺序无关的递归 JSON 相等比较。
+ *
+ * @param left 左值。
+ * @param right 右值。
+ * @returns true=结构相等（键顺序不影响）。
+ */
 function jsonEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
   if (Array.isArray(left) && Array.isArray(right)) {

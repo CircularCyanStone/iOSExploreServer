@@ -50,17 +50,26 @@ export type {
   ResultSpec
 } from "./model.js";
 
-/** 一次预处理后渲染全部 TS/Swift/Markdown 产物，不访问目标文件系统。 */
+/**
+ * 一次预处理后渲染全部 TS/Swift/Markdown 产物（不访问目标文件系统）。
+ *
+ * @param bundle 已校验的 typed bundle。
+ * @returns 产物列表（path + content），供 generate 写入或 check 比较。
+ */
 export function renderContractArtifacts(bundle: DriverContractBundle): GeneratedArtifact[] {
   const prepared = prepareContractBundle(bundle);
   return [...emitTypeScript(prepared), ...emitSwift(prepared), emitDocs(prepared)];
 }
 
 /**
- * 生成或检查仓库全部合同产物。
+ * 生成或检查仓库全部合同产物（CLI 入口）。
  *
- * generate 为每个目标创建父目录并覆写完整内容；check 不写文件，收集全部漂移路径后
- * 一次报错，避免开发者修复一个文件后才看到下一个。
+ * generate：为每个产物创建父目录并覆写完整内容；check：不写文件，收集全部漂移路径
+ * 后一次报错（避免开发者修复一个文件后才看到下一个）。
+ *
+ * @param command "generate"（写入）或 "check"（比较）。
+ * @param repositoryRoot 仓库根目录；默认从本模块位置发现。
+ * @throws 校验失败或（check 模式）存在漂移时抛出。
  */
 export function runContractGenerator(command: "generate" | "check", repositoryRoot = discoverRepositoryRoot()): void {
   const artifacts = renderContractArtifacts(loadAndValidateContractBundle(repositoryRoot));
@@ -83,12 +92,21 @@ export function runContractGenerator(command: "generate" | "check", repositoryRo
   }
 }
 
-/** 从 generator 源码/构建产物的固定层级定位仓库根，不依赖执行 cwd。 */
+/**
+ * 从 generator 源码/构建产物的固定层级定位仓库根（不依赖执行 cwd）。
+ *
+ * @returns 仓库根目录。
+ */
 function discoverRepositoryRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 }
 
-/** 被测试或作为库 import 时不读取 argv、不设置进程退出码。 */
+/**
+ * 判断当前模块是否为直接执行的入口（被测试或作为库 import 时不读取 argv、
+ * 不设置进程退出码）。
+ *
+ * @returns true=本文件被 node/tsx 直接执行。
+ */
 function isMainModule(): boolean {
   const entry = process.argv[1];
   return entry !== undefined && import.meta.url === pathToFileURL(resolve(entry)).href;
