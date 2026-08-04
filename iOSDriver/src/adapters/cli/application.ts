@@ -9,6 +9,19 @@
  *   main(argv) → runCLI → parseCLIArguments → resolveCLIConfig
  *     → new HttpActionTransport → new DriverRuntime → new CapabilityProbe
  *     → executeCLICommand("call", context, {action}) → 退出码
+ *
+ * ## 路径的两个世界（读下面的字段注释前先建立这个概念）
+ *
+ * 本模块汇聚两类语义完全不同的路径，混在一起看必然头晕：
+ *
+ * - **Host 侧路径**（工具自身）：`cliEntryPath`/`nodePath`/`homeDir`/`configPath`，
+ *   描述「iOSDriver 装在哪、它自己的配置在哪」，永远与目标 iOS 项目无关；
+ * - **项目侧路径**（目标 iOS 项目）：`projectDir`（来自 `--project-dir`），
+ *   指向要被接入 MCP 的 iOS 工程根目录，决定 `.mcp.json`/`.trae/mcp.json`
+ *   写入哪里（真正的落点见 `registration/mcpClientSetup.ts` 的 `jsonConfigPath`）。
+ *
+ * 所有相对路径统一以 `dependencies.cwd`（默认 `process.cwd()`）为基准解析成绝对
+ * 路径：因为写入客户端配置的启动命令将来可能在任意目录被执行，相对路径会失效。
  */
 import { homedir } from "node:os";
 import { resolve } from "node:path";
@@ -39,9 +52,13 @@ import { processOutput, type CLIOutput } from "./output.js";
  * 所有字段都有默认实现（见 `resolveApplicationDependencies`），生产入口只需提供
  * 必填的 `cliEntryPath`；测试注入 fake 以替换真实 IO（不写 stdout、不读真实环境变量、
  * 不修改客户端配置）。
+ *
+ * 路径字段分两类（见文件头「路径的两个世界」）：【Host 侧】= 工具自身
+ * （`cliEntryPath`/`nodePath`/`homeDir`）；【项目侧】= 目标 iOS 项目根目录
+ * （由 `--project-dir` 解析出的 `projectDir`，见 `executeMCPSetup`）。
  */
 export interface CLIApplicationDependencies {
-  /** 当前可执行 CLI JS 文件的绝对路径；用于生成 MCP 客户端启动命令（`mcp setup`）。 */
+  /** 【Host 侧】当前可执行 CLI JS 文件的绝对路径；用于生成 MCP 客户端启动命令（`mcp setup`）。 */
   readonly cliEntryPath: string;
   /** stdout/stderr 写入点；默认 `processOutput`（真实标准流），测试注入收集数组。 */
   readonly output?: CLIOutput;
@@ -51,11 +68,13 @@ export interface CLIApplicationDependencies {
   readonly nodeVersion?: string;
   /** 贯穿 CLI、runtime、workflow、MCP 的结构化日志器；默认写 stderr，测试可用 noop。 */
   readonly logger?: HostLogger;
-  /** 相对 `--config` 与 `--project-dir` 的解析基准目录；默认 `process.cwd()`。 */
+  /** 【Host 侧】相对路径的解析基准（它只是锚点，不是项目目录本身）：
+   * `--config` 与 `--project-dir` 都基于它解析；默认 `process.cwd()`。 */
   readonly cwd?: string;
-  /** 默认配置路径（`configPathFor`）与 user scope 客户端配置的用户目录；默认 `os.homedir()`。 */
+  /** 【Host 侧】用户主目录；用于定位 iOSDriver 自身配置（`configPathFor`）
+   * 与 claude user scope 的 `~/.claude.json`。默认 `os.homedir()`。 */
   readonly homeDir?: string;
-  /** MCP 客户端注册命令使用的 Node 可执行文件；默认 `process.execPath`。 */
+  /** 【Host 侧】MCP 客户端注册命令使用的 Node 可执行文件；默认 `process.execPath`。 */
   readonly nodePath?: string;
   /** MCP 客户端注册的实现；默认真实写入客户端配置，测试注入 fake 以避免改本机配置。 */
   readonly setupMCPClient?: (input: MCPClientSetupInput) => Promise<MCPClientSetupResult>;
@@ -66,6 +85,7 @@ export interface CLIApplicationDependencies {
  *
  * 与 `CLIApplicationDependencies` 的差异：可选字段全部被 `resolveApplicationDependencies`
  * 填上默认实现变成必填，后续编排代码只面对「一定有值」的对象，不需要到处 `??`。
+ * 各字段语义（含路径归属）与 `CLIApplicationDependencies` 一致，不再重复注释。
  */
 interface ResolvedApplicationDependencies {
   readonly cliEntryPath: string;
@@ -167,8 +187,12 @@ async function executeMCPSetup(
     client: parsed.client
   });
 
+  // 【Host 侧】iOSDriver 自身配置路径（baseURL/超时等，默认 ~/.config/iosdriver/config.json）。
+  // 相对路径在此转绝对：它要写进客户端配置的启动命令 args，将来在任意目录被执行。
   const rawConfigPath = parsed.configPath ?? configPathFor(dependencies.env, dependencies.homeDir);
   const configPath = resolve(dependencies.cwd, rawConfigPath);
+  // 【项目侧】目标 iOS 项目根目录：来自 `--project-dir`，缺省时就是当前工作目录。
+  // 它决定 .mcp.json / .trae/mcp.json 写在哪里（见 mcpClientSetup.ts 的 jsonConfigPath）。
   const projectDir = resolve(dependencies.cwd, parsed.projectDir ?? ".");
   const result = await dependencies.setupMCPClient({
     client: parsed.client,

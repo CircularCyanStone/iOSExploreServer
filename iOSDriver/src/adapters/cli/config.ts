@@ -12,6 +12,11 @@
  * - `initCLIConfig`：写路径，供 `iosdriver init` 使用（保留已有字段、原子写入）；
  * - `CLIConfigError`：本层所有错误的统一类型，上层映射为退出码 2。
  *
+ * 路径归属：本层所有 `configPath` 都是【Host 侧】——iOSDriver 自身的配置文件
+ * （默认 ~/.config/iosdriver/config.json），记录「App 在哪台设备哪个端口」。
+ * 它不属于目标 iOS 项目目录，与 `.mcp.json`（【项目侧】，见
+ * `registration/mcpClientSetup.ts`）是两码事，别混淆。
+ *
  * 兼容性：读取时同时接受早期 snake_case 键（baseUrl/request_timeout_ms），
  * 但写入只补 canonical camelCase 键，且始终保留文件中的未知字段。
  */
@@ -31,7 +36,7 @@ export interface CLIConfigOverrides {
   readonly baseURL?: string;
   /** 请求超时覆盖值，毫秒正整数，如 2500。 */
   readonly requestTimeoutMs?: number;
-  /** 配置文件路径覆盖值；同时决定读取位置和 `init` 写入位置。 */
+  /** 【Host 侧】iOSDriver 自身配置文件路径覆盖值；同时决定读取位置和 `init` 写入位置。 */
   readonly configPath?: string;
 }
 
@@ -48,7 +53,8 @@ export interface CLIConfig {
   readonly requestTimeoutMs: number;
   /** 预留的认证 token（当前 App 不校验）；配置为空时该字段不存在。 */
   readonly authToken?: string;
-  /** 本次解析实际使用的配置文件路径；即使文件尚不存在也会返回（供 init 使用）。 */
+  /** 【Host 侧】本次解析实际使用的 iOSDriver 自身配置文件路径；
+   * 即使文件尚不存在也会返回（供 init 使用）。 */
   readonly configPath: string;
   /** 配置文件的原始内容（含未知字段，未做投影）；供 `init` 幂等合并时保留用户字段。 */
   readonly fileValues: Readonly<Record<string, unknown>>;
@@ -114,6 +120,7 @@ const defaultFileSystem: ConfigFileSystem = {
  * @param home 用户主目录（默认 `os.homedir()`）。
  * @returns 配置文件绝对路径。
  *   示例（macOS 无显式变量）："/Users/coo/.config/iosdriver/config.json"。
+ *   注意：该文件属于 iOSDriver 自身（【Host 侧】），与目标 iOS 项目目录无关。
  */
 export function configPathFor(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
   if (env.IOSDRIVER_CONFIG?.trim()) return env.IOSDRIVER_CONFIG;

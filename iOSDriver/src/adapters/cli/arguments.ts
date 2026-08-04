@@ -46,6 +46,10 @@ export interface OperationalArguments {
  * 当用户输入 `mcp setup <codex|claude|trae> …` 时产生；消费方（application.ts）看到
  * `kind === "mcpSetup"` 后走 host-only 路径：不解析 App 配置、不组装 runtime，
  * 只把启动命令注册进客户端配置文件。
+ *
+ * 路径字段只有两个且归属不同（见 application.ts 文件头「路径的两个世界」）：
+ * `configPath` 是【Host 侧】iOSDriver 自身配置；`projectDir` 是【项目侧】目标
+ * iOS 项目根目录——别把两者当成同一个东西。
  */
 export interface MCPSetupArguments {
   /** 判别字段：固定 "mcpSetup"。 */
@@ -58,9 +62,11 @@ export interface MCPSetupArguments {
   readonly dryRun: boolean;
   /** true=允许替换同名但启动参数不同的已有注册。 */
   readonly force: boolean;
-  /** 注册后传给 `iosdriver mcp --config` 的 App 配置路径（相对路径，组装层转绝对）。 */
+  /** 【Host 侧】注册后传给 `iosdriver mcp --config` 的 iOSDriver 自身配置路径
+   * （含 baseURL，默认 ~/.config/iosdriver/config.json）；相对路径，组装层转绝对。 */
   readonly configPath?: string;
-  /** project scope 的项目根目录，也是客户端配置文件（.mcp.json/.trae/mcp.json）的定位基准。 */
+  /** 【项目侧】目标 iOS 项目根目录（相对路径，基于 cwd 解析）；
+   * 是 `.mcp.json`/`.trae/mcp.json` 的定位基准，未传时默认当前工作目录。 */
   readonly projectDir?: string;
 }
 

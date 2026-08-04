@@ -13,6 +13,13 @@
  * 注册内容示例（launch）：
  *   { command: "/usr/local/bin/node",
  *     args: ["/abs/main.js", "mcp", "--config", "/abs/config.json"] }
+ *
+ * 路径归属（与 application.ts 文件头「路径的两个世界」一致）：
+ * - 【项目侧】`MCPClientSetupInput.cwd`：目标 iOS 项目根目录，决定 project scope
+ *   的配置文件写在哪（`<cwd>/.mcp.json`、`<cwd>/.trae/mcp.json`），也是 Codex
+ *   子进程的工作目录；
+ * - 【Host 侧】`homeDir`/`launch`：本机用户目录与 iOSDriver 自身的绝对启动路径
+ *   （Node、main.js、--config 配置），与目标项目无关。
  */
 import { spawn } from "node:child_process";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -24,7 +31,9 @@ const REGISTRATION_NAME = "iOSDriver";
 export type MCPClientName = "codex" | "claude" | "trae";
 export type MCPRegistrationScope = "user" | "project";
 
-/** 写入客户端配置的完整 stdio 启动命令（绝对路径）。 */
+/** 写入客户端配置的完整 stdio 启动命令（全部为【Host 侧】绝对路径：
+ * Node 在哪、main.js 在哪、iOSDriver 自身配置在哪）。
+ * 客户端将来可能在任意目录启动该命令，所以不能出现相对路径。 */
 export interface MCPLaunchCommand {
   /** setup 调用方已解析出的绝对 Node 可执行文件路径。 */
   readonly command: string;
@@ -41,9 +50,11 @@ export interface MCPClientSetupInput {
   readonly dryRun?: boolean;
   /** true=允许替换同名但启动参数不同的已有注册；完全相同仍返回 unchanged。 */
   readonly force?: boolean;
-  /** project 配置定位基准，也是 Codex 子命令的工作目录。 */
+  /** 【项目侧】目标 iOS 项目根目录（由 application.ts 从 `--project-dir` 解析，
+   * 缺省=当前工作目录）。project scope 的 `.mcp.json`/`.trae/mcp.json` 以此为
+   * 定位基准（见 `jsonConfigPath`），也是 Codex 子命令的工作目录。 */
   readonly cwd: string;
-  /** Claude user scope 默认配置位置（.claude.json）的解析基准。 */
+  /** 【Host 侧】Claude user scope 默认配置位置（.claude.json）的解析基准。 */
   readonly homeDir: string;
   /** 透传给 Codex CLI，并读取 CLAUDE_CONFIG_DIR。 */
   readonly env: NodeJS.ProcessEnv;
@@ -291,10 +302,12 @@ async function setupJSONClient(
 }
 
 /**
- * 按客户端官方约定解析配置文件位置：
- * - trae：<project>/.trae/mcp.json；
- * - claude project：<cwd>/.mcp.json；
- * - claude user：CLAUDE_CONFIG_DIR 或 ~/.claude.json。
+ * 按客户端官方约定解析配置文件位置（注意路径归属不同）：
+ * - 【项目侧】trae：<project>/.trae/mcp.json；claude project：<cwd>/.mcp.json；
+ * - 【Host 侧】claude user：CLAUDE_CONFIG_DIR 或 ~/.claude.json。
+ *
+ * 其中 <project> 与 <cwd> 就是 `MCPClientSetupInput.cwd`（目标 iOS 项目根目录）——
+ * 这是「项目侧路径」真正的落点。
  *
  * @param input 注册输入。
  * @param scope 注册作用域。

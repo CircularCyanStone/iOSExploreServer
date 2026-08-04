@@ -35,7 +35,8 @@ import {
  * `CLIApplicationDependencies` 的字段注释。
  */
 export type CLIMainDependencies = Omit<CLIApplicationDependencies, "cliEntryPath"> & {
-  /** 本文件（main.js）的绝对路径，用于生成 MCP 客户端启动命令；不传时取当前模块自身路径。 */
+  /** 【Host 侧】本文件（main.js）的绝对路径，用于生成 MCP 客户端启动命令；
+   * 不传时取当前模块自身路径。它与目标 iOS 项目目录无关。 */
   readonly cliEntryPath?: string;
 };
 
