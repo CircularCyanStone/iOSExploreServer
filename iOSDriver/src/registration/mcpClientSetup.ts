@@ -106,11 +106,16 @@ export type MCPSetupCommandRunner = (
 
 /**
  * `setupMCPClient` 的注入依赖（测试替换 IO 边界）。
+ *
+ * 生产调用方（`application.ts`）**从不传这两个字段**——省略时分别落到
+ * `runCommand`（真实 spawn）与 `defaultFileSystem`（真实 fs）。只有单元测试
+ * 才注入 fake，以在内存中验证流程而不碰真实磁盘/子进程。
+ * 阅读代码时遇到 `?? defaultXxx` / `= {}` 的注入点，可以直接当成默认实现，无需追测试。
  */
 export interface MCPClientSetupDependencies {
-  /** Claude/TRAE JSON 写入边界；Codex 路径不使用。 */
+  /** Claude/TRAE JSON 写入边界；Codex 路径不使用。省略=`defaultFileSystem`（真实 fs）。 */
   readonly fileSystem?: MCPSetupFileSystem;
-  /** Codex CLI 执行边界；JSON 客户端路径不使用。 */
+  /** Codex CLI 执行边界；JSON 客户端路径不使用。省略=`runCommand`（真实 spawn）。 */
   readonly runCommand?: MCPSetupCommandRunner;
 }
 

@@ -125,7 +125,7 @@ const defaultFileSystem: ConfigFileSystem = {
 export function configPathFor(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
   if (env.IOSDRIVER_CONFIG?.trim()) return env.IOSDRIVER_CONFIG;
   if (env.XDG_CONFIG_HOME?.trim()) return join(env.XDG_CONFIG_HOME, "iosdriver", "config.json");
-  return join(home, ".config", "iosdriver", "config.json");
+  return join(home, ".iosdriver", "config.json");
 }
 
 /**

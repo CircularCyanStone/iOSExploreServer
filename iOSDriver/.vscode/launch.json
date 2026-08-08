@@ -125,6 +125,311 @@
         "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
         "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "15000"
       }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "iOSDriver CLI: mcp setup codex --dry-run",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/src/adapters/cli/main.ts",
+      "args": [
+        "mcp",
+        "setup",
+        "codex",
+        "--scope",
+        "user",
+        "--project-dir",
+        "${workspaceFolder}",
+        "--config",
+        "/tmp/iosdriver-debug-config.json",
+        "--dry-run"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "15000"
+      }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "iOSDriver CLI: mcp setup claude --dry-run",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/src/adapters/cli/main.ts",
+      "args": [
+        "mcp",
+        "setup",
+        "claude",
+        "--scope",
+        "project",
+        "--project-dir",
+        "${workspaceFolder}",
+        "--config",
+        "/tmp/iosdriver-debug-config.json",
+        "--dry-run"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "15000"
+      }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "iOSDriver CLI: mcp setup claude --dry-run (user scope)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/src/adapters/cli/main.ts",
+      "args": [
+        "mcp",
+        "setup",
+        "claude",
+        "--scope",
+        "user",
+        "--project-dir",
+        "${workspaceFolder}",
+        "--config",
+        "/tmp/iosdriver-debug-config.json",
+        "--dry-run"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "15000"
+      }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "iOSDriver CLI: mcp setup codex --force (real write)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/src/adapters/cli/main.ts",
+      "args": [
+        "mcp",
+        "setup",
+        "codex",
+        "--scope",
+        "user",
+        "--project-dir",
+        "${workspaceFolder}",
+        "--force"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "15000"
+      }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "iOSDriver CLI: mcp (stdio server, waits for client)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/src/adapters/cli/main.ts",
+      "args": [
+        "mcp",
+        "--config",
+        "/tmp/iosdriver-debug-config.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "15000"
+      }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "iOSDriver CLI: call ui.tap (with --data)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/src/adapters/cli/main.ts",
+      "args": [
+        "call",
+        "ui.tap",
+        "--data",
+        "{\"selector\":{\"accessibilityIdentifier\":\"example-button\"}}",
+        "--config",
+        "/tmp/iosdriver-debug-config.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ],
+      "env": {
+        "IOS_EXPLORE_BASE_URL": "http://localhost:38321/",
+        "IOS_EXPLORE_REQUEST_TIMEOUT_MS": "15000"
+      }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Vitest: all tests (debug)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+      "args": [
+        "run",
+        "--config",
+        "${workspaceFolder}/vitest.config.ts"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Vitest: mcpClientSetup.test.ts (debug)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+      "args": [
+        "run",
+        "--config",
+        "${workspaceFolder}/vitest.config.ts",
+        "tests/registration/mcpClientSetup.test.ts"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Vitest: driverRuntime.test.ts (debug)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+      "args": [
+        "run",
+        "--config",
+        "${workspaceFolder}/vitest.config.ts",
+        "tests/runtime/driverRuntime.test.ts"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Vitest: current file (debug, --watch)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--enable-source-maps",
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+      "args": [
+        "--config",
+        "${workspaceFolder}/vitest.config.ts",
+        "--run"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "smartStep": true,
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ]
     }
   ]
 }
