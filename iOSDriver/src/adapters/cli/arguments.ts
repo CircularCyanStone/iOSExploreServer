@@ -56,7 +56,7 @@ export interface MCPSetupArguments {
   readonly kind: "mcpSetup";
   /** 目标 AI 客户端："codex" | "claude" | "trae"。 */
   readonly client: MCPClientName;
-  /** 注册作用域（user/project）；省略时由注册层按客户端默认（codex=user，claude/trae=project）。 */
+  /** 注册作用域（local/user/project）；省略时由注册层按客户端默认（codex=user，claude/trae=project）。 */
   readonly scope?: MCPRegistrationScope;
   /** true=只返回将执行的变更计划，不写客户端配置。 */
   readonly dryRun: boolean;
@@ -200,14 +200,14 @@ function parseOperationalArguments(
  *
  * @param argv 完整参数数组，如 `["mcp", "setup", "claude", "--scope", "project"]`。
  * @returns `MCPSetupArguments`（只含实际出现的可选字段）。
- * @throws {CLIConfigError} client 不是 codex/claude/trae、scope 不是 user/project、
+ * @throws {CLIConfigError} client 不是 codex/claude/trae、scope 不是 local/user/project、
  *   未知 flag 时抛出。
  */
 function parseMCPSetupArguments(argv: readonly string[]): MCPSetupArguments {
   const client = argv[2];
   if (client !== "codex" && client !== "claude" && client !== "trae") {
     throw new CLIConfigError(
-      "用法: iosdriver mcp setup <codex|claude|trae> [--scope user|project] [--project-dir path] [--dry-run] [--force] [--config path]"
+      "用法: iosdriver mcp setup <codex|claude|trae> [--scope local|user|project] [--project-dir path] [--dry-run] [--force] [--config path]"
     );
   }
 
@@ -222,8 +222,8 @@ function parseMCPSetupArguments(argv: readonly string[]): MCPSetupArguments {
     const flag = argv[index]!;
     if (flag === "--scope") {
       const value = requiredValue(argv, ++index, flag);
-      if (value !== "user" && value !== "project") {
-        throw new CLIConfigError("--scope 必须是 user 或 project");
+      if (value !== "local" && value !== "user" && value !== "project") {
+        throw new CLIConfigError("--scope 必须是 local、user 或 project");
       }
       scope = value;
     } else if (flag === "--config") {
@@ -295,5 +295,5 @@ function parseTimeout(raw: string): number {
  * @returns 用法字符串，如 "用法: iosdriver init|doctor|call <action> …"。
  */
 function usage(): string {
-  return "用法: iosdriver init|doctor|call <action> [--data JSON|@file] [--output path]|mcp|mcp setup <codex|claude|trae>";
+  return "用法: iosdriver init|doctor|call <action> [--data JSON|@file] [--output path]|mcp|mcp setup <codex|claude|trae> [--scope local|user|project]";
 }

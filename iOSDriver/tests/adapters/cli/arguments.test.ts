@@ -58,6 +58,22 @@ describe("CLI arguments", () => {
     });
   });
 
+  test("解析 Claude 的 local scope", () => {
+    expect(parseCLIArguments([
+      "mcp",
+      "setup",
+      "claude",
+      "--scope",
+      "local"
+    ])).toEqual({
+      kind: "mcpSetup",
+      client: "claude",
+      scope: "local",
+      dryRun: false,
+      force: false
+    });
+  });
+
   test("在任何 IO 前拒绝未知命令、缺失 flag 值和非法 timeout", () => {
     for (const argv of [
       [],
