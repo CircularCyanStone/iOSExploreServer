@@ -146,6 +146,38 @@ describe("MCP client setup", () => {
     expect(calls).toEqual([["mcp", "get", "iOSDriver"]]);
   });
 
+  test("Claude get 命中其他 scope 时仍为请求的 scope 创建注册", async () => {
+    const calls: string[][] = [];
+    const runner: MCPSetupCommandRunner = async (_command, args) => {
+      calls.push([...args]);
+      if (args[1] === "get") {
+        return {
+          exitCode: 0,
+          stdout: [
+            "iOSDriver:",
+            "  Scope: User config (available in all your projects)",
+            "  Type: stdio",
+            "  Command: other",
+            "  Args: other.js",
+            "  Environment:"
+          ].join("\n"),
+          stderr: ""
+        };
+      }
+      return { exitCode: 0, stdout: "Added", stderr: "" };
+    };
+
+    await expect(setupMCPClient(input("claude", { scope: "local" }), { runCommand: runner })).resolves.toMatchObject({
+      scope: "local",
+      status: "created",
+      operation: "create"
+    });
+    expect(calls[1]).toEqual([
+      "mcp", "add", "--transport", "stdio", "--scope", "local", "iOSDriver", "--",
+      launch.command, ...launch.args
+    ]);
+  });
+
   test("Claude 冲突默认拒绝，force dry-run 只返回更新计划", async () => {
     const calls: string[][] = [];
     const runner: MCPSetupCommandRunner = async (_command, args) => {
