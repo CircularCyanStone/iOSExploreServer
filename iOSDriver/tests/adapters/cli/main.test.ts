@@ -84,11 +84,54 @@ describe("CLI main", () => {
     expect(JSON.parse(streams.stdout.join(""))).toMatchObject({ status: "planned" });
   });
 
+  test("Claude local setup 只构造 host 启动合同，不读取 App 配置", async () => {
+    const streams = outputFixture();
+    let received: MCPClientSetupInput | undefined;
+    const setup = async (input: MCPClientSetupInput): Promise<MCPClientSetupResult> => {
+      received = input;
+      return {
+        client: "claude",
+        scope: "local",
+        status: "created",
+        operation: "create",
+        registrationName: "iOSDriver",
+        manager: "claude-cli",
+        launch: input.launch
+      };
+    };
+
+    const exitCode = await main(
+      ["mcp", "setup", "claude", "--scope", "local", "--project-dir", "packages/app", "--config", "missing.json"],
+      {
+        output: streams.output,
+        env: { IOS_EXPLORE_BASE_URL: "not a URL" },
+        cwd: "/workspace/repo",
+        homeDir: "/home/u",
+        nodePath: "/node/bin/node",
+        cliEntryPath: "/opt/iosdriver/main.js",
+        setupMCPClient: setup,
+        logger: noopHostLogger
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(received).toMatchObject({
+      client: "claude",
+      scope: "local",
+      cwd: "/workspace/repo/packages/app",
+      launch: {
+        command: "/node/bin/node",
+        args: ["/opt/iosdriver/main.js", "mcp", "--config", "/workspace/repo/missing.json"]
+      }
+    });
+    expect(streams.stderr).toEqual([]);
+  });
+
   test("mcp setup 校验 client、scope 和未知参数", async () => {
     for (const argv of [
       ["mcp", "setup"],
       ["mcp", "setup", "unknown"],
-      ["mcp", "setup", "claude", "--scope", "local"],
+      ["mcp", "setup", "claude", "--scope", "unsupported"],
       ["mcp", "setup", "trae", "--unknown"]
     ]) {
       const streams = outputFixture();
