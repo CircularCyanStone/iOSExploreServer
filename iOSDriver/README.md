@@ -63,7 +63,7 @@ iosdriver mcp
 
 MCP setup 参数：
 
-- `--scope user|project`：Codex 仅支持 user，Claude Code 支持 user/project，TRAE 仅支持 project；
+- `--scope local|user|project`：Codex 仅支持 user，Claude Code 支持三种 scope 且默认 local，TRAE 仅支持 project；
 - `--project-dir <path>`：project scope 的项目根，默认当前目录；
 - `--dry-run`：只输出新增或更新计划；
 - `--force`：替换已有的同名不同配置；
@@ -103,11 +103,15 @@ iosdriver doctor
 ```bash
 iosdriver mcp setup codex --dry-run
 iosdriver mcp setup codex
+iosdriver mcp setup claude
+iosdriver mcp setup claude --scope user
 iosdriver mcp setup claude --scope project --project-dir <project-root>
 iosdriver mcp setup trae --project-dir <project-root>
 ```
 
-setup 使用当前 Node 和 CLI 入口的绝对路径，保留客户端中的其他 MCP server。相同配置重复执行返回 `unchanged`；同名配置不同则需要 `--force`。
+setup 使用当前 Node 和 CLI 入口的绝对路径，保留客户端中的其他 MCP server。Claude Code 的注册写入由官方 `claude mcp get/add/remove` 命令完成；Codex 同样由 `codex mcp get/add` 完成，TRAE 仍由 iOSDriver 原子更新 `.trae/mcp.json`。相同配置重复执行返回 `unchanged`；同名配置不同则需要 `--force`。
+
+`--dry-run` 和 `--force` 是 iOSDriver 的统一 setup 选项，不是 Claude CLI 原生选项。Claude 的 force 更新会先执行 `claude mcp remove` 再执行 `claude mcp add`，两步之间不是原子操作。stdio 启动命令使用 `--` 分隔客户端参数和子进程参数，`mcp --config <path>` 会完整透传给 iOSDriver。
 
 本地 MCP 客户端应启动：
 

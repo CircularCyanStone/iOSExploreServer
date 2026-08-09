@@ -48,9 +48,9 @@ export type MCPSetupCommandRunner = (
 ) => Promise<MCPSetupCommandResult>;
 
 export interface MCPClientSetupDependencies {
-  /** 省略时使用真实 fs；仅 Claude/TRAE JSON 路径使用。 */
+  /** 省略时使用真实 fs；仅 TRAE JSON 路径使用。 */
   readonly fileSystem?: MCPSetupFileSystem;
-  /** 省略时使用真实 spawn；仅 Codex CLI 路径使用。 */
+  /** 省略时使用真实 spawn；Codex 和 Claude CLI 路径使用。 */
   readonly runCommand?: MCPSetupCommandRunner;
 }
 

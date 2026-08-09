@@ -67,7 +67,7 @@ iosdriver mcp setup trae
 通用参数：
 
 ```text
---scope user|project
+--scope local|user|project
 --project-dir <path>
 --config <iosdriver-config-path>
 --dry-run
@@ -79,10 +79,12 @@ iosdriver mcp setup trae
 | client | 默认 scope | 支持的 scope | 注册实现 |
 | --- | --- | --- | --- |
 | Codex | `user` | `user` | 调用 `codex mcp get/add` |
-| Claude Code | `project` | `user`、`project` | 原子更新 `.claude.json` 或 `.mcp.json` |
+| Claude Code | `local` | `local`、`user`、`project` | 调用 `claude mcp get/add/remove` |
 | TRAE | `project` | `project` | 原子更新 `.trae/mcp.json` |
 
-`--project-dir` 默认为当前工作目录。Claude Code 和 TRAE 的 project scope 都以该目录为项目根；从仓库的 `iOSDriver/` 子目录执行时，应传 `--project-dir ..` 或先回到仓库根。
+`--project-dir` 默认为当前工作目录。Claude Code 的 `local` scope 是当前项目的个人配置，
+`project` scope 以该目录为团队项目根；TRAE 的 project scope 也以该目录为项目根。从仓库的
+`iOSDriver/` 子目录执行时，应传 `--project-dir ..` 或先回到仓库根。
 
 ### 注册内容
 
@@ -100,16 +102,18 @@ setup 默认写入确定的绝对启动链：
 }
 ```
 
-不依赖 GUI 客户端是否继承终端 PATH，也不通过 `bash -lc` 拼接命令。移动源码目录、Node 安装目录或全局 npm 安装位置后，需要重新执行 setup。
+不依赖 GUI 客户端是否继承终端 PATH，也不通过 `bash -lc` 拼接命令。Claude 和 Codex 的
+官方 CLI 接收数组形式的参数；stdio 命令在客户端选项后使用 `--`，保证 `mcp --config` 等
+子进程参数不被客户端解析。移动源码目录、Node 安装目录或全局 npm 安装位置后，需要重新执行 setup。
 
 ### 幂等与冲突
 
-- 不存在 `iOSDriver` 时新增，并保留其他 MCP server；
-- 已有配置与目标完全相同时返回 `unchanged`，不写文件；
+- 不存在 `iOSDriver` 时调用客户端官方 add；
+- 已有配置与目标完全相同时返回 `unchanged`，不执行 add/remove；
 - 已有同名但内容不同时默认失败；
-- `--force` 只替换 `iOSDriver` 这一项；
+- `--force` 是 iOSDriver 的包装选项：Codex 直接调用 add 覆盖，Claude 调用 remove 后 add；
 - `--dry-run` 返回 `create` 或 `update` 计划，不执行修改；
-- JSON 文件通过同目录临时文件加 rename 原子更新。
+- TRAE JSON 文件通过同目录临时文件加 rename 原子更新，Claude force 更新不保证原子性。
 
 ## 5. setup 与 App runtime 分离
 
@@ -118,7 +122,7 @@ CLI 必须先把 argv 解析为两类命令：
 ```text
 mcp setup
   -> setupMCPClient
-  -> Codex command adapter / Claude JSON adapter / TRAE JSON adapter
+  -> Codex command adapter / Claude command adapter / TRAE JSON adapter
 
 init / doctor / call / mcp
   -> resolveCLIConfig

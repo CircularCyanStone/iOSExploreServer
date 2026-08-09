@@ -204,6 +204,8 @@ setup 不连接 App，也不要求 App 已启动。
 ```bash
 iosdriver mcp setup codex --dry-run
 iosdriver mcp setup codex
+iosdriver mcp setup claude
+iosdriver mcp setup claude --scope user
 iosdriver mcp setup claude --scope project --project-dir /path/to/project
 iosdriver mcp setup trae --project-dir /path/to/project
 ```
@@ -213,36 +215,38 @@ iosdriver mcp setup trae --project-dir /path/to/project
 | client | 默认 scope | 支持 scope | 管理方式或文件位置 |
 | --- | --- | --- | --- |
 | `codex` | `user` | `user` | 调用 `codex mcp get/add` |
-| `claude` | `project` | `project` | `<project-dir>/.mcp.json` |
-| `claude` | 不适用 | `user` | `$CLAUDE_CONFIG_DIR/.claude.json` 或 `~/.claude.json` |
+| `claude` | `local` | `local`、`user`、`project` | 官方 `claude mcp get/add/remove` |
 | `trae` | `project` | `project` | `<project-dir>/.trae/mcp.json` |
 
 专属参数：
 
 | 参数 | 作用 |
 | --- | --- |
-| `--scope user\|project` | 选择客户端支持的配置作用域 |
+| `--scope local\|user\|project` | 选择客户端支持的配置作用域；Claude 默认 `local` |
 | `--project-dir <path>` | project scope 根目录，默认当前工作目录 |
 | `--config <path>` | 注册后传给 `iosdriver mcp` 的 App 配置路径 |
-| `--dry-run` | 只返回 create/update 计划，不运行注册命令、不写 JSON |
-| `--force` | 允许替换同名但启动配置不同的 `iOSDriver` 注册 |
+| `--dry-run` | 只返回 create/update 计划，不运行注册命令；这是 iOSDriver 选项，不是 Claude CLI 选项 |
+| `--force` | 允许替换同名但启动配置不同的 `iOSDriver` 注册；Claude 会执行 remove 后 add |
 
-setup 保留客户端 JSON 中的未知顶层字段和其他 MCP server。相同配置重复执行返回
-`unchanged`；同名配置不同且未给 `--force` 时返回错误。JSON 客户端使用临时文件加 rename
-写入。`--config` 在注册内容中会转为绝对路径，因此客户端从其他工作目录启动时仍读取同一
-App 配置。
+setup 保留 TRAE JSON 中的未知顶层字段和其他 MCP server。Claude 与 Codex 通过官方 CLI
+检查和写入；相同配置重复执行返回 `unchanged`，同名配置不同且未给 `--force` 时返回错误。
+Claude 的 force 更新不是原子操作。`--config` 在注册内容中会转为绝对路径，因此客户端从
+其他工作目录启动时仍读取同一 App 配置。Claude 的 stdio 命令形状为：
+
+```text
+claude mcp add --transport stdio --scope <scope> iOSDriver -- <node> <main.js> mcp --config <absolute-path>
+```
 
 stdout 是以下结构的 JSON：
 
 ```json
 {
   "client": "claude",
-  "scope": "project",
+  "scope": "local",
   "status": "created",
   "operation": "create",
   "registrationName": "iOSDriver",
-  "manager": "json-file",
-  "configPath": "/path/to/project/.mcp.json",
+  "manager": "claude-cli",
   "launch": {
     "command": "/absolute/path/to/node",
     "args": [

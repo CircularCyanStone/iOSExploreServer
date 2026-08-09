@@ -21,7 +21,7 @@
  */
 import { spawn } from "node:child_process";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import {
   MCPClientSetupError,
   type MCPClientName,
@@ -57,7 +57,7 @@ const defaultFileSystem: MCPSetupFileSystem = {
  * @param dependencies 可注入的文件系统与命令执行边界。
  * @returns 注册结果（status/operation/configPath/launch）。
  * @throws {MCPClientSetupError} scope 组合非法、已有同名不同配置且无 --force、
- *   codex CLI 失败或 JSON 写入失败时抛出。
+ *   外部 CLI 失败或 JSON 写入失败时抛出。
  */
 export async function setupMCPClient(
   input: MCPClientSetupInput,
@@ -226,14 +226,14 @@ async function readCodexRegistration(
 }
 
 /**
- * 通过直接写 JSON 文件注册（Claude Code / TRAE 路径）。
+ * 通过直接写 JSON 文件注册 TRAE。
  *
  * 流程：定位配置文件 → 读取现状（缺失视为空文档）→ 比较现有注册（相同=unchanged，
  * 不同且无 --force=报错）→ dry-run 返回 planned → 否则原子写入（临时文件 + rename）。
  * 写入时展开原文档并只替换 `mcpServers.iOSDriver`——其他 server 与未知字段全部保留。
  *
  * @param input 注册输入。
- * @param scope 已解析的作用域（决定配置文件位置）。
+ * @param scope 已解析的 TRAE project 作用域。
  * @param fileSystem 文件 IO 边界。
  * @returns 注册结果（含 configPath）。
  * @throws {MCPClientSetupError} 配置非合法 JSON、写入失败时抛出。
@@ -243,14 +243,14 @@ async function setupJSONClient(
   scope: MCPRegistrationScope,
   fileSystem: MCPSetupFileSystem
 ): Promise<MCPClientSetupResult> {
-  const configPath = jsonConfigPath(input, scope);
+  const configPath = jsonConfigPath(input);
   const document = await readJSONDocument(configPath, fileSystem);
   const serversValue = document.mcpServers;
   if (serversValue !== undefined && !isRecord(serversValue)) {
     throw new MCPClientSetupError(`MCP 配置的 mcpServers 必须是 JSON 对象：${configPath}`);
   }
   const servers = serversValue ?? {};
-  const desired = jsonRegistration(input.client, input.launch);
+  const desired = jsonRegistration(input.launch);
   const current = servers[REGISTRATION_NAME];
   if (current !== undefined && jsonEqual(current, desired)) {
     return result(input, scope, "unchanged", "none", "json-file", configPath);
@@ -282,36 +282,27 @@ async function setupJSONClient(
 }
 
 /**
- * 按客户端官方约定解析配置文件位置（注意路径归属不同）：
- * - 【项目侧】trae：<project>/.trae/mcp.json；claude project：<cwd>/.mcp.json；
- * - 【Host 侧】claude user：CLAUDE_CONFIG_DIR 或 ~/.claude.json。
+ * 按 TRAE 官方约定解析项目配置文件位置：`<project>/.trae/mcp.json`。
  *
  * 其中 <project> 与 <cwd> 就是 `MCPClientSetupInput.cwd`（目标 iOS 项目根目录）——
  * 这是「项目侧路径」真正的落点。
  *
  * @param input 注册输入。
- * @param scope 注册作用域。
  * @returns 配置文件绝对路径。
  */
-function jsonConfigPath(input: MCPClientSetupInput, scope: MCPRegistrationScope): string {
-  if (input.client === "trae") return join(input.cwd, ".trae", "mcp.json");
-  if (scope === "project") return join(input.cwd, ".mcp.json");
-  const configuredDirectory = input.env.CLAUDE_CONFIG_DIR?.trim();
-  if (configuredDirectory === undefined || configuredDirectory.length === 0) return join(input.homeDir, ".claude.json");
-  const directory = isAbsolute(configuredDirectory) ? configuredDirectory : resolve(input.cwd, configuredDirectory);
-  return join(directory, ".claude.json");
+function jsonConfigPath(input: MCPClientSetupInput): string {
+  return join(input.cwd, ".trae", "mcp.json");
 }
 
 /**
- * 构造要写入的 iOSDriver 注册对象（claude 额外带 type:"stdio"）。
+ * 构造要写入 TRAE 的 iOSDriver stdio 注册对象。
  *
  * @param client 目标客户端。
  * @param launch 启动合同。
  * @returns mcpServers 中 iOSDriver 的值。
  */
-function jsonRegistration(client: MCPClientName, launch: MCPLaunchCommand): Record<string, unknown> {
+function jsonRegistration(launch: MCPLaunchCommand): Record<string, unknown> {
   return {
-    ...(client === "claude" ? { type: "stdio" } : {}),
     command: launch.command,
     args: [...launch.args]
   };

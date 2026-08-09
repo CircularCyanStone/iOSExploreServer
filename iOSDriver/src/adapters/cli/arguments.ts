@@ -16,7 +16,7 @@
  *     → { kind:"mcpSetup", client:"codex", dryRun:true, force:false }
  */
 import type { MCPClientName, MCPRegistrationScope } from "../../registration/mcpClientSetup.js";
-import { type CallCommandOptions, type CLICommandName } from "./commands.js";
+import type { CallCommandOptions, CLICommandName } from "./commands/commandTypes.js";
 import { CLIConfigError, type CLIConfigOverrides } from "./config.js";
 
 /**
@@ -56,7 +56,7 @@ export interface MCPSetupArguments {
   readonly kind: "mcpSetup";
   /** 目标 AI 客户端："codex" | "claude" | "trae"。 */
   readonly client: MCPClientName;
-  /** 注册作用域（local/user/project）；省略时由注册层按客户端默认（codex=user，claude/trae=project）。 */
+  /** 注册作用域（local/user/project）；省略时由注册层按客户端默认（codex=user，claude=local，trae=project）。 */
   readonly scope?: MCPRegistrationScope;
   /** true=只返回将执行的变更计划，不写客户端配置。 */
   readonly dryRun: boolean;

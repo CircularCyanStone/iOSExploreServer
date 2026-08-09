@@ -94,6 +94,17 @@ MCP 工具列表是静态合同投影。工具名到 device action / host operat
 
 `WorkflowRunner` 组合多个 action，并保留每一步结果和 timing。adapter 只把 workflow 结果渲染成 CLI 输出或 MCP content。
 
+## MCP 客户端注册
+
+`iosdriver mcp setup <client>` 只登记未来如何启动 `iosdriver mcp`，不连接 App。
+
+- Codex 使用官方 `codex mcp get/add`。
+- Claude Code 使用官方 `claude mcp get/add/remove`，支持 `local`（默认）、`user`、`project`。
+- TRAE 使用项目级 `.trae/mcp.json` 原子写入。
+
+`--dry-run` 和 `--force` 是 iOSDriver 的统一包装选项。Claude 的 force 更新由 remove 后 add
+组成，不是原子操作。stdio 注册命令使用 `--` 透传 Node、入口、`mcp` 和 `--config` 参数。
+
 ## 配置与退出码
 
 配置优先级：
