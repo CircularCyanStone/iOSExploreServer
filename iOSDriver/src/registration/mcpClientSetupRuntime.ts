@@ -104,7 +104,7 @@ async function setupClaude(
   scope: MCPRegistrationScope,
   run: MCPSetupCommandRunner
 ): Promise<MCPClientSetupResult> {
-  const current = await readClaudeRegistration(input, run);
+  const current = await readClaudeRegistration(input, scope, run);
   if (current !== undefined && launchMatches(current, input.launch, false)) {
     return result(input, scope, "unchanged", "none", "claude-cli");
   }
@@ -135,6 +135,7 @@ async function setupClaude(
 /** 读取 Claude 官方 `mcp get` 输出；不存在时返回 undefined。 */
 async function readClaudeRegistration(
   input: MCPClientSetupInput,
+  scope: MCPRegistrationScope,
   run: MCPSetupCommandRunner
 ): Promise<Record<string, unknown> | undefined> {
   const inspected = await run("claude", ["mcp", "get", REGISTRATION_NAME], {
@@ -144,18 +145,21 @@ async function readClaudeRegistration(
   const output = `${inspected.stdout}\n${inspected.stderr}`;
   if (inspected.exitCode !== 0 && output.includes(`No MCP server named \"${REGISTRATION_NAME}\"`)) return undefined;
   if (inspected.exitCode !== 0) throw commandError("claude mcp get", inspected);
-  return parseClaudeRegistration(inspected.stdout);
+  const parsed = parseClaudeRegistration(inspected.stdout);
+  return parsed.scope === scope ? parsed : undefined;
 }
 
 /** 将 Claude 当前人类可读输出转换成 launch 字段供幂等比较。 */
 function parseClaudeRegistration(output: string): Record<string, unknown> {
+  const scopeText = output.match(/^\s+Scope:\s+(Local|User|Project) config\b/m)?.[1];
   const command = output.match(/^\s+Command:\s(.+)$/m)?.[1]?.trim();
   const argsLine = output.match(/^\s+Args:(.*)$/m);
   const args = argsLine?.[1]?.trim() ?? "";
-  if (command === undefined || argsLine === null) {
-    throw new MCPClientSetupError("claude mcp get 输出无法解析 Command/Args");
+  if (scopeText === undefined || command === undefined || argsLine === null) {
+    throw new MCPClientSetupError("claude mcp get 输出无法解析 Scope/Command/Args");
   }
-  return { type: "stdio", command, args: args.length === 0 ? [] : args.split(/\s+/) };
+  const scope = scopeText.toLowerCase() as Lowercase<typeof scopeText>;
+  return { type: "stdio", scope, command, args: args.length === 0 ? [] : args.split(/\s+/) };
 }
 
 /**

@@ -152,7 +152,7 @@ describe("MCP client setup", () => {
       calls.push([...args]);
       return {
         exitCode: 0,
-        stdout: "iOSDriver:\n  Type: stdio\n  Command: other\n  Args: other.js\n  Environment:",
+        stdout: "iOSDriver:\n  Scope: Local config (private to you in this project)\n  Type: stdio\n  Command: other\n  Args: other.js\n  Environment:",
         stderr: ""
       };
     };
@@ -174,7 +174,7 @@ describe("MCP client setup", () => {
       if (args[1] === "get") {
         return {
           exitCode: 0,
-          stdout: "iOSDriver:\n  Type: stdio\n  Command: other\n  Args: other.js\n  Environment:",
+          stdout: "iOSDriver:\n  Scope: Project config (shared via .mcp.json)\n  Type: stdio\n  Command: other\n  Args: other.js\n  Environment:",
           stderr: ""
         };
       }
@@ -205,7 +205,7 @@ describe("MCP client setup", () => {
       if (args[1] === "get") {
         return {
           exitCode: 0,
-          stdout: "iOSDriver:\n  Type: stdio\n  Command: other\n  Args: other.js\n  Environment:",
+          stdout: "iOSDriver:\n  Scope: Local config (private to you in this project)\n  Type: stdio\n  Command: other\n  Args: other.js\n  Environment:",
           stderr: ""
         };
       }
