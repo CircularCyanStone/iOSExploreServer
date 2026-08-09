@@ -178,6 +178,64 @@ describe("MCP client setup", () => {
     ]);
   });
 
+  test("Claude get 被其他 scope 遮蔽时，force 仍先移除目标 scope", async () => {
+    const calls: string[][] = [];
+    const runner: MCPSetupCommandRunner = async (_command, args) => {
+      calls.push([...args]);
+      if (args[1] === "get") {
+        return {
+          exitCode: 0,
+          stdout: "iOSDriver:\n  Scope: Local config (private to you in this project)\n  Type: stdio\n  Command: local\n  Args: local.js\n  Environment:",
+          stderr: ""
+        };
+      }
+      return { exitCode: 0, stdout: "ok", stderr: "" };
+    };
+
+    await expect(setupMCPClient(input("claude", { scope: "user", force: true }), { runCommand: runner })).resolves.toMatchObject({
+      scope: "user",
+      status: "updated",
+      operation: "update"
+    });
+    expect(calls).toEqual([
+      ["mcp", "get", "iOSDriver"],
+      ["mcp", "remove", "iOSDriver", "--scope", "user"],
+      [
+        "mcp", "add", "--transport", "stdio", "--scope", "user", "iOSDriver", "--",
+        launch.command, ...launch.args
+      ]
+    ]);
+  });
+
+  test("Claude 的 Args 输出含空格路径时仍识别为 unchanged", async () => {
+    const spacedLaunch = {
+      command: launch.command,
+      args: [launch.args[0]!, "mcp", "--config", "/home/u/My Config/iosdriver config.json"]
+    };
+    const calls: string[][] = [];
+    const runner: MCPSetupCommandRunner = async (_command, args) => {
+      calls.push([...args]);
+      return {
+        exitCode: 0,
+        stdout: [
+          "iOSDriver:",
+          "  Scope: Local config (private to you in this project)",
+          "  Type: stdio",
+          `  Command: ${spacedLaunch.command}`,
+          `  Args: ${spacedLaunch.args.join(" ")}`,
+          "  Environment:"
+        ].join("\n"),
+        stderr: ""
+      };
+    };
+
+    await expect(setupMCPClient(input("claude", { launch: spacedLaunch }), { runCommand: runner })).resolves.toMatchObject({
+      status: "unchanged",
+      operation: "none"
+    });
+    expect(calls).toEqual([["mcp", "get", "iOSDriver"]]);
+  });
+
   test("Claude 冲突默认拒绝，force dry-run 只返回更新计划", async () => {
     const calls: string[][] = [];
     const runner: MCPSetupCommandRunner = async (_command, args) => {

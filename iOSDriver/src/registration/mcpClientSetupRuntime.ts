@@ -104,23 +104,31 @@ async function setupClaude(
   scope: MCPRegistrationScope,
   run: MCPSetupCommandRunner
 ): Promise<MCPClientSetupResult> {
-  const current = await readClaudeRegistration(input, scope, run);
-  if (current !== undefined && launchMatches(current, input.launch, false)) {
+  const current = await readClaudeRegistration(input, run);
+  const currentIsTargetScope = current?.scope === scope;
+  if (currentIsTargetScope && claudeLaunchMatches(current, input.launch)) {
     return result(input, scope, "unchanged", "none", "claude-cli");
   }
-  if (current !== undefined && input.force !== true) {
+  if (currentIsTargetScope && input.force !== true) {
     throw new MCPClientSetupError(`Claude 已存在不同的 ${REGISTRATION_NAME} 配置；使用 --force 更新`);
   }
 
-  const operation = current === undefined ? "create" : "update";
+  let operation: MCPClientSetupResult["operation"] = currentIsTargetScope ? "update" : "create";
+  // `get` 无法按 scope 查询。若它命中其他 scope，force 会额外 remove 目标 scope，
+  // 以便处理被优先级更高 scope 遮蔽的同名注册。
+  const shouldRemove = currentIsTargetScope || (current !== undefined && input.force === true);
   if (input.dryRun === true) return result(input, scope, "planned", operation, "claude-cli");
 
-  if (operation === "update") {
+  if (shouldRemove) {
     const removed = await run("claude", ["mcp", "remove", REGISTRATION_NAME, "--scope", scope], {
       cwd: input.cwd,
       env: input.env
     });
-    if (removed.exitCode !== 0) throw commandError("claude mcp remove", removed);
+    if (removed.exitCode === 0) {
+      operation = "update";
+    } else if (!isMissingClaudeRegistration(removed)) {
+      throw commandError("claude mcp remove", removed);
+    }
   }
 
   const added = await run(
@@ -135,22 +143,26 @@ async function setupClaude(
 /** 读取 Claude 官方 `mcp get` 输出；不存在时返回 undefined。 */
 async function readClaudeRegistration(
   input: MCPClientSetupInput,
-  scope: MCPRegistrationScope,
   run: MCPSetupCommandRunner
-): Promise<Record<string, unknown> | undefined> {
+): Promise<ClaudeRegistration | undefined> {
   const inspected = await run("claude", ["mcp", "get", REGISTRATION_NAME], {
     cwd: input.cwd,
     env: input.env
   });
   const output = `${inspected.stdout}\n${inspected.stderr}`;
-  if (inspected.exitCode !== 0 && output.includes(`No MCP server named \"${REGISTRATION_NAME}\"`)) return undefined;
+  if (inspected.exitCode !== 0 && isMissingClaudeRegistration(inspected)) return undefined;
   if (inspected.exitCode !== 0) throw commandError("claude mcp get", inspected);
-  const parsed = parseClaudeRegistration(inspected.stdout);
-  return parsed.scope === scope ? parsed : undefined;
+  return parseClaudeRegistration(inspected.stdout);
 }
 
 /** 将 Claude 当前人类可读输出转换成 launch 字段供幂等比较。 */
-function parseClaudeRegistration(output: string): Record<string, unknown> {
+interface ClaudeRegistration {
+  readonly scope: MCPRegistrationScope;
+  readonly command: string;
+  readonly argsText: string;
+}
+
+function parseClaudeRegistration(output: string): ClaudeRegistration {
   const scopeText = output.match(/^\s+Scope:\s+(Local|User|Project) config\b/m)?.[1];
   const command = output.match(/^\s+Command:\s(.+)$/m)?.[1]?.trim();
   const argsLine = output.match(/^\s+Args:(.*)$/m);
@@ -158,8 +170,18 @@ function parseClaudeRegistration(output: string): Record<string, unknown> {
   if (scopeText === undefined || command === undefined || argsLine === null) {
     throw new MCPClientSetupError("claude mcp get 输出无法解析 Scope/Command/Args");
   }
-  const scope = scopeText.toLowerCase() as Lowercase<typeof scopeText>;
-  return { type: "stdio", scope, command, args: args.length === 0 ? [] : args.split(/\s+/) };
+  const scope = scopeText.toLowerCase() as MCPRegistrationScope;
+  return { scope, command, argsText: args };
+}
+
+/** Claude 的 get 输出不保留参数边界；比较同一输出格式避免空格路径被错误拆分。 */
+function claudeLaunchMatches(current: ClaudeRegistration, launch: MCPLaunchCommand): boolean {
+  return current.command === launch.command && current.argsText === launch.args.join(" ");
+}
+
+/** 判断 Claude get/remove 是否报告目标 scope 不存在同名 server。 */
+function isMissingClaudeRegistration(resultValue: MCPSetupCommandResult): boolean {
+  return `${resultValue.stdout}\n${resultValue.stderr}`.includes(`No MCP server named \"${REGISTRATION_NAME}\"`);
 }
 
 /**
