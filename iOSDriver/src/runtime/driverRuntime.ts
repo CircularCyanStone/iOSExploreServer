@@ -19,6 +19,17 @@ import { ArtifactDecoder } from "./artifacts.js";
 import { DriverFailure, type DriverError } from "./driverErrors.js";
 import { noopHostLogger, type HostLogger } from "./hostLogger.js";
 import type { Artifact, InvocationResult } from "./types.js";
+import type {
+  DriverRuntimeOptions,
+  InvocationOptions,
+  InvocationPolicy
+} from "./driverRuntimeTypes.js";
+
+export type {
+  DriverRuntimeOptions,
+  InvocationOptions,
+  InvocationPolicy
+} from "./driverRuntimeTypes.js";
 
 /**
  * 构建时从生成合同（src/generated/deviceActionContracts.ts）建立的「action 名 → 合同」
@@ -28,40 +39,6 @@ import type { Artifact, InvocationResult } from "./types.js";
 const ACTION_METADATA: ReadonlyMap<string, DeviceActionContract> = new Map(
   DEVICE_ACTION_CONTRACTS.map(contract => [contract.action, contract] as const)
 );
-
-/** `DriverRuntime` 的构造参数。 */
-export interface DriverRuntimeOptions {
-  /** 唯一网络边界；生产传 `HttpActionTransport`，测试传 fake。 */
-  readonly transport: ActionTransport;
-  /** 普通（standard/screenshot）action 的 transport 超时基线（毫秒）。 */
-  readonly configuredRequestTimeoutMs: number;
-  /** 负责从 envelope data 中剥离并校验二进制字段的解码器；不传用默认实现。 */
-  readonly artifactDecoder?: ArtifactDecoder;
-  /** 结构化日志器；CLI/MCP 入口注入共享 stderr logger。 */
-  readonly logger?: HostLogger;
-}
-
-/** 单次 `invoke` 的调用参数。 */
-export interface InvocationOptions {
-  /** 外部取消信号；只终止当前调用，不改变 runtime 实例状态。 */
-  readonly signal?: AbortSignal;
-  /** 调用策略覆盖；仅供已通过 help 严格验证的扩展 action 使用（见 invocationPolicy）。 */
-  readonly policy?: InvocationPolicy;
-}
-
-/**
- * 单次 action 的超时与重试安全属性。
- *
- * canonical action 的值来自生成合同（`core.ping.json` 的 idempotency/timeoutClass）；
- * 扩展 action 的值来自 App help 声明（需严格校验）。
- */
-export interface InvocationPolicy {
-  /** 幂等性：readOnly/idempotent 才允许 runtime 在安全 transport 阶段自动重试；
-   * sideEffecting（点击/输入等有副作用的 action）**绝不**自动重试。 */
-  readonly idempotency: "readOnly" | "idempotent" | "sideEffecting";
-  /** 超时级别：wait 类会在业务等待之外预留 transport 余量；standard/screenshot 用配置值。 */
-  readonly timeoutClass: "standard" | "wait" | "screenshot";
-}
 
 /**
  * 把 transport 返回值归一化为稳定 `InvocationResult` 的 host runtime（协议解释层）。

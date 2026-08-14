@@ -20,25 +20,8 @@
  */
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import {
-  runCLI,
-  type CLIApplicationDependencies
-} from "./application.js";
-
-/**
- * `main()` 的依赖注入对象类型。
- *
- * 与 `CLIApplicationDependencies`（application.ts 定义）几乎相同，唯一差异是
- * `cliEntryPath` 从「必填」降级为「可选」：`main()` 自己能通过
- * `fileURLToPath(import.meta.url)` 算出本文件的绝对路径当默认值，所以调用方
- * （通常只有测试）可以不传。其余字段（output/env/logger/cwd 等）语义见
- * `CLIApplicationDependencies` 的字段注释。
- */
-export type CLIMainDependencies = Omit<CLIApplicationDependencies, "cliEntryPath"> & {
-  /** 【Host 侧】本文件（main.js）的绝对路径，用于生成 MCP 客户端启动命令；
-   * 不传时取当前模块自身路径。它与目标 iOS 项目目录无关。 */
-  readonly cliEntryPath?: string;
-};
+import { runCLI } from "./application.js";
+import type { CLIMainDependencies } from "./main/mainTypes.js";
 
 /**
  * 运行一次完整的 CLI 调用，返回退出码数字，但不主动终止 Node 进程。
@@ -86,6 +69,8 @@ export function isMainModule(metaURL: string, argv1 = process.argv[1]): boolean 
   if (argv1 === undefined) return false;
   return realpathSync(argv1) === realpathSync(fileURLToPath(metaURL));
 }
+
+export type { CLIMainDependencies } from "./main/mainTypes.js";
 
 // 全文件唯一有进程副作用的位置：
 // - 直接执行（node main.js …）时：把 main() 的返回码写入 process.exitCode，
